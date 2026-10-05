@@ -1,0 +1,25 @@
+{
+  "name": "@officehum/cli",
+  "version": "0.0.0",
+  "description": "Command line for running an Office Hum office: start agents, watch the board, steer a live session.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "officehum": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officehum/officehum.git",
+    "directory": "packages/cli"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@officehum/office": "0.0.0"
+  }
+}
