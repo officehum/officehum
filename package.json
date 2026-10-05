@@ -1,0 +1,28 @@
+{
+  "name": "officehum",
+  "private": true,
+  "description": "Open-source multi-agent office for medium-sized businesses, built on Pi Durable.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "agents/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @officehum/sdk -w @officehum/office -w @officehum/cli",
+    "typecheck": "npm run typecheck -w @officehum/sdk -w @officehum/office -w @officehum/cli",
+    "test": "vitest run",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "check": "npm run lint && npm run build && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "^22.0.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}

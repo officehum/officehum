@@ -1,0 +1,31 @@
+{
+  "name": "@officehum/office",
+  "version": "0.0.0",
+  "description": "The Office: workboard, relay and workflow engine that let Office Hum agents work together on one machine.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officehum/officehum.git",
+    "directory": "packages/office"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@earendil-works/pi-durable": "1.0.2",
+    "@officehum/sdk": "0.0.0"
+  }
+}
