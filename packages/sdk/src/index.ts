@@ -1,37 +1,78 @@
 /**
- * @officehum/sdk — the contract every Office Hum agent package follows.
+ * @officehum/sdk — build portable Pi Durable role agents.
  *
- * This is the M0 scaffold. The full manifest schema and validation land in
- * RASF-3064 (SDK and manifest schema).
+ * A role is a Pi Durable extension written directly with `defineExtension`, `defineTool`, `section`
+ * and `hook`. It installs into any Pi Durable 1.0.x harness, with or without Office Hum. This SDK
+ * adds what Pi Durable does not have: the `officehum.json` manifest, checks that keep a role portable
+ * and consistent with its manifest, the role prompt and approval-gate helpers, and the eval format.
+ * It depends only on Pi Durable (as a peer), `typebox` and `semver`.
+ *
+ * See docs/design/agent-package.md.
  */
 
-/** Departments an agent can belong to. The UI groups the team by department. */
-export const DEPARTMENTS = [
-  "front-office",
-  "finance",
-  "operations",
-  "sales",
-  "marketing",
-  "people",
-] as const;
-
-export type Department = (typeof DEPARTMENTS)[number];
-
-/** Minimal agent manifest. Expanded in RASF-3064. */
-export interface AgentManifest {
-  /** Stable package-level id, e.g. "frontdesk". */
-  id: string;
-  /** Display name, e.g. "Front Desk". */
-  name: string;
-  /** Semver version of the agent package. */
-  version: string;
-  /** Department this role belongs to. */
-  department: Department;
-  /** One-line job description shown in the UI. */
-  role: string;
-}
-
-/** Returns the manifest unchanged, typed. Validation is added in RASF-3064. */
-export function defineManifest(manifest: AgentManifest): AgentManifest {
-  return manifest;
-}
+export { checkAgent, type RoleBundle, type RoleFactory, skillExtensionName } from "./agent.js";
+export {
+  type ApprovalDecision,
+  type ApprovalGateOptions,
+  type ApprovalRequest,
+  type Approver,
+  approvalGate,
+  type HookContext,
+  isApprovalGate,
+  type ToolArguments,
+} from "./approvals.js";
+export {
+  type AgentRunner,
+  type EvalReport,
+  formatReport,
+  gradeTrace,
+  type RunEvalsOptions,
+  runEvals,
+  type ScenarioReport,
+  type Trace,
+  type TrialReport,
+} from "./evals/run.js";
+export {
+  DEFAULT_PASS_THRESHOLD,
+  DEFAULT_TRIALS,
+  type EvalSuite,
+  type Scenario,
+  type ScenarioExpect,
+  type ScenarioInput,
+  ScenarioSchema,
+  SuiteSchema,
+  validateSuite,
+} from "./evals/suite.js";
+export { formatIssue, type Issue, type Validation } from "./issues.js";
+export {
+  type AcceptDeclaration,
+  type AgentManifest,
+  type ApprovalDeclaration,
+  CHANNELS,
+  type Channel,
+  DEPARTMENTS,
+  type Department,
+  MANIFEST_FILE,
+  MANIFEST_SCHEMA_VERSION,
+  ManifestSchema,
+  type ModelDeclaration,
+  RESERVED_TOOL_NAMES,
+  type SkillDeclaration,
+  THINKING_LEVELS,
+  type ToolDeclaration,
+  validateManifest,
+} from "./manifest.js";
+export {
+  PEER_ONLY_PACKAGES,
+  PI_DURABLE_PACKAGE,
+  PLATFORM_PACKAGES,
+  type RolePackage,
+  supportsPiDurable,
+  validatePackage,
+} from "./package.js";
+export {
+  INSTRUCTIONS_SECTION_KEY,
+  ROLE_SECTION_KEYS,
+  type RolePrompt,
+  roleSections,
+} from "./prompt.js";
