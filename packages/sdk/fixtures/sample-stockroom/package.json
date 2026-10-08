@@ -1,0 +1,16 @@
+{
+  "name": "@officehum/sample-stockroom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A minimal engine-backed portable Pi Durable role, used to test @officehum/sdk.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "1.0.x",
+    "@earendil-works/pi-durable": "1.0.x"
+  },
+  "dependencies": {
+    "@officehum/sdk": "0.0.0"
+  }
+}

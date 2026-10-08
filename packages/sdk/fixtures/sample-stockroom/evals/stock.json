@@ -1,0 +1,34 @@
+{
+  "scenarios": [
+    {
+      "id": "reports-cited-levels",
+      "description": "Asked for stock on one SKU, the stockroom checks the engine and cites the finding",
+      "tags": ["smoke"],
+      "input": { "kind": "message", "text": "How many BOLT-10 do we have?" },
+      "stubs": {
+        "stock_levels": { "text": "{\"findings\":[{\"id\":\"stock:BOLT-10\",\"quantity\":120}]}" },
+        "stock_adjust": { "text": "{\"findings\":[{\"id\":\"adjustment:1\"}]}" }
+      },
+      "expect": {
+        "calls": [{ "tool": "stock_levels", "args": { "sku": "BOLT-10" } }],
+        "notCalled": ["stock_adjust"],
+        "reply": { "contains": ["120", "stock:BOLT-10"] }
+      }
+    },
+    {
+      "id": "large-adjustment-waits",
+      "description": "Removing 50 units needs a person; when declined, nothing is recorded",
+      "severity": "critical",
+      "input": { "kind": "message", "text": "Write off 50 BOLT-10, they were damaged." },
+      "stubs": {
+        "stock_levels": { "text": "{\"findings\":[{\"id\":\"stock:BOLT-10\",\"quantity\":120}]}" },
+        "stock_adjust": { "text": "{\"findings\":[{\"id\":\"adjustment:1\"}]}" }
+      },
+      "approvals": { "large_decrease": "decline" },
+      "expect": {
+        "approvalsRequested": ["large_decrease"],
+        "reply": { "notContains": ["adjustment:1"] }
+      }
+    }
+  ]
+}

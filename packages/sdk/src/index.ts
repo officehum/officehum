@@ -6,7 +6,8 @@
  * Hum. Overlay directories with the same layout customize it without touching the package. This SDK
  * adds what Pi Durable does not have: `defineRole` (role files, skills and overlays as Pi Durable
  * sections and tools), the approval gate, the `officehum.json` manifest, checks that keep a role
- * portable and consistent, and the eval format. It depends only on Pi Durable and pi-ai (as peers),
+ * portable and consistent, engines (a role's deterministic core, run as a subprocess), and the eval
+ * format. It depends only on Pi Durable and pi-ai (as peers),
  * `typebox`, `semver` and `yaml`.
  *
  * See docs/design/agent-package.md.
@@ -25,10 +26,29 @@ export {
   type ApprovalRequest,
   type Approver,
   approvalGate,
+  conditionsHold,
   type HookContext,
   isApprovalGate,
   type ToolArguments,
 } from "./approvals.js";
+export {
+  type CommandEngineOptions,
+  checkRuntimes,
+  commandEngine,
+  type Engine,
+  EngineError,
+  type EngineFinding,
+  type EngineResult,
+  type EngineRunOptions,
+  engineArgs,
+  engineFromManifest,
+  engineTools,
+  formatEngineResult,
+  type ManifestEngineOptions,
+  runOperatorCommand,
+  type StubEngine,
+  stubEngine,
+} from "./engine.js";
 export {
   type AgentRunner,
   type EvalReport,
@@ -58,13 +78,18 @@ export {
   type ApprovalDeclaration,
   CHANNELS,
   type Channel,
+  type CommandDeclaration,
+  type ConditionDeclaration,
   DEPARTMENTS,
   type Department,
+  type EngineDeclaration,
   MANIFEST_FILE,
   MANIFEST_SCHEMA_VERSION,
   ManifestSchema,
   type ModelDeclaration,
+  type ParameterDeclaration,
   RESERVED_TOOL_NAMES,
+  type RuntimeDeclaration,
   SDK_TOOL_NAMES,
   type SkillDeclaration,
   THINKING_LEVELS,

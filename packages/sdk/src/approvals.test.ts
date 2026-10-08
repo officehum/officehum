@@ -4,6 +4,7 @@ import {
   type ApprovalGateOptions,
   type Approver,
   approvalGate,
+  conditionsHold,
   type HookContext,
 } from "./approvals.js";
 
@@ -92,5 +93,57 @@ describe("approvalGate", () => {
     expect(again).toBeUndefined();
     expect(approve).toHaveBeenCalledOnce();
     expect([...memos.values()]).toEqual([{ approved: true, by: "Sam", note: null }]);
+  });
+});
+
+describe("approval conditions from officehum.json", () => {
+  const declared = [
+    {
+      id: "large_decrease",
+      tool: "stock_adjust",
+      description: "Removing more than 10 units",
+      when: [{ arg: "quantity", op: "lt" as const, value: -10 }],
+    },
+  ];
+
+  it("gates only calls that meet the declared condition", async () => {
+    const gate = beforeTool({ approvals: declared });
+    expect(await gate(call("stock_adjust", { quantity: -5 }), hookApi(), context)).toBeUndefined();
+    expect(
+      (await gate(call("stock_adjust", { quantity: -50 }), hookApi(), context))?.block,
+    ).toContain("Removing more than 10 units");
+  });
+
+  it("fails safe: a missing or unreadable argument still needs approval", async () => {
+    const gate = beforeTool({ approvals: declared });
+    expect((await gate(call("stock_adjust", {}), hookApi(), context))?.block).toBeDefined();
+    expect(
+      (await gate(call("stock_adjust", { quantity: "lots" }), hookApi(), context))?.block,
+    ).toBeDefined();
+  });
+
+  it("lets a condition written in code take precedence", async () => {
+    const gate = beforeTool({ approvals: declared, when: { large_decrease: () => false } });
+    expect(await gate(call("stock_adjust", { quantity: -50 }), hookApi(), context)).toBeUndefined();
+  });
+
+  it("supports every comparison", () => {
+    const holds = (
+      op: "gt" | "gte" | "lt" | "lte" | "eq" | "ne" | "in",
+      value: number | string | string[],
+      actual: unknown,
+    ) => conditionsHold([{ arg: "x", op, value }], { x: actual });
+    expect([holds("gt", 5, 6), holds("gte", 5, 5), holds("lt", 5, 4), holds("lte", 5, 5)]).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+    expect([
+      holds("gt", 5, 5),
+      holds("eq", "a", "a"),
+      holds("ne", "a", "a"),
+      holds("in", ["a", "b"], "c"),
+    ]).toEqual([false, true, false, false]);
   });
 });

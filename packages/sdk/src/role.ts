@@ -30,6 +30,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { type RoleBundle, skillExtensionName } from "./agent.js";
 import { type Approver, approvalGate, type ToolArguments } from "./approvals.js";
+import { type Engine, engineTools } from "./engine.js";
 import { formatIssue, type Issue } from "./issues.js";
 import { validateManifest } from "./manifest.js";
 import { type ResolvedRole, resolveRoleFiles } from "./resources.js";
@@ -49,6 +50,11 @@ export interface DefineRoleOptions {
   readonly instructionsOnly?: boolean;
   /** The role's own tools: those the manifest declares without a `skill`. */
   readonly tools?: readonly ToolRegistration[];
+  /**
+   * The role's engine, when its manifest declares one: `engineFromManifest(packageDir, manifest, …)`
+   * in production, `stubEngine(…)` in tests. `defineRole` builds the manifest's engine tools with it.
+   */
+  readonly engine?: Engine | undefined;
   /** Tools that come with a skill, keyed by skill id. */
   readonly skillTools?: Readonly<Record<string, readonly ToolRegistration[]>>;
   /** Decides gated actions. Omitted: they are blocked. */
@@ -101,6 +107,33 @@ export function defineRole(options: DefineRoleOptions): DefinedRole {
   if (!first.ok) throw new RoleFilesError(first.issues);
   let current = first.value;
 
+  // Engine tools are built from the manifest, then placed like hand-written ones: in the role's
+  // extension, or in their skill's.
+  const declaresEngineTools = manifest.tools.some((tool) => tool.engine !== undefined);
+  if (declaresEngineTools && options.engine === undefined) {
+    throw new RoleFilesError([
+      {
+        source: "role",
+        path: "engine",
+        message: `${manifest.id} declares engine tools; pass an engine, e.g. engineFromManifest(packageDir, manifest)`,
+      },
+    ]);
+  }
+  const built = options.engine === undefined ? [] : engineTools(manifest, options.engine);
+  const skillOf = new Map(manifest.tools.map((tool) => [tool.name, tool.skill]));
+  const roleTools = [
+    ...built.filter((tool) => skillOf.get(tool.name) === undefined),
+    ...(options.tools ?? []),
+  ];
+  const toolsBySkill = new Map<string, ToolRegistration[]>();
+  for (const tool of built) {
+    const skill = skillOf.get(tool.name);
+    if (skill !== undefined) toolsBySkill.set(skill, [...(toolsBySkill.get(skill) ?? []), tool]);
+  }
+  for (const [skill, tools] of Object.entries(options.skillTools ?? {})) {
+    toolsBySkill.set(skill, [...(toolsBySkill.get(skill) ?? []), ...tools]);
+  }
+
   const readSkill = defineTool({
     name: "read_skill",
     description:
@@ -144,7 +177,7 @@ export function defineRole(options: DefineRoleOptions): DefinedRole {
       section("skills", () => skillIndex(current)),
       section("append_system", () => current.appendSystem?.text),
     ],
-    tools: [...(options.tools ?? []), readSkill],
+    tools: [...roleTools, readSkill],
     hooks: [
       approvalGate({
         approvals: manifest.approvals,
@@ -157,7 +190,7 @@ export function defineRole(options: DefineRoleOptions): DefinedRole {
   });
 
   // Skills that bring tools get their own extension, selected only while the skill is on.
-  const skillExtensions = Object.entries(options.skillTools ?? {}).map(([skill, tools]) =>
+  const skillExtensions = [...toolsBySkill].map(([skill, tools]) =>
     defineExtension({ name: skillExtensionName(manifest.id, skill), tools }),
   );
 
