@@ -1,16 +1,24 @@
 /**
  * @officehum/sdk — build portable Pi Durable role agents.
  *
- * A role is a Pi Durable extension written directly with `defineExtension`, `defineTool`, `section`
- * and `hook`. It installs into any Pi Durable 1.0.x harness, with or without Office Hum. This SDK
- * adds what Pi Durable does not have: the `officehum.json` manifest, checks that keep a role portable
- * and consistent with its manifest, the role prompt and approval-gate helpers, and the eval format.
- * It depends only on Pi Durable (as a peer), `typebox` and `semver`.
+ * A role is a Pi Durable extension. It ships Pi's familiar files (AGENTS.md, APPEND_SYSTEM.md,
+ * skills/) with its tools, and installs into any Pi Durable 1.0.x harness, with or without Office
+ * Hum. Overlay directories with the same layout customize it without touching the package. This SDK
+ * adds what Pi Durable does not have: `defineRole` (role files, skills and overlays as Pi Durable
+ * sections and tools), the approval gate, the `officehum.json` manifest, checks that keep a role
+ * portable and consistent, and the eval format. It depends only on Pi Durable and pi-ai (as peers),
+ * `typebox`, `semver` and `yaml`.
  *
  * See docs/design/agent-package.md.
  */
 
-export { checkAgent, type RoleBundle, type RoleFactory, skillExtensionName } from "./agent.js";
+export {
+  checkAgent,
+  INSTRUCTIONS_SECTION_KEY,
+  type RoleBundle,
+  type RoleFactory,
+  skillExtensionName,
+} from "./agent.js";
 export {
   type ApprovalDecision,
   type ApprovalGateOptions,
@@ -57,6 +65,7 @@ export {
   ManifestSchema,
   type ModelDeclaration,
   RESERVED_TOOL_NAMES,
+  SDK_TOOL_NAMES,
   type SkillDeclaration,
   THINKING_LEVELS,
   type ToolDeclaration,
@@ -71,8 +80,28 @@ export {
   validatePackage,
 } from "./package.js";
 export {
-  INSTRUCTIONS_SECTION_KEY,
+  type OverlaySettings,
+  OverlaySettingsSchema,
+  type ResolvedRole,
+  type ResolvedSkill,
+  type ResolveRoleOptions,
+  ROLE_FILES,
+  resolveRoleFiles,
+  type SourcedText,
+} from "./resources.js";
+export {
+  type DefinedRole,
+  type DefineRoleOptions,
+  defineRole,
   ROLE_SECTION_KEYS,
-  type RolePrompt,
-  roleSections,
-} from "./prompt.js";
+  RoleFilesError,
+} from "./role.js";
+export {
+  INSTRUCTION_FILE_TYPES,
+  type ReadSkillOptions,
+  readSkill,
+  readSkillFile,
+  SKILL_FILE,
+  type Skill,
+  skillFolders,
+} from "./skills.js";

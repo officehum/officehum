@@ -4,10 +4,19 @@
   "name": "Sample Desk",
   "department": "front-office",
   "role": "Checks the calendar and books appointments",
-  "defaultModel": { "provider": "anthropic", "modelId": "claude-sonnet-5-5" },
+  "defaultModel": {
+    "provider": "anthropic",
+    "modelId": "claude-sonnet-5-5"
+  },
   "tools": [
-    { "name": "check_schedule", "replay": "safe" },
-    { "name": "book_appointment", "replay": "unsafe" }
+    {
+      "name": "check_schedule",
+      "replay": "safe"
+    },
+    {
+      "name": "book_appointment",
+      "replay": "unsafe"
+    }
   ],
   "connectors": ["google-calendar"],
   "approvals": [
@@ -18,7 +27,17 @@
     }
   ],
   "channels": ["email", "chat"],
-  "accepts": [{ "type": "booking.request", "description": "Book an appointment for a customer" }],
-  "skills": [],
+  "accepts": [
+    {
+      "type": "booking.request",
+      "description": "Book an appointment for a customer"
+    }
+  ],
+  "skills": [
+    {
+      "id": "rescheduling",
+      "enabledByDefault": true
+    }
+  ],
   "evals": "evals"
 }

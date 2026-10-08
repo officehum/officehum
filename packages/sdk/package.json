@@ -1,7 +1,7 @@
 {
   "name": "@officehum/sdk",
   "version": "0.0.0",
-  "description": "Build portable Pi Durable role agents: manifest schema, package checks, role helpers and evals.",
+  "description": "Build portable Pi Durable role agents: role files, skills, overlays, manifest checks and evals.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -26,9 +26,11 @@
   },
   "dependencies": {
     "semver": "7.8.5",
-    "typebox": "1.3.27"
+    "typebox": "1.3.27",
+    "yaml": "2.9.1"
   },
   "peerDependencies": {
+    "@earendil-works/pi-ai": "1.0.x",
     "@earendil-works/pi-durable": "1.0.x"
   },
   "devDependencies": {

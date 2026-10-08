@@ -115,26 +115,39 @@ describe("checkAgent", () => {
   });
 
   describe("skills", () => {
+    // Two skills bring tools (reminders on by default, waitlist off); rescheduling is instructions only.
     const withSkills: AgentManifest = {
       ...manifest,
-      tools: [...manifest.tools, { name: "send_reminder", replay: "unsafe", skill: "reminders" }],
+      tools: [
+        ...manifest.tools,
+        { name: "send_reminder", replay: "unsafe", skill: "reminders" },
+        { name: "join_waitlist", replay: "unsafe", skill: "waitlist" },
+      ],
       skills: [
-        { id: "reminders", description: "Remind customers the day before", enabledByDefault: true },
-        { id: "waitlist", description: "Keep a waitlist", enabledByDefault: false },
+        { id: "reminders", enabledByDefault: true },
+        { id: "rescheduling", enabledByDefault: true },
+        { id: "waitlist", enabledByDefault: false },
       ],
     };
     const role = defineExtension({
       name: "sample-desk",
-      tools: [tool("check_schedule", "safe"), tool("book_appointment", "unsafe")],
+      tools: [
+        tool("check_schedule", "safe"),
+        tool("book_appointment", "unsafe"),
+        tool("read_skill", "safe"),
+      ],
       hooks: [gate()],
     });
     const reminders = defineExtension({
       name: "sample-desk.reminders",
       tools: [tool("send_reminder", "unsafe")],
     });
-    const waitlist = defineExtension({ name: "sample-desk.waitlist" });
+    const waitlist = defineExtension({
+      name: "sample-desk.waitlist",
+      tools: [tool("join_waitlist", "unsafe")],
+    });
 
-    it("expects one extension per skill, selecting those enabled by default", () => {
+    it("expects an extension only for skills with tools, selecting those on by default", () => {
       const skills: RoleBundle = {
         extensions: [role, reminders, waitlist],
         agent: { model, extensions: [role, reminders] },
@@ -154,6 +167,17 @@ describe("checkAgent", () => {
       expect(messages(skills, withSkills)).toEqual([
         'role › sample-desk › send_reminder: is declared in officehum.json as part of "sample-desk.reminders"',
         'role › agent.extensions: must not select "sample-desk.waitlist", which officehum.json leaves off by default',
+      ]);
+    });
+
+    it("does not expect an extension for an instruction-only skill", () => {
+      const rescheduling = defineExtension({ name: "sample-desk.rescheduling" });
+      const skills: RoleBundle = {
+        extensions: [role, reminders, waitlist, rescheduling],
+        agent: { model, extensions: [role, reminders] },
+      };
+      expect(messages(skills, withSkills)).toEqual([
+        'role › sample-desk.rescheduling: is not the role or one of its declared skills (expected "sample-desk", "sample-desk.reminders", "sample-desk.waitlist")',
       ]);
     });
   });

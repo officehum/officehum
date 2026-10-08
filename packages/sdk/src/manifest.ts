@@ -28,11 +28,15 @@ export const CHANNELS = ["email", "sms", "chat"] as const;
 /** Pi Durable thinking levels a manifest may recommend. */
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
+/** Tools the SDK gives every role built with `defineRole`; a manifest does not declare them. */
+export const SDK_TOOL_NAMES = ["read_skill"] as const;
+
 /**
- * Tool names the Office provides to every role through its own extension. A role may not declare
- * them, or the office extension's tools would collide with the role's when both are selected.
+ * Tool names a role may not declare: the SDK's own, and those the Office provides through its
+ * extension, which would otherwise collide with the role's when both are selected.
  */
 export const RESERVED_TOOL_NAMES = [
+  ...SDK_TOOL_NAMES,
   "board_create",
   "board_claim",
   "board_comment",
@@ -78,8 +82,9 @@ const AcceptDeclaration = Type.Object(
   { additionalProperties: false },
 );
 
+/** A bundled skill. Its name and description live in `skills/<id>/SKILL.md`, so they cannot drift. */
 const SkillDeclaration = Type.Object(
-  { id: KebabId, description: Text(200), enabledByDefault: Type.Boolean() },
+  { id: KebabId, enabledByDefault: Type.Boolean() },
   { additionalProperties: false },
 );
 
@@ -167,12 +172,13 @@ function crossFieldIssues(manifest: AgentManifest, source: string): Issue[] {
   duplicates(manifest.channels, (channel) => channel, "channels", "channel");
 
   const reserved = new Set<string>(RESERVED_TOOL_NAMES);
+  const sdkTools = new Set<string>(SDK_TOOL_NAMES);
   const skills = new Set(manifest.skills.map((skill) => skill.id));
   manifest.tools.forEach((tool, index) => {
     if (reserved.has(tool.name)) {
       add(
         joinPath(joinPath("tools", index), "name"),
-        `${show(tool.name)} is provided by the Office; choose another name`,
+        `${show(tool.name)} is provided by ${sdkTools.has(tool.name) ? "the SDK" : "the Office"}; choose another name`,
       );
     }
     if (tool.skill !== undefined && !skills.has(tool.skill)) {

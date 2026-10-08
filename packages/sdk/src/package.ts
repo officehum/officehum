@@ -9,6 +9,7 @@ import semver from "semver";
 import { type EvalSuite, validateSuite } from "./evals/suite.js";
 import { type Issue, show, type Validation } from "./issues.js";
 import { type AgentManifest, MANIFEST_FILE, validateManifest } from "./manifest.js";
+import { resolveRoleFiles } from "./resources.js";
 
 /** The Pi Durable package a role must take as a peer dependency. */
 export const PI_DURABLE_PACKAGE = "@earendil-works/pi-durable";
@@ -43,7 +44,7 @@ export function supportsPiDurable(range: string, version: string): boolean {
   return semver.satisfies(version, range);
 }
 
-/** Reads and validates a role package: package.json, officehum.json and every eval file. */
+/** Reads and validates a role package: package.json, officehum.json, its role files and every eval file. */
 export async function validatePackage(dir: string): Promise<Validation<RolePackage>> {
   const issues: Issue[] = [];
 
@@ -58,6 +59,12 @@ export async function validatePackage(dir: string): Promise<Validation<RolePacka
     const result = validateManifest(manifestJson);
     if (result.ok) manifest = result.value;
     else issues.push(...result.issues);
+  }
+
+  // The role's files: AGENTS.md, APPEND_SYSTEM.md and skills/, matched against the manifest.
+  if (manifest !== undefined) {
+    const files = resolveRoleFiles({ packageDir: dir, manifest });
+    if (!files.ok) issues.push(...files.issues);
   }
 
   const suites: Record<string, EvalSuite> = {};

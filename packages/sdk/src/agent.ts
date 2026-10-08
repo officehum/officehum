@@ -6,8 +6,10 @@
 import type { AgentChange, Extension } from "@earendil-works/pi-durable";
 import { isApprovalGate } from "./approvals.js";
 import { type Issue, show, type Validation } from "./issues.js";
-import type { AgentManifest } from "./manifest.js";
-import { INSTRUCTIONS_SECTION_KEY } from "./prompt.js";
+import { type AgentManifest, SDK_TOOL_NAMES } from "./manifest.js";
+
+/** Pi Durable renders the agent's `instructions` under this section key; roles may not use it. */
+export const INSTRUCTIONS_SECTION_KEY = "instructions";
 
 /**
  * What a role package's default export returns.
@@ -19,7 +21,7 @@ import { INSTRUCTIONS_SECTION_KEY } from "./prompt.js";
  * ```
  */
 export interface RoleBundle {
-  /** The role extension first, named after the manifest `id`; then one extension per skill. */
+  /** The role extension first, named after the manifest `id`; then one per skill that brings tools. */
   readonly extensions: readonly Extension[];
   /** Recommended Pi Durable agent settings: the default model and the extensions to select. */
   readonly agent: AgentChange;
@@ -36,8 +38,9 @@ export function skillExtensionName(roleId: string, skillId: string): string {
 const SOURCE = "role";
 
 /**
- * Checks a role bundle against its manifest: extension names, each extension's tools and their
- * `replay` policy, the approval gate, reserved section keys, and the recommended agent settings.
+ * Checks a role bundle, as its factory returns it with no overlays, against its manifest: extension
+ * names, each extension's tools and their `replay` policy, the approval gate, reserved section keys,
+ * and the recommended agent settings.
  */
 export function checkAgent(bundle: RoleBundle, manifest: AgentManifest): Validation<RoleBundle> {
   const issues: Issue[] = [];
@@ -46,10 +49,12 @@ export function checkAgent(bundle: RoleBundle, manifest: AgentManifest): Validat
   // Which extension should provide each declared tool: the role's own, or its skill's.
   const extensionFor = (skill: string | undefined) =>
     skill === undefined ? manifest.id : skillExtensionName(manifest.id, skill);
-  const expectedExtensions = [
-    manifest.id,
-    ...manifest.skills.map((skill) => extensionFor(skill.id)),
-  ];
+  // Only skills that bring tools need an extension; instruction-only skills are files.
+  const toolSkills = new Set(
+    manifest.tools.flatMap((tool) => (tool.skill === undefined ? [] : [tool.skill])),
+  );
+  const expectedExtensions = [manifest.id, ...[...toolSkills].map((skill) => extensionFor(skill))];
+  const sdkTools = new Set<string>(SDK_TOOL_NAMES);
   const declared = new Map(manifest.tools.map((tool) => [tool.name, tool]));
 
   const [first] = bundle.extensions;
@@ -78,6 +83,8 @@ export function checkAgent(bundle: RoleBundle, manifest: AgentManifest): Validat
 
     for (const tool of extension.tools ?? []) {
       const path = `${extension.name} › ${tool.name}`;
+      // read_skill comes from defineRole, not from the manifest.
+      if (extension.name === manifest.id && sdkTools.has(tool.name)) continue;
       const declaration = declared.get(tool.name);
       if (declaration === undefined) {
         add(path, "is not declared in officehum.json");
@@ -132,7 +139,7 @@ export function checkAgent(bundle: RoleBundle, manifest: AgentManifest): Validat
     );
   }
 
-  checkAgentSettings(bundle.agent, manifest, add);
+  checkAgentSettings(bundle.agent, manifest, toolSkills, add);
 
   return issues.length > 0 ? { ok: false, issues } : { ok: true, value: bundle, issues: [] };
 }
@@ -140,6 +147,7 @@ export function checkAgent(bundle: RoleBundle, manifest: AgentManifest): Validat
 function checkAgentSettings(
   agent: AgentChange,
   manifest: AgentManifest,
+  toolSkills: ReadonlySet<string>,
   add: (path: string, message: string) => void,
 ) {
   const { provider, modelId, thinkingLevel } = manifest.defaultModel;
@@ -169,6 +177,7 @@ function checkAgentSettings(
   if (!selected.has(manifest.id))
     add("agent.extensions", `must select the role extension ${show(manifest.id)}`);
   for (const skill of manifest.skills) {
+    if (!toolSkills.has(skill.id)) continue;
     const name = skillExtensionName(manifest.id, skill.id);
     if (skill.enabledByDefault && !selected.has(name)) {
       add("agent.extensions", `must select ${show(name)}, which officehum.json enables by default`);
