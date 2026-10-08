@@ -172,6 +172,65 @@ so a business's configuration is never overwritten.
 - **The office extension** adds hand-offs, approvals through the Inbox and Teams, budgets and
   provenance when roles work together.
 
+## Engines: a role's deterministic core
+
+Many roles must never produce a number themselves: every figure comes from code. A role does this
+with an **engine**, a command-line program (Python, for example) that the role's tools call. The
+engine is passed into the role like any app client: the real program in production, `stubEngine` in
+tests and evals.
+
+```json
+{
+  "runtimes": [{ "name": "python3", "version": ">=3.10" }],
+  "engine": { "command": ["python3", "engine/engine.py"] },
+  "tools": [
+    {
+      "name": "stock_adjust",
+      "replay": "unsafe",
+      "description": "Record a stock adjustment.",
+      "engine": ["adjust"],
+      "parameters": {
+        "sku": { "type": "string", "description": "The SKU", "required": true },
+        "quantity": { "type": "integer", "description": "Units added or removed", "required": true }
+      },
+      "guidelines": ["Cite the finding id for every quantity you state."]
+    }
+  ],
+  "approvals": [
+    {
+      "id": "large_decrease",
+      "tool": "stock_adjust",
+      "description": "Removing more than 10 units",
+      "when": [{ "arg": "quantity", "op": "lt", "value": -10 }]
+    }
+  ],
+  "commands": [{ "name": "stock-board", "description": "Stock on hand", "engine": ["levels"] }]
+}
+```
+
+- **Runtimes.** The engine's program must be declared in `runtimes`, so every host knows to provide it.
+  `checkRuntimes(manifest)` runs each program's `--version` and checks the range before a host loads
+  the role.
+- **Engine tools are data.** A tool with `engine` has no code: `defineRole({ engine })` builds it from
+  its description, guidelines and parameters, with the declared `replay`. A call becomes
+  `<command> <subcommand…> --name value…` (underscores become hyphens; a boolean is a bare flag).
+- **The contract.** The engine prints one JSON object: `{ "ok": true, "data": …, "findings": [{ "id": … }],
+  "caveats": [] }` or `{ "ok": false, "error": "…" }`. Findings carry the ids the role cites. Results
+  over 9,000 characters are cut down to their findings.
+- **No mutable files in the package.** The engine reads input from `OFFICEHUM_DATA_DIR` and keeps its
+  records in `OFFICEHUM_WORK_DIR`, both the host's. Each call carries `OFFICEHUM_IDEMPOTENCY_KEY` (stable
+  per tool call), so a repeated write is applied once.
+- **No secrets.** The engine sees only `PATH`, `HOME`, `LANG` and what the host passes explicitly; model
+  keys and connector tokens never reach it.
+- **Guardrails from data.** An approval's `when` conditions (`gt`, `gte`, `lt`, `lte`, `eq`, `ne`, `in`
+  over the call's arguments) decide which calls wait for a person. They fail safe: a condition on a
+  missing or unreadable argument counts as met. A condition written in code takes precedence.
+- **Operator commands** are engine views with no model involved: `runOperatorCommand(manifest, engine,
+  name)`. Studio and Teams show them in Office Hum; other hosts show them their own way.
+
+A role's generator (the Role Factory, RASF-3096) writes these fields from the interview, so generated
+roles carry almost no code.
+
 ## The open-source distribution
 
 All role packages also ship as a free Docker setup that anyone can run and modify: one container
@@ -217,9 +276,12 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
 | `name`, `role` | Display name; one-line job description (≤ 120 characters). |
 | `department` | `front-office`, `finance`, `operations`, `sales`, `marketing` or `people`. |
 | `defaultModel` | `provider` and `modelId`, optional `thinkingLevel`. Overlays can change it. |
-| `tools[]` | `name` in `snake_case`, unique; `replay` required, `"safe"` or `"unsafe"`; optional `skill` puts the tool in that skill's extension. `read_skill` (the SDK's), `board_*`, `delegate` and `ask` (the Office's) are reserved. |
+| `runtimes[]` | Programs the host must provide: `name` and a version range, e.g. `python3` `>=3.10`. |
+| `engine` | `command` run from the package root, e.g. `["python3", "engine/engine.py"]`. Its program must be a declared runtime. |
+| `tools[]` | `name` in `snake_case`, unique; `replay` required, `"safe"` or `"unsafe"`; optional `skill` puts the tool in that skill's extension. Engine tools add `engine` (the subcommand), `description`, `parameters` and `guidelines`. `read_skill` (the SDK's), `board_*`, `delegate` and `ask` (the Office's) are reserved. |
+| `commands[]` | Operator views: `name`, `description`, and the `engine` subcommand they run. |
 | `connectors` | Kebab-case ids of the apps the business must connect, e.g. `quickbooks`. |
-| `approvals[]` | `id` (snake_case), `tool` (a declared tool), `description` (shown in the Inbox). Conditions live in the entry point's `when`, keyed by `id`. |
+| `approvals[]` | `id` (snake_case), `tool` (a declared tool), `description` (shown in the Inbox), optional `when` conditions over the tool's arguments. Conditions too complex to declare go in the entry point's `when`, keyed by `id`. |
 | `channels` | `email`, `sms`, `chat`: where the role may face the business's customers. |
 | `accepts[]` | Dotted ticket types (`invoice.create`) with a description shown to delegating agents. |
 | `skills[]` | `id` (the folder under `skills/`) and `enabledByDefault`. The name and description come from `SKILL.md`, so they cannot drift. Every bundled skill folder must be listed. |

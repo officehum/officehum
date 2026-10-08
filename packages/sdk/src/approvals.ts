@@ -7,7 +7,7 @@
  */
 
 import { type HookRegistration, hook, type ToolHooks, ToolTask } from "@earendil-works/pi-durable";
-import type { ApprovalDeclaration } from "./manifest.js";
+import type { ApprovalDeclaration, ConditionDeclaration } from "./manifest.js";
 
 /** The cancellation and deadline context Pi Durable passes to hooks. */
 export type HookContext = Parameters<ToolHooks["beforeTool"]>[2];
@@ -71,8 +71,13 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
     beforeTool: async (call, api, context) => {
       for (const approval of options.approvals) {
         if (approval.tool !== call.name) continue;
+        // A condition in code wins; otherwise the manifest's `when`; otherwise every call is gated.
         const applies = options.when?.[approval.id];
-        if (applies !== undefined && !applies(call.arguments)) continue;
+        if (applies !== undefined) {
+          if (!applies(call.arguments)) continue;
+        } else if (approval.when !== undefined && !conditionsHold(approval.when, call.arguments)) {
+          continue;
+        }
 
         const memoKey = `officehum.approval.${call.id}.${approval.id}`;
         let decision = await api.memo<StoredDecision>(memoKey, context);
@@ -111,4 +116,35 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
   });
   gates.add(registration);
   return registration;
+}
+
+/**
+ * Whether every condition holds for a call's arguments. Fails safe: a condition on an argument that
+ * is missing, or of a type it cannot compare, counts as holding, so the action waits for a person.
+ */
+export function conditionsHold(
+  conditions: readonly ConditionDeclaration[],
+  args: ToolArguments,
+): boolean {
+  return conditions.every((condition) => {
+    const actual = args[condition.arg];
+    const expected = condition.value;
+    if (actual === undefined || actual === null) return true;
+    switch (condition.op) {
+      case "eq":
+        return actual === expected;
+      case "ne":
+        return actual !== expected;
+      case "in":
+        return Array.isArray(expected) && (expected as readonly unknown[]).includes(actual);
+      default: {
+        const number = typeof actual === "number" ? actual : Number(actual);
+        if (Number.isNaN(number) || typeof expected !== "number") return true;
+        if (condition.op === "gt") return number > expected;
+        if (condition.op === "gte") return number >= expected;
+        if (condition.op === "lt") return number < expected;
+        return number <= expected;
+      }
+    }
+  });
 }

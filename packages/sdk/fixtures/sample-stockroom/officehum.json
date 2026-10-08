@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "id": "sample-stockroom",
+  "name": "Sample Stockroom",
+  "department": "operations",
+  "role": "Reports stock levels and records stock adjustments",
+  "defaultModel": { "provider": "anthropic", "modelId": "claude-sonnet-5-5" },
+  "runtimes": [{ "name": "python3", "version": ">=3.9" }],
+  "engine": {
+    "command": ["python3", "engine/engine.py"],
+    "description": "Stock levels and adjustments"
+  },
+  "tools": [
+    {
+      "name": "stock_levels",
+      "replay": "safe",
+      "description": "Report how many units of each SKU are on hand.",
+      "engine": ["levels"],
+      "parameters": {
+        "sku": { "type": "string", "description": "One SKU, e.g. BOLT-10. Omit for every SKU." }
+      },
+      "guidelines": ["Cite the finding id for every quantity you state."]
+    },
+    {
+      "name": "stock_adjust",
+      "replay": "unsafe",
+      "description": "Record a stock adjustment: units added (positive) or removed (negative).",
+      "engine": ["adjust"],
+      "parameters": {
+        "sku": { "type": "string", "description": "The SKU to adjust", "required": true },
+        "quantity": {
+          "type": "integer",
+          "description": "Units to add (positive) or remove (negative)",
+          "required": true
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why: count correction, damage or return",
+          "required": true,
+          "enum": ["count", "damage", "return"]
+        }
+      }
+    }
+  ],
+  "commands": [
+    {
+      "name": "stock-board",
+      "description": "Show stock on hand for every SKU",
+      "engine": ["levels"]
+    }
+  ],
+  "connectors": [],
+  "approvals": [
+    {
+      "id": "large_increase",
+      "tool": "stock_adjust",
+      "description": "Adding more than 10 units",
+      "when": [{ "arg": "quantity", "op": "gt", "value": 10 }]
+    },
+    {
+      "id": "large_decrease",
+      "tool": "stock_adjust",
+      "description": "Removing more than 10 units",
+      "when": [{ "arg": "quantity", "op": "lt", "value": -10 }]
+    }
+  ],
+  "channels": ["chat"],
+  "accepts": [{ "type": "stock.adjust", "description": "Record a stock adjustment" }],
+  "skills": [],
+  "evals": "evals"
+}
