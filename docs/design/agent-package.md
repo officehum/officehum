@@ -231,6 +231,56 @@ tests and evals.
 A role's generator (the Role Factory, RASF-3096) writes these fields from the interview, so generated
 roles carry almost no code.
 
+## Memory: what agents learn on the job
+
+Agents remember what they pick up while working, for example "Acme's AP contact is Jane; she prefers
+email" or "Smith & Co is on a payment plan until March". Memory is not company knowledge search
+(documents the business hands over) and it is not a skill: skills are fixed instruction files, while
+memory needs storage, tools, a prompt section and hooks. It is an **extension**, `@officehum/memory`
+(RASF-3222), with a companion skill, `memory-hygiene`, that teaches what is worth remembering.
+
+**Storage is Pi Durable's own.** Records live in session-scoped documents
+(`defineDocFamily({ scope: "session" })`, one document per subject), committed atomically with the
+transcript. The extension works in a bare Pi Durable harness with no extra database. Every agent in an
+office harness shares the same memory, and rewinding or forking a conversation does not lose it.
+Office Hum adds a search index, review queues and a Studio page on top.
+
+A record has a subject (`business`, `customer:<system>:<id>`, `vendor:…`, `person:<id>`,
+`agent:<role>`, `topic:<slug>`), a kind (`fact`, `preference`, `rule`, `procedure`), a category, its
+text, a scope (`office` by default, or a department or one agent), its source and a status (`active`,
+`unverified`, `proposed`, `superseded`, `retired`).
+
+| Layer | Example | Becomes | Who approves |
+| --- | --- | --- | --- |
+| Memory | "Acme's AP contact is Jane" | a record | nobody when the source is internal; outside sources stay `unverified` until a person confirms |
+| Rule | "Don't chase Smith & Co until March" | an overlay `AGENTS.md` addition under `## Learned rules` | owner or manager, through the overlay approval |
+| Procedure | "How we onboard a new client" | an overlay skill (instructions only) | owner or manager, through the overlay approval |
+
+Learning is free at the bottom layer; anything that changes how an agent behaves goes through the
+overlay draft, diff, approval and undo described above.
+
+**Guardrails, enforced in code:**
+
+- **The source comes from code.** The host's `sourceOf` reads the run's provenance: a staff member's own
+  message is `person`; anything from a customer email, SMS, web page or peer office is `external`. What
+  the model claims about a source is ignored.
+- **Outside content never becomes trusted memory.** It is saved as an `unverified` claim and shown in the
+  prompt as "Unconfirmed:".
+- **Protected categories are set only by a person.** Payment and bank details, approval limits,
+  permissions and who may authorize things (`payment_details`, `authority`). A save from any other
+  source is refused and opens a review item; a pattern scan (IBANs, routing and card numbers, "our bank
+  details changed") forces the category. This blocks the classic "please update our bank details" fraud.
+- **Memory never grants authority.** It is rendered as information, not instructions, like other
+  outside content; approvals, limits and permissions come only from manifests, overlays and the
+  office's people records.
+- **No secrets.** Text that looks like a key, password or card number is refused.
+- **History is kept.** A correction supersedes the old record; temporary facts carry a review date;
+  people can see, correct and permanently delete what agents remember about them.
+
+The prompt section is capped (about 600 tokens of business-wide records plus about 800 for the
+subjects of the current ticket), so memory never crowds out the role's own instructions; anything
+else is found with `memory_recall`.
+
 ## The open-source distribution
 
 All role packages also ship as a free Docker setup that anyone can run and modify: one container
