@@ -313,6 +313,57 @@ The prompt section is capped (about 600 tokens of business-wide records plus abo
 subjects of the current ticket), so memory never crowds out the role's own instructions; anything
 else is found with `memory_recall`.
 
+## Context engineering
+
+Context engineering is deciding what each agent sees, when, and in what shape. The four layers decide
+*where* something belongs; context engineering decides how it reaches the model on each request
+(RASF-3232). Three parts:
+
+**Agents know each other.** Every role has an **agent card**, built by `agentCard()` from its
+`officehum.json` and the business's overlay, so it always matches the agent's real, effective tools.
+A card holds:
+- who the agent is
+- the ticket types it accepts and the ones it hands to others (`dispatches`)
+- its capabilities: skills, and tools marked as reads, changes, or needs approval
+- what it never does (`mayNot`)
+- its status
+
+In an office, the registry holds every agent's card:
+- a short `team` section lists colleagues, one line each, in a stable order
+- `agent_directory` and `agent_card` give details on demand
+- linked offices and the public catalog of free roles come later (RASF-3239)
+
+Hand-offs still go by ticket type: knowing a colleague's tools helps an agent choose whom to ask,
+never lets it call those tools. An office warns at install time when a role dispatches a ticket type
+that no agent accepts.
+
+**Each role has a context plan.** `contextPlan` in `officehum.json` declares:
+- the prompt budget
+- retrieval sources (business documents searched instead of pasted)
+- sub-agents (narrow, safe-tool workers with a small model and an output schema)
+- the history filter
+- amount masking
+- model tiers
+- memory subjects
+- tool groups
+
+The Role Factory builds the plan from a context profile in the interview. A rule table recommends each
+technique with a reason that quotes the interview, and a person accepts or rejects each one in
+`ROLE_SPEC.md`. The generated package carries context evals: the prompt stays under budget, the prompt
+prefix is identical across turns, cited ids survive filtering, and sub-agents return valid results.
+
+**Durable context patterns** (`@officehum/sdk`, on Pi Durable's own hooks):
+
+| Pattern | How |
+| --- | --- |
+| Storage is not context | The transcript stays complete in storage; each request gets a projection of it |
+| Stable sections | No timestamps or counters in stable sections, and per-ticket sections last, so the provider's prompt cache holds; `checkAgent` renders sections twice and flags differences |
+| Relevance filter | A `beforeRequest` hook stubs older tool results that no longer matter, for that request only; cited ids are always kept, and `context_recall` brings a result back |
+| Compaction that keeps ids | A `beforeCompact` hook checks the summary keeps every cited id and figure, and appends any it dropped |
+| Decisions in memos | Filter and approval decisions live in task memos, so a restart reuses them |
+| Amount masking | `read_skill` masks sample amounts in skills and references, so the model takes figures from the engine |
+| Sub-agents | Task-owned child conversations with only safe tools, a small model and an output schema; fan-out survives restarts |
+
 ## The open-source distribution
 
 All role packages also ship as a free Docker setup that anyone can run and modify: one container
