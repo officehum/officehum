@@ -10,9 +10,18 @@ export interface Booking {
   readonly customer: string;
 }
 
+export interface Cancellation {
+  readonly id: string;
+  readonly status: "canceled";
+  readonly alreadyCanceled: boolean;
+}
+
 export interface Calendar {
   freeSlots(date: string): Promise<string[]>;
+  listBookings(): Promise<Booking[]>;
   book(start: string, customer: string, idempotencyKey: string): Promise<Booking>;
+  reschedule(id: string, start: string, idempotencyKey: string): Promise<Booking>;
+  cancel(id: string, idempotencyKey: string): Promise<Cancellation>;
 }
 
 export interface FrontDeskOptions {
@@ -54,10 +63,71 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
       };
     },
   });
+  const listBookings = defineTool({
+    name: "list_bookings",
+    description:
+      "List active managed appointments in UTC, including the exact booking IDs needed for changes.",
+    parameters: Type.Object({}),
+    replay: "safe",
+    execute: async () => {
+      const bookings = [...(await options.calendar.listBookings())].sort(
+        (left, right) => left.start.localeCompare(right.start) || left.id.localeCompare(right.id),
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              bookings.length === 0
+                ? "No active bookings"
+                : `Bookings:\n${bookings
+                    .map(({ id, start, customer }) => `${id} — ${start} — ${customer}`)
+                    .join("\n")}`,
+          },
+        ],
+        details: {
+          bookings: bookings.map(({ id, start, customer }) => ({ id, start, customer })),
+        },
+      };
+    },
+  });
+  const reschedule = defineTool({
+    name: "reschedule_appointment",
+    description: "Move one managed appointment by its exact booking ID after operator approval.",
+    parameters: Type.Object({ id: Type.String(), start: Type.String() }),
+    replay: "safe",
+    execute: async (args, api) => {
+      const key = `${api.conversationId}:${api.taskId}:${api.callId}`;
+      const booking = await options.calendar.reschedule(args.id, args.start, key);
+      return {
+        content: [{ type: "text", text: `Rescheduled ${booking.id} to ${booking.start}` }],
+        details: { ...booking },
+      };
+    },
+  });
+  const cancel = defineTool({
+    name: "cancel_appointment",
+    description: "Cancel one managed appointment by its exact booking ID after operator approval.",
+    parameters: Type.Object({ id: Type.String() }),
+    replay: "safe",
+    execute: async (args, api) => {
+      const key = `${api.conversationId}:${api.taskId}:${api.callId}`;
+      const cancellation = await options.calendar.cancel(args.id, key);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${cancellation.alreadyCanceled ? "Already canceled" : "Canceled"} ${cancellation.id}`,
+          },
+        ],
+        details: { ...cancellation },
+      };
+    },
+  });
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
-    tools: [checkSchedule, book],
+    tools: [checkSchedule, listBookings, book, reschedule, cancel],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

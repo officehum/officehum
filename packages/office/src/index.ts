@@ -10,6 +10,14 @@ export type { AgentManifest, Department } from "@officehum/sdk";
 /** Exact Pi Durable version this release is built and tested against. Bumped by the upgrade pipeline. */
 export const PI_DURABLE_VERSION = "1.0.2";
 
+export {
+  type CalendarOperation,
+  type CalendarOperationKind,
+  type CalendarOperationResult,
+  type CalendarStore,
+  type Cancellation,
+  openCalendarStore,
+} from "./calendar-store.js";
 export { createDemoModels } from "./demo-model.js";
 export {
   createGoogleCalendarHost,
@@ -18,6 +26,7 @@ export {
 } from "./google-calendar.js";
 export {
   type Booking,
+  canonicalAppointmentStart,
   type LocalCalendar,
   openLocalCalendar,
 } from "./local-calendar.js";

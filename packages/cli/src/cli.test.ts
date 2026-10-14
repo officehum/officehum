@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { awaitWithContext, BACKGROUND_CONTEXT, withCancel } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
+import {
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall,
+} from "@earendil-works/pi-ai/providers/faux";
 import frontdesk from "@officehum/frontdesk";
 import { createDemoModels, openLocalCalendar, openSolo } from "@officehum/office";
 import { afterEach, describe, expect, it } from "vitest";
@@ -145,6 +149,87 @@ describe("runCli", () => {
     const deniedListing = io();
     expect(await runCli(["bookings", "--state", deniedState], deniedListing.io)).toBe(0);
     expect(deniedListing.output.join("\n")).toContain("No bookings");
+  });
+
+  it("runs approved reschedule and cancellation through ordinary start submissions", async () => {
+    const directory = state();
+    const seededCalendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const seeded = await seededCalendar.book("2030-01-15T09:00:00Z", "Guest", "seed");
+    seededCalendar.close();
+
+    const runtime = (responses: ReturnType<typeof fauxAssistantMessage>[]) => {
+      const faux = fauxProvider({ provider: "openai", models: [{ id: "gpt-6-sol" }] });
+      faux.setResponses(responses);
+      const models = createModels();
+      models.setProvider(faux.provider);
+      return { models, model: { provider: "openai" as const, modelId: "gpt-6-sol" } };
+    };
+    const move = runtime([
+      fauxAssistantMessage(fauxToolCall("list_bookings", {}), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall("check_schedule", { date: "2030-01-15" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(
+        fauxToolCall("reschedule_appointment", {
+          id: seeded.id,
+          start: "2030-01-15T10:00:00Z",
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Moved."),
+    ]);
+    const movedOutput = io();
+    expect(
+      await runCli(
+        [
+          "start",
+          "--state",
+          directory,
+          "--message",
+          `Move ${seeded.id} to 10:00 UTC`,
+          "--request-id",
+          "move-request",
+          "--approval",
+          "allow",
+        ],
+        movedOutput.io,
+        { createLiveModels: () => move },
+      ),
+    ).toBe(0);
+    expect(movedOutput.output.join("\n")).toContain("Moved.");
+    const afterMove = openLocalCalendar(join(directory, "calendar.sqlite"));
+    expect(await afterMove.listBookings()).toEqual([{ ...seeded, start: "2030-01-15T10:00:00Z" }]);
+    afterMove.close();
+
+    const cancellation = runtime([
+      fauxAssistantMessage(fauxToolCall("list_bookings", {}), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall("cancel_appointment", { id: seeded.id }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("Canceled."),
+    ]);
+    const canceledOutput = io();
+    expect(
+      await runCli(
+        [
+          "start",
+          "--state",
+          directory,
+          "--message",
+          `Cancel ${seeded.id}`,
+          "--request-id",
+          "cancel-request",
+          "--approval",
+          "allow",
+        ],
+        canceledOutput.io,
+        { createLiveModels: () => cancellation },
+      ),
+    ).toBe(0);
+    expect(canceledOutput.output.join("\n")).toContain("Canceled.");
+    const afterCancel = openLocalCalendar(join(directory, "calendar.sqlite"));
+    expect(await afterCancel.listBookings()).toEqual([]);
+    afterCancel.close();
   });
 
   it("rejects Google for demo and requires initial Google token and calendar ID", async () => {

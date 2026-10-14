@@ -55,6 +55,10 @@ type Parsed = {
 
 export interface CliDependencies {
   readonly createGoogleCalendar?: (options: GoogleCalendarOptions) => CalendarClient;
+  readonly createLiveModels?: (modelId: string) => {
+    readonly models: ReturnType<typeof createModels>;
+    readonly model: ModelRef;
+  };
 }
 
 const USAGE = `Usage:
@@ -157,11 +161,21 @@ export function cliApprover(
 
 type HostCalendar = DecisionStore & {
   freeSlots(date: string): Promise<string[]>;
+  listBookings(): Promise<{ id: string; start: string; customer: string }[]>;
   book(
     start: string,
     customer: string,
     idempotencyKey: string,
   ): Promise<{ id: string; start: string; customer: string }>;
+  reschedule(
+    id: string,
+    start: string,
+    idempotencyKey: string,
+  ): Promise<{ id: string; start: string; customer: string }>;
+  cancel(
+    id: string,
+    idempotencyKey: string,
+  ): Promise<{ id: string; status: "canceled"; alreadyCanceled: boolean }>;
   bookings():
     | ReturnType<LocalCalendar["bookings"]>
     | Promise<ReturnType<LocalCalendar["bookings"]>>;
@@ -247,7 +261,9 @@ function openCalendar(
   }
 }
 
-function liveModels(modelId: string) {
+function liveModels(modelId: string, dependencies: CliDependencies) {
+  const injected = dependencies.createLiveModels?.(modelId);
+  if (injected !== undefined) return injected;
   if (!process.env.OPENAI_API_KEY?.trim()) {
     throw new Error("Set OPENAI_API_KEY in your shell before live start/resume.");
   }
@@ -296,7 +312,7 @@ async function openForRun(
       interrupt,
     );
     const role = frontdesk({ calendar, approve });
-    const runtime = demo ? createDemoModels() : liveModels(parsed.model);
+    const runtime = demo ? createDemoModels() : liveModels(parsed.model, dependencies);
     solo = await openSolo({
       directory: parsed.state,
       role,
@@ -355,7 +371,7 @@ async function runResume(
     } else {
       await probe.close();
       probe = undefined;
-      const runtime = liveModels(agent.model?.modelId ?? parsed.model);
+      const runtime = liveModels(agent.model?.modelId ?? parsed.model, dependencies);
       active = await openSolo({
         directory: parsed.state,
         role,

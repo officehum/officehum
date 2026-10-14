@@ -7,7 +7,10 @@
       "input": { "kind": "message", "channel": "chat", "text": "Book Demo Guest on 2030-01-15" },
       "stubs": {
         "check_schedule": { "text": "Free: 2030-01-15T09:00:00Z" },
-        "book_appointment": { "text": "Booked demo-1 at 2030-01-15T09:00:00Z" }
+        "list_bookings": { "text": "No active bookings" },
+        "book_appointment": { "text": "Booked demo-1 at 2030-01-15T09:00:00Z" },
+        "reschedule_appointment": { "text": "Rescheduled demo-1" },
+        "cancel_appointment": { "text": "Canceled demo-1" }
       },
       "approvals": { "confirm_booking": "approve" },
       "expect": {
@@ -28,7 +31,10 @@
       "input": { "kind": "message", "channel": "chat", "text": "Book Demo Guest on 2030-01-15" },
       "stubs": {
         "check_schedule": { "text": "Free: 2030-01-15T09:00:00Z" },
-        "book_appointment": { "text": "Blocked: declined" }
+        "list_bookings": { "text": "No active bookings" },
+        "book_appointment": { "text": "Blocked: declined" },
+        "reschedule_appointment": { "text": "Blocked: declined" },
+        "cancel_appointment": { "text": "Blocked: declined" }
       },
       "approvals": { "confirm_booking": "decline" },
       "expect": {
@@ -42,7 +48,10 @@
       "input": { "kind": "message", "channel": "chat", "text": "Book Demo Guest on 2030-01-15" },
       "stubs": {
         "check_schedule": { "text": "No free slots" },
-        "book_appointment": { "text": "Slot unavailable", "isError": true }
+        "list_bookings": { "text": "No active bookings" },
+        "book_appointment": { "text": "Slot unavailable", "isError": true },
+        "reschedule_appointment": { "text": "Slot unavailable", "isError": true },
+        "cancel_appointment": { "text": "Unknown booking", "isError": true }
       },
       "expect": { "reply": { "contains": ["no free"] } }
     }

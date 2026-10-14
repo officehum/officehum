@@ -501,6 +501,60 @@ describe("Google Calendar REST client", () => {
     await expect(calendar.cancel(booked.id, "cancel")).rejects.toThrow(/owned/i);
   });
 
+  it("accepts an ID-matching metadata-light canceled tombstone without DELETE", async () => {
+    const methods: string[] = [];
+    const calendar = createGoogleCalendar({
+      calendarId: "cal",
+      getAccessToken: async () => "token",
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+      fetch: async (_input, init = {}) => {
+        methods.push(init.method ?? "GET");
+        return json(200, { id: "known", status: "cancelled" });
+      },
+    });
+    await expect(calendar.cancel("known", "cancel")).resolves.toBeUndefined();
+    expect(methods).toEqual(["GET"]);
+  });
+
+  it("rejects malformed or mismatched cancellation payload IDs without DELETE", async () => {
+    for (const payload of [
+      { status: "cancelled" },
+      { id: "other", status: "cancelled" },
+      {
+        id: "other",
+        status: "confirmed",
+        etag: '"etag"',
+        start: { dateTime: slot.start },
+        end: { dateTime: slot.end },
+        extendedProperties: {
+          private: {
+            officehumOwner: "frontdesk-v1",
+            customer: "Guest",
+            requestDigest: "a".repeat(64),
+            bookFingerprint: "b".repeat(64),
+          },
+        },
+      },
+    ]) {
+      const methods: string[] = [];
+      const calendar = createGoogleCalendar({
+        calendarId: "cal",
+        getAccessToken: async () => "token",
+        timeZone: "UTC",
+        workingHours: { start: "09:00", end: "12:00" },
+        durationMinutes: 60,
+        fetch: async (_input, init = {}) => {
+          methods.push(init.method ?? "GET");
+          return json(200, payload);
+        },
+      });
+      await expect(calendar.cancel("known", "cancel")).rejects.toThrow(/ID|malformed|mismatch/i);
+      expect(methods).toEqual(["GET"]);
+    }
+  });
+
   it("maps auth, provider, and network failures to safe summaries", async () => {
     const calendar = createGoogleCalendar({
       calendarId: "cal",

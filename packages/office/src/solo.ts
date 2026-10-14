@@ -50,6 +50,7 @@ export type GoogleConnectorIdentity = {
 export type ConnectorIdentity = LocalConnectorIdentity | GoogleConnectorIdentity;
 
 const LOCAL_IDENTITY: LocalConnectorIdentity = { version: 1, backend: "local" };
+const LIFECYCLE_TOOLS = ["list_bookings", "reschedule_appointment", "cancel_appointment"] as const;
 
 function parseConnectorIdentity(value: unknown): ConnectorIdentity {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -119,7 +120,7 @@ export function hasDurableLocalState(directory: string): boolean {
   if (!existsSync(path)) return false;
   const database = new DatabaseSync(path, { readOnly: true });
   try {
-    for (const table of ["bookings", "approval_decisions"] as const) {
+    for (const table of ["bookings", "approval_decisions", "calendar_operations"] as const) {
       const exists = database
         .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
         .get(table);
@@ -283,6 +284,17 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
         ? options.role.agent
         : { ...options.role.agent, model: options.model };
     const root = await harness.root(BACKGROUND_CONTEXT, { agent });
+    const resolved = await root.agent(BACKGROUND_CONTEXT);
+    const missing = LIFECYCLE_TOOLS.filter(
+      (name) => !resolved.tools.some((tool) => tool.name === name),
+    );
+    if (missing.length > 0) {
+      const selected = new Set([...resolved.tools.map((tool) => tool.name), ...missing]);
+      const registrations = options.role.extensions
+        .flatMap((extension) => extension.tools ?? [])
+        .filter((tool) => selected.has(tool.name));
+      await root.configure({ tools: registrations }, BACKGROUND_CONTEXT);
+    }
     let closePromise: Promise<void> | undefined;
     const session: SoloSession = {
       harness,
