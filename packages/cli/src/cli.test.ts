@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -8,6 +8,7 @@ import { fauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import frontdesk from "@officehum/frontdesk";
 import { createDemoModels, openLocalCalendar, openSolo } from "@officehum/office";
 import { afterEach, describe, expect, it } from "vitest";
+import { fakeCalendar } from "../../google-calendar/src/index.js";
 import { type CliIo, cliApprover, runCli } from "./cli.js";
 import { createTerminalIo } from "./terminal-io.js";
 
@@ -86,6 +87,26 @@ async function createPendingDemo(directory: string): Promise<string> {
   return String(record.id);
 }
 
+async function createGoogleState(directory: string, calendarId = "calendar@example.test") {
+  const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+  const role = frontdesk({ calendar });
+  const solo = await openSolo({
+    directory,
+    role,
+    ...createDemoModels(),
+    connectorIdentity: {
+      version: 1,
+      backend: "google",
+      calendarId,
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+    },
+  });
+  await solo.close();
+  calendar.close();
+}
+
 describe("runCli", () => {
   it("prints the version", async () => {
     const capture = io();
@@ -124,6 +145,231 @@ describe("runCli", () => {
     const deniedListing = io();
     expect(await runCli(["bookings", "--state", deniedState], deniedListing.io)).toBe(0);
     expect(deniedListing.output.join("\n")).toContain("No bookings");
+  });
+
+  it("rejects Google for demo and requires initial Google token and calendar ID", async () => {
+    const demo = io();
+    expect(await runCli(["demo", "--state", state(), "--calendar", "google"], demo.io)).toBe(2);
+    expect(demo.errors.join("\n")).toMatch(/demo.*local/i);
+
+    const previousToken = process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+    const previousId = process.env.GOOGLE_CALENDAR_ID;
+    delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+    delete process.env.GOOGLE_CALENDAR_ID;
+    try {
+      process.env.GOOGLE_CALENDAR_ID = "calendar@example.test";
+      const missingToken = io();
+      expect(
+        await runCli(["bookings", "--state", state(), "--calendar", "google"], missingToken.io),
+      ).toBe(1);
+      expect(missingToken.errors.join("\n")).toContain("GOOGLE_CALENDAR_ACCESS_TOKEN");
+      process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = "test-token";
+      delete process.env.GOOGLE_CALENDAR_ID;
+      const missingId = io();
+      expect(
+        await runCli(["bookings", "--state", state(), "--calendar", "google"], missingId.io),
+      ).toBe(1);
+      expect(missingId.errors.join("\n")).toContain("GOOGLE_CALENDAR_ID");
+    } finally {
+      if (previousToken === undefined) delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+      else process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = previousToken;
+      if (previousId === undefined) delete process.env.GOOGLE_CALENDAR_ID;
+      else process.env.GOOGLE_CALENDAR_ID = previousId;
+    }
+  });
+
+  it("allows a corrected Google start to reuse fresh state after credential preflight fails", async () => {
+    const directory = state();
+    const previousOpenAi = process.env.OPENAI_API_KEY;
+    const previousToken = process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+    const previousId = process.env.GOOGLE_CALENDAR_ID;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+    process.env.GOOGLE_CALENDAR_ID = "calendar@example.test";
+    const args = [
+      "start",
+      "--state",
+      directory,
+      "--calendar",
+      "google",
+      "--message",
+      "Book Guest on 2030-01-15",
+      "--request-id",
+      "retry-preflight",
+    ];
+    try {
+      const first = io();
+      expect(await runCli(args, first.io)).toBe(1);
+      expect(first.errors.join("\n")).toContain("GOOGLE_CALENDAR_ACCESS_TOKEN");
+      expect(existsSync(join(directory, "harness"))).toBe(false);
+      expect(existsSync(join(directory, "connector.json"))).toBe(false);
+
+      process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = "test-token";
+      const second = io();
+      expect(
+        await runCli(args, second.io, {
+          createGoogleCalendar: () =>
+            fakeCalendar({
+              timeZone: "UTC",
+              workingHours: { start: "09:00", end: "12:00" },
+              durationMinutes: 60,
+            }),
+        }),
+      ).toBe(1);
+      expect(second.errors.join("\n")).toContain("OPENAI_API_KEY");
+      expect(second.errors.join("\n")).not.toMatch(/legacy|identity mismatch/i);
+      expect(existsSync(join(directory, "harness"))).toBe(false);
+      expect(existsSync(join(directory, "connector.json"))).toBe(false);
+    } finally {
+      if (previousOpenAi === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previousOpenAi;
+      if (previousToken === undefined) delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+      else process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = previousToken;
+      if (previousId === undefined) delete process.env.GOOGLE_CALENDAR_ID;
+      else process.env.GOOGLE_CALENDAR_ID = previousId;
+    }
+  });
+
+  it("lists persisted Google bookings without an OpenAI key and without repeating the backend flag", async () => {
+    const directory = state();
+    await createGoogleState(directory);
+    const previousOpenAi = process.env.OPENAI_API_KEY;
+    const previousToken = process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+    delete process.env.OPENAI_API_KEY;
+    process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = "test-token";
+    try {
+      const capture = io();
+      const code = await runCli(["bookings", "--state", directory], capture.io, {
+        createGoogleCalendar: () =>
+          fakeCalendar({
+            timeZone: "UTC",
+            workingHours: { start: "09:00", end: "12:00" },
+            durationMinutes: 60,
+            bookings: [
+              {
+                id: "remote-1",
+                start: "2030-01-15T09:00:00Z",
+                end: "2030-01-15T10:00:00Z",
+                customer: "Remote Guest",
+                timeZone: "UTC",
+              },
+            ],
+          }),
+      });
+      expect(code).toBe(0);
+      expect(capture.output.join("\n")).toContain("Remote Guest");
+    } finally {
+      if (previousOpenAi === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previousOpenAi;
+      if (previousToken === undefined) delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+      else process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = previousToken;
+    }
+  });
+
+  it("rejects an explicit Google calendar mismatch before constructing the client", async () => {
+    const directory = state();
+    await createGoogleState(directory);
+    const previousToken = process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+    const previousId = process.env.GOOGLE_CALENDAR_ID;
+    process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = "test-token";
+    process.env.GOOGLE_CALENDAR_ID = "other@example.test";
+    let constructed = 0;
+    try {
+      const capture = io();
+      expect(
+        await runCli(["bookings", "--state", directory, "--calendar", "google"], capture.io, {
+          createGoogleCalendar: () => {
+            constructed += 1;
+            return fakeCalendar({
+              timeZone: "UTC",
+              workingHours: { start: "09:00", end: "12:00" },
+              durationMinutes: 60,
+            });
+          },
+        }),
+      ).toBe(1);
+      expect(capture.errors.join("\n")).toMatch(/calendar.*mismatch/i);
+      expect(constructed).toBe(0);
+    } finally {
+      if (previousToken === undefined) delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+      else process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = previousToken;
+      if (previousId === undefined) delete process.env.GOOGLE_CALENDAR_ID;
+      else process.env.GOOGLE_CALENDAR_ID = previousId;
+    }
+  });
+
+  it("rejects Google reuse of legacy local state before constructing the client", async () => {
+    const directory = state();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const legacy = await openSolo({
+      directory,
+      role: frontdesk({ calendar }),
+      ...createDemoModels(),
+    });
+    await legacy.close();
+    rmSync(join(directory, "connector.json"));
+    calendar.close();
+    const previousToken = process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+    const previousId = process.env.GOOGLE_CALENDAR_ID;
+    process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = "test-token";
+    process.env.GOOGLE_CALENDAR_ID = "calendar@example.test";
+    let constructed = 0;
+    try {
+      const capture = io();
+      expect(
+        await runCli(["bookings", "--state", directory, "--calendar", "google"], capture.io, {
+          createGoogleCalendar: () => {
+            constructed += 1;
+            return fakeCalendar({
+              timeZone: "UTC",
+              workingHours: { start: "09:00", end: "12:00" },
+              durationMinutes: 60,
+            });
+          },
+        }),
+      ).toBe(1);
+      expect(capture.errors.join("\n")).toMatch(/legacy|local|identity/i);
+      expect(constructed).toBe(0);
+    } finally {
+      if (previousToken === undefined) delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+      else process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = previousToken;
+      if (previousId === undefined) delete process.env.GOOGLE_CALENDAR_ID;
+      else process.env.GOOGLE_CALENDAR_ID = previousId;
+    }
+  });
+
+  it("rejects Google reuse of calendar-only local records before constructing the client", async () => {
+    const directory = state();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    await calendar.book("2030-01-15T09:00:00Z", "Local Guest", "legacy-booking");
+    calendar.close();
+    const previousToken = process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+    const previousId = process.env.GOOGLE_CALENDAR_ID;
+    process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = "test-token";
+    process.env.GOOGLE_CALENDAR_ID = "calendar@example.test";
+    let constructed = 0;
+    try {
+      const capture = io();
+      expect(
+        await runCli(["bookings", "--state", directory, "--calendar", "google"], capture.io, {
+          createGoogleCalendar: () => {
+            constructed += 1;
+            return fakeCalendar({
+              timeZone: "UTC",
+              workingHours: { start: "09:00", end: "12:00" },
+              durationMinutes: 60,
+            });
+          },
+        }),
+      ).toBe(1);
+      expect(capture.errors.join("\n")).toMatch(/legacy|local|identity/i);
+      expect(constructed).toBe(0);
+    } finally {
+      if (previousToken === undefined) delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+      else process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = previousToken;
+      if (previousId === undefined) delete process.env.GOOGLE_CALENDAR_ID;
+      else process.env.GOOGLE_CALENDAR_ID = previousId;
+    }
   });
 
   it("fails missing live credentials before admitting input", async () => {

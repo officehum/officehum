@@ -12,13 +12,23 @@ export const PI_DURABLE_VERSION = "1.0.2";
 
 export { createDemoModels } from "./demo-model.js";
 export {
+  createGoogleCalendarHost,
+  type DecisionStore,
+  type GoogleCalendarHost,
+} from "./google-calendar.js";
+export {
   type Booking,
   type LocalCalendar,
   openLocalCalendar,
 } from "./local-calendar.js";
 export {
+  type ConnectorIdentity,
+  type GoogleConnectorIdentity,
+  hasDurableLocalState,
+  type LocalConnectorIdentity,
   type OpenSoloOptions,
   openSolo,
+  readConnectorIdentity,
   type SoloResult,
   type SoloSession,
 } from "./solo.js";

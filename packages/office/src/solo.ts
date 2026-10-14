@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -35,6 +35,133 @@ export interface OpenSoloOptions {
   readonly role: RoleBundle;
   readonly models: Models;
   readonly model?: ModelRef;
+  readonly connectorIdentity?: ConnectorIdentity;
+}
+
+export type LocalConnectorIdentity = { readonly version: 1; readonly backend: "local" };
+export type GoogleConnectorIdentity = {
+  readonly version: 1;
+  readonly backend: "google";
+  readonly calendarId: string;
+  readonly timeZone: "UTC";
+  readonly workingHours: { readonly start: "09:00"; readonly end: "12:00" };
+  readonly durationMinutes: 60;
+};
+export type ConnectorIdentity = LocalConnectorIdentity | GoogleConnectorIdentity;
+
+const LOCAL_IDENTITY: LocalConnectorIdentity = { version: 1, backend: "local" };
+
+function parseConnectorIdentity(value: unknown): ConnectorIdentity {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Malformed Front Desk connector identity.");
+  }
+  const record = value as Record<string, unknown>;
+  if (record.version !== 1) throw new Error("Malformed Front Desk connector identity.");
+  if (record.backend === "local") {
+    if (Object.keys(record).sort().join(",") !== "backend,version") {
+      throw new Error("Malformed Front Desk connector identity.");
+    }
+    return LOCAL_IDENTITY;
+  }
+  if (
+    record.backend !== "google" ||
+    typeof record.calendarId !== "string" ||
+    record.calendarId.trim().length === 0 ||
+    record.calendarId === "primary" ||
+    record.timeZone !== "UTC" ||
+    record.durationMinutes !== 60 ||
+    record.workingHours === null ||
+    typeof record.workingHours !== "object" ||
+    Array.isArray(record.workingHours)
+  ) {
+    throw new Error("Malformed Front Desk connector identity.");
+  }
+  const hours = record.workingHours as Record<string, unknown>;
+  if (
+    Object.keys(record).sort().join(",") !==
+      "backend,calendarId,durationMinutes,timeZone,version,workingHours" ||
+    Object.keys(hours).sort().join(",") !== "end,start" ||
+    hours.start !== "09:00" ||
+    hours.end !== "12:00"
+  ) {
+    throw new Error("Malformed Front Desk connector identity.");
+  }
+  return {
+    version: 1,
+    backend: "google",
+    calendarId: record.calendarId.trim(),
+    timeZone: "UTC",
+    workingHours: { start: "09:00", end: "12:00" },
+    durationMinutes: 60,
+  };
+}
+
+function identityEquals(left: ConnectorIdentity, right: ConnectorIdentity): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+export function readConnectorIdentity(directory: string): ConnectorIdentity {
+  const path = join(directory, "connector.json");
+  try {
+    return parseConnectorIdentity(JSON.parse(readFileSync(path, "utf8")));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      if (error instanceof SyntaxError) throw new Error("Malformed Front Desk connector identity.");
+      throw error;
+    }
+  }
+  return LOCAL_IDENTITY;
+}
+
+export function hasDurableLocalState(directory: string): boolean {
+  if (existsSync(join(directory, "harness"))) return true;
+  const path = join(directory, "calendar.sqlite");
+  if (!existsSync(path)) return false;
+  const database = new DatabaseSync(path, { readOnly: true });
+  try {
+    for (const table of ["bookings", "approval_decisions"] as const) {
+      const exists = database
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+        .get(table);
+      if (exists !== undefined && database.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get()) {
+        return true;
+      }
+    }
+    return false;
+  } finally {
+    database.close();
+  }
+}
+
+function bindConnectorIdentity(
+  directory: string,
+  requestedValue: ConnectorIdentity | undefined,
+): ConnectorIdentity {
+  const requested = parseConnectorIdentity(requestedValue ?? LOCAL_IDENTITY);
+  const path = join(directory, "connector.json");
+  let stored: ConnectorIdentity | undefined;
+  try {
+    stored = parseConnectorIdentity(JSON.parse(readFileSync(path, "utf8")));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      if (error instanceof SyntaxError) throw new Error("Malformed Front Desk connector identity.");
+      throw error;
+    }
+  }
+  if (stored === undefined) {
+    stored = hasDurableLocalState(directory) ? LOCAL_IDENTITY : requested;
+    writeFileSync(path, `${JSON.stringify(stored)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+  }
+  if (!identityEquals(stored, requested)) {
+    throw new Error(
+      `Front Desk connector identity mismatch: state is bound to ${stored.backend}, requested ${requested.backend}.`,
+    );
+  }
+  return stored;
 }
 
 type LockRecord = { pid: number; token: string };
@@ -142,6 +269,7 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
   const lock = acquireLock(options.directory);
   let harness: Harness | undefined;
   try {
+    bindConnectorIdentity(options.directory, options.connectorIdentity);
     const registry = createRegistry();
     for (const extension of options.role.extensions) registry.install(extension);
     const storage = await openNodeJsonlStorage(

@@ -28,6 +28,7 @@
     "@earendil-works/chord": "1.0.2",
     "@earendil-works/pi-ai": "1.0.2",
     "@earendil-works/pi-durable": "1.0.2",
+    "@officehum/google-calendar": "0.0.0",
     "@officehum/sdk": "0.0.0"
   }
 }
