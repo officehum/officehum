@@ -1,6 +1,6 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { once } from "node:events";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +15,9 @@ import { hook, ToolTask } from "@earendil-works/pi-durable";
 import type { Approver, RoleBundle } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import frontdesk from "../../../agents/frontdesk/src/index.js";
+import { createGoogleCalendar } from "../../google-calendar/src/index.js";
 import { createDemoModels } from "./demo-model.js";
+import { createGoogleCalendarHost } from "./google-calendar.js";
 import { openLocalCalendar } from "./local-calendar.js";
 import { openSolo } from "./solo.js";
 
@@ -76,6 +78,79 @@ function scriptedModels() {
 }
 
 describe("openSolo", () => {
+  it("persists immutable connector identity and rejects mismatches before opening the harness", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const runtime = createDemoModels();
+    const google = {
+      version: 1 as const,
+      backend: "google" as const,
+      calendarId: "calendar@example.test",
+      timeZone: "UTC" as const,
+      workingHours: { start: "09:00" as const, end: "12:00" as const },
+      durationMinutes: 60 as const,
+    };
+    const solo = await openSolo({ directory, role, ...runtime, connectorIdentity: google });
+    await solo.close();
+    expect(JSON.parse(readFileSync(join(directory, "connector.json"), "utf8"))).toEqual(google);
+
+    await expect(openSolo({ directory, role, ...createDemoModels() })).rejects.toThrow(
+      /local.*google|google.*local/i,
+    );
+    await expect(
+      openSolo({
+        directory,
+        role,
+        ...createDemoModels(),
+        connectorIdentity: { ...google, calendarId: "other@example.test" },
+      }),
+    ).rejects.toThrow(/identity|calendar/i);
+    calendar.close();
+  });
+
+  it("treats identity-free legacy harness state as local and rejects Google binding", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const original = await openSolo({ directory, role, ...createDemoModels() });
+    await original.close();
+    unlinkSync(join(directory, "connector.json"));
+    await expect(
+      openSolo({
+        directory,
+        role,
+        ...createDemoModels(),
+        connectorIdentity: {
+          version: 1,
+          backend: "google",
+          calendarId: "calendar@example.test",
+          timeZone: "UTC",
+          workingHours: { start: "09:00", end: "12:00" },
+          durationMinutes: 60,
+        },
+      }),
+    ).rejects.toThrow(/legacy|local/i);
+    expect(JSON.parse(readFileSync(join(directory, "connector.json"), "utf8"))).toEqual({
+      version: 1,
+      backend: "local",
+    });
+    calendar.close();
+  });
+
+  it("rejects malformed connector metadata", async () => {
+    const directory = temporary();
+    writeFileSync(
+      join(directory, "connector.json"),
+      JSON.stringify({ version: 1, backend: "google", accessToken: "must-not-exist" }),
+    );
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    await expect(
+      openSolo({ directory, role: frontdesk({ calendar }), ...createDemoModels() }),
+    ).rejects.toThrow(/malformed/i);
+    calendar.close();
+  });
+
   it("deduplicates submissions and preserves root and transcript across reopen", async () => {
     const directory = temporary();
     const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
@@ -223,6 +298,99 @@ describe("openSolo", () => {
     expect(approvalCount).toBe(1);
     expect(approvalKey).toBeDefined();
     expect(calendar.decision(approvalKey ?? "")).toEqual({ approved: true, by: "test" });
+    await reopened.close();
+    calendar.close();
+  });
+
+  it("recovers a Google insert committed before tool settlement with one event and one approval", async () => {
+    const directory = temporary();
+    const decisions = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const events = new Map<string, Record<string, unknown>>();
+    const transport: typeof fetch = async (input, init = {}) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/freeBusy"))
+        return new Response(JSON.stringify({ calendars: { cal: { busy: [] } } }), { status: 200 });
+      const eventPath = /\/events\/([^/]+)$/.exec(url.pathname);
+      if (eventPath !== null) {
+        const event = events.get(eventPath[1] ?? "");
+        return new Response(JSON.stringify(event ?? { error: {} }), {
+          status: event === undefined ? 404 : 200,
+        });
+      }
+      if (url.pathname.endsWith("/events") && init.method === "POST") {
+        const event = JSON.parse(String(init.body)) as Record<string, unknown>;
+        events.set(String(event.id), { ...event, etag: '"etag"', status: "confirmed" });
+        return new Response(JSON.stringify(events.get(String(event.id))), { status: 200 });
+      }
+      return new Response(JSON.stringify({ items: [...events.values()] }), { status: 200 });
+    };
+    const portable = createGoogleCalendar({
+      calendarId: "cal",
+      getAccessToken: async () => "token",
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+      fetch: transport,
+    });
+    const calendar = createGoogleCalendarHost({ client: portable, decisions, durationMinutes: 60 });
+    let approvals = 0;
+    const approve: Approver = async (request) => {
+      approvals += 1;
+      const key = `${request.conversationId}:${request.taskId}:${request.callId}:${request.approvalId}`;
+      return calendar.recordDecision(key, request, { approved: true, by: "test" });
+    };
+    const role = frontdesk({ calendar, approve });
+    let reached!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const pauseAfterEffect = hook(ToolTask, {
+      afterTool: async (call, result, _api, context) => {
+        if (call.name !== "book_appointment") return result;
+        reached();
+        await awaitWithContext(new Promise<never>(() => {}), context);
+        return result;
+      },
+    });
+    const [roleExtension, ...rest] = role.extensions;
+    if (roleExtension === undefined) throw new Error("missing role extension");
+    const interrupted: RoleBundle = {
+      extensions: [
+        { ...roleExtension, hooks: [...(roleExtension.hooks ?? []), pauseAfterEffect] },
+        ...rest,
+      ],
+      agent: role.agent,
+    };
+    const identity = {
+      version: 1 as const,
+      backend: "google" as const,
+      calendarId: "cal",
+      timeZone: "UTC" as const,
+      workingHours: { start: "09:00" as const, end: "12:00" as const },
+      durationMinutes: 60 as const,
+    };
+    const solo = await openSolo({
+      directory,
+      role: interrupted,
+      ...createDemoModels(),
+      connectorIdentity: identity,
+    });
+    const pending = solo.submit("Book Demo Guest on 2030-01-15", "google-crash");
+    await barrier;
+    expect(events.size).toBe(1);
+    await solo.close();
+    await expect(pending).rejects.toThrow();
+
+    const reopened = await openSolo({
+      directory,
+      role,
+      ...createDemoModels(),
+      connectorIdentity: identity,
+    });
+    const [result] = await reopened.resume();
+    expect(result?.settlement.status).toBe("done");
+    expect(events.size).toBe(1);
+    expect(approvals).toBe(1);
     await reopened.close();
     calendar.close();
   });

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { awaitWithContext, BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
@@ -5,11 +6,21 @@ import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import type { ModelRef } from "@earendil-works/pi-durable";
 import frontdesk from "@officehum/frontdesk";
 import {
+  type CalendarClient,
+  createGoogleCalendar,
+  type GoogleCalendarOptions,
+} from "@officehum/google-calendar";
+import {
+  type ConnectorIdentity,
   createDemoModels,
+  createGoogleCalendarHost,
+  type DecisionStore,
+  type GoogleConnectorIdentity,
   type LocalCalendar,
   openLocalCalendar,
   openSolo,
   PI_DURABLE_VERSION,
+  readConnectorIdentity,
   type SoloResult,
   type SoloSession,
 } from "@officehum/office";
@@ -38,13 +49,18 @@ type Parsed = {
   message?: string;
   requestId?: string;
   model: string;
+  calendar?: "local" | "google";
 };
 
+export interface CliDependencies {
+  readonly createGoogleCalendar?: (options: GoogleCalendarOptions) => CalendarClient;
+}
+
 const USAGE = `Usage:
-  officehum demo [--state DIR] [--approval allow|deny]
-  officehum start --message TEXT --request-id ID [--state DIR] [--model ID] [--approval allow|deny]
-  officehum resume [--state DIR] [--approval allow|deny]
-  officehum bookings [--state DIR]
+  officehum demo [--state DIR] [--approval allow|deny] [--calendar local]
+  officehum start --message TEXT --request-id ID [--state DIR] [--model ID] [--approval allow|deny] [--calendar local|google]
+  officehum resume [--state DIR] [--approval allow|deny] [--calendar local|google]
+  officehum bookings [--state DIR] [--calendar local|google]
   officehum --version`;
 
 function parse(args: string[]): Parsed {
@@ -58,11 +74,11 @@ function parse(args: string[]): Parsed {
   };
   const allowed = new Set(
     command === "start"
-      ? ["--state", "--approval", "--message", "--request-id", "--model"]
+      ? ["--state", "--approval", "--message", "--request-id", "--model", "--calendar"]
       : command === "demo" || command === "resume"
-        ? ["--state", "--approval"]
+        ? ["--state", "--approval", "--calendar"]
         : command === "bookings"
-          ? ["--state"]
+          ? ["--state", "--calendar"]
           : [],
   );
   for (let index = 0; index < rest.length; index += 2) {
@@ -78,7 +94,12 @@ function parse(args: string[]): Parsed {
     else if (option === "--message") parsed.message = value;
     else if (option === "--request-id") parsed.requestId = value;
     else if (option === "--model") parsed.model = value;
-    else if (option === "--approval") {
+    else if (option === "--calendar") {
+      if (value !== "local" && value !== "google") {
+        throw new UsageError("--calendar must be local or google.");
+      }
+      parsed.calendar = value;
+    } else if (option === "--approval") {
       if (value !== "allow" && value !== "deny") {
         throw new UsageError("--approval must be allow or deny.");
       }
@@ -89,6 +110,9 @@ function parse(args: string[]): Parsed {
     if (parsed.message === undefined) throw new UsageError("start requires --message.");
     if (parsed.requestId === undefined) throw new UsageError("start requires --request-id.");
   }
+  if (command === "demo" && parsed.calendar === "google") {
+    throw new UsageError("The synthetic demo uses only the local calendar.");
+  }
   return parsed;
 }
 
@@ -97,7 +121,7 @@ function approvalKey(request: ApprovalRequest): string {
 }
 
 export function cliApprover(
-  calendar: LocalCalendar,
+  calendar: DecisionStore,
   mode: ApprovalMode,
   io: CliIo,
   interrupt: () => void,
@@ -128,6 +152,98 @@ export function cliApprover(
       ...(answer === "deny" ? { note: "Declined by the local operator" } : {}),
     });
   };
+}
+
+type HostCalendar = DecisionStore & {
+  freeSlots(date: string): Promise<string[]>;
+  book(
+    start: string,
+    customer: string,
+    idempotencyKey: string,
+  ): Promise<{ id: string; start: string; customer: string }>;
+  bookings():
+    | ReturnType<LocalCalendar["bookings"]>
+    | Promise<ReturnType<LocalCalendar["bookings"]>>;
+};
+
+const googleIdentity = (calendarId: string): GoogleConnectorIdentity => ({
+  version: 1,
+  backend: "google",
+  calendarId,
+  timeZone: "UTC",
+  workingHours: { start: "09:00", end: "12:00" },
+  durationMinutes: 60,
+});
+
+function selectedIdentity(parsed: Parsed): ConnectorIdentity {
+  const stored = readConnectorIdentity(parsed.state);
+  const hasStoredIdentity = existsSync(join(parsed.state, "connector.json"));
+  const hasLegacyState = !hasStoredIdentity && existsSync(join(parsed.state, "harness"));
+  const backend =
+    parsed.calendar ?? (hasStoredIdentity || hasLegacyState ? stored.backend : "local");
+  if ((hasStoredIdentity || hasLegacyState) && backend !== stored.backend) {
+    throw new Error(
+      `Front Desk connector identity mismatch: state uses ${stored.backend}, requested ${backend}.`,
+    );
+  }
+  if (backend === "local") return { version: 1, backend: "local" };
+  const configured = process.env.GOOGLE_CALENDAR_ID?.trim();
+  if (stored.backend === "google") {
+    if (configured !== undefined && configured.length > 0 && configured !== stored.calendarId) {
+      throw new Error("Google calendar ID mismatch with the persisted connector identity.");
+    }
+    return stored;
+  }
+  if (configured === undefined || configured.length === 0) {
+    throw new Error(
+      "Set GOOGLE_CALENDAR_ID to an explicit calendar ID for initial Google binding.",
+    );
+  }
+  if (configured === "primary") {
+    throw new Error('GOOGLE_CALENDAR_ID must be explicit; "primary" is not allowed.');
+  }
+  return googleIdentity(configured);
+}
+
+function requireGoogleToken(): void {
+  if (!process.env.GOOGLE_CALENDAR_ACCESS_TOKEN?.trim()) {
+    throw new Error("Set GOOGLE_CALENDAR_ACCESS_TOKEN in your shell before Google Calendar use.");
+  }
+}
+
+function openCalendar(
+  parsed: Parsed,
+  dependencies: CliDependencies,
+): { calendar: HostCalendar; identity: ConnectorIdentity } {
+  const identity = selectedIdentity(parsed);
+  const decisions = openLocalCalendar(join(parsed.state, "calendar.sqlite"));
+  if (identity.backend === "local") return { calendar: decisions, identity };
+  try {
+    requireGoogleToken();
+    const factory = dependencies.createGoogleCalendar ?? createGoogleCalendar;
+    const client = factory({
+      calendarId: identity.calendarId,
+      getAccessToken: async () => {
+        const token = process.env.GOOGLE_CALENDAR_ACCESS_TOKEN?.trim();
+        if (!token) throw new Error("Google Calendar access token is unavailable.");
+        return token;
+      },
+      timeZone: identity.timeZone,
+      workingHours: identity.workingHours,
+      durationMinutes: identity.durationMinutes,
+    });
+    return {
+      calendar: createGoogleCalendarHost({
+        client,
+        decisions,
+        durationMinutes: identity.durationMinutes,
+      }),
+      identity,
+    };
+  } catch (error) {
+    decisions.close();
+    throw error;
+  }
 }
 
 function liveModels(modelId: string) {
@@ -162,8 +278,9 @@ async function openForRun(
   parsed: Parsed,
   io: CliIo,
   demo: boolean,
-): Promise<{ calendar: LocalCalendar; solo: SoloSession; model: ModelRef }> {
-  const calendar = openLocalCalendar(join(parsed.state, "calendar.sqlite"));
+  dependencies: CliDependencies,
+): Promise<{ calendar: HostCalendar; solo: SoloSession; model: ModelRef }> {
+  const { calendar, identity } = openCalendar(parsed, dependencies);
   let solo: SoloSession | undefined;
   let closeRequested = false;
   const interrupt = () => {
@@ -179,7 +296,12 @@ async function openForRun(
     );
     const role = frontdesk({ calendar, approve });
     const runtime = demo ? createDemoModels() : liveModels(parsed.model);
-    solo = await openSolo({ directory: parsed.state, role, ...runtime });
+    solo = await openSolo({
+      directory: parsed.state,
+      role,
+      ...runtime,
+      connectorIdentity: identity,
+    });
     activeSession = solo;
     const actualModel = (await solo.root.agent(BACKGROUND_CONTEXT)).model;
     if (actualModel === undefined) throw new Error("The persisted Front Desk root has no model.");
@@ -200,8 +322,12 @@ async function openForRun(
   }
 }
 
-async function runResume(parsed: Parsed, io: CliIo): Promise<number> {
-  const calendar = openLocalCalendar(join(parsed.state, "calendar.sqlite"));
+async function runResume(
+  parsed: Parsed,
+  io: CliIo,
+  dependencies: CliDependencies,
+): Promise<number> {
+  const { calendar, identity } = openCalendar(parsed, dependencies);
   let probe: SoloSession | undefined;
   try {
     let active: SoloSession | undefined;
@@ -213,7 +339,12 @@ async function runResume(parsed: Parsed, io: CliIo): Promise<number> {
     const approve = cliApprover(calendar, parsed.approval, io, interrupt);
     const role = frontdesk({ calendar, approve });
     const demo = createDemoModels();
-    probe = await openSolo({ directory: parsed.state, role, ...demo });
+    probe = await openSolo({
+      directory: parsed.state,
+      role,
+      ...demo,
+      connectorIdentity: identity,
+    });
     activeSession = probe;
     const agent = await probe.root.agent(BACKGROUND_CONTEXT);
     if (agent.model?.provider === "officehum-demo") {
@@ -224,7 +355,12 @@ async function runResume(parsed: Parsed, io: CliIo): Promise<number> {
       await probe.close();
       probe = undefined;
       const runtime = liveModels(agent.model?.modelId ?? parsed.model);
-      active = await openSolo({ directory: parsed.state, role, ...runtime });
+      active = await openSolo({
+        directory: parsed.state,
+        role,
+        ...runtime,
+        connectorIdentity: identity,
+      });
       activeSession = active;
       io.output(`Mode: ${modelLabel(runtime.model)}`);
     }
@@ -247,7 +383,11 @@ async function runResume(parsed: Parsed, io: CliIo): Promise<number> {
   }
 }
 
-export async function runCli(args: string[], io: CliIo): Promise<number> {
+export async function runCli(
+  args: string[],
+  io: CliIo,
+  dependencies: CliDependencies = {},
+): Promise<number> {
   try {
     if (args.length === 1 && (args[0] === "--version" || args[0] === "-v")) {
       io.output(`officehum 0.0.0 (Pi Durable ${PI_DURABLE_VERSION})`);
@@ -258,9 +398,9 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       throw new UsageError(`Unknown command: ${parsed.command}\n${USAGE}`);
     }
     if (parsed.command === "bookings") {
-      const calendar = openLocalCalendar(join(parsed.state, "calendar.sqlite"));
+      const { calendar } = openCalendar(parsed, dependencies);
       try {
-        const bookings = calendar.bookings();
+        const bookings = await calendar.bookings();
         if (bookings.length === 0) io.output("No bookings.");
         else for (const booking of bookings) io.output(JSON.stringify(booking));
       } finally {
@@ -268,10 +408,10 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       }
       return 0;
     }
-    if (parsed.command === "resume") return await runResume(parsed, io);
+    if (parsed.command === "resume") return await runResume(parsed, io, dependencies);
 
     const demo = parsed.command === "demo";
-    const opened = await openForRun(parsed, io, demo);
+    const opened = await openForRun(parsed, io, demo, dependencies);
     try {
       io.output(`Mode: ${modelLabel(opened.model)}`);
       if (demo && parsed.approval === undefined) {
