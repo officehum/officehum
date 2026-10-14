@@ -3,7 +3,7 @@
   "id": "frontdesk",
   "name": "Front Desk",
   "department": "front-office",
-  "role": "Lists and manages approved UTC appointments",
+  "role": "Manages approved contacts, messages, and UTC appointments",
   "defaultModel": { "provider": "openai", "modelId": "gpt-6-sol" },
   "tools": [
     { "name": "check_schedule", "replay": "safe" },
@@ -11,6 +11,7 @@
     { "name": "list_contacts", "replay": "safe" },
     { "name": "create_contact", "replay": "safe" },
     { "name": "update_contact", "replay": "safe" },
+    { "name": "send_message", "replay": "safe" },
     { "name": "book_appointment", "replay": "safe" },
     { "name": "reschedule_appointment", "replay": "safe" },
     { "name": "cancel_appointment", "replay": "safe" }
@@ -26,6 +27,11 @@
       "id": "confirm_contact_update",
       "tool": "update_contact",
       "description": "Confirm this contact correction"
+    },
+    {
+      "id": "first_contact",
+      "tool": "send_message",
+      "description": "Confirm first contact with this destination and transport"
     },
     {
       "id": "confirm_booking",

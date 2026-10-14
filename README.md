@@ -69,6 +69,26 @@ the contact's current name. A booking without a contact ID keeps the existing fr
 does not create a profile. Contact profiles and booking links live only in the selected state
 directory; they are not synchronized to Google Contacts or embedded in provider events.
 
+Messaging uses the same ordinary durable submission path. The current host is a local console
+outbox only: it records the exact intent in `messages.sqlite` and never contacts a customer. Use an
+exact saved contact ID and canonical destination:
+
+```sh
+node packages/cli/dist/index.js start \
+  --state .officehum/frontdesk-live \
+  --message "List contacts, then send contact-1 at guest@example.test exactly: Appointment confirmed." \
+  --request-id message-contact-1 \
+  --approval allow
+```
+
+The first successful message for an exact contact, channel, destination, and Messenger identity
+needs approval. Later messages to that same tuple use its successful durable history. Changing any
+part of the tuple requires fresh approval. Approval alone, failed sends, bookings, and contact edits
+do not establish that history. Recovery after an intent is pinned keeps the approved old destination
+and text; it cannot redirect to a later contact edit. `Recorded in console outbox; no customer
+delivery` is the strongest claim the console host makes. Provider delivery, named approval limits,
+and a read-only messages CLI are deferred.
+
 ```sh
 node packages/cli/dist/index.js bookings --state .officehum/frontdesk-live
 node packages/cli/dist/index.js start \
@@ -140,7 +160,8 @@ End-of-file or interruption leaves admitted work available to `resume`; it never
 Use separate state directories for demo and live modes; a persisted conversation keeps its original
 provider/model, and the CLI rejects cross-mode reuse before admitting input. The default state is
 `.officehum/frontdesk`: Pi Durable JSONL data is under `harness/`; bookings, tombstones, approval
-decisions, and pending/completed calendar operations are in `calendar.sqlite`; and a lifetime
+decisions, and pending/completed calendar operations are in `calendar.sqlite`; synthetic message
+outbox rows are in `messages.sqlite`; and a lifetime
 transaction in `ownership.sqlite` enforces one process at a time. An identity-free state with a
 harness or any persisted booking, approval, or operation record is treated as legacy local state; an
 empty preflight calendar database remains available for initial binding.

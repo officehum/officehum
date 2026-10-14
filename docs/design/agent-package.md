@@ -110,7 +110,7 @@ not load these files (Pi's coding agent does), so `defineRole` brings them to Pi
 | `skills/*/SKILL.md` | The `skills` section lists each enabled skill's name and description; the agent loads the instructions (and reference files) on demand with the safe `read_skill` tool, as Pi does |
 | `APPEND_SYSTEM.md` | The `append_system` section, last of the role's sections |
 | Tools | `defineTool` with `replay` written out; a skill's tools live in a `<role>.<skill>` extension selected only while the skill is on |
-| Approvals | `approvalGate()` in the role extension; decisions kept in the tool task's memo |
+| Approvals | `approvalGate()` in the role extension; applicability and decisions kept in separate tool-task memos |
 
 A role gets no shell or file-editing tools. Pi Durable's own `instructions` stay free for the host's
 per-conversation notes.
@@ -138,6 +138,24 @@ export default function bookkeeper(options: {
   });
 }
 ```
+
+Code conditions may be synchronous one-argument predicates or async predicates that read committed
+durable documents through a read-only environment:
+
+```ts
+const firstContact: ApprovalCondition = async (args, { read }, context) => {
+  const history = await read.snapshot(MessagesDoc, context);
+  return !history?.messages.some((message) => sameTarget(message, args));
+};
+```
+
+The environment exposes only bound `snapshot` and `snapshotAsOf` methods. Before approving or
+bypassing, the gate stores a canonical tool/arguments applicability memo with the computed boolean.
+That value is immutable for the call across recovery, including `false`; existing legacy decision
+memos remain authoritative. Predicate errors, rejected promises, and nonboolean results require
+approval, while active cancellation propagates. This keeps a previously declined call declined even
+when another call later changes the durable history that the predicate reads. Named approval limits
+remain outside this contract.
 
 Installing it on any Pi Durable harness:
 

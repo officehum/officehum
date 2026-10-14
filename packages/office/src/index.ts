@@ -18,6 +18,14 @@ export {
   type Cancellation,
   openCalendarStore,
 } from "./calendar-store.js";
+export {
+  type ConsoleDeliveryReceipt,
+  type ConsoleMessage,
+  type ConsoleMessageChannel,
+  type ConsoleMessageIntent,
+  type ConsoleMessenger,
+  openConsoleMessenger,
+} from "./console-messenger.js";
 export { createDemoModels } from "./demo-model.js";
 export {
   createGoogleCalendarHost,

@@ -6,7 +6,13 @@
  * the tool task's memo, so a crash never asks twice and never forgets a yes.
  */
 
-import { type HookRegistration, hook, type ToolHooks, ToolTask } from "@earendil-works/pi-durable";
+import {
+  type DocumentReader,
+  type HookRegistration,
+  hook,
+  type ToolHooks,
+  ToolTask,
+} from "@earendil-works/pi-durable";
 import type { ApprovalDeclaration, ConditionDeclaration } from "./manifest.js";
 
 /** The cancellation and deadline context Pi Durable passes to hooks. */
@@ -14,6 +20,16 @@ export type HookContext = Parameters<ToolHooks["beforeTool"]>[2];
 
 /** A tool call's arguments, as the model sent them after validation. */
 export type ToolArguments = Readonly<Record<string, unknown>>;
+
+/** Durable documents available to an approval condition, without mutation methods. */
+export type ApprovalConditionContext = { readonly read: DocumentReader };
+
+/** Decides whether an approval applies to this exact tool intent. */
+export type ApprovalCondition = (
+  args: ToolArguments,
+  environment: ApprovalConditionContext,
+  context: HookContext,
+) => boolean | Promise<boolean>;
 
 /** What the approver is asked to decide. */
 export interface ApprovalRequest {
@@ -53,7 +69,7 @@ export interface ApprovalGateOptions {
    * When each approval applies, keyed by approval id, e.g. `large_invoice: (args) => total(args) > 5000`.
    * An approval with no condition applies to every call of its tool.
    */
-  readonly when?: Readonly<Record<string, (args: ToolArguments) => boolean>>;
+  readonly when?: Readonly<Record<string, ApprovalCondition>>;
 }
 
 const gates = new WeakSet<HookRegistration>();
@@ -64,6 +80,41 @@ export function isApprovalGate(registration: HookRegistration): boolean {
 }
 
 type StoredDecision = { approved: boolean; by: string | null; note: string | null };
+type StoredApplicability = { tool: string; argsJson: string; required: boolean };
+
+function canonicalJson(value: unknown): string {
+  const canonical = (candidate: unknown): unknown => {
+    if (Array.isArray(candidate)) return candidate.map(canonical);
+    if (candidate !== null && typeof candidate === "object") {
+      return Object.fromEntries(
+        Object.entries(candidate as Record<string, unknown>)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, child]) => [key, canonical(child)]),
+      );
+    }
+    return candidate;
+  };
+  const json = JSON.stringify(canonical(value));
+  if (json === undefined) throw new Error("Approval arguments must be JSON serializable.");
+  return json;
+}
+
+function assertApplicability(stored: StoredApplicability, tool: string, argsJson: string): void {
+  if (
+    stored === null ||
+    typeof stored !== "object" ||
+    typeof stored.tool !== "string" ||
+    typeof stored.argsJson !== "string" ||
+    typeof stored.required !== "boolean"
+  ) {
+    throw new Error("Malformed stored approval applicability.");
+  }
+  if (stored.tool !== tool || stored.argsJson !== argsJson) {
+    throw new Error(
+      "This approval call identity was already used with a different tool or arguments.",
+    );
+  }
+}
 
 /** Builds the hook a role adds to its extension's `hooks`. It covers the role's skill tools too. */
 export function approvalGate(options: ApprovalGateOptions): HookRegistration {
@@ -71,16 +122,42 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
     beforeTool: async (call, api, context) => {
       for (const approval of options.approvals) {
         if (approval.tool !== call.name) continue;
-        // A condition in code wins; otherwise the manifest's `when`; otherwise every call is gated.
-        const applies = options.when?.[approval.id];
-        if (applies !== undefined) {
-          if (!applies(call.arguments)) continue;
-        } else if (approval.when !== undefined && !conditionsHold(approval.when, call.arguments)) {
-          continue;
-        }
-
         const memoKey = `officehum.approval.${call.id}.${approval.id}`;
         let decision = await api.memo<StoredDecision>(memoKey, context);
+        const applicabilityKey = `officehum.approval-intent.${call.id}.${approval.id}`;
+        const argsJson = canonicalJson(call.arguments);
+        let applicability = await api.memo<StoredApplicability>(applicabilityKey, context);
+
+        // Decisions written before applicability memos existed remain authoritative.
+        if (decision === undefined || applicability !== undefined) {
+          if (applicability === undefined) {
+            let required = true;
+            const applies = options.when?.[approval.id];
+            if (applies !== undefined) {
+              try {
+                const read = {
+                  snapshot: api.snapshot.bind(api),
+                  snapshotAsOf: api.snapshotAsOf.bind(api),
+                };
+                const result = await applies(call.arguments, { read }, context);
+                required = typeof result === "boolean" ? result : true;
+              } catch {
+                context.abortSignal?.throwIfAborted();
+                required = true;
+              }
+            } else if (approval.when !== undefined) {
+              required = conditionsHold(approval.when, call.arguments);
+            }
+            applicability = await api.memo<StoredApplicability>(
+              applicabilityKey,
+              { tool: call.name, argsJson, required },
+              context,
+            );
+          }
+          assertApplicability(applicability, call.name, argsJson);
+          if (!applicability.required) continue;
+        }
+
         if (decision === undefined) {
           if (options.approve === undefined) {
             return {

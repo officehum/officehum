@@ -12,12 +12,14 @@ import {
 } from "@officehum/google-calendar";
 import {
   type ConnectorIdentity,
+  type ConsoleMessenger,
   createDemoModels,
   createGoogleCalendarHost,
   type DecisionStore,
   type GoogleConnectorIdentity,
   hasDurableLocalState,
   type LocalCalendar,
+  openConsoleMessenger,
   openLocalCalendar,
   openSolo,
   PI_DURABLE_VERSION,
@@ -300,8 +302,14 @@ async function openForRun(
   io: CliIo,
   demo: boolean,
   dependencies: CliDependencies,
-): Promise<{ calendar: HostCalendar; solo: SoloSession; model: ModelRef }> {
+): Promise<{
+  calendar: HostCalendar;
+  solo: SoloSession;
+  model: ModelRef;
+  messenger: ConsoleMessenger;
+}> {
   const { calendar, identity } = openCalendar(parsed, dependencies);
+  let messenger: ConsoleMessenger | undefined;
   let solo: SoloSession | undefined;
   let closeRequested = false;
   const interrupt = () => {
@@ -309,13 +317,14 @@ async function openForRun(
     void solo?.close();
   };
   try {
+    messenger = openConsoleMessenger(join(parsed.state, "messages.sqlite"));
     const approve = cliApprover(
       calendar,
       demo && parsed.approval === undefined ? "allow" : parsed.approval,
       io,
       interrupt,
     );
-    const role = frontdesk({ calendar, approve });
+    const role = frontdesk({ calendar, approve, messenger });
     const runtime = demo ? createDemoModels() : liveModels(parsed.model, dependencies);
     solo = await openSolo({
       directory: parsed.state,
@@ -334,11 +343,18 @@ async function openForRun(
       );
     }
     if (closeRequested) await solo.close();
-    return { calendar, solo, model: actualModel };
+    return { calendar, solo, model: actualModel, messenger };
   } catch (error) {
-    await solo?.close();
-    if (activeSession === solo) activeSession = undefined;
-    calendar.close();
+    try {
+      await solo?.close();
+    } finally {
+      if (activeSession === solo) activeSession = undefined;
+      try {
+        messenger?.close();
+      } finally {
+        calendar.close();
+      }
+    }
     throw error;
   }
 }
@@ -349,8 +365,10 @@ async function runResume(
   dependencies: CliDependencies,
 ): Promise<number> {
   const { calendar, identity } = openCalendar(parsed, dependencies);
+  let messenger: ConsoleMessenger | undefined;
   let probe: SoloSession | undefined;
   try {
+    messenger = openConsoleMessenger(join(parsed.state, "messages.sqlite"));
     let active: SoloSession | undefined;
     let closeRequested = false;
     const interrupt = () => {
@@ -358,7 +376,7 @@ async function runResume(
       void active?.close();
     };
     const approve = cliApprover(calendar, parsed.approval, io, interrupt);
-    const role = frontdesk({ calendar, approve });
+    const role = frontdesk({ calendar, approve, messenger });
     const demo = createDemoModels();
     probe = await openSolo({
       directory: parsed.state,
@@ -386,6 +404,7 @@ async function runResume(
       io.output(`Mode: ${modelLabel(runtime.model)}`);
     }
     if (closeRequested) await active.close();
+    io.output("Messaging: console outbox; no customer delivery.");
     try {
       const results = await active.resume();
       if (results.length === 0) {
@@ -398,9 +417,16 @@ async function runResume(
       if (activeSession === active) activeSession = undefined;
     }
   } finally {
-    await probe?.close();
-    if (activeSession === probe) activeSession = undefined;
-    calendar.close();
+    try {
+      await probe?.close();
+    } finally {
+      if (activeSession === probe) activeSession = undefined;
+      try {
+        messenger?.close();
+      } finally {
+        calendar.close();
+      }
+    }
   }
 }
 
@@ -448,6 +474,7 @@ export async function runCli(
     const opened = await openForRun(parsed, io, demo, dependencies);
     try {
       io.output(`Mode: ${modelLabel(opened.model)}`);
+      io.output("Messaging: console outbox; no customer delivery.");
       if (demo && parsed.approval === undefined) {
         io.output("Synthetic demo approval: allow (default)");
       }
@@ -457,9 +484,16 @@ export async function runCli(
       );
       return printResult(result, io);
     } finally {
-      await opened.solo.close();
-      if (activeSession === opened.solo) activeSession = undefined;
-      opened.calendar.close();
+      try {
+        await opened.solo.close();
+      } finally {
+        if (activeSession === opened.solo) activeSession = undefined;
+        try {
+          opened.messenger.close();
+        } finally {
+          opened.calendar.close();
+        }
+      }
     }
   } catch (error) {
     io.error(error instanceof Error ? error.message : String(error));

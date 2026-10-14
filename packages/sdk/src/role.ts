@@ -29,7 +29,7 @@ import {
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { type RoleBundle, skillExtensionName } from "./agent.js";
-import { type Approver, approvalGate, type ToolArguments } from "./approvals.js";
+import { type ApprovalCondition, type Approver, approvalGate } from "./approvals.js";
 import { type Engine, engineTools } from "./engine.js";
 import { formatIssue, type Issue } from "./issues.js";
 import { validateManifest } from "./manifest.js";
@@ -60,7 +60,7 @@ export interface DefineRoleOptions {
   /** Decides gated actions. Omitted: they are blocked. */
   readonly approve?: Approver | undefined;
   /** When each approval applies, keyed by approval id. */
-  readonly when?: Readonly<Record<string, (args: ToolArguments) => boolean>>;
+  readonly when?: Readonly<Record<string, ApprovalCondition>>;
   /** More hooks for the role extension, after the approval gate. */
   readonly hooks?: readonly HookRegistration[];
   /** Durable tasks the role's tools start. */
