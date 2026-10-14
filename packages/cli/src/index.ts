@@ -1,13 +1,20 @@
 #!/usr/bin/env node
-/**
- * @officehum/cli — M0 scaffold. Commands (start, board, watch, steer) land in RASF-3068.
- */
-import { PI_DURABLE_VERSION } from "@officehum/office";
+import { stderr, stdin, stdout } from "node:process";
+import { interruptCli, runCli } from "./cli.js";
+import { createTerminalIo, type TerminalInterrupt, terminalExitCode } from "./terminal-io.js";
 
-const [command] = process.argv.slice(2);
-
-if (command === "--version" || command === "-v") {
-  console.log(`officehum 0.0.0 (Pi Durable ${PI_DURABLE_VERSION})`);
-} else {
-  console.log("officehum: nothing to run yet. Commands arrive in milestone M1.");
-}
+let terminalInterrupt: TerminalInterrupt | undefined;
+const io = createTerminalIo({
+  input: stdin,
+  output: stdout,
+  error: stderr,
+  onInterrupt: (kind) => {
+    terminalInterrupt = kind;
+  },
+});
+process.once("SIGINT", () => {
+  terminalInterrupt = "sigint";
+  void interruptCli();
+});
+const code = await runCli(process.argv.slice(2), io);
+process.exitCode = terminalExitCode(code, terminalInterrupt);
