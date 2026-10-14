@@ -138,6 +138,74 @@ describe("openSolo", () => {
     calendar.close();
   });
 
+  it.each(["booking", "approval"] as const)(
+    "treats identity-free durable local %s records as legacy state",
+    async (record) => {
+      const directory = temporary();
+      const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+      if (record === "booking") {
+        await calendar.book("2030-01-15T09:00:00Z", "Local Guest", "legacy-booking");
+      } else {
+        calendar.recordDecision(
+          "legacy-decision",
+          {
+            approvalId: "confirm_booking",
+            description: "Confirm booking",
+            tool: "book_appointment",
+            arguments: { start: "2030-01-15T09:00:00Z", customer: "Local Guest" },
+            conversationId: "conversation",
+            taskId: "task",
+            callId: "call",
+          },
+          { approved: true, by: "test" },
+        );
+      }
+      await expect(
+        openSolo({
+          directory,
+          role: frontdesk({ calendar }),
+          ...createDemoModels(),
+          connectorIdentity: {
+            version: 1,
+            backend: "google",
+            calendarId: "calendar@example.test",
+            timeZone: "UTC",
+            workingHours: { start: "09:00", end: "12:00" },
+            durationMinutes: 60,
+          },
+        }),
+      ).rejects.toThrow(/legacy|local|identity/i);
+      expect(JSON.parse(readFileSync(join(directory, "connector.json"), "utf8"))).toEqual({
+        version: 1,
+        backend: "local",
+      });
+      calendar.close();
+    },
+  );
+
+  it("allows an empty preflight calendar database to bind to Google", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    calendar.close();
+    const session = await openSolo({
+      directory,
+      role: frontdesk({ calendar }),
+      ...createDemoModels(),
+      connectorIdentity: {
+        version: 1,
+        backend: "google",
+        calendarId: "calendar@example.test",
+        timeZone: "UTC",
+        workingHours: { start: "09:00", end: "12:00" },
+        durationMinutes: 60,
+      },
+    });
+    expect(JSON.parse(readFileSync(join(directory, "connector.json"), "utf8"))).toMatchObject({
+      backend: "google",
+    });
+    await session.close();
+  });
+
   it("rejects malformed connector metadata", async () => {
     const directory = temporary();
     writeFileSync(
@@ -392,6 +460,85 @@ describe("openSolo", () => {
     expect(events.size).toBe(1);
     expect(approvals).toBe(1);
     await reopened.close();
+    calendar.close();
+  });
+
+  it("serializes parallel Harness booking tools so one contested slot is written once", async () => {
+    const directory = temporary();
+    const decisions = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const events = new Map<string, Record<string, unknown>>();
+    const order: string[] = [];
+    const transport: typeof fetch = async (input, init = {}) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/freeBusy")) {
+        const busy = [...events.values()].map((event) => ({
+          start: (event.start as Record<string, unknown>).dateTime,
+          end: (event.end as Record<string, unknown>).dateTime,
+        }));
+        order.push("availability");
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        return new Response(JSON.stringify({ calendars: { cal: { busy } } }), { status: 200 });
+      }
+      if (url.pathname.endsWith("/events") && init.method === "POST") {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        const event = { ...body, status: "confirmed", etag: '"etag"' };
+        events.set(String(body.id), event);
+        order.push("insert");
+        return new Response(JSON.stringify(event), { status: 200 });
+      }
+      const id = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
+      const event = events.get(id);
+      return new Response(JSON.stringify(event ?? {}), { status: event === undefined ? 404 : 200 });
+    };
+    const portable = createGoogleCalendar({
+      calendarId: "cal",
+      getAccessToken: async () => "token",
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+      fetch: transport,
+    });
+    const calendar = createGoogleCalendarHost({ client: portable, decisions, durationMinutes: 60 });
+    const faux = fauxProvider({ provider: "parallel", models: [{ id: "model" }] });
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            "book_appointment",
+            { start: "2030-01-15T09:00:00Z", customer: "A" },
+            { id: "call-a" },
+          ),
+          fauxToolCall(
+            "book_appointment",
+            { start: "2030-01-15T09:00:00Z", customer: "B" },
+            { id: "call-b" },
+          ),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Finished."),
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const solo = await openSolo({
+      directory,
+      role: frontdesk({ calendar, approve: async () => ({ approved: true, by: "test" }) }),
+      models,
+      model: { provider: "parallel", modelId: "model" },
+      connectorIdentity: {
+        version: 1,
+        backend: "google",
+        calendarId: "cal",
+        timeZone: "UTC",
+        workingHours: { start: "09:00", end: "12:00" },
+        durationMinutes: 60,
+      },
+    });
+    const result = await solo.submit("Book A and B in the same slot", "parallel-bookings");
+    expect(result.settlement.status).toBe("done");
+    expect(events).toHaveLength(1);
+    expect(order).toEqual(["availability", "insert", "availability"]);
+    await solo.close();
     calendar.close();
   });
 });

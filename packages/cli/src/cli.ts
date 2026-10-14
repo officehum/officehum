@@ -16,6 +16,7 @@ import {
   createGoogleCalendarHost,
   type DecisionStore,
   type GoogleConnectorIdentity,
+  hasDurableLocalState,
   type LocalCalendar,
   openLocalCalendar,
   openSolo,
@@ -178,7 +179,7 @@ const googleIdentity = (calendarId: string): GoogleConnectorIdentity => ({
 function selectedIdentity(parsed: Parsed): ConnectorIdentity {
   const stored = readConnectorIdentity(parsed.state);
   const hasStoredIdentity = existsSync(join(parsed.state, "connector.json"));
-  const hasLegacyState = !hasStoredIdentity && existsSync(join(parsed.state, "harness"));
+  const hasLegacyState = !hasStoredIdentity && hasDurableLocalState(parsed.state);
   const backend =
     parsed.calendar ?? (hasStoredIdentity || hasLegacyState ? stored.backend : "local");
   if ((hasStoredIdentity || hasLegacyState) && backend !== stored.backend) {

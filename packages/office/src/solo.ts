@@ -113,6 +113,26 @@ export function readConnectorIdentity(directory: string): ConnectorIdentity {
   return LOCAL_IDENTITY;
 }
 
+export function hasDurableLocalState(directory: string): boolean {
+  if (existsSync(join(directory, "harness"))) return true;
+  const path = join(directory, "calendar.sqlite");
+  if (!existsSync(path)) return false;
+  const database = new DatabaseSync(path, { readOnly: true });
+  try {
+    for (const table of ["bookings", "approval_decisions"] as const) {
+      const exists = database
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+        .get(table);
+      if (exists !== undefined && database.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get()) {
+        return true;
+      }
+    }
+    return false;
+  } finally {
+    database.close();
+  }
+}
+
 function bindConnectorIdentity(
   directory: string,
   requestedValue: ConnectorIdentity | undefined,
@@ -129,7 +149,7 @@ function bindConnectorIdentity(
     }
   }
   if (stored === undefined) {
-    stored = existsSync(join(directory, "harness")) ? LOCAL_IDENTITY : requested;
+    stored = hasDurableLocalState(directory) ? LOCAL_IDENTITY : requested;
     writeFileSync(path, `${JSON.stringify(stored)}\n`, {
       encoding: "utf8",
       flag: "wx",

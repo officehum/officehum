@@ -143,8 +143,107 @@ describe("Google Calendar REST client", () => {
     });
     response = { calendars: { cal: { errors: [{ reason: "forbidden" }], busy: [] } } };
     await expect(calendar.freeSlots("2030-01-15")).rejects.toThrow(/calendar.*error/i);
+    response = { calendars: { cal: { errors: { reason: "forbidden" }, busy: [] } } };
+    await expect(calendar.freeSlots("2030-01-15")).rejects.toThrow(/malformed/i);
     response = { calendars: { cal: { busy: [{ start: "bad", end: "2030-01-15T11:00:00Z" }] } } };
     await expect(calendar.freeSlots("2030-01-15")).rejects.toThrow(/provider/i);
+  });
+
+  it("fails a booking closed before insert when freeBusy errors are malformed", async () => {
+    let inserts = 0;
+    const calendar = createGoogleCalendar({
+      calendarId: "cal",
+      getAccessToken: async () => "token",
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+      fetch: async (input, init = {}) => {
+        const url = new URL(String(input));
+        if (/\/events\/[^/]+$/.test(url.pathname)) return json(404);
+        if (url.pathname.endsWith("/freeBusy")) {
+          return json(200, { calendars: { cal: { errors: "forbidden", busy: [] } } });
+        }
+        if (init.method === "POST") inserts += 1;
+        return json(500);
+      },
+    });
+    await expect(
+      calendar.book({ ...slot, customer: "Guest", requestId: "malformed-errors" }),
+    ).rejects.toThrow(/malformed/i);
+    expect(inserts).toBe(0);
+  });
+
+  it("serializes mutations through availability and recovers its queue after rejection", async () => {
+    const events = new Map<string, StoredEvent>();
+    const transport: typeof fetch = async (input, init = {}) => {
+      const url = new URL(String(input));
+      const body = typeof init.body === "string" ? (JSON.parse(init.body) as Json) : undefined;
+      const eventPath = /\/events\/([^/]+)$/.exec(url.pathname);
+      if (eventPath !== null) {
+        const event = events.get(decodeURIComponent(eventPath[1] ?? ""));
+        return event === undefined ? json(404) : json(200, event);
+      }
+      if (url.pathname.endsWith("/freeBusy")) {
+        const busy = [...events.values()].map((event) => ({
+          start: (event.start as Json).dateTime,
+          end: (event.end as Json).dateTime,
+        }));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        return json(200, { calendars: { cal: { busy } } });
+      }
+      if (url.pathname.endsWith("/events") && init.method === "POST") {
+        const id = String(body?.id);
+        const event = { ...body, id, etag: `"${id}"`, status: "confirmed" } as StoredEvent;
+        events.set(id, event);
+        return json(200, event);
+      }
+      return json(500);
+    };
+    const calendar = createGoogleCalendar({
+      calendarId: "cal",
+      getAccessToken: async () => "token",
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+      fetch: transport,
+    });
+    const firstTwo = await Promise.allSettled([
+      calendar.book({ ...slot, customer: "A", requestId: "parallel-a" }),
+      calendar.book({ ...slot, customer: "B", requestId: "parallel-b" }),
+    ]);
+    expect(firstTwo.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(events).toHaveLength(1);
+    expect(
+      await calendar.book({
+        start: "2030-01-15T10:00:00Z",
+        end: "2030-01-15T11:00:00Z",
+        customer: "C",
+        requestId: "after-rejection",
+      }),
+    ).toMatchObject({ customer: "C" });
+    expect(events).toHaveLength(2);
+  });
+
+  it("rejects a deleted idempotent booking before availability while cancel accepts gone events", async () => {
+    const calls: string[] = [];
+    const calendar = createGoogleCalendar({
+      calendarId: "cal",
+      getAccessToken: async () => "token",
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+      fetch: async (input, init = {}) => {
+        const url = new URL(String(input));
+        calls.push(`${init.method ?? "GET"} ${url.pathname}`);
+        return json(410);
+      },
+    });
+    await expect(
+      calendar.book({ ...slot, customer: "Guest", requestId: "deleted" }),
+    ).rejects.toThrow(/deleted|cancel/i);
+    expect(calls).toHaveLength(1);
+    await expect(calendar.cancel("gone", "cancel-gone")).resolves.toBeUndefined();
+    expect(calls).toHaveLength(2);
   });
 
   it("books with deterministic ownership metadata and recovers a lost insert response", async () => {
@@ -367,6 +466,30 @@ describe("Google Calendar REST client", () => {
     ).toMatchObject({ start: "2030-01-15T10:00:00Z" });
     await calendar.cancel(booked.id, "cancel");
     await calendar.cancel(booked.id, "cancel");
+  });
+
+  it.each([
+    { start: "2030-01-16", end: "2030-01-15" },
+    { start: "2030-01-15", end: "2030-01-15" },
+  ])("rejects a non-positive all-day conflict $start to $end before PATCH", async (dates) => {
+    const { calendar, events, requests } = fixture();
+    const booked = await calendar.book({ ...slot, customer: "Guest", requestId: "book" });
+    events.set("malformed-blocker", {
+      id: "malformed-blocker",
+      etag: '"bad"',
+      status: "confirmed",
+      start: { date: dates.start },
+      end: { date: dates.end },
+    });
+    const patchCount = requests.filter((request) => request.init.method === "PATCH").length;
+    await expect(
+      calendar.reschedule(
+        booked.id,
+        { start: "2030-01-15T10:00:00Z", end: "2030-01-15T11:00:00Z" },
+        `invalid-${dates.start}-${dates.end}`,
+      ),
+    ).rejects.toThrow(/malformed/i);
+    expect(requests.filter((request) => request.init.method === "PATCH")).toHaveLength(patchCount);
   });
 
   it("rejects cancellation of a found foreign event", async () => {

@@ -338,6 +338,40 @@ describe("runCli", () => {
     }
   });
 
+  it("rejects Google reuse of calendar-only local records before constructing the client", async () => {
+    const directory = state();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    await calendar.book("2030-01-15T09:00:00Z", "Local Guest", "legacy-booking");
+    calendar.close();
+    const previousToken = process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+    const previousId = process.env.GOOGLE_CALENDAR_ID;
+    process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = "test-token";
+    process.env.GOOGLE_CALENDAR_ID = "calendar@example.test";
+    let constructed = 0;
+    try {
+      const capture = io();
+      expect(
+        await runCli(["bookings", "--state", directory, "--calendar", "google"], capture.io, {
+          createGoogleCalendar: () => {
+            constructed += 1;
+            return fakeCalendar({
+              timeZone: "UTC",
+              workingHours: { start: "09:00", end: "12:00" },
+              durationMinutes: 60,
+            });
+          },
+        }),
+      ).toBe(1);
+      expect(capture.errors.join("\n")).toMatch(/legacy|local|identity/i);
+      expect(constructed).toBe(0);
+    } finally {
+      if (previousToken === undefined) delete process.env.GOOGLE_CALENDAR_ACCESS_TOKEN;
+      else process.env.GOOGLE_CALENDAR_ACCESS_TOKEN = previousToken;
+      if (previousId === undefined) delete process.env.GOOGLE_CALENDAR_ID;
+      else process.env.GOOGLE_CALENDAR_ID = previousId;
+    }
+  });
+
   it("fails missing live credentials before admitting input", async () => {
     const directory = state();
     const previous = process.env.OPENAI_API_KEY;

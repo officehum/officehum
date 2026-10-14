@@ -14,6 +14,7 @@ const BASE = "https://www.googleapis.com/calendar/v3";
 const OWNER_KEY = "officehumOwner";
 const OWNER = "frontdesk-v1";
 const RECEIPT = /^r[A-Za-z0-9_-]{43}$/;
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 type Json = Record<string, unknown>;
 type GoogleEvent = Json & { id?: unknown; status?: unknown; etag?: unknown };
@@ -142,15 +143,19 @@ export function createGoogleCalendar(options: GoogleCalendarOptions): CalendarCl
     return { status: response.status, body };
   }
 
-  async function getEvent(id: string, operation: string): Promise<GoogleEvent | undefined> {
+  async function getEvent(
+    id: string,
+    operation: string,
+  ): Promise<{ kind: "found"; event: GoogleEvent } | { kind: "missing" | "deleted" }> {
     const result = await request(
       operation,
       `${calendarPath}/events/${encodeURIComponent(id)}`,
       {},
       [200, 404, 410],
     );
-    if (result.status === 404 || result.status === 410) return undefined;
-    return asJson(result.body, "event") as GoogleEvent;
+    if (result.status === 404) return { kind: "missing" };
+    if (result.status === 410) return { kind: "deleted" };
+    return { kind: "found", event: asJson(result.body, "event") as GoogleEvent };
   }
 
   async function freeBusy(window: Slot): Promise<Slot[]> {
@@ -166,8 +171,12 @@ export function createGoogleCalendar(options: GoogleCalendarOptions): CalendarCl
     const root = asJson(result.body, "freeBusy");
     const calendars = asJson(root.calendars, "freeBusy calendars");
     const entry = asJson(calendars[calendarId], "freeBusy calendar");
-    if (Array.isArray(entry.errors) && entry.errors.length > 0)
-      throw new Error("Google Calendar calendar-level error blocked availability.");
+    if (entry.errors !== undefined) {
+      if (!Array.isArray(entry.errors))
+        throw new Error("Google Calendar returned malformed freeBusy data.");
+      if (entry.errors.length > 0)
+        throw new Error("Google Calendar calendar-level error blocked availability.");
+    }
     if (!Array.isArray(entry.busy))
       throw new Error("Google Calendar returned malformed freeBusy data.");
     return entry.busy.map((item) => {
@@ -259,6 +268,7 @@ export function createGoogleCalendar(options: GoogleCalendarOptions): CalendarCl
     if (typeof start.date === "string" && typeof end.date === "string") {
       const timeZone = await getTimeZone();
       try {
+        if (!DATE_ONLY.test(start.date) || !DATE_ONLY.test(end.date)) throw new Error();
         const startInstant = Temporal.PlainDate.from(start.date)
           .toPlainDateTime("00:00")
           .toZonedDateTime(timeZone, { disambiguation: "reject" })
@@ -267,7 +277,7 @@ export function createGoogleCalendar(options: GoogleCalendarOptions): CalendarCl
           .toPlainDateTime("00:00")
           .toZonedDateTime(timeZone, { disambiguation: "reject" })
           .toInstant();
-        return { start: startInstant.toString(), end: endInstant.toString() };
+        return canonicalSlot({ start: startInstant.toString(), end: endInstant.toString() });
       } catch {
         throw new Error("Google Calendar returned malformed all-day conflict data.");
       }
@@ -297,6 +307,16 @@ export function createGoogleCalendar(options: GoogleCalendarOptions): CalendarCl
     }
   }
 
+  let mutationTail: Promise<void> = Promise.resolve();
+  function enqueueMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = mutationTail.then(operation);
+    mutationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
   return {
     async freeSlots(date) {
       const candidates = slotsFor(schedule, date);
@@ -319,111 +339,122 @@ export function createGoogleCalendar(options: GoogleCalendarOptions): CalendarCl
       return result.sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id));
     },
     async book(input) {
-      const slot = validateSlot(schedule, input);
-      const customer = validBounded(input.customer, "Customer");
-      const requestId = validBounded(input.requestId, "Request ID");
-      const id = eventId(requestId);
-      const existing = await getEvent(id, "get booking");
-      if (existing !== undefined)
-        return verifyExistingBook(existing, { id, slot, customer, requestId });
-      await assertAvailable(slot);
-      const fingerprint = bookFingerprint(calendarId, slot, customer, schedule.timeZone);
-      const body = {
-        id,
-        summary: `Office Hum appointment: ${customer}`,
-        start: { dateTime: slot.start, timeZone: schedule.timeZone },
-        end: { dateTime: slot.end, timeZone: schedule.timeZone },
-        reminders: { useDefault: false },
-        extendedProperties: {
-          private: {
-            [OWNER_KEY]: OWNER,
-            requestDigest: requestDigest(requestId),
-            customer,
-            bookFingerprint: fingerprint,
-          },
-        },
-      };
-      try {
-        const result = await request(
-          "insert booking",
-          `${calendarPath}/events?sendUpdates=none`,
-          { method: "POST", body: JSON.stringify(body) },
-          [200, 201],
-        );
-        return verifyExistingBook(asJson(result.body, "inserted event") as GoogleEvent, {
+      return enqueueMutation(async () => {
+        const slot = validateSlot(schedule, input);
+        const customer = validBounded(input.customer, "Customer");
+        const requestId = validBounded(input.requestId, "Request ID");
+        const id = eventId(requestId);
+        const existing = await getEvent(id, "get booking");
+        if (existing.kind === "deleted")
+          throw new Error("The idempotent Google Calendar booking was deleted or canceled.");
+        if (existing.kind === "found")
+          return verifyExistingBook(existing.event, { id, slot, customer, requestId });
+        await assertAvailable(slot);
+        const fingerprint = bookFingerprint(calendarId, slot, customer, schedule.timeZone);
+        const body = {
           id,
-          slot,
-          customer,
-          requestId,
-        });
-      } catch (error) {
-        if (!(error instanceof Error) || !error.message.includes("(409)")) throw error;
-        const conflict = await getEvent(id, "recover booking conflict");
-        if (conflict === undefined)
-          throw new Error("Google Calendar booking conflict could not be recovered.");
-        return verifyExistingBook(conflict, { id, slot, customer, requestId });
-      }
+          summary: `Office Hum appointment: ${customer}`,
+          start: { dateTime: slot.start, timeZone: schedule.timeZone },
+          end: { dateTime: slot.end, timeZone: schedule.timeZone },
+          reminders: { useDefault: false },
+          extendedProperties: {
+            private: {
+              [OWNER_KEY]: OWNER,
+              requestDigest: requestDigest(requestId),
+              customer,
+              bookFingerprint: fingerprint,
+            },
+          },
+        };
+        try {
+          const result = await request(
+            "insert booking",
+            `${calendarPath}/events?sendUpdates=none`,
+            { method: "POST", body: JSON.stringify(body) },
+            [200, 201],
+          );
+          return verifyExistingBook(asJson(result.body, "inserted event") as GoogleEvent, {
+            id,
+            slot,
+            customer,
+            requestId,
+          });
+        } catch (error) {
+          if (!(error instanceof Error) || !error.message.includes("(409)")) throw error;
+          const conflict = await getEvent(id, "recover booking conflict");
+          if (conflict.kind !== "found")
+            throw new Error("Google Calendar booking conflict could not be recovered.");
+          return verifyExistingBook(conflict.event, { id, slot, customer, requestId });
+        }
+      });
     },
     async reschedule(idValue, input, requestIdValue) {
-      const id = validBounded(idValue, "Booking ID");
-      const requestId = validBounded(requestIdValue, "Request ID");
-      const slot = validateSlot(schedule, input);
-      const event = await getEvent(id, "get reschedule booking");
-      if (event === undefined) throw new Error("Managed Google Calendar booking was not found.");
-      const booking = managedBooking(event, schedule.timeZone);
-      const properties = privateProperties(event) ?? {};
-      const key = `r${createHash("sha256").update(requestId).digest("base64url")}`;
-      const fingerprint = targetFingerprint(slot);
-      const prior = properties[key];
-      if (prior !== undefined) {
-        if (prior !== fingerprint)
-          throw new Error("Reschedule request ID was reused with different arguments.");
-        if (booking.start !== slot.start || booking.end !== slot.end)
-          throw new Error("Reschedule request was superseded by a later move.");
-        return booking;
-      }
-      if (Object.keys(properties).filter((name) => RECEIPT.test(name)).length >= 64)
-        throw new Error("Reschedule receipt limit reached.");
-      await assertTargetAvailable(id, slot);
-      if (typeof event.etag !== "string" || event.etag.length === 0)
-        throw new Error("Google Calendar event ETag is malformed.");
-      const result = await request(
-        "reschedule booking",
-        `${calendarPath}/events/${encodeURIComponent(id)}?sendUpdates=none`,
-        {
-          method: "PATCH",
-          headers: { "If-Match": event.etag },
-          body: JSON.stringify({
-            start: { dateTime: slot.start, timeZone: schedule.timeZone },
-            end: { dateTime: slot.end, timeZone: schedule.timeZone },
-            extendedProperties: { private: { ...properties, [key]: fingerprint } },
-          }),
-        },
-      );
-      const updated = asJson(result.body, "rescheduled event") as GoogleEvent;
-      if (privateProperties(updated)?.[key] !== fingerprint)
-        throw new Error("Google Calendar reschedule receipt was not persisted.");
-      const updatedBooking = managedBooking(updated, schedule.timeZone);
-      if (updatedBooking.start !== slot.start || updatedBooking.end !== slot.end)
-        throw new Error("Google Calendar returned the wrong reschedule target.");
-      return updatedBooking;
+      return enqueueMutation(async () => {
+        const id = validBounded(idValue, "Booking ID");
+        const requestId = validBounded(requestIdValue, "Request ID");
+        const slot = validateSlot(schedule, input);
+        const lookup = await getEvent(id, "get reschedule booking");
+        if (lookup.kind !== "found")
+          throw new Error("Managed Google Calendar booking was not found.");
+        const event = lookup.event;
+        const booking = managedBooking(event, schedule.timeZone);
+        const properties = privateProperties(event) ?? {};
+        const key = `r${createHash("sha256").update(requestId).digest("base64url")}`;
+        const fingerprint = targetFingerprint(slot);
+        const prior = properties[key];
+        if (prior !== undefined) {
+          if (prior !== fingerprint)
+            throw new Error("Reschedule request ID was reused with different arguments.");
+          if (booking.start !== slot.start || booking.end !== slot.end)
+            throw new Error("Reschedule request was superseded by a later move.");
+          return booking;
+        }
+        if (Object.keys(properties).filter((name) => RECEIPT.test(name)).length >= 64)
+          throw new Error("Reschedule receipt limit reached.");
+        await assertTargetAvailable(id, slot);
+        if (typeof event.etag !== "string" || event.etag.length === 0)
+          throw new Error("Google Calendar event ETag is malformed.");
+        const result = await request(
+          "reschedule booking",
+          `${calendarPath}/events/${encodeURIComponent(id)}?sendUpdates=none`,
+          {
+            method: "PATCH",
+            headers: { "If-Match": event.etag },
+            body: JSON.stringify({
+              start: { dateTime: slot.start, timeZone: schedule.timeZone },
+              end: { dateTime: slot.end, timeZone: schedule.timeZone },
+              extendedProperties: { private: { ...properties, [key]: fingerprint } },
+            }),
+          },
+        );
+        const updated = asJson(result.body, "rescheduled event") as GoogleEvent;
+        if (privateProperties(updated)?.[key] !== fingerprint)
+          throw new Error("Google Calendar reschedule receipt was not persisted.");
+        const updatedBooking = managedBooking(updated, schedule.timeZone);
+        if (updatedBooking.start !== slot.start || updatedBooking.end !== slot.end)
+          throw new Error("Google Calendar returned the wrong reschedule target.");
+        return updatedBooking;
+      });
     },
     async cancel(idValue, requestIdValue) {
-      const id = validBounded(idValue, "Booking ID");
-      validBounded(requestIdValue, "Request ID");
-      const event = await getEvent(id, "get cancellation booking");
-      if (event === undefined) return;
-      const properties = privateProperties(event);
-      if (properties?.[OWNER_KEY] !== OWNER)
-        throw new Error("Google Calendar event is not owned by Office Hum.");
-      if (event.status === "cancelled") return;
-      managedBooking(event, schedule.timeZone);
-      await request(
-        "cancel booking",
-        `${calendarPath}/events/${encodeURIComponent(id)}?sendUpdates=none`,
-        { method: "DELETE" },
-        [204, 404, 410],
-      );
+      return enqueueMutation(async () => {
+        const id = validBounded(idValue, "Booking ID");
+        validBounded(requestIdValue, "Request ID");
+        const lookup = await getEvent(id, "get cancellation booking");
+        if (lookup.kind !== "found") return;
+        const event = lookup.event;
+        const properties = privateProperties(event);
+        if (properties?.[OWNER_KEY] !== OWNER)
+          throw new Error("Google Calendar event is not owned by Office Hum.");
+        if (event.status === "cancelled") return;
+        managedBooking(event, schedule.timeZone);
+        await request(
+          "cancel booking",
+          `${calendarPath}/events/${encodeURIComponent(id)}?sendUpdates=none`,
+          { method: "DELETE" },
+          [204, 404, 410],
+        );
+      });
     },
   };
 }

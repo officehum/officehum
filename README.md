@@ -68,9 +68,10 @@ is rejected because it can refer to a different calendar after a token change.
 Bookings disable default reminders, omit attendees, and use `sendUpdates=none`, so Office Hum does
 not send invitations. Approval decisions remain in the local `calendar.sqlite`; Google bookings are
 listed asynchronously from the provider. A single Office Hum process owns each state directory,
-but Google does not atomically combine availability checks with event creation. Independent writers
-can therefore take the same slot between the check and insert. Deterministic event IDs make durable
-retries safe; they do not lock a slot across writers. Externally deleted event tombstones can
+and one connector client serializes its complete booking, reschedule, and cancel operations. Google
+does not atomically combine availability checks with event creation, so independent connector or
+provider writers can still take the same slot between the check and insert. Deterministic event IDs
+make durable retries safe; they do not lock a slot across writers. Externally deleted event tombstones can
 eventually disappear, so provider-only history cannot distinguish a purged deletion from an ID that
 was never created indefinitely.
 
@@ -80,7 +81,9 @@ Use separate state directories for demo and live modes; a persisted conversation
 provider/model, and the CLI rejects cross-mode reuse before admitting input. The default state is
 `.officehum/frontdesk`: Pi Durable JSONL data is under `harness/`, bookings and approval decisions
 are in `calendar.sqlite`, and a lifetime transaction in `ownership.sqlite` enforces one process at a
-time. `owner.lock` records its PID for diagnostics. A second live owner is rejected; after a crash,
+time. An identity-free state with a harness or any persisted booking or approval record is treated
+as legacy local state; an empty preflight calendar database remains available for initial binding.
+`owner.lock` records its PID for diagnostics. A second live owner is rejected; after a crash,
 the operating system releases the SQLite lock and the next owner reclaims a dead PID marker.
 Malformed markers are left in place for inspection.
 

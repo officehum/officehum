@@ -24,6 +24,7 @@ export {
 export {
   type ConnectorIdentity,
   type GoogleConnectorIdentity,
+  hasDurableLocalState,
   type LocalConnectorIdentity,
   type OpenSoloOptions,
   openSolo,
