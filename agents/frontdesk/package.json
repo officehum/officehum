@@ -1,7 +1,7 @@
 {
   "name": "@officehum/frontdesk",
   "version": "0.0.0",
-  "description": "Portable Front Desk role for checking and booking UTC appointment slots.",
+  "description": "Portable Front Desk role for listing and managing approved UTC appointments.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

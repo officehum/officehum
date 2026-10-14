@@ -11,7 +11,8 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
-import { hook, ToolTask } from "@earendil-works/pi-durable";
+import { createRegistry, Harness, hook, ToolTask } from "@earendil-works/pi-durable";
+import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
 import type { Approver, RoleBundle } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import frontdesk from "../../../agents/frontdesk/src/index.js";
@@ -30,6 +31,67 @@ const temporary = () => {
   temps.push(directory);
   return directory;
 };
+
+function googleMutationFixture() {
+  const events = new Map<string, Record<string, unknown>>();
+  const writes = { posts: 0, patches: 0, deletes: 0 };
+  const transport: typeof fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/freeBusy")) {
+      const busy = [...events.values()].map((event) => ({
+        start: (event.start as Record<string, unknown>).dateTime,
+        end: (event.end as Record<string, unknown>).dateTime,
+      }));
+      return new Response(JSON.stringify({ calendars: { cal: { busy } } }), { status: 200 });
+    }
+    const eventPath = /\/events\/([^/]+)$/.exec(url.pathname);
+    if (eventPath !== null) {
+      const id = decodeURIComponent(eventPath[1] ?? "");
+      const event = events.get(id);
+      if (init.method === "PATCH") {
+        if (event === undefined) return new Response(undefined, { status: 404 });
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        const previousPrivate = (event.extendedProperties as Record<string, unknown>).private as
+          | Record<string, unknown>
+          | undefined;
+        const nextPrivate = (body.extendedProperties as Record<string, unknown>).private as
+          | Record<string, unknown>
+          | undefined;
+        const updated = {
+          ...event,
+          ...body,
+          id,
+          status: "confirmed",
+          etag: `"etag-${writes.patches + 1}"`,
+          extendedProperties: { private: { ...previousPrivate, ...nextPrivate } },
+        };
+        events.set(id, updated);
+        writes.patches += 1;
+        return new Response(JSON.stringify(updated), { status: 200 });
+      }
+      if (init.method === "DELETE") {
+        events.delete(id);
+        writes.deletes += 1;
+        return new Response(undefined, { status: 204 });
+      }
+      return new Response(JSON.stringify(event ?? {}), {
+        status: event === undefined ? 404 : 200,
+      });
+    }
+    if (url.pathname.endsWith("/events") && init.method === "POST") {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      const event = { ...body, status: "confirmed", etag: `"etag-post-${writes.posts + 1}"` };
+      events.set(String(body.id), event);
+      writes.posts += 1;
+      return new Response(JSON.stringify(event), { status: 200 });
+    }
+    if (url.pathname.endsWith("/events")) {
+      return new Response(JSON.stringify({ items: [...events.values()] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ timeZone: "UTC" }), { status: 200 });
+  };
+  return { events, transport, writes };
+}
 
 type ChildResult =
   | { status: "opened"; pid: number; marker: { pid: number; token: string } }
@@ -138,14 +200,14 @@ describe("openSolo", () => {
     calendar.close();
   });
 
-  it.each(["booking", "approval"] as const)(
+  it.each(["booking", "approval", "operation"] as const)(
     "treats identity-free durable local %s records as legacy state",
     async (record) => {
       const directory = temporary();
       const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
       if (record === "booking") {
         await calendar.book("2030-01-15T09:00:00Z", "Local Guest", "legacy-booking");
-      } else {
+      } else if (record === "approval") {
         calendar.recordDecision(
           "legacy-decision",
           {
@@ -158,6 +220,12 @@ describe("openSolo", () => {
             callId: "call",
           },
           { approved: true, by: "test" },
+        );
+      } else {
+        calendar.bindOperation(
+          "pending-operation",
+          "cancel",
+          JSON.stringify({ kind: "cancel", id: "missing" }),
         );
       }
       await expect(
@@ -241,6 +309,230 @@ describe("openSolo", () => {
     await reopened.close();
     calendar.close();
   });
+
+  it("refreshes lifecycle tools on an old root without replacing its model or conversation", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const runtime = scriptedModels();
+    const registry = createRegistry();
+    for (const extension of role.extensions) registry.install(extension);
+    const storage = await openNodeJsonlStorage(join(directory, "harness"), BACKGROUND_CONTEXT, {
+      fsync: true,
+    });
+    const legacyHarness = await Harness.open(
+      storage,
+      { models: runtime.models, registry },
+      BACKGROUND_CONTEXT,
+    );
+    const original = await legacyHarness.root(BACKGROUND_CONTEXT, { agent: role.agent });
+    const registrations = role.extensions.flatMap((extension) => extension.tools ?? []);
+    const oldTools = registrations.filter((tool) =>
+      ["check_schedule", "book_appointment"].includes(tool.name),
+    );
+    await original.configure({ tools: oldTools }, BACKGROUND_CONTEXT);
+    const originalAgent = await original.agent(BACKGROUND_CONTEXT);
+    expect(originalAgent.tools.map(({ name }) => name).sort()).toEqual([
+      "book_appointment",
+      "check_schedule",
+    ]);
+    const rootId = original.id;
+    const model = originalAgent.model;
+    await legacyHarness.close(BACKGROUND_CONTEXT);
+
+    const reopened = await openSolo({ directory, role, models: runtime.models });
+    expect(reopened.root.id).toBe(rootId);
+    expect((await reopened.root.agent(BACKGROUND_CONTEXT)).model).toEqual(model);
+    expect((await reopened.root.agent(BACKGROUND_CONTEXT)).tools.map(({ name }) => name)).toEqual(
+      expect.arrayContaining([
+        "check_schedule",
+        "book_appointment",
+        "list_bookings",
+        "reschedule_appointment",
+        "cancel_appointment",
+      ]),
+    );
+    await reopened.close();
+    calendar.close();
+  });
+
+  it("keeps lifecycle tools disabled by a role overlay across fresh open and reopen", async () => {
+    const directory = temporary();
+    const overlay = join(directory, "overlay");
+    mkdirSync(overlay);
+    writeFileSync(
+      join(overlay, "settings.json"),
+      JSON.stringify({ tools: ["-cancel_appointment", "-reschedule_appointment"] }),
+    );
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar, overlays: [overlay] });
+    const runtime = createDemoModels();
+
+    const opened = await openSolo({ directory, role, ...runtime });
+    expect((await opened.root.agent(BACKGROUND_CONTEXT)).tools.map(({ name }) => name)).not.toEqual(
+      expect.arrayContaining(["cancel_appointment", "reschedule_appointment"]),
+    );
+    await opened.close();
+
+    const reopened = await openSolo({ directory, role, ...runtime });
+    expect(
+      (await reopened.root.agent(BACKGROUND_CONTEXT)).tools.map(({ name }) => name),
+    ).not.toEqual(expect.arrayContaining(["cancel_appointment", "reschedule_appointment"]));
+    await reopened.close();
+    calendar.close();
+  });
+
+  it("preserves an explicit persisted lifecycle-tool removal across reopen", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const runtime = createDemoModels();
+    const cancel = role.extensions
+      .flatMap((extension) => extension.tools ?? [])
+      .find((tool) => tool.name === "cancel_appointment");
+    if (cancel === undefined) throw new Error("missing cancellation tool");
+
+    const opened = await openSolo({ directory, role, ...runtime });
+    await opened.root.configure({ tools: { remove: [cancel] } }, BACKGROUND_CONTEXT);
+    await opened.close();
+
+    const reopened = await openSolo({ directory, role, ...runtime });
+    expect(
+      (await reopened.root.agent(BACKGROUND_CONTEXT)).tools.map(({ name }) => name),
+    ).not.toContain("cancel_appointment");
+    await reopened.close();
+    calendar.close();
+  });
+
+  it("discovers, moves, rediscovers, and cancels a booking through the actual Harness", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const seeded = await calendar.book("2030-01-15T09:00:00Z", "Same Name", "seed");
+    let approvals = 0;
+    const faux = fauxProvider({ provider: "lifecycle-flow", models: [{ id: "model" }] });
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall("list_bookings", {}), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall("check_schedule", { date: "2030-01-15" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(
+        fauxToolCall("reschedule_appointment", {
+          id: seeded.id,
+          start: "2030-01-15T10:00:00Z",
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(fauxToolCall("list_bookings", {}), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall("cancel_appointment", { id: seeded.id }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(fauxToolCall("list_bookings", {}), { stopReason: "toolUse" }),
+      fauxAssistantMessage("The appointment was moved and canceled."),
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const solo = await openSolo({
+      directory,
+      role: frontdesk({
+        calendar,
+        approve: async () => {
+          approvals += 1;
+          return { approved: true, by: "test" };
+        },
+      }),
+      models,
+      model: { provider: "lifecycle-flow", modelId: "model" },
+    });
+    const result = await solo.submit("Move and then cancel Same Name", "lifecycle-flow");
+    expect(result.settlement.status).toBe("done");
+    expect(result.text).toContain("moved and canceled");
+    expect(approvals).toBe(2);
+    expect(await calendar.listBookings()).toEqual([]);
+    expect(calendar.canceledBooking(seeded.id)).toEqual({
+      id: seeded.id,
+      status: "canceled",
+      alreadyCanceled: false,
+    });
+    await solo.close();
+    calendar.close();
+  });
+
+  it.each(["reschedule", "cancel"] as const)(
+    "recovers a local %s committed before tool settlement with one approval and submission",
+    async (kind) => {
+      const directory = temporary();
+      const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+      const seeded = await calendar.book("2030-01-15T09:00:00Z", "Guest", "seed");
+      let approvals = 0;
+      const approve: Approver = async () => {
+        approvals += 1;
+        return { approved: true, by: "test" };
+      };
+      const normalRole = frontdesk({ calendar, approve });
+      let reached!: () => void;
+      const barrier = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      const pauseAfterEffect = hook(ToolTask, {
+        afterTool: async (call, result, _api, context) => {
+          if (call.name !== `${kind}_appointment`) return result;
+          reached();
+          await awaitWithContext(new Promise<never>(() => {}), context);
+          return result;
+        },
+      });
+      const [roleExtension, ...rest] = normalRole.extensions;
+      if (roleExtension === undefined) throw new Error("missing role extension");
+      const interrupted: RoleBundle = {
+        extensions: [
+          { ...roleExtension, hooks: [...(roleExtension.hooks ?? []), pauseAfterEffect] },
+          ...rest,
+        ],
+        agent: normalRole.agent,
+      };
+      const firstFaux = fauxProvider({ provider: `recover-${kind}`, models: [{ id: "model" }] });
+      firstFaux.setResponses([
+        fauxAssistantMessage(
+          fauxToolCall(
+            `${kind}_appointment`,
+            kind === "reschedule"
+              ? { id: seeded.id, start: "2030-01-15T10:00:00Z" }
+              : { id: seeded.id },
+          ),
+          { stopReason: "toolUse" },
+        ),
+      ]);
+      const firstModels = createModels();
+      firstModels.setProvider(firstFaux.provider);
+      const solo = await openSolo({
+        directory,
+        role: interrupted,
+        models: firstModels,
+        model: { provider: `recover-${kind}`, modelId: "model" },
+      });
+      const pending = solo.submit(`please ${kind}`, `${kind}-request`);
+      await barrier;
+      const [submission] = (await solo.harness.inspect(BACKGROUND_CONTEXT)).submissions;
+      expect(submission).toBeDefined();
+      await solo.close();
+      await expect(pending).rejects.toThrow();
+
+      const resumedFaux = fauxProvider({ provider: `recover-${kind}`, models: [{ id: "model" }] });
+      resumedFaux.setResponses([fauxAssistantMessage("Recovered the original request.")]);
+      const resumedModels = createModels();
+      resumedModels.setProvider(resumedFaux.provider);
+      const reopened = await openSolo({ directory, role: normalRole, models: resumedModels });
+      const [result] = await reopened.resume();
+      expect(result?.submissionId).toBe(submission?.id);
+      expect(result?.settlement.status).toBe("done");
+      expect(approvals).toBe(1);
+      expect(await calendar.listBookings()).toEqual(
+        kind === "reschedule" ? [{ ...seeded, start: "2030-01-15T10:00:00Z" }] : [],
+      );
+      await reopened.close();
+      calendar.close();
+    },
+  );
 
   it("rejects an active owner and recovers a stale lock", async () => {
     const directory = temporary();
@@ -463,6 +755,181 @@ describe("openSolo", () => {
     calendar.close();
   });
 
+  it.each(["reschedule", "cancel"] as const)(
+    "recovers a lost Google %s response through the actual Harness without a second write",
+    async (kind) => {
+      const directory = temporary();
+      const decisions = openLocalCalendar(join(directory, "calendar.sqlite"));
+      const identity = {
+        version: 1 as const,
+        backend: "google" as const,
+        calendarId: "cal",
+        timeZone: "UTC" as const,
+        workingHours: { start: "09:00" as const, end: "12:00" as const },
+        durationMinutes: 60 as const,
+      };
+      writeFileSync(join(directory, "connector.json"), `${JSON.stringify(identity)}\n`);
+      const events = new Map<string, Record<string, unknown>>();
+      let writes = 0;
+      let loseResponse = true;
+      const transport: typeof fetch = async (input, init = {}) => {
+        const url = new URL(String(input));
+        if (url.pathname.endsWith("/freeBusy")) {
+          const busy = [...events.values()].map((event) => ({
+            start: (event.start as Record<string, unknown>).dateTime,
+            end: (event.end as Record<string, unknown>).dateTime,
+          }));
+          return new Response(JSON.stringify({ calendars: { cal: { busy } } }), { status: 200 });
+        }
+        const eventPath = /\/events\/([^/]+)$/.exec(url.pathname);
+        if (eventPath !== null) {
+          const id = decodeURIComponent(eventPath[1] ?? "");
+          const event = events.get(id);
+          if (init.method === "PATCH") {
+            if (event === undefined) return new Response(undefined, { status: 404 });
+            const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+            const privateBefore = (event.extendedProperties as Record<string, unknown>).private as
+              | Record<string, unknown>
+              | undefined;
+            const privateAfter = (body.extendedProperties as Record<string, unknown>).private as
+              | Record<string, unknown>
+              | undefined;
+            const updated = {
+              ...event,
+              ...body,
+              id,
+              status: "confirmed",
+              etag: '"etag-moved"',
+              extendedProperties: { private: { ...privateBefore, ...privateAfter } },
+            };
+            events.set(id, updated);
+            writes += 1;
+            if (loseResponse) {
+              loseResponse = false;
+              throw new Error("lost PATCH response");
+            }
+            return new Response(JSON.stringify(updated), { status: 200 });
+          }
+          if (init.method === "DELETE") {
+            events.delete(id);
+            writes += 1;
+            if (loseResponse) {
+              loseResponse = false;
+              throw new Error("lost DELETE response");
+            }
+            return new Response(undefined, { status: 204 });
+          }
+          return new Response(JSON.stringify(event ?? {}), {
+            status: event === undefined ? 404 : 200,
+          });
+        }
+        if (url.pathname.endsWith("/events") && init.method === "POST") {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+          const event = { ...body, status: "confirmed", etag: '"etag-seed"' };
+          events.set(String(body.id), event);
+          return new Response(JSON.stringify(event), { status: 200 });
+        }
+        if (url.pathname.endsWith("/events")) {
+          return new Response(JSON.stringify({ items: [...events.values()] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ timeZone: "UTC" }), { status: 200 });
+      };
+      const portable = createGoogleCalendar({
+        calendarId: "cal",
+        getAccessToken: async () => "token",
+        timeZone: "UTC",
+        workingHours: { start: "09:00", end: "12:00" },
+        durationMinutes: 60,
+        fetch: transport,
+      });
+      const calendar = createGoogleCalendarHost({
+        client: portable,
+        decisions,
+        durationMinutes: 60,
+      });
+      const seeded = await calendar.book("2030-01-15T09:00:00Z", "Guest", "seed");
+      let approvals = 0;
+      const approve: Approver = async () => {
+        approvals += 1;
+        return { approved: true, by: "test" };
+      };
+      const normalRole = frontdesk({ calendar, approve });
+      let reached!: () => void;
+      const barrier = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      const pauseAfterLostResponse = hook(ToolTask, {
+        afterTool: async (call, result, _api, context) => {
+          if (call.name !== `${kind}_appointment`) return result;
+          reached();
+          await awaitWithContext(new Promise<never>(() => {}), context);
+          return result;
+        },
+      });
+      const [roleExtension, ...rest] = normalRole.extensions;
+      if (roleExtension === undefined) throw new Error("missing role extension");
+      const interrupted: RoleBundle = {
+        extensions: [
+          {
+            ...roleExtension,
+            hooks: [...(roleExtension.hooks ?? []), pauseAfterLostResponse],
+          },
+          ...rest,
+        ],
+        agent: normalRole.agent,
+      };
+      const provider = `google-recover-${kind}`;
+      const firstFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+      firstFaux.setResponses([
+        fauxAssistantMessage(
+          fauxToolCall(
+            `${kind}_appointment`,
+            kind === "reschedule"
+              ? { id: seeded.id, start: "2030-01-15T10:00:00Z" }
+              : { id: seeded.id },
+          ),
+          { stopReason: "toolUse" },
+        ),
+      ]);
+      const firstModels = createModels();
+      firstModels.setProvider(firstFaux.provider);
+      const solo = await openSolo({
+        directory,
+        role: interrupted,
+        models: firstModels,
+        model: { provider, modelId: "model" },
+        connectorIdentity: identity,
+      });
+      const pending = solo.submit(`please ${kind}`, `google-${kind}-request`);
+      await barrier;
+      const [submission] = (await solo.harness.inspect(BACKGROUND_CONTEXT)).submissions;
+      expect(writes).toBe(1);
+      await solo.close();
+      await expect(pending).rejects.toThrow();
+
+      const resumedFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+      resumedFaux.setResponses([fauxAssistantMessage("Recovered the original request.")]);
+      const resumedModels = createModels();
+      resumedModels.setProvider(resumedFaux.provider);
+      const reopened = await openSolo({
+        directory,
+        role: normalRole,
+        models: resumedModels,
+        connectorIdentity: identity,
+      });
+      const [result] = await reopened.resume();
+      expect(result?.submissionId).toBe(submission?.id);
+      expect(result?.settlement.status).toBe("done");
+      expect(approvals).toBe(1);
+      expect(writes).toBe(1);
+      expect(await calendar.listBookings()).toEqual(
+        kind === "reschedule" ? [{ ...seeded, start: "2030-01-15T10:00:00Z" }] : [],
+      );
+      await reopened.close();
+      calendar.close();
+    },
+  );
+
   it("serializes parallel Harness booking tools so one contested slot is written once", async () => {
     const directory = temporary();
     const decisions = openLocalCalendar(join(directory, "calendar.sqlite"));
@@ -538,6 +1005,248 @@ describe("openSolo", () => {
     expect(result.settlement.status).toBe("done");
     expect(events).toHaveLength(1);
     expect(order).toEqual(["availability", "insert", "availability"]);
+    await solo.close();
+    calendar.close();
+  });
+
+  it("serializes two parallel Harness moves to one target and continues after the rejection", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const first = await calendar.book("2030-01-15T09:00:00Z", "A", "seed-a");
+    const second = await calendar.book("2030-01-15T10:00:00Z", "B", "seed-b");
+    let approvals = 0;
+    const faux = fauxProvider({ provider: "parallel-moves", models: [{ id: "model" }] });
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            "reschedule_appointment",
+            { id: first.id, start: "2030-01-15T11:00:00Z" },
+            { id: "move-a" },
+          ),
+          fauxToolCall(
+            "reschedule_appointment",
+            { id: second.id, start: "2030-01-15T11:00:00Z" },
+            { id: "move-b" },
+          ),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(fauxToolCall("cancel_appointment", { id: first.id }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("Finished."),
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const solo = await openSolo({
+      directory,
+      role: frontdesk({
+        calendar,
+        approve: async () => {
+          approvals += 1;
+          return { approved: true, by: "test" };
+        },
+      }),
+      models,
+      model: { provider: "parallel-moves", modelId: "model" },
+    });
+    const result = await solo.submit("Move both, then cancel A", "parallel-moves");
+    expect(result.settlement.status).toBe("done");
+    expect(approvals).toBe(3);
+    const active = await calendar.listBookings();
+    expect(active).toHaveLength(1);
+    expect(active[0]?.id).toBe(second.id);
+    expect(["2030-01-15T10:00:00Z", "2030-01-15T11:00:00Z"]).toContain(active[0]?.start);
+    expect(calendar.canceledBooking(first.id)).toBeDefined();
+    await solo.close();
+    calendar.close();
+  });
+
+  it("serializes a parallel Harness move and cancellation on one booking to a consistent tombstone", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const seeded = await calendar.book("2030-01-15T09:00:00Z", "Guest", "seed");
+    let approvals = 0;
+    const faux = fauxProvider({ provider: "parallel-move-cancel", models: [{ id: "model" }] });
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            "reschedule_appointment",
+            { id: seeded.id, start: "2030-01-15T10:00:00Z" },
+            { id: "move" },
+          ),
+          fauxToolCall("cancel_appointment", { id: seeded.id }, { id: "cancel" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Finished."),
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const solo = await openSolo({
+      directory,
+      role: frontdesk({
+        calendar,
+        approve: async () => {
+          approvals += 1;
+          return { approved: true, by: "test" };
+        },
+      }),
+      models,
+      model: { provider: "parallel-move-cancel", modelId: "model" },
+    });
+    const result = await solo.submit("Move and cancel together", "parallel-move-cancel");
+    expect(result.settlement.status).toBe("done");
+    expect(approvals).toBe(2);
+    expect(await calendar.listBookings()).toEqual([]);
+    expect(calendar.canceledBooking(seeded.id)).toEqual({
+      id: seeded.id,
+      status: "canceled",
+      alreadyCanceled: false,
+    });
+    await solo.close();
+    calendar.close();
+  });
+
+  it("serializes parallel Google Harness moves and accepts a successful call after one rejects", async () => {
+    const directory = temporary();
+    const identity = {
+      version: 1 as const,
+      backend: "google" as const,
+      calendarId: "cal",
+      timeZone: "UTC" as const,
+      workingHours: { start: "09:00" as const, end: "12:00" as const },
+      durationMinutes: 60 as const,
+    };
+    writeFileSync(join(directory, "connector.json"), `${JSON.stringify(identity)}\n`);
+    const decisions = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const rest = googleMutationFixture();
+    const client = createGoogleCalendar({
+      calendarId: "cal",
+      getAccessToken: async () => "token",
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+      fetch: rest.transport,
+    });
+    const calendar = createGoogleCalendarHost({ client, decisions, durationMinutes: 60 });
+    const first = await calendar.book("2030-01-15T09:00:00Z", "A", "seed-a");
+    const second = await calendar.book("2030-01-15T10:00:00Z", "B", "seed-b");
+    let approvals = 0;
+    const faux = fauxProvider({ provider: "parallel-google-moves", models: [{ id: "model" }] });
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            "reschedule_appointment",
+            { id: first.id, start: "2030-01-15T11:00:00Z" },
+            { id: "move-a" },
+          ),
+          fauxToolCall(
+            "reschedule_appointment",
+            { id: second.id, start: "2030-01-15T11:00:00Z" },
+            { id: "move-b" },
+          ),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(fauxToolCall("cancel_appointment", { id: first.id }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("Finished."),
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const solo = await openSolo({
+      directory,
+      role: frontdesk({
+        calendar,
+        approve: async () => {
+          approvals += 1;
+          return { approved: true, by: "test" };
+        },
+      }),
+      models,
+      model: { provider: "parallel-google-moves", modelId: "model" },
+      connectorIdentity: identity,
+    });
+    expect(
+      (await solo.submit("Compete, then cancel A", "parallel-google-moves")).settlement.status,
+    ).toBe("done");
+    expect(approvals).toBe(3);
+    expect(rest.writes).toEqual({ posts: 2, patches: 1, deletes: 1 });
+    const active = await calendar.listBookings();
+    expect(active).toHaveLength(1);
+    expect(active[0]?.id).toBe(second.id);
+    expect(["2030-01-15T10:00:00Z", "2030-01-15T11:00:00Z"]).toContain(active[0]?.start);
+    await solo.close();
+    calendar.close();
+  });
+
+  it("serializes a parallel Google Harness move and cancellation with one consistent final state", async () => {
+    const directory = temporary();
+    const identity = {
+      version: 1 as const,
+      backend: "google" as const,
+      calendarId: "cal",
+      timeZone: "UTC" as const,
+      workingHours: { start: "09:00" as const, end: "12:00" as const },
+      durationMinutes: 60 as const,
+    };
+    writeFileSync(join(directory, "connector.json"), `${JSON.stringify(identity)}\n`);
+    const decisions = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const rest = googleMutationFixture();
+    const client = createGoogleCalendar({
+      calendarId: "cal",
+      getAccessToken: async () => "token",
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+      fetch: rest.transport,
+    });
+    const calendar = createGoogleCalendarHost({ client, decisions, durationMinutes: 60 });
+    const seeded = await calendar.book("2030-01-15T09:00:00Z", "Guest", "seed");
+    let approvals = 0;
+    const faux = fauxProvider({ provider: "parallel-google-cancel", models: [{ id: "model" }] });
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            "reschedule_appointment",
+            { id: seeded.id, start: "2030-01-15T10:00:00Z" },
+            { id: "move" },
+          ),
+          fauxToolCall("cancel_appointment", { id: seeded.id }, { id: "cancel" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Finished."),
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const solo = await openSolo({
+      directory,
+      role: frontdesk({
+        calendar,
+        approve: async () => {
+          approvals += 1;
+          return { approved: true, by: "test" };
+        },
+      }),
+      models,
+      model: { provider: "parallel-google-cancel", modelId: "model" },
+      connectorIdentity: identity,
+    });
+    expect((await solo.submit("Move and cancel", "parallel-google-cancel")).settlement.status).toBe(
+      "done",
+    );
+    expect(approvals).toBe(2);
+    expect(rest.writes.posts).toBe(1);
+    expect(rest.writes.deletes).toBe(1);
+    expect(rest.writes.patches).toBeLessThanOrEqual(1);
+    expect(await calendar.listBookings()).toEqual([]);
     await solo.close();
     calendar.close();
   });

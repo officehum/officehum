@@ -443,10 +443,14 @@ export function createGoogleCalendar(options: GoogleCalendarOptions): CalendarCl
         const lookup = await getEvent(id, "get cancellation booking");
         if (lookup.kind !== "found") return;
         const event = lookup.event;
+        if (typeof event.id !== "string" || event.id.length === 0)
+          throw new Error("Google Calendar cancellation event ID is malformed.");
+        if (event.id !== id)
+          throw new Error("Google Calendar cancellation returned a mismatched event ID.");
+        if (event.status === "cancelled") return;
         const properties = privateProperties(event);
         if (properties?.[OWNER_KEY] !== OWNER)
           throw new Error("Google Calendar event is not owned by Office Hum.");
-        if (event.status === "cancelled") return;
         managedBooking(event, schedule.timeZone);
         await request(
           "cancel booking",

@@ -3,11 +3,14 @@
   "id": "frontdesk",
   "name": "Front Desk",
   "department": "front-office",
-  "role": "Checks a local calendar and books approved UTC appointments",
+  "role": "Lists and manages approved UTC appointments",
   "defaultModel": { "provider": "openai", "modelId": "gpt-6-sol" },
   "tools": [
     { "name": "check_schedule", "replay": "safe" },
-    { "name": "book_appointment", "replay": "safe" }
+    { "name": "list_bookings", "replay": "safe" },
+    { "name": "book_appointment", "replay": "safe" },
+    { "name": "reschedule_appointment", "replay": "safe" },
+    { "name": "cancel_appointment", "replay": "safe" }
   ],
   "connectors": [],
   "approvals": [
@@ -15,6 +18,16 @@
       "id": "confirm_booking",
       "tool": "book_appointment",
       "description": "Confirm this appointment booking"
+    },
+    {
+      "id": "confirm_reschedule",
+      "tool": "reschedule_appointment",
+      "description": "Confirm this appointment reschedule"
+    },
+    {
+      "id": "confirm_cancellation",
+      "tool": "cancel_appointment",
+      "description": "Confirm this appointment cancellation"
     }
   ],
   "channels": ["chat"],

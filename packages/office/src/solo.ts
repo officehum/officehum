@@ -5,9 +5,11 @@ import { DatabaseSync } from "node:sqlite";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
 import {
+  AgentDoc,
   AssistantEntry,
   type Conversation,
   createRegistry,
+  defineDoc,
   Harness,
   type ModelRef,
   type SettledSubmissionRecord,
@@ -50,6 +52,16 @@ export type GoogleConnectorIdentity = {
 export type ConnectorIdentity = LocalConnectorIdentity | GoogleConnectorIdentity;
 
 const LOCAL_IDENTITY: LocalConnectorIdentity = { version: 1, backend: "local" };
+const LEGACY_FRONTDESK_TOOLS = ["check_schedule", "book_appointment"] as const;
+const LIFECYCLE_TOOLS = ["list_bookings", "reschedule_appointment", "cancel_appointment"] as const;
+const LifecycleToolsMigrationDoc = defineDoc<{ completed: boolean }>({
+  kind: "officehum.frontdesk.lifecycle-tools-migration",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "current",
+  initial: () => ({ completed: false }),
+});
 
 function parseConnectorIdentity(value: unknown): ConnectorIdentity {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -119,7 +131,7 @@ export function hasDurableLocalState(directory: string): boolean {
   if (!existsSync(path)) return false;
   const database = new DatabaseSync(path, { readOnly: true });
   try {
-    for (const table of ["bookings", "approval_decisions"] as const) {
+    for (const table of ["bookings", "approval_decisions", "calendar_operations"] as const) {
       const exists = database
         .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
         .get(table);
@@ -269,6 +281,7 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
   const lock = acquireLock(options.directory);
   let harness: Harness | undefined;
   try {
+    const existingHarness = existsSync(join(options.directory, "harness"));
     bindConnectorIdentity(options.directory, options.connectorIdentity);
     const registry = createRegistry();
     for (const extension of options.role.extensions) registry.install(extension);
@@ -283,6 +296,36 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
         ? options.role.agent
         : { ...options.role.agent, model: options.model };
     const root = await harness.root(BACKGROUND_CONTEXT, { agent });
+    const roleTools = options.role.agent.tools;
+    const roleRemovals = new Set(
+      roleTools !== undefined && roleTools !== null && "remove" in roleTools
+        ? roleTools.remove.map(({ name }) => name)
+        : [],
+    );
+    await root.commit(async (transaction) => {
+      const state = await transaction.doc(AgentDoc, root.id);
+      const migration = await transaction.doc(LifecycleToolsMigrationDoc, root.id);
+      const stored = state.tools;
+      if (Array.isArray(stored)) {
+        const selected = [...stored];
+        const looksPreFeature =
+          existingHarness &&
+          !migration.completed &&
+          LEGACY_FRONTDESK_TOOLS.every((name) => selected.includes(name)) &&
+          LIFECYCLE_TOOLS.every((name) => !selected.includes(name));
+        if (looksPreFeature) {
+          for (const name of LIFECYCLE_TOOLS) {
+            if (!roleRemovals.has(name)) selected.push(name);
+          }
+        }
+        state.tools = selected.filter((name) => !roleRemovals.has(name));
+      } else {
+        const removed = new Set(stored?.remove ?? []);
+        for (const name of roleRemovals) removed.add(name);
+        if (removed.size > 0) state.tools = { remove: [...removed] };
+      }
+      migration.completed = true;
+    }, BACKGROUND_CONTEXT);
     let closePromise: Promise<void> | undefined;
     const session: SoloSession = {
       harness,
