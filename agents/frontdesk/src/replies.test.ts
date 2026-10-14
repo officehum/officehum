@@ -126,7 +126,7 @@ describe("Front Desk threaded replies", () => {
     const provider = fauxProvider({ provider: "reply-test", models: [{ id: "model" }] });
     provider.setResponses([
       fauxAssistantMessage(
-        fauxToolCall("reply_message", { receiptId: target.receiptId, text: "January 15 is open." }),
+        fauxToolCall("reply_message", { receiptId: target.receiptId, text: "Hello.\n" }),
         { stopReason: "toolUse" },
       ),
       fauxAssistantMessage("Done"),
@@ -148,9 +148,10 @@ describe("Front Desk threaded replies", () => {
     const submission = await root.submit({ type: "input", content: "Reply" }, BACKGROUND_CONTEXT);
     expect((await submission.wait(BACKGROUND_CONTEXT)).status).toBe("done");
     expect(approvals).toEqual([
-      { target: { ...target, conversationId: conversation }, text: "January 15 is open." },
+      { target: { ...target, conversationId: conversation }, text: "Hello.\n" },
     ]);
     expect(sends).toHaveLength(1);
+    expect(sends[0]?.text).toBe("Hello.\n");
     expect((await harness.snapshot(RepliesDoc, BACKGROUND_CONTEXT))?.replies).toHaveLength(1);
   });
 

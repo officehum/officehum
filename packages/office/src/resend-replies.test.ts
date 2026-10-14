@@ -133,6 +133,29 @@ describe("Resend threaded reply transport", () => {
     await inbox.close();
   });
 
+  it("preserves approved leading and trailing message whitespace through payload replay", async () => {
+    const { inbox, emailId } = await seeded();
+    const payloads: Record<string, unknown>[] = [];
+    const messenger = createResendReplyMessenger({
+      inbox,
+      getHarness: () => undefined,
+      getApiKey: async () => "synthetic-api-key",
+      now: () => NOW,
+      fetch: async (_input, init) => {
+        payloads.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json({ id: "23232323-2323-4232-8232-232323232323" });
+      },
+    });
+    const target = await messenger.prepare(emailId, "7");
+    const intent = { target, text: " Hello.\n" };
+    const first = await messenger.send(intent, { requestId: "7:whitespace" });
+    await expect(messenger.send(intent, { requestId: "7:whitespace" })).resolves.toEqual(first);
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.text).toBe(" Hello.\n");
+    await messenger.close();
+    await inbox.close();
+  });
+
   it("never retries an uncertain operation at the exact 23-hour cutoff or after clock regression", async () => {
     const { inbox, emailId } = await seeded();
     let clock = NOW;

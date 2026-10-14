@@ -747,7 +747,6 @@ async function runListen(
   const inboundEmail = requireInboundEmail();
   webhookSecrets();
   const { calendar, identity } = openCalendar(parsed, dependencies);
-  const runtime = liveModels(parsed.model, dependencies);
   let solo: SoloSession | undefined;
   let attachedHarness: SoloSession["harness"] | undefined;
   let hosted: InboundHosted | undefined;
@@ -759,10 +758,10 @@ async function runListen(
   const done = new Promise<void>((resolve) => {
     stop = resolve;
   });
-  let closePromise: Promise<void> | undefined;
+  let closeQueue = Promise.resolve();
   const close = async (): Promise<void> => {
-    closePromise ??= (async () => {
-      stopped = true;
+    stopped = true;
+    const current = closeQueue.then(async () => {
       if (timer !== undefined) clearInterval(timer);
       const failed = await closeEvery([
         async () => listener?.close(),
@@ -771,13 +770,22 @@ async function runListen(
       ]);
       stop();
       if (failed) throw new Error("Inbound shutdown failed.");
-    })();
-    return closePromise;
+    });
+    closeQueue = current.catch(() => {});
+    return current;
+  };
+  const ensureRunning = async (): Promise<void> => {
+    if (!stopped) return;
+    await close();
+    throw new Error("Inbound operation was interrupted.");
   };
   const interrupt = () => void close();
   const rootDecision = cliApprover(calendar, parsed.approval, io, interrupt);
   const replyDecision = cliReplyDecision(parsed.approval, io, interrupt);
+  activeSession = { close };
   try {
+    const runtime = liveModels(parsed.model, dependencies);
+    await ensureRunning();
     solo = await openSolo({
       directory: parsed.state,
       models: runtime.models,
@@ -846,6 +854,7 @@ async function runListen(
         }
       },
     });
+    await ensureRunning();
     attachedHarness = solo.harness;
     if (hosted === undefined) throw new Error("Inbound role resources were not created.");
     session = openInboundSession({
@@ -858,15 +867,16 @@ async function runListen(
       },
     });
     await session.reconcile();
+    await ensureRunning();
     await session.tick();
+    await ensureRunning();
     listener = await openResendListener({ inbox: hosted.inbox, port: parsed.port });
+    await ensureRunning();
     timer = setInterval(() => {
       void session?.tick().catch(() => io.error("Inbound worker tick failed."));
     }, 5000);
-    activeSession = { close };
     io.output(`Inbound listener: ${listener.address}/webhooks/resend`);
     io.output(`Approval: ${parsed.approval ?? "interactive review"}`);
-    if (stopped) await close();
     await done;
     return 0;
   } finally {
@@ -893,10 +903,10 @@ async function runInboundResume(
   let probe: Awaited<ReturnType<typeof openInboundRuntime>> | undefined;
   let session: InboundSession | undefined;
   let closeRequested = false;
-  let closePromise: Promise<void> | undefined;
+  let closeQueue = Promise.resolve();
   const close = async (): Promise<void> => {
-    closePromise ??= (async () => {
-      closeRequested = true;
+    closeRequested = true;
+    const current = closeQueue.then(async () => {
       if (
         await closeEvery([
           async () => session?.close(),
@@ -906,12 +916,19 @@ async function runInboundResume(
       ) {
         throw new Error("Inbound shutdown failed.");
       }
-    })();
-    return closePromise;
+    });
+    closeQueue = current.catch(() => {});
+    return current;
+  };
+  const ensureRunning = async (): Promise<void> => {
+    if (!closeRequested) return;
+    await close();
+    throw new Error("Inbound operation was interrupted.");
   };
   const interrupt = () => void close();
   const rootDecision = cliApprover(calendar, parsed.approval, io, interrupt);
   const replyDecision = cliReplyDecision(parsed.approval, io, interrupt);
+  activeSession = { close };
   try {
     const demo = createDemoModels();
     probe = await openInboundRuntime(
@@ -924,8 +941,9 @@ async function runInboundResume(
       replyDecision,
       dependencies,
     );
-    activeSession = { close };
+    await ensureRunning();
     const agent = await probe.solo.root.agent(BACKGROUND_CONTEXT);
+    await ensureRunning();
     if (agent.model?.provider === "officehum-demo") {
       active = probe;
       probe = undefined;
@@ -933,7 +951,9 @@ async function runInboundResume(
     } else {
       await probe.solo.close();
       probe = undefined;
+      await ensureRunning();
       const runtime = liveModels(agent.model?.modelId ?? parsed.model, dependencies);
+      await ensureRunning();
       active = await openInboundRuntime(
         parsed,
         calendar,
@@ -944,6 +964,7 @@ async function runInboundResume(
         replyDecision,
         dependencies,
       );
+      await ensureRunning();
       io.output(`Mode: ${modelLabel(runtime.model)}`);
     }
     active.attach();
@@ -957,12 +978,16 @@ async function runInboundResume(
       },
     });
     await session.reconcile();
+    await ensureRunning();
     await session.tick();
-    if (closeRequested) await close();
+    await ensureRunning();
     printMessenger(selected, messengerIdentityString(selected), io);
     const results = await active.solo.resume();
+    await ensureRunning();
     await active.solo.harness.waitForIdle(BACKGROUND_CONTEXT);
+    await ensureRunning();
     await session.reconcile();
+    await ensureRunning();
     if (results.length === 0) {
       io.output("No pending work.");
       return 0;

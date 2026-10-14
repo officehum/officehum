@@ -50,6 +50,18 @@ afterEach(async () => {
 });
 
 describe("Resend inbox", () => {
+  it("derives the same authority ID from every property order", () => {
+    expect(inboundAuthorityId(authority)).toBe(
+      inboundAuthorityId({
+        accountId: authority.accountId,
+        fromEmail: authority.fromEmail,
+        inboundEmail: authority.inboundEmail,
+        messengerId: authority.messengerId,
+        version: authority.version,
+      }),
+    );
+  });
+
   it("durably accepts once and returns a sanitized summary", async () => {
     const directory = await mkdtemp(join(tmpdir(), "officehum-inbox-"));
     directories.push(directory);
@@ -362,6 +374,79 @@ describe("Resend inbox", () => {
       state: "settled",
       settlement: { status: "done" },
     });
+    await inbox.close();
+  });
+
+  it("durably rotates bounded work past held admissions and retryable fetch failures", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "officehum-inbox-"));
+    directories.push(directory);
+    const path = join(directory, "inbound.sqlite");
+    const options = {
+      authority,
+      getApiKey: async () => "synthetic",
+      getWebhookSecrets: async () => [SECRET],
+      now: () => NOW,
+    };
+    const id = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+    let inbox = openResendInbox(path, options);
+    for (let index = 1; index <= 21; index += 1) {
+      const emailId = id(index);
+      await inbox.accept(
+        signed(emailId, `evt_${index}`).raw,
+        signed(emailId, `evt_${index}`).headers,
+      );
+      const normalized = {
+        emailId,
+        from: `${index}@example.test`,
+        to: ["desk@example.test"],
+        subject: "Hello",
+        messageId: `<${index}@example.test>`,
+        inReplyTo: null,
+        references: [],
+        text: "Hello",
+        truncated: false,
+        attachments: [],
+      };
+      inbox.savePrepared(emailId, { id: emailId }, normalized);
+      if (index <= 20) {
+        inbox.saveRoute(
+          emailId,
+          {
+            authorityId: inboundAuthorityId(inbox.authority),
+            sender: normalized.from,
+            contactId: null,
+            contactRevision: null,
+          },
+          index,
+          `request-${index}`,
+          `envelope-${index}`,
+        );
+        inbox.saveAdmission(emailId, index);
+      }
+    }
+    expect(inbox.eligible()).toHaveLength(20);
+    await inbox.close();
+
+    inbox = openResendInbox(path, options);
+    expect(inbox.eligible()[0]?.emailId).toBe(id(21));
+    await inbox.close();
+
+    const retryPath = join(directory, "retry.sqlite");
+    inbox = openResendInbox(retryPath, options);
+    for (let index = 101; index <= 121; index += 1) {
+      await inbox.accept(
+        signed(id(index), `evt_${index}`).raw,
+        signed(id(index), `evt_${index}`).headers,
+      );
+    }
+    const firstBatch = inbox.eligible();
+    expect(firstBatch).toHaveLength(20);
+    firstBatch.forEach(({ emailId }) => {
+      inbox.defer(emailId, "fetch_failed");
+    });
+    await inbox.close();
+    inbox = openResendInbox(retryPath, options);
+    expect(inbox.eligible()[0]?.emailId).toBe(id(121));
     await inbox.close();
   });
 

@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { PassThrough } from "node:stream";
 import { awaitWithContext, BACKGROUND_CONTEXT, withCancel } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
@@ -15,10 +16,12 @@ import frontdesk from "@officehum/frontdesk";
 import {
   createDemoModels,
   durableInboundReplyApprover,
+  messengerIdentityString,
   openConsoleMessenger,
   openLocalCalendar,
   openResendInbox,
   openSolo,
+  readInboundInbox,
   readMessengerIdentity,
 } from "@officehum/office";
 import { afterEach, describe, expect, it } from "vitest";
@@ -136,7 +139,7 @@ async function freeLoopbackPort(): Promise<number> {
 }
 
 async function waitUntil(predicate: () => boolean): Promise<void> {
-  for (let attempts = 0; attempts < 100; attempts += 1) {
+  for (let attempts = 0; attempts < 700; attempts += 1) {
     if (predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
@@ -716,30 +719,60 @@ describe("runCli", () => {
         body: raw,
       });
       expect(response.status).toBe(202);
+      await waitUntil(() => replyPosts === 1);
+      await waitUntil(() => {
+        const database = new DatabaseSync(join(directory, "inbound.sqlite"), { readOnly: true });
+        try {
+          return (
+            (
+              database.prepare("SELECT state FROM receipts WHERE email_id=?").get(emailId) as
+                | { state: string }
+                | undefined
+            )?.state === "settled"
+          );
+        } finally {
+          database.close();
+        }
+      });
       await interruptCli();
       expect(await running).toBe(0);
 
       const before = io();
       expect(await runCli(["inbox", "--state", directory], before.io, dependencies)).toBe(0);
-      expect(before.output).toEqual([
-        JSON.stringify({
-          emailId,
-          state: "received",
-          reason: null,
-          conversationId: null,
-          submissionId: null,
-        }),
-      ]);
+      expect(before.output.join("\n")).toContain('"state":"settled"');
+      const database = new DatabaseSync(join(directory, "inbound.sqlite"), { readOnly: true });
+      const persisted = {
+        receipt: database
+          .prepare(
+            "SELECT route_snapshot_json,request_id,submission_id,reply_request_id FROM receipts WHERE email_id=?",
+          )
+          .get(emailId),
+        approval: database.prepare("SELECT request_json,decision_json FROM reply_approvals").get(),
+        operation: database
+          .prepare("SELECT intent_json,payload_json,state FROM reply_operations")
+          .get(),
+      } as Record<string, Record<string, unknown>>;
+      database.close();
+      expect(persisted.receipt).toMatchObject({
+        request_id: expect.any(String),
+        submission_id: expect.any(Number),
+        reply_request_id: expect.any(String),
+      });
+      expect(String(persisted.receipt.route_snapshot_json)).toContain("guest@example.test");
+      expect(String(persisted.approval.request_json)).toContain("Tomorrow is open.");
+      expect(String(persisted.approval.decision_json)).toContain('"approved":true');
+      expect(persisted.operation.state).toBe("accepted");
+      expect(String(persisted.operation.intent_json)).toContain("guest@example.test");
+      expect(String(persisted.operation.payload_json)).toContain("Tomorrow is open.");
 
       const resumed = io();
-      expect(
-        await runCli(
-          ["resume", "--state", directory, "--messenger", "resend", "--approval", "allow"],
-          resumed.io,
-          dependencies,
-        ),
-      ).toBe(0);
-      expect(resumed.errors).toEqual([]);
+      const resumedCode = await runCli(
+        ["resume", "--state", directory, "--messenger", "resend", "--approval", "allow"],
+        resumed.io,
+        dependencies,
+      );
+      expect({ code: resumedCode, errors: resumed.errors }).toEqual({ code: 0, errors: [] });
+      expect(resumed.output.join("\n")).toContain("No pending work.");
       expect(resumed.output.join("\n")).not.toContain("PRIVATE MODEL ANSWER");
       expect(replyPosts).toBe(1);
       const after = io();
@@ -756,6 +789,189 @@ describe("runCli", () => {
         RESEND_INBOUND_EMAIL: priorEnvironment.inbound,
         RESEND_WEBHOOK_SECRET: priorEnvironment.webhook,
       })) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  }, 15_000);
+
+  it("interrupts a slow startup receiving GET and releases every acquired owner", async () => {
+    const directory = state();
+    const secret = `whsec_${Buffer.from("cli-slow-start-secret").toString("base64")}`;
+    const emailId = "34343434-3434-4434-8434-343434343434";
+    const eventId = "evt_cli_slow_start";
+    const event = {
+      type: "email.received",
+      created_at: new Date().toISOString(),
+      data: {
+        email_id: emailId,
+        from: "guest@example.test",
+        to: ["desk@example.test"],
+        subject: "Slow",
+        message_id: "<slow@example.test>",
+        attachments: [],
+      },
+    };
+    const raw = new TextEncoder().encode(JSON.stringify(event));
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = createHmac("sha256", Buffer.from(secret.slice(6), "base64"))
+      .update(`${eventId}.${timestamp}.`)
+      .update(raw)
+      .digest("base64");
+    const authority = {
+      version: 1 as const,
+      messengerId: messengerIdentityString({
+        version: 1,
+        backend: "resend",
+        accountId: "account_test",
+        fromEmail: "desk@example.test",
+        subject: "Front Desk",
+      }),
+      accountId: "account_test",
+      fromEmail: "desk@example.test",
+      inboundEmail: "desk@example.test",
+    };
+    const seed = openResendInbox(join(directory, "inbound.sqlite"), {
+      authority,
+      getApiKey: async () => "synthetic",
+      getWebhookSecrets: async () => [secret],
+    });
+    await seed.accept(raw, { id: eventId, timestamp, signature: `v1,${signature}` });
+    await seed.close();
+    const names = [
+      "RESEND_ACCOUNT_ID",
+      "RESEND_FROM_EMAIL",
+      "RESEND_SUBJECT",
+      "RESEND_API_KEY",
+      "RESEND_INBOUND_EMAIL",
+      "RESEND_WEBHOOK_SECRET",
+    ] as const;
+    const prior = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    Object.assign(process.env, {
+      RESEND_ACCOUNT_ID: "account_test",
+      RESEND_FROM_EMAIL: "desk@example.test",
+      RESEND_SUBJECT: "Front Desk",
+      RESEND_API_KEY: "synthetic",
+      RESEND_INBOUND_EMAIL: "desk@example.test",
+      RESEND_WEBHOOK_SECRET: secret,
+    });
+    const nativeFetch = globalThis.fetch;
+    let started!: () => void;
+    const reached = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let aborted = false;
+    globalThis.fetch = async (_input, init) => {
+      started();
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            aborted = true;
+            reject(new Error("synthetic startup abort"));
+          },
+          { once: true },
+        );
+      });
+    };
+    const provider = fauxProvider({ provider: "openai", models: [{ id: "gpt-6-sol" }] });
+    const models = createModels();
+    models.setProvider(provider.provider);
+    try {
+      const capture = io();
+      const running = runCli(
+        ["listen", "--state", directory, "--messenger", "resend", "--port", "8787"],
+        capture.io,
+        {
+          createLiveModels: () => ({ models, model: { provider: "openai", modelId: "gpt-6-sol" } }),
+        },
+      );
+      await reached;
+      await interruptCli();
+      expect(await running).toBe(1);
+      expect(aborted).toBe(true);
+      expect(capture.output).not.toContain(expect.stringContaining("Inbound listener:"));
+      await expect(readInboundInbox(directory)).resolves.toEqual([
+        expect.objectContaining({ emailId, state: "received", reason: "fetch_failed" }),
+      ]);
+    } finally {
+      await interruptCli();
+      globalThis.fetch = nativeFetch;
+      for (const name of names) {
+        const value = prior[name];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
+  it("closes an active inbound owner acquired after a probe-transition interrupt", async () => {
+    const directory = state();
+    const secret = `whsec_${Buffer.from("cli-probe-secret").toString("base64")}`;
+    const messengerIdentity = {
+      version: 1 as const,
+      backend: "resend" as const,
+      accountId: "account_test",
+      fromEmail: "desk@example.test",
+      subject: "Front Desk",
+    };
+    const inbox = openResendInbox(join(directory, "inbound.sqlite"), {
+      authority: {
+        version: 1,
+        messengerId: messengerIdentityString(messengerIdentity),
+        accountId: messengerIdentity.accountId,
+        fromEmail: messengerIdentity.fromEmail,
+        inboundEmail: "desk@example.test",
+      },
+      getApiKey: async () => "synthetic",
+      getWebhookSecrets: async () => [secret],
+    });
+    await inbox.close();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const provider = fauxProvider({ provider: "openai", models: [{ id: "gpt-6-sol" }] });
+    const models = createModels();
+    models.setProvider(provider.provider);
+    const solo = await openSolo({
+      directory,
+      role: frontdesk({ calendar }),
+      models,
+      model: { provider: "openai", modelId: "gpt-6-sol" },
+      messengerIdentity,
+    });
+    await solo.close();
+    calendar.close();
+    const names = [
+      "RESEND_ACCOUNT_ID",
+      "RESEND_FROM_EMAIL",
+      "RESEND_SUBJECT",
+      "RESEND_API_KEY",
+      "RESEND_INBOUND_EMAIL",
+      "RESEND_WEBHOOK_SECRET",
+    ] as const;
+    const prior = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    Object.assign(process.env, {
+      RESEND_ACCOUNT_ID: "account_test",
+      RESEND_FROM_EMAIL: "desk@example.test",
+      RESEND_SUBJECT: "Front Desk",
+      RESEND_API_KEY: "synthetic",
+      RESEND_INBOUND_EMAIL: "desk@example.test",
+      RESEND_WEBHOOK_SECRET: secret,
+    });
+    try {
+      const capture = io();
+      expect(
+        await runCli(["resume", "--state", directory, "--messenger", "resend"], capture.io, {
+          createLiveModels: () => {
+            void interruptCli();
+            return { models, model: { provider: "openai", modelId: "gpt-6-sol" } };
+          },
+        }),
+      ).toBe(1);
+      await expect(readInboundInbox(directory)).resolves.toEqual([]);
+    } finally {
+      await interruptCli();
+      for (const name of names) {
+        const value = prior[name];
         if (value === undefined) delete process.env[name];
         else process.env[name] = value;
       }

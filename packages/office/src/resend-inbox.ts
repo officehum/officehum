@@ -74,7 +74,7 @@ export type InboundRouteSnapshot = {
 };
 
 export function inboundAuthorityId(value: InboundAuthority): string {
-  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
 
 export type ReplyOperationRow = {
@@ -572,26 +572,27 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
     if (fresh && tableNames(database).length === 0) {
       inTransaction(database, () => {
         database.exec(`
-          CREATE TABLE inbound_metadata(singleton INTEGER PRIMARY KEY CHECK(singleton=1),schema_version INTEGER NOT NULL,authority_json TEXT NOT NULL,ledger_namespace TEXT NOT NULL);
+          CREATE TABLE inbound_metadata(singleton INTEGER PRIMARY KEY CHECK(singleton=1),schema_version INTEGER NOT NULL,authority_json TEXT NOT NULL,ledger_namespace TEXT NOT NULL,work_cursor INTEGER NOT NULL);
           CREATE TABLE events(event_id TEXT PRIMARY KEY,raw_payload BLOB NOT NULL,raw_sha256 TEXT NOT NULL,canonical_event_json TEXT NOT NULL,email_id TEXT NOT NULL,verified_at INTEGER NOT NULL);
           CREATE TABLE receipts(email_id TEXT PRIMARY KEY,canonical_event_json TEXT NOT NULL,state TEXT NOT NULL,reason TEXT,fetched_json TEXT,normalized_json TEXT,route_snapshot_json TEXT,conversation_id INTEGER,request_id TEXT,envelope TEXT,submission_id INTEGER,settlement_json TEXT,reply_request_id TEXT UNIQUE);
           CREATE TABLE reply_approvals(approval_key TEXT PRIMARY KEY,request_json TEXT NOT NULL,decision_json TEXT NOT NULL);
           CREATE TABLE reply_operations(request_id TEXT PRIMARY KEY,receipt_id TEXT NOT NULL UNIQUE,intent_json TEXT NOT NULL,payload_json TEXT NOT NULL,provider_key TEXT NOT NULL,first_attempt_at INTEGER NOT NULL,last_observed_at INTEGER NOT NULL,state TEXT NOT NULL,provider_receipt_id TEXT);
         `);
         database
-          .prepare("INSERT INTO inbound_metadata VALUES(1,1,?,?)")
+          .prepare("INSERT INTO inbound_metadata VALUES(1,1,?,?,0)")
           .run(authorityJson, randomUUID());
       });
     }
     const metadata = database
       .prepare(
-        "SELECT singleton,schema_version,authority_json,ledger_namespace FROM inbound_metadata",
+        "SELECT singleton,schema_version,authority_json,ledger_namespace,work_cursor FROM inbound_metadata",
       )
       .all() as unknown as {
       singleton: number;
       schema_version: number;
       authority_json: string;
       ledger_namespace: string;
+      work_cursor: number;
     }[];
     if (
       metadata.length !== 1 ||
@@ -600,7 +601,9 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
       metadata[0].authority_json !== authorityJson ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
         metadata[0].ledger_namespace,
-      )
+      ) ||
+      !Number.isSafeInteger(metadata[0].work_cursor) ||
+      metadata[0].work_cursor < 0
     ) {
       throw new Error("Inbound authority does not match this inbox.");
     }
@@ -609,7 +612,7 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
     if (
       tableNames(database).join(",") !== expected ||
       columnNames(database, "inbound_metadata").join(",") !==
-        "singleton,schema_version,authority_json,ledger_namespace" ||
+        "singleton,schema_version,authority_json,ledger_namespace,work_cursor" ||
       columnNames(database, "events").join(",") !==
         "event_id,raw_payload,raw_sha256,canonical_event_json,email_id,verified_at" ||
       columnNames(database, "receipts").join(",") !==
@@ -804,13 +807,37 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
     eligible(limit = 20) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20)
         throw new Error("Inbound batch limit is invalid.");
-      return (
-        database
+      return inTransaction(database, () => {
+        const metadata = database
+          .prepare("SELECT work_cursor FROM inbound_metadata WHERE singleton=1")
+          .get() as { work_cursor: number };
+        const after = database
           .prepare(
-            "SELECT * FROM receipts WHERE state IN ('received','prepared','admitted') ORDER BY rowid LIMIT ?",
+            "SELECT rowid,* FROM receipts WHERE state IN ('received','prepared','admitted') AND rowid>? ORDER BY rowid LIMIT ?",
           )
-          .all(limit) as unknown as ReceiptRow[]
-      ).map((row) => structuredClone(storedReceipt(row, inboundAuthorityId(boundAuthority))));
+          .all(metadata.work_cursor, limit) as unknown as (ReceiptRow & { rowid: number })[];
+        const rows = [...after];
+        if (rows.length < limit) {
+          rows.push(
+            ...(database
+              .prepare(
+                "SELECT rowid,* FROM receipts WHERE state IN ('received','prepared','admitted') AND rowid<=? ORDER BY rowid LIMIT ?",
+              )
+              .all(metadata.work_cursor, limit - rows.length) as unknown as (ReceiptRow & {
+              rowid: number;
+            })[]),
+          );
+        }
+        const last = rows.at(-1);
+        if (last !== undefined) {
+          database
+            .prepare("UPDATE inbound_metadata SET work_cursor=? WHERE singleton=1")
+            .run(last.rowid);
+        }
+        return rows.map((row) =>
+          structuredClone(storedReceipt(row, inboundAuthorityId(boundAuthority))),
+        );
+      });
     },
     async fetchReceived(emailId, event) {
       if (closed) throw new Error("Inbound inbox is closed.");
@@ -911,6 +938,26 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
       inTransaction(database, () => {
         const row = findReceipt.get(emailId) as ReceiptRow | undefined;
         if (row === undefined) throw new Error("Inbound receipt was not found.");
+        const prepared = storedReceipt(row, inboundAuthorityId(boundAuthority));
+        if (
+          prepared.normalized === null ||
+          !/^[0-9a-f]{64}$/u.test(route?.authorityId) ||
+          route.authorityId !== inboundAuthorityId(boundAuthority) ||
+          canonicalMailbox(route.sender) !== route.sender ||
+          route.sender !== prepared.normalized.from ||
+          (route.contactId === null) !== (route.contactRevision === null) ||
+          (route.contactId !== null && !exact(route.contactId, 200)) ||
+          (route.contactRevision !== null &&
+            (!Number.isSafeInteger(route.contactRevision) || route.contactRevision < 1)) ||
+          !Number.isSafeInteger(conversationId) ||
+          conversationId < 1 ||
+          !exact(requestId, 500) ||
+          typeof envelope !== "string" ||
+          envelope.length === 0 ||
+          envelope.length > 32_000
+        ) {
+          throw new Error("Inbound route is invalid.");
+        }
         const routeJson = canonicalJson(route);
         if (row.route_snapshot_json !== null) {
           if (

@@ -50,7 +50,7 @@ function exact(value: unknown, maximum: number, message = false): value is strin
     typeof value === "string" &&
     value.length > 0 &&
     value.length <= maximum &&
-    value.trim() === value &&
+    (message ? value.trim().length > 0 : value.trim() === value) &&
     ![...value].some((character) => {
       const code = character.codePointAt(0) ?? 0;
       if (message && (code === 9 || code === 10 || code === 13)) return false;

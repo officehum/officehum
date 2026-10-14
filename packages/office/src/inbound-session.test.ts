@@ -10,13 +10,16 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import { type Harness, hook, InboxDoc, ToolTask } from "@earendil-works/pi-durable";
-import frontdesk, { ContactsDoc, RepliesDoc } from "@officehum/frontdesk";
+import frontdesk, { ContactsDoc, RepliesDoc, type ReplyMessenger } from "@officehum/frontdesk";
 import { afterEach, describe, expect, it } from "vitest";
+import { fakeCalendar } from "../../google-calendar/src/index.js";
+import { createGoogleCalendarHost } from "./google-calendar.js";
 import { inboundAwareApprover, openInboundSession } from "./inbound-session.js";
 import { openLocalCalendar } from "./local-calendar.js";
 import {
   durableInboundReplyApprover,
   type InternalResendInbox,
+  inboundAuthorityId,
   openResendInbox,
   readInboundInbox,
 } from "./resend-inbox.js";
@@ -145,6 +148,350 @@ describe("Inbound session", () => {
     );
     await session.close();
     await solo.close();
+  });
+
+  it("bounds escaped attachment metadata while preserving the full immutable receipt", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "officehum-inbound-session-"));
+    directories.push(directory);
+    const emailId = "12121212-1212-4212-8212-121212121212";
+    const attachments = Array.from({ length: 50 }, (_, index) => ({
+      id: `attachment-${index}`,
+      filename: `${'"\\'.repeat(127)}x`,
+      content_type: "application/octet-stream",
+      size: index,
+    }));
+    const body = `A\tB\n${"x".repeat(15_996)}`;
+    const received = {
+      id: emailId,
+      from: "guest@example.test",
+      to: ["desk@example.test"],
+      subject: "Attachment limits",
+      message_id: "<limits@example.test>",
+      reply_to: "guest@example.test",
+      headers: { "message-id": "<limits@example.test>", "reply-to": "guest@example.test" },
+      authentication: { dmarc: "pass" },
+      text: body,
+      html: "",
+      attachments,
+    };
+    const inboxPath = join(directory, "inbound.sqlite");
+    const inboxOptions = {
+      authority: {
+        version: 1 as const,
+        messengerId: "officehum.resend.v1:test",
+        accountId: "account_test",
+        fromEmail: "desk@example.test",
+        inboundEmail: "desk@example.test",
+      },
+      getApiKey: async () => "synthetic",
+      getWebhookSecrets: async () => [SECRET],
+      now: () => NOW,
+      fetch: async () => Response.json(received),
+    };
+    let inbox = openResendInbox(inboxPath, inboxOptions);
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const provider = fauxProvider({ provider: "inbound-limits", models: [{ id: "model" }] });
+    provider.setResponses([fauxAssistantMessage("Received.")]);
+    const models = createModels();
+    models.setProvider(provider.provider);
+    const solo = await openSolo({
+      directory,
+      models,
+      model: { provider: "inbound-limits", modelId: "model" },
+      role,
+    });
+    const session = openInboundSession({
+      solo,
+      inbox,
+      customerAgent: { ...role.agent, model: { provider: "inbound-limits", modelId: "model" } },
+    });
+    const event = {
+      type: "email.received",
+      created_at: "2030-01-01T00:00:00.000Z",
+      data: {
+        email_id: emailId,
+        from: "guest@example.test",
+        to: ["desk@example.test"],
+        subject: "Attachment limits",
+        message_id: "<limits@example.test>",
+        attachments,
+      },
+    };
+    const raw = new TextEncoder().encode(JSON.stringify(event));
+    const timestamp = String(Math.floor(NOW / 1000));
+    const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
+      .update(`evt_limits.${timestamp}.`)
+      .update(raw)
+      .digest("base64");
+    await inbox.accept(raw, { id: "evt_limits", timestamp, signature: `v1,${signature}` });
+    await session.tick();
+    const routed = inbox.receipt(emailId);
+    expect(routed?.normalized?.attachments).toHaveLength(50);
+    expect(routed?.normalized?.text).toBe(body);
+    expect(routed?.envelope).toContain("Attachment-Metadata-Truncated: yes");
+    expect(routed?.envelope).toContain("A\tB\n");
+    expect(routed?.envelope?.length).toBeLessThanOrEqual(32_000);
+    await solo.harness.waitForIdle(BACKGROUND_CONTEXT);
+    await session.close();
+    await solo.close();
+    await inbox.close();
+    inbox = openResendInbox(inboxPath, inboxOptions);
+    expect(inbox.receipt(emailId)?.normalized?.attachments).toHaveLength(50);
+    expect(inbox.receipt(emailId)?.envelope).toBe(routed?.envelope);
+    await inbox.close();
+    calendar.close();
+  });
+
+  it("admits a later independent customer after twenty held admissions", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "officehum-inbound-session-"));
+    directories.push(directory);
+    const id = (index: number) => `67676767-6767-4676-8676-${String(index).padStart(12, "0")}`;
+    const laterId = id(21);
+    let receivingGets = 0;
+    const inbox = openResendInbox(join(directory, "inbound.sqlite"), {
+      authority: {
+        version: 1,
+        messengerId: "officehum.resend.v1:test",
+        accountId: "account_test",
+        fromEmail: "desk@example.test",
+        inboundEmail: "desk@example.test",
+      },
+      getApiKey: async () => "synthetic",
+      getWebhookSecrets: async () => [SECRET],
+      now: () => NOW,
+      fetch: async () => {
+        receivingGets += 1;
+        return Response.json({
+          id: laterId,
+          from: "later@example.test",
+          to: ["desk@example.test"],
+          subject: "Later",
+          message_id: "<21@example.test>",
+          reply_to: "later@example.test",
+          headers: { "message-id": "<21@example.test>", "reply-to": "later@example.test" },
+          authentication: { dmarc: "pass" },
+          text: "Please help later.",
+          html: "",
+          attachments: [],
+        });
+      },
+    });
+    const accept = async (index: number, from: string) => {
+      const emailId = id(index);
+      const event = {
+        type: "email.received",
+        created_at: "2030-01-01T00:00:00.000Z",
+        data: {
+          email_id: emailId,
+          from,
+          to: ["desk@example.test"],
+          subject: index === 21 ? "Later" : "Held",
+          message_id: `<${index}@example.test>`,
+          attachments: [],
+        },
+      };
+      const raw = new TextEncoder().encode(JSON.stringify(event));
+      const timestamp = String(Math.floor(NOW / 1000));
+      const eventId = `evt_fair_${index}`;
+      const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
+        .update(`${eventId}.${timestamp}.`)
+        .update(raw)
+        .digest("base64");
+      await inbox.accept(raw, { id: eventId, timestamp, signature: `v1,${signature}` });
+      return emailId;
+    };
+    const heldSubmissionIds = new Set<number>();
+    for (let index = 1; index <= 20; index += 1) {
+      const emailId = await accept(index, `held-${index}@example.test`);
+      const normalized = {
+        emailId,
+        from: `held-${index}@example.test`,
+        to: ["desk@example.test"],
+        subject: "Held",
+        messageId: `<${index}@example.test>`,
+        inReplyTo: null,
+        references: [],
+        text: "Held.",
+        truncated: false,
+        attachments: [],
+      };
+      inbox.savePrepared(emailId, { id: emailId }, normalized);
+      inbox.saveRoute(
+        emailId,
+        {
+          authorityId: inboundAuthorityId(inbox.authority),
+          sender: normalized.from,
+          contactId: null,
+          contactRevision: null,
+        },
+        100 + index,
+        `held-request-${index}`,
+        `held-envelope-${index}`,
+      );
+      const submissionId = 1000 + index;
+      heldSubmissionIds.add(submissionId);
+      inbox.saveAdmission(emailId, submissionId);
+    }
+    await accept(21, "later@example.test");
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const provider = fauxProvider({ provider: "inbound-fair", models: [{ id: "model" }] });
+    provider.setResponses([fauxAssistantMessage("Later customer progressed.")]);
+    const models = createModels();
+    models.setProvider(provider.provider);
+    const solo = await openSolo({
+      directory,
+      models,
+      model: { provider: "inbound-fair", modelId: "model" },
+      role,
+    });
+    const harness = new Proxy(solo.harness, {
+      get(target, property, receiver) {
+        if (property === "submission") {
+          return async (submissionId: number, context: typeof BACKGROUND_CONTEXT) =>
+            heldSubmissionIds.has(Number(submissionId))
+              ? { status: async () => ({ status: "active" as const }) }
+              : target.submission(submissionId as never, context);
+        }
+        const value = Reflect.get(target, property, receiver) as unknown;
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const session = openInboundSession({
+      solo: { ...solo, harness },
+      inbox,
+      customerAgent: { ...role.agent, model: { provider: "inbound-fair", modelId: "model" } },
+    });
+    await session.tick();
+    expect(receivingGets).toBe(0);
+    expect(inbox.receipt(laterId)?.state).toBe("received");
+    await session.tick();
+    expect(receivingGets).toBe(1);
+    expect(inbox.receipt(laterId)).toMatchObject({
+      state: "admitted",
+      routeSnapshot: { sender: "later@example.test" },
+    });
+    expect(
+      inbox
+        .summaries()
+        .slice(0, 20)
+        .every(({ state }) => state === "admitted"),
+    ).toBe(true);
+    await solo.harness.waitForIdle(BACKGROUND_CONTEXT);
+    await session.close();
+    await solo.close();
+    await inbox.close();
+    calendar.close();
+  });
+
+  it("advances past twenty retryable receiving failures after reopen without a hot loop", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "officehum-inbound-session-"));
+    directories.push(directory);
+    const id = (index: number) => `78787878-7878-4787-8787-${String(index).padStart(12, "0")}`;
+    const calls = new Map<string, number>();
+    const inboxPath = join(directory, "inbound.sqlite");
+    const options = {
+      authority: {
+        version: 1 as const,
+        messengerId: "officehum.resend.v1:test",
+        accountId: "account_test",
+        fromEmail: "desk@example.test",
+        inboundEmail: "desk@example.test",
+      },
+      getApiKey: async () => "synthetic",
+      getWebhookSecrets: async () => [SECRET],
+      now: () => NOW,
+      fetch: async (input: Parameters<typeof fetch>[0]) => {
+        const emailId = decodeURIComponent(new URL(String(input)).pathname.split("/").at(-1) ?? "");
+        calls.set(emailId, (calls.get(emailId) ?? 0) + 1);
+        if (emailId !== id(21)) throw new Error("synthetic retryable receiving failure");
+        return Response.json({
+          id: emailId,
+          from: "later@example.test",
+          to: ["desk@example.test"],
+          subject: "Later",
+          message_id: "<21@example.test>",
+          reply_to: "later@example.test",
+          headers: { "message-id": "<21@example.test>", "reply-to": "later@example.test" },
+          authentication: { dmarc: "pass" },
+          text: "Please help later.",
+          html: "",
+          attachments: [],
+        });
+      },
+    };
+    let inbox = openResendInbox(inboxPath, options);
+    for (let index = 1; index <= 21; index += 1) {
+      const event = {
+        type: "email.received",
+        created_at: "2030-01-01T00:00:00.000Z",
+        data: {
+          email_id: id(index),
+          from: index === 21 ? "later@example.test" : `retry-${index}@example.test`,
+          to: ["desk@example.test"],
+          subject: index === 21 ? "Later" : "Retry",
+          message_id: `<${index}@example.test>`,
+          attachments: [],
+        },
+      };
+      const raw = new TextEncoder().encode(JSON.stringify(event));
+      const timestamp = String(Math.floor(NOW / 1000));
+      const eventId = `evt_retry_${index}`;
+      const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
+        .update(`${eventId}.${timestamp}.`)
+        .update(raw)
+        .digest("base64");
+      await inbox.accept(raw, { id: eventId, timestamp, signature: `v1,${signature}` });
+    }
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const provider = fauxProvider({ provider: "inbound-retry-fair", models: [{ id: "model" }] });
+    provider.setResponses([fauxAssistantMessage("Later customer progressed.")]);
+    const models = createModels();
+    models.setProvider(provider.provider);
+    const solo = await openSolo({
+      directory,
+      models,
+      model: { provider: "inbound-retry-fair", modelId: "model" },
+      role,
+    });
+    let session = openInboundSession({
+      solo,
+      inbox,
+      customerAgent: {
+        ...role.agent,
+        model: { provider: "inbound-retry-fair", modelId: "model" },
+      },
+    });
+    await session.tick();
+    expect(calls.size).toBe(20);
+    expect([...calls.values()].every((count) => count === 1)).toBe(true);
+    expect(inbox.receipt(id(21))?.state).toBe("received");
+    await session.close();
+    await inbox.close();
+
+    inbox = openResendInbox(inboxPath, options);
+    session = openInboundSession({
+      solo,
+      inbox,
+      customerAgent: {
+        ...role.agent,
+        model: { provider: "inbound-retry-fair", modelId: "model" },
+      },
+    });
+    await session.tick();
+    expect(calls.get(id(21))).toBe(1);
+    expect(inbox.receipt(id(21))).toMatchObject({
+      state: "admitted",
+      routeSnapshot: { sender: "later@example.test" },
+    });
+    expect(Math.max(...calls.values())).toBe(2);
+    await solo.harness.waitForIdle(BACKGROUND_CONTEXT);
+    await session.close();
+    await solo.close();
+    await inbox.close();
+    calendar.close();
   });
 
   it("recovers an immediate customer reply from the Harness proof before the worker saves admission", async () => {
@@ -769,6 +1116,295 @@ describe("Inbound session", () => {
     });
     await thirdSession.close();
     await thirdSolo.close();
+    calendar.close();
+  });
+
+  it("recovers an accepted exact reply after fake Google availability without another effect", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "officehum-inbound-session-"));
+    directories.push(directory);
+    const emailId = "45454545-4545-4454-8454-454545454545";
+    const decisions = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const fake = fakeCalendar({
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+    });
+    let availabilityReads = 0;
+    let calendarWrites = 0;
+    const client = {
+      ...fake,
+      async freeSlots(date: string) {
+        availabilityReads += 1;
+        return fake.freeSlots(date);
+      },
+      async book(input: Parameters<typeof fake.book>[0]) {
+        calendarWrites += 1;
+        return fake.book(input);
+      },
+      async reschedule(
+        id: Parameters<typeof fake.reschedule>[0],
+        input: Parameters<typeof fake.reschedule>[1],
+        requestId: Parameters<typeof fake.reschedule>[2],
+      ) {
+        calendarWrites += 1;
+        return fake.reschedule(id, input, requestId);
+      },
+      async cancel(id: string, requestId: string) {
+        calendarWrites += 1;
+        return fake.cancel(id, requestId);
+      },
+    };
+    const calendar = createGoogleCalendarHost({ client, decisions, durationMinutes: 60 });
+    const connectorIdentity = {
+      version: 1 as const,
+      backend: "google" as const,
+      calendarId: "calendar@example.test",
+      timeZone: "UTC" as const,
+      workingHours: { start: "09:00" as const, end: "12:00" as const },
+      durationMinutes: 60 as const,
+    };
+    const messengerIdentity = {
+      version: 1 as const,
+      backend: "resend" as const,
+      accountId: "account_test",
+      fromEmail: "desk@example.test",
+      subject: "Front Desk",
+    };
+    const received = {
+      id: emailId,
+      from: "guest@example.test",
+      to: ["desk@example.test"],
+      subject: "Google availability",
+      message_id: "<google-recovery@example.test>",
+      reply_to: "guest@example.test",
+      headers: {
+        "message-id": "<google-recovery@example.test>",
+        "reply-to": "guest@example.test",
+      },
+      authentication: { dmarc: "pass" },
+      text: "Is January 15 open?",
+      html: "",
+      attachments: [],
+    };
+    let posts = 0;
+    const transport: typeof fetch = async (input) => {
+      if (String(input).includes("/emails/receiving/")) return Response.json(received);
+      if (String(input) === "https://api.resend.com/emails") {
+        posts += 1;
+        return Response.json({ id: "56565656-5656-4565-8565-565656565656" });
+      }
+      throw new Error("unexpected synthetic request");
+    };
+    let attachedHarness: Harness | undefined;
+    let currentInbox: InternalResendInbox | undefined;
+    let currentRole: ReturnType<typeof frontdesk> | undefined;
+    let holdAccepted = true;
+    let acceptedReached!: () => void;
+    const acceptedBarrier = new Promise<void>((resolve) => {
+      acceptedReached = resolve;
+    });
+    let interruptReturn: ((error: Error) => void) | undefined;
+    let approvals = 0;
+    const createRole = () => {
+      const inbox = openResendInbox(join(directory, "inbound.sqlite"), {
+        authority: {
+          version: 1,
+          messengerId: "officehum.resend.v1:test",
+          accountId: "account_test",
+          fromEmail: "desk@example.test",
+          inboundEmail: "desk@example.test",
+        },
+        getApiKey: async () => "synthetic",
+        getWebhookSecrets: async () => [SECRET],
+        now: () => NOW,
+        fetch: transport,
+      });
+      const reply = createResendReplyMessenger({
+        inbox,
+        getHarness: () => attachedHarness,
+        getApiKey: async () => "synthetic",
+        now: () => NOW,
+        fetch: transport,
+      });
+      const boundReply: ReplyMessenger = holdAccepted
+        ? {
+            identity: reply.identity,
+            prepare: (receiptId, conversationId) => reply.prepare(receiptId, conversationId),
+            async send(intent, options) {
+              const receipt = await reply.send(intent, options);
+              acceptedReached();
+              await new Promise<never>((_resolve, reject) => {
+                interruptReturn = reject;
+              });
+              return receipt;
+            },
+          }
+        : reply;
+      const role = frontdesk({
+        calendar,
+        replyMessenger: boundReply,
+        approveReply: durableInboundReplyApprover(inbox, async () => {
+          approvals += 1;
+          return { approved: true, by: "operator" };
+        }),
+      });
+      currentInbox = inbox;
+      currentRole = role;
+      return {
+        role,
+        close: async () => {
+          interruptReturn?.(new Error("synthetic crash after adapter acceptance"));
+          await reply.close();
+          await inbox.close();
+        },
+      };
+    };
+    const firstProvider = fauxProvider({
+      provider: "inbound-google-recovery",
+      models: [{ id: "model" }],
+    });
+    firstProvider.setResponses([
+      fauxAssistantMessage(fauxToolCall("check_schedule", { date: "2030-01-15" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(
+        fauxToolCall("reply_message", { receiptId: emailId, text: " January 15 is open.\n" }),
+        { stopReason: "toolUse" },
+      ),
+    ]);
+    const firstModels = createModels();
+    firstModels.setProvider(firstProvider.provider);
+    const firstSolo = await openSolo({
+      directory,
+      models: firstModels,
+      model: { provider: "inbound-google-recovery", modelId: "model" },
+      messengerIdentity,
+      connectorIdentity,
+      createRole,
+    });
+    attachedHarness = firstSolo.harness;
+    const firstInbox = currentInbox;
+    const firstRole = currentRole;
+    if (firstInbox === undefined || firstRole === undefined) throw new Error("missing first role");
+    const firstSession = openInboundSession({
+      solo: firstSolo,
+      inbox: firstInbox,
+      customerAgent: {
+        ...firstRole.agent,
+        model: { provider: "inbound-google-recovery", modelId: "model" },
+        tools: firstRole.extensions
+          .flatMap((extension) => extension.tools ?? [])
+          .filter(({ name }) => name === "check_schedule" || name === "reply_message"),
+      },
+    });
+    const event = {
+      type: "email.received",
+      created_at: "2030-01-01T00:00:00.000Z",
+      data: {
+        email_id: emailId,
+        from: "guest@example.test",
+        to: ["desk@example.test"],
+        subject: "Google availability",
+        message_id: "<google-recovery@example.test>",
+        attachments: [],
+      },
+    };
+    const raw = new TextEncoder().encode(JSON.stringify(event));
+    const timestamp = String(Math.floor(NOW / 1000));
+    const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
+      .update(`evt_google_recovery.${timestamp}.`)
+      .update(raw)
+      .digest("base64");
+    await firstInbox.accept(raw, {
+      id: "evt_google_recovery",
+      timestamp,
+      signature: `v1,${signature}`,
+    });
+    await firstSession.tick();
+    await acceptedBarrier;
+    const interrupted = firstInbox.receipt(emailId);
+    if (interrupted?.replyRequestId === null || interrupted?.replyRequestId === undefined) {
+      throw new Error("reply operation was not reserved");
+    }
+    const acceptedOperation = firstInbox.replyOperation(interrupted.replyRequestId);
+    expect(acceptedOperation).toMatchObject({
+      state: "accepted",
+      providerReceiptId: "56565656-5656-4565-8565-565656565656",
+    });
+    expect(acceptedOperation?.intentJson).toContain(" January 15 is open.\\n");
+    expect(
+      (await firstSolo.harness.snapshot(RepliesDoc, BACKGROUND_CONTEXT))?.replies ?? [],
+    ).toEqual([]);
+    expect({ availabilityReads, calendarWrites, posts, approvals }).toEqual({
+      availabilityReads: 1,
+      calendarWrites: 0,
+      posts: 1,
+      approvals: 1,
+    });
+    await firstSession.close();
+    await firstSolo.close();
+
+    holdAccepted = false;
+    interruptReturn = undefined;
+    attachedHarness = undefined;
+    currentInbox = undefined;
+    currentRole = undefined;
+    const secondProvider = fauxProvider({
+      provider: "inbound-google-recovery",
+      models: [{ id: "model" }],
+    });
+    secondProvider.setResponses([fauxAssistantMessage("Recovered exact threaded reply.")]);
+    const secondModels = createModels();
+    secondModels.setProvider(secondProvider.provider);
+    const secondSolo = await openSolo({
+      directory,
+      models: secondModels,
+      messengerIdentity,
+      connectorIdentity,
+      createRole,
+    });
+    attachedHarness = secondSolo.harness;
+    const secondInbox = currentInbox;
+    const secondRole = currentRole;
+    if (secondInbox === undefined || secondRole === undefined)
+      throw new Error("missing second role");
+    const secondSession = openInboundSession({
+      solo: secondSolo,
+      inbox: secondInbox,
+      customerAgent: {
+        ...secondRole.agent,
+        model: { provider: "inbound-google-recovery", modelId: "model" },
+        tools: secondRole.extensions
+          .flatMap((extension) => extension.tools ?? [])
+          .filter(({ name }) => name === "check_schedule" || name === "reply_message"),
+      },
+    });
+    await secondSession.reconcile();
+    const resumed = await secondSolo.resume();
+    await secondSolo.harness.waitForIdle(BACKGROUND_CONTEXT);
+    await secondSession.reconcile();
+    expect(resumed.map(({ settlement }) => settlement.status)).toContain("done");
+    const replies =
+      (await secondSolo.harness.snapshot(RepliesDoc, BACKGROUND_CONTEXT))?.replies ?? [];
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      target: { receiptId: emailId, to: "guest@example.test" },
+      text: " January 15 is open.\n",
+    });
+    expect(
+      (await secondSolo.harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT))?.contacts ?? [],
+    ).toEqual([]);
+    expect(await fake.listBookings()).toEqual([]);
+    expect({ availabilityReads, calendarWrites, posts, approvals }).toEqual({
+      availabilityReads: 1,
+      calendarWrites: 0,
+      posts: 1,
+      approvals: 1,
+    });
+    expect(secondInbox.replyOperation(interrupted.replyRequestId)).toEqual(acceptedOperation);
+    expect(secondInbox.receipt(emailId)).toMatchObject({ state: "settled" });
+    await secondSession.close();
+    await secondSolo.close();
     calendar.close();
   });
 });
