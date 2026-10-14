@@ -17,6 +17,7 @@ import type { Calendar } from "./index.js";
 import frontdesk, { MessagesDoc } from "./index.js";
 import {
   type DeliveryReceipt,
+  firstContactCondition,
   type MessageIntent,
   type Messenger,
   messagingTools,
@@ -384,5 +385,67 @@ describe("Front Desk messaging", () => {
         BACKGROUND_CONTEXT,
       ),
     ).rejects.toThrow(/messenger.*configured/i);
+  });
+
+  it("requires a fresh first-contact decision when console history is reused through Resend", async () => {
+    const console = testMessenger("officehum.console.v1");
+    const harness = await Harness.open(
+      new MemoryStorage(),
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    harnesses.push(harness);
+    const create = contactTools().find((tool) => tool.name === "create_contact");
+    const send = messagingTools(console.messenger).find((tool) => tool.name === "send_message");
+    if (create === undefined || send === undefined) throw new Error("missing messaging tools");
+    const memos = new Map<string, unknown>();
+    const api = {
+      conversationId: 1,
+      taskId: 2,
+      callId: "console-history",
+      commit: harness.commit.bind(harness),
+      snapshot: harness.snapshot.bind(harness),
+      memo: async (name: string, ...rest: unknown[]) => {
+        if (rest.length === 2 && !memos.has(name)) memos.set(name, rest[0]);
+        return memos.get(name);
+      },
+    } as unknown as ToolExecutionApi;
+    await create.execute(
+      { name: "Guest", email: "guest@example.test" },
+      { ...api, callId: "seed" } as never,
+      BACKGROUND_CONTEXT,
+    );
+    const base = {
+      contactId: "contact-1",
+      channel: "email",
+      to: "guest@example.test",
+      text: "Console message",
+    } as const;
+    await send.execute(
+      { ...base, messengerId: console.messenger.identity },
+      api,
+      BACKGROUND_CONTEXT,
+    );
+    const environment = {
+      read: { snapshot: harness.snapshot.bind(harness) },
+    } as never;
+    expect(
+      await firstContactCondition(
+        { ...base, text: "Follow-up", messengerId: console.messenger.identity },
+        environment,
+        BACKGROUND_CONTEXT,
+      ),
+    ).toBe(false);
+    expect(
+      await firstContactCondition(
+        {
+          ...base,
+          text: "Resend message",
+          messengerId: `officehum.resend.v1:${"a".repeat(64)}`,
+        },
+        environment,
+        BACKGROUND_CONTEXT,
+      ),
+    ).toBe(true);
   });
 });

@@ -15,6 +15,7 @@ import {
   openConsoleMessenger,
   openLocalCalendar,
   openSolo,
+  readMessengerIdentity,
 } from "@officehum/office";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeCalendar } from "../../google-calendar/src/index.js";
@@ -117,6 +118,223 @@ async function createGoogleState(directory: string, calendarId = "calendar@examp
 }
 
 describe("runCli", () => {
+  it("keeps console as the default even when Resend environment values exist", async () => {
+    const directory = state();
+    const prior = {
+      account: process.env.RESEND_ACCOUNT_ID,
+      from: process.env.RESEND_FROM_EMAIL,
+      subject: process.env.RESEND_SUBJECT,
+      key: process.env.RESEND_API_KEY,
+    };
+    process.env.RESEND_ACCOUNT_ID = "ignored-account";
+    process.env.RESEND_FROM_EMAIL = "ignored@example.test";
+    process.env.RESEND_SUBJECT = "Ignored";
+    process.env.RESEND_API_KEY = "synthetic-resend-key";
+    const faux = fauxProvider({ provider: "openai", models: [{ id: "gpt-6-sol" }] });
+    faux.setResponses([fauxAssistantMessage("No action requested.")]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    try {
+      const capture = io();
+      expect(
+        await runCli(
+          [
+            "start",
+            "--state",
+            directory,
+            "--message",
+            "Say hello",
+            "--request-id",
+            "console-default",
+          ],
+          capture.io,
+          {
+            createLiveModels: () => ({
+              models,
+              model: { provider: "openai", modelId: "gpt-6-sol" },
+            }),
+          },
+        ),
+      ).toBe(0);
+      expect(readMessengerIdentity(directory)).toEqual({ version: 1, backend: "console" });
+      expect(capture.output.join("\n")).toContain("Messaging: console outbox");
+    } finally {
+      if (prior.account === undefined) delete process.env.RESEND_ACCOUNT_ID;
+      else process.env.RESEND_ACCOUNT_ID = prior.account;
+      if (prior.from === undefined) delete process.env.RESEND_FROM_EMAIL;
+      else process.env.RESEND_FROM_EMAIL = prior.from;
+      if (prior.subject === undefined) delete process.env.RESEND_SUBJECT;
+      else process.env.RESEND_SUBJECT = prior.subject;
+      if (prior.key === undefined) delete process.env.RESEND_API_KEY;
+      else process.env.RESEND_API_KEY = prior.key;
+    }
+  });
+
+  it("requires explicit complete Resend configuration and displays the persisted authority", async () => {
+    const directory = state();
+    const missing = io();
+    expect(
+      await runCli(
+        [
+          "start",
+          "--state",
+          directory,
+          "--messenger",
+          "resend",
+          "--message",
+          "Say hello",
+          "--request-id",
+          "resend-missing",
+        ],
+        missing.io,
+      ),
+    ).toBe(1);
+    expect(missing.errors.join("\n")).toMatch(/RESEND_ACCOUNT_ID/);
+
+    const prior = {
+      account: process.env.RESEND_ACCOUNT_ID,
+      from: process.env.RESEND_FROM_EMAIL,
+      subject: process.env.RESEND_SUBJECT,
+      key: process.env.RESEND_API_KEY,
+    };
+    process.env.RESEND_ACCOUNT_ID = "test-account";
+    process.env.RESEND_FROM_EMAIL = "desk@example.test";
+    process.env.RESEND_SUBJECT = "Front Desk";
+    process.env.RESEND_API_KEY = "synthetic-resend-key";
+    const faux = fauxProvider({ provider: "openai", models: [{ id: "gpt-6-sol" }] });
+    faux.setResponses([fauxAssistantMessage("No action requested.")]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    try {
+      const capture = io();
+      expect(
+        await runCli(
+          [
+            "start",
+            "--state",
+            directory,
+            "--messenger",
+            "resend",
+            "--message",
+            "Say hello",
+            "--request-id",
+            "resend-configured",
+          ],
+          capture.io,
+          {
+            createLiveModels: () => ({
+              models,
+              model: { provider: "openai", modelId: "gpt-6-sol" },
+            }),
+          },
+        ),
+      ).toBe(0);
+      expect(readMessengerIdentity(directory)).toEqual({
+        version: 1,
+        backend: "resend",
+        accountId: "test-account",
+        fromEmail: "desk@example.test",
+        subject: "Front Desk",
+      });
+      expect(capture.output.join("\n")).toMatch(
+        /Messaging: Resend.*test-account.*desk@example\.test.*Front Desk/is,
+      );
+    } finally {
+      if (prior.account === undefined) delete process.env.RESEND_ACCOUNT_ID;
+      else process.env.RESEND_ACCOUNT_ID = prior.account;
+      if (prior.from === undefined) delete process.env.RESEND_FROM_EMAIL;
+      else process.env.RESEND_FROM_EMAIL = prior.from;
+      if (prior.subject === undefined) delete process.env.RESEND_SUBJECT;
+      else process.env.RESEND_SUBJECT = prior.subject;
+      if (prior.key === undefined) delete process.env.RESEND_API_KEY;
+      else process.env.RESEND_API_KEY = prior.key;
+    }
+  });
+
+  it("rejects Resend for demo and on read-only commands", async () => {
+    const demo = io();
+    expect(await runCli(["demo", "--messenger", "resend"], demo.io)).toBe(2);
+    expect(demo.errors.join("\n")).toMatch(/synthetic demo.*console/i);
+    const contacts = io();
+    expect(await runCli(["contacts", "--messenger", "console"], contacts.io)).toBe(2);
+  });
+
+  it("reopens a fresh Resend host for the resume probe and live session", async () => {
+    const directory = state();
+    const prior = {
+      account: process.env.RESEND_ACCOUNT_ID,
+      from: process.env.RESEND_FROM_EMAIL,
+      subject: process.env.RESEND_SUBJECT,
+      key: process.env.RESEND_API_KEY,
+    };
+    process.env.RESEND_ACCOUNT_ID = "test-account";
+    process.env.RESEND_FROM_EMAIL = "desk@example.test";
+    process.env.RESEND_SUBJECT = "Front Desk";
+    process.env.RESEND_API_KEY = "synthetic-resend-key";
+    let opened = 0;
+    let closed = 0;
+    let modelCall = 0;
+    const dependencies = {
+      openResendMessenger: () => {
+        opened += 1;
+        let isClosed = false;
+        return {
+          identity: `officehum.resend.v1:${"a".repeat(64)}`,
+          send: async () => ({ id: "unused", status: "accepted" as const }),
+          close: async () => {
+            if (isClosed) return;
+            isClosed = true;
+            closed += 1;
+          },
+        };
+      },
+      createLiveModels: () => {
+        const faux = fauxProvider({
+          provider: "openai",
+          models: [{ id: "gpt-6-sol" }],
+        });
+        if (modelCall === 0) faux.setResponses([fauxAssistantMessage("No action requested.")]);
+        modelCall += 1;
+        const models = createModels();
+        models.setProvider(faux.provider);
+        return { models, model: { provider: "openai", modelId: "gpt-6-sol" } };
+      },
+    };
+    try {
+      expect(
+        await runCli(
+          [
+            "start",
+            "--state",
+            directory,
+            "--messenger",
+            "resend",
+            "--message",
+            "No action",
+            "--request-id",
+            "resend-lifetime",
+          ],
+          io().io,
+          dependencies,
+        ),
+      ).toBe(0);
+      delete process.env.RESEND_ACCOUNT_ID;
+      delete process.env.RESEND_FROM_EMAIL;
+      delete process.env.RESEND_SUBJECT;
+      expect(await runCli(["resume", "--state", directory], io().io, dependencies)).toBe(0);
+      expect({ opened, closed }).toEqual({ opened: 3, closed: 3 });
+    } finally {
+      if (prior.account === undefined) delete process.env.RESEND_ACCOUNT_ID;
+      else process.env.RESEND_ACCOUNT_ID = prior.account;
+      if (prior.from === undefined) delete process.env.RESEND_FROM_EMAIL;
+      else process.env.RESEND_FROM_EMAIL = prior.from;
+      if (prior.subject === undefined) delete process.env.RESEND_SUBJECT;
+      else process.env.RESEND_SUBJECT = prior.subject;
+      if (prior.key === undefined) delete process.env.RESEND_API_KEY;
+      else process.env.RESEND_API_KEY = prior.key;
+    }
+  });
+
   it("prints the version", async () => {
     const capture = io();
     expect(await runCli(["--version"], capture.io)).toBe(0);

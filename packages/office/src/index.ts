@@ -39,8 +39,27 @@ export {
   openLocalCalendar,
 } from "./local-calendar.js";
 export {
+  bindMessengerIdentity,
+  CONSOLE_MESSENGER_IDENTITY,
+  type ConsoleMessengerIdentity,
+  hasDurableMessagingState,
+  type MessengerIdentity,
+  messengerIdentityString,
+  parseMessengerIdentity,
+  type ResendMessengerIdentity,
+  readMessengerIdentity,
+} from "./messenger-identity.js";
+export {
+  openResendMessenger,
+  type ResendDeliveryReceipt,
+  type ResendMessageIntent,
+  type ResendMessenger,
+  type ResendMessengerOptions,
+} from "./resend-messenger.js";
+export {
   type ConnectorIdentity,
   type GoogleConnectorIdentity,
+  type HostedSoloRole,
   hasDurableLocalState,
   type LocalConnectorIdentity,
   type OpenSoloOptions,
