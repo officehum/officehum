@@ -3,6 +3,9 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-durable";
 import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
+import { contactTools, linkBookingContact, pinBookingContact } from "./contacts.js";
+
+export { type Contact, ContactsDoc } from "./contacts.js";
 
 export interface Booking {
   readonly id: string;
@@ -52,11 +55,27 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
   const book = defineTool({
     name: "book_appointment",
     description: "Reserve an available UTC slot after operator approval.",
-    parameters: Type.Object({ start: Type.String(), customer: Type.String() }),
+    parameters: Type.Object(
+      {
+        start: Type.String(),
+        customer: Type.String(),
+        contactId: Type.Optional(Type.String()),
+      },
+      { additionalProperties: false },
+    ),
     replay: "safe",
-    execute: async (args, api) => {
+    execute: async (args, api, context) => {
       const key = `${api.conversationId}:${api.taskId}:${api.callId}`;
-      const booking = await options.calendar.book(args.start, args.customer, key);
+      const pinned =
+        args.contactId === undefined
+          ? undefined
+          : await pinBookingContact(
+              { start: args.start, customer: args.customer, contactId: args.contactId },
+              api,
+              context,
+            );
+      const booking = await options.calendar.book(args.start, pinned?.name ?? args.customer, key);
+      if (pinned !== undefined) await linkBookingContact(pinned, booking.id, api, context);
       return {
         content: [{ type: "text", text: `Booked ${booking.id} at ${booking.start}` }],
         details: { ...booking },
@@ -127,7 +146,7 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
-    tools: [checkSchedule, listBookings, book, reschedule, cancel],
+    tools: [checkSchedule, listBookings, ...contactTools(), book, reschedule, cancel],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

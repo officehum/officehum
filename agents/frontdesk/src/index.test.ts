@@ -13,7 +13,7 @@ import { checkAgent, validatePackage } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { openLocalCalendar } from "../../../packages/office/src/local-calendar.js";
 import manifest from "../officehum.json" with { type: "json" };
-import frontdesk from "./index.js";
+import frontdesk, { ContactsDoc } from "./index.js";
 
 const temps: string[] = [];
 afterEach(() => {
@@ -114,6 +114,233 @@ describe("frontdesk role", () => {
     const calendar = await attemptBooking(async () => ({ approved: false }));
     expect(calendar.bookings()).toEqual([]);
     calendar.close();
+  });
+
+  it("creates an approved contact and links an approved booking through the actual Harness", async () => {
+    const calendar = tempCalendar();
+    const approvals: string[] = [];
+    const role = frontdesk({
+      calendar,
+      approve: async (request) => {
+        approvals.push(request.approvalId);
+        return { approved: true };
+      },
+    });
+    const faux = fauxProvider({ provider: "frontdesk-contact-test", models: [{ id: "model" }] });
+    faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall("create_contact", {
+          name: "Guest",
+          email: "GUEST@example.com",
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(
+        fauxToolCall("book_appointment", {
+          start: "2030-01-15T09:00:00Z",
+          customer: "Guest",
+          contactId: "contact-1",
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Finished"),
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const registry = createRegistry();
+    for (const extension of role.extensions) registry.install(extension);
+    const harness = await Harness.open(
+      new MemoryStorage(),
+      { models, registry },
+      BACKGROUND_CONTEXT,
+    );
+    const root = await harness.root(BACKGROUND_CONTEXT, {
+      agent: { ...role.agent, model: { provider: "frontdesk-contact-test", modelId: "model" } },
+    });
+
+    const submission = await root.submit(
+      { type: "input", content: "Create Guest and book the 09:00 slot" },
+      BACKGROUND_CONTEXT,
+    );
+    expect((await submission.wait(BACKGROUND_CONTEXT)).status).toBe("done");
+    const bookings = calendar.bookings();
+    expect(bookings).toHaveLength(1);
+    expect(await harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT)).toMatchObject({
+      contacts: [
+        {
+          id: "contact-1",
+          name: "Guest",
+          email: "guest@example.com",
+          revision: 1,
+          bookingIds: [bookings[0]?.id],
+        },
+      ],
+      bookingLinks: [
+        {
+          contactId: "contact-1",
+          bookingId: bookings[0]?.id,
+        },
+      ],
+    });
+    expect(approvals).toEqual(["confirm_contact_creation", "confirm_booking"]);
+    await harness.close(BACKGROUND_CONTEXT);
+    calendar.close();
+  });
+
+  it("keeps contact state unchanged when actual Harness approvals are missing or denied", async () => {
+    const missingCalendar = tempCalendar();
+    const missingRole = frontdesk({ calendar: missingCalendar });
+    const missingFaux = fauxProvider({
+      provider: "contact-missing-approval",
+      models: [{ id: "model" }],
+    });
+    missingFaux.setResponses([
+      fauxAssistantMessage(fauxToolCall("create_contact", { name: "Blocked Guest" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("Creation was blocked."),
+    ]);
+    const missingModels = createModels();
+    missingModels.setProvider(missingFaux.provider);
+    const missingRegistry = createRegistry();
+    for (const extension of missingRole.extensions) missingRegistry.install(extension);
+    const missingHarness = await Harness.open(
+      new MemoryStorage(),
+      { models: missingModels, registry: missingRegistry },
+      BACKGROUND_CONTEXT,
+    );
+    const missingRoot = await missingHarness.root(BACKGROUND_CONTEXT, {
+      agent: {
+        ...missingRole.agent,
+        model: { provider: "contact-missing-approval", modelId: "model" },
+      },
+    });
+    const missingSubmission = await missingRoot.submit(
+      { type: "input", content: "Create Blocked Guest" },
+      BACKGROUND_CONTEXT,
+    );
+    await missingSubmission.wait(BACKGROUND_CONTEXT);
+    expect(await missingHarness.snapshot(ContactsDoc, BACKGROUND_CONTEXT)).toBeUndefined();
+    await missingHarness.close(BACKGROUND_CONTEXT);
+    missingCalendar.close();
+
+    const deniedCalendar = tempCalendar();
+    const decisions: string[] = [];
+    const deniedRole = frontdesk({
+      calendar: deniedCalendar,
+      approve: async (request) => {
+        decisions.push(request.approvalId);
+        return { approved: request.approvalId === "confirm_contact_creation" };
+      },
+    });
+    const deniedFaux = fauxProvider({
+      provider: "contact-denied-update",
+      models: [{ id: "model" }],
+    });
+    deniedFaux.setResponses([
+      fauxAssistantMessage(fauxToolCall("create_contact", { name: "Original Guest" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(
+        fauxToolCall("update_contact", {
+          id: "contact-1",
+          expectedRevision: 1,
+          name: "Denied Correction",
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Update was blocked."),
+    ]);
+    const deniedModels = createModels();
+    deniedModels.setProvider(deniedFaux.provider);
+    const deniedRegistry = createRegistry();
+    for (const extension of deniedRole.extensions) deniedRegistry.install(extension);
+    const deniedHarness = await Harness.open(
+      new MemoryStorage(),
+      { models: deniedModels, registry: deniedRegistry },
+      BACKGROUND_CONTEXT,
+    );
+    const deniedRoot = await deniedHarness.root(BACKGROUND_CONTEXT, {
+      agent: {
+        ...deniedRole.agent,
+        model: { provider: "contact-denied-update", modelId: "model" },
+      },
+    });
+    const deniedSubmission = await deniedRoot.submit(
+      { type: "input", content: "Create then update a guest" },
+      BACKGROUND_CONTEXT,
+    );
+    await deniedSubmission.wait(BACKGROUND_CONTEXT);
+    expect(await deniedHarness.snapshot(ContactsDoc, BACKGROUND_CONTEXT)).toMatchObject({
+      contacts: [{ name: "Original Guest", revision: 1 }],
+      operations: [{ kind: "create" }],
+    });
+    expect(decisions).toEqual(["confirm_contact_creation", "confirm_contact_update"]);
+    await deniedHarness.close(BACKGROUND_CONTEXT);
+    deniedCalendar.close();
+
+    for (const scenario of [
+      { kind: "create" as const, approval: "denied" as const },
+      { kind: "update" as const, approval: "missing" as const },
+    ]) {
+      const calendar = tempCalendar();
+      const role = frontdesk({
+        calendar,
+        ...(scenario.approval === "denied" ? { approve: async () => ({ approved: false }) } : {}),
+      });
+      const provider = `contact-${scenario.kind}-${scenario.approval}`;
+      const faux = fauxProvider({ provider, models: [{ id: "model" }] });
+      faux.setResponses([
+        fauxAssistantMessage(
+          fauxToolCall(
+            `${scenario.kind}_contact`,
+            scenario.kind === "create"
+              ? { name: "Denied Guest" }
+              : { id: "contact-1", expectedRevision: 1, name: "Missing Approval" },
+          ),
+          { stopReason: "toolUse" },
+        ),
+        fauxAssistantMessage("Blocked."),
+      ]);
+      const models = createModels();
+      models.setProvider(faux.provider);
+      const registry = createRegistry();
+      for (const extension of role.extensions) registry.install(extension);
+      const harness = await Harness.open(
+        new MemoryStorage(),
+        { models, registry },
+        BACKGROUND_CONTEXT,
+      );
+      const root = await harness.root(BACKGROUND_CONTEXT, {
+        agent: { ...role.agent, model: { provider, modelId: "model" } },
+      });
+      if (scenario.kind === "update") {
+        const seed = role.extensions
+          .flatMap((extension) => extension.tools ?? [])
+          .find((tool) => tool.name === "create_contact");
+        if (seed === undefined) throw new Error("missing create_contact tool");
+        await seed.execute(
+          { name: "Seed Guest" },
+          {
+            conversationId: 90,
+            taskId: 90,
+            callId: "seed",
+            commit: harness.commit.bind(harness),
+            snapshot: harness.snapshot.bind(harness),
+          } as never,
+          BACKGROUND_CONTEXT,
+        );
+      }
+      const before = await harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT);
+      const submission = await root.submit(
+        { type: "input", content: "Attempt blocked contact write" },
+        BACKGROUND_CONTEXT,
+      );
+      await submission.wait(BACKGROUND_CONTEXT);
+      expect(await harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT)).toEqual(before);
+      await harness.close(BACKGROUND_CONTEXT);
+      calendar.close();
+    }
   });
 
   it("lists active bookings in start/id order with readable IDs and structured details", async () => {

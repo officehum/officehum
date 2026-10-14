@@ -1,6 +1,14 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { once } from "node:events";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,12 +23,13 @@ import { createRegistry, Harness, hook, ToolTask } from "@earendil-works/pi-dura
 import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
 import type { Approver, RoleBundle } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
-import frontdesk from "../../../agents/frontdesk/src/index.js";
+import { contactTools } from "../../../agents/frontdesk/src/contacts.js";
+import frontdesk, { type Calendar, ContactsDoc } from "../../../agents/frontdesk/src/index.js";
 import { createGoogleCalendar } from "../../google-calendar/src/index.js";
 import { createDemoModels } from "./demo-model.js";
 import { createGoogleCalendarHost } from "./google-calendar.js";
 import { openLocalCalendar } from "./local-calendar.js";
-import { openSolo } from "./solo.js";
+import { openSolo, readSoloDocument } from "./solo.js";
 
 const temps: string[] = [];
 afterEach(() => {
@@ -312,8 +321,14 @@ describe("openSolo", () => {
 
   it("refreshes lifecycle tools on an old root without replacing its model or conversation", async () => {
     const directory = temporary();
+    const overlay = join(directory, "legacy-overlay");
+    mkdirSync(overlay);
+    writeFileSync(
+      join(overlay, "settings.json"),
+      JSON.stringify({ tools: ["-cancel_appointment", "-update_contact"] }),
+    );
     const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
-    const role = frontdesk({ calendar });
+    const role = frontdesk({ calendar, overlays: [overlay] });
     const runtime = scriptedModels();
     const registry = createRegistry();
     for (const extension of role.extensions) registry.install(extension);
@@ -349,10 +364,127 @@ describe("openSolo", () => {
         "book_appointment",
         "list_bookings",
         "reschedule_appointment",
-        "cancel_appointment",
+        "list_contacts",
+        "create_contact",
       ]),
     );
+    expect(
+      (await reopened.root.agent(BACKGROUND_CONTEXT)).tools.map(({ name }) => name),
+    ).not.toEqual(expect.arrayContaining(["cancel_appointment", "update_contact"]));
     await reopened.close();
+    calendar.close();
+  });
+
+  it("adds contact tools once to a known five-tool root and preserves explicit masks", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const runtime = createDemoModels();
+    const registrations = role.extensions.flatMap((extension) => extension.tools ?? []);
+    const preContact = registrations.filter((tool) =>
+      [
+        "check_schedule",
+        "list_bookings",
+        "book_appointment",
+        "reschedule_appointment",
+        "cancel_appointment",
+      ].includes(tool.name),
+    );
+    const readSkill = registrations.find((tool) => tool.name === "read_skill");
+    if (readSkill === undefined) throw new Error("missing read_skill tool");
+    const registry = createRegistry();
+    for (const extension of role.extensions) registry.install(extension);
+    const storage = await openNodeJsonlStorage(join(directory, "harness"), BACKGROUND_CONTEXT, {
+      fsync: true,
+    });
+    const legacyHarness = await Harness.open(
+      storage,
+      { models: runtime.models, registry },
+      BACKGROUND_CONTEXT,
+    );
+    const root = await legacyHarness.root(BACKGROUND_CONTEXT, { agent: role.agent });
+    await root.configure({ tools: [...preContact, readSkill] }, BACKGROUND_CONTEXT);
+    await legacyHarness.close(BACKGROUND_CONTEXT);
+
+    const migrated = await openSolo({ directory, role, ...runtime });
+    expect((await migrated.root.agent(BACKGROUND_CONTEXT)).tools.map(({ name }) => name)).toEqual(
+      expect.arrayContaining(["list_contacts", "create_contact", "update_contact", "read_skill"]),
+    );
+    const update = registrations.find((tool) => tool.name === "update_contact");
+    if (update === undefined) throw new Error("missing update_contact tool");
+    await migrated.root.configure({ tools: { remove: [update] } }, BACKGROUND_CONTEXT);
+    await migrated.close();
+
+    const reopened = await openSolo({ directory, role, ...runtime });
+    expect(
+      (await reopened.root.agent(BACKGROUND_CONTEXT)).tools.map(({ name }) => name),
+    ).not.toContain("update_contact");
+    await reopened.close();
+    calendar.close();
+  });
+
+  it("does not widen an unrelated partial explicit tool selection", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const runtime = createDemoModels();
+    const registry = createRegistry();
+    for (const extension of role.extensions) registry.install(extension);
+    const storage = await openNodeJsonlStorage(join(directory, "harness"), BACKGROUND_CONTEXT, {
+      fsync: true,
+    });
+    const legacyHarness = await Harness.open(
+      storage,
+      { models: runtime.models, registry },
+      BACKGROUND_CONTEXT,
+    );
+    const root = await legacyHarness.root(BACKGROUND_CONTEXT, { agent: role.agent });
+    const partial = role.extensions
+      .flatMap((extension) => extension.tools ?? [])
+      .filter((tool) => ["check_schedule", "read_skill"].includes(tool.name));
+    await root.configure({ tools: partial }, BACKGROUND_CONTEXT);
+    await legacyHarness.close(BACKGROUND_CONTEXT);
+
+    const reopened = await openSolo({ directory, role, ...runtime });
+    expect((await reopened.root.agent(BACKGROUND_CONTEXT)).tools.map(({ name }) => name)).toEqual([
+      "check_schedule",
+      "read_skill",
+    ]);
+    await reopened.close();
+    calendar.close();
+  });
+
+  it("reads an existing session document without creating or running a Harness", async () => {
+    const absent = temporary();
+    expect(await readSoloDocument(absent, ContactsDoc)).toBeUndefined();
+    expect(existsSync(join(absent, "harness"))).toBe(false);
+
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const solo = await openSolo({
+      directory,
+      role: frontdesk({ calendar }),
+      ...createDemoModels(),
+    });
+    const create = contactTools().find((tool) => tool.name === "create_contact");
+    if (create === undefined) throw new Error("missing create_contact tool");
+    await create.execute(
+      { name: "Read Only Guest", email: "guest@example.com" },
+      {
+        conversationId: 1,
+        taskId: 1,
+        callId: "seed-contact",
+        commit: solo.harness.commit.bind(solo.harness),
+        snapshot: solo.harness.snapshot.bind(solo.harness),
+      } as never,
+      BACKGROUND_CONTEXT,
+    );
+    await expect(readSoloDocument(directory, ContactsDoc)).rejects.toThrow(/owned|active/i);
+    await solo.close();
+
+    expect(await readSoloDocument(directory, ContactsDoc)).toMatchObject({
+      contacts: [{ id: "contact-1", name: "Read Only Guest", revision: 1 }],
+    });
     calendar.close();
   });
 
@@ -529,6 +661,107 @@ describe("openSolo", () => {
       expect(await calendar.listBookings()).toEqual(
         kind === "reschedule" ? [{ ...seeded, start: "2030-01-15T10:00:00Z" }] : [],
       );
+      await reopened.close();
+      calendar.close();
+    },
+  );
+
+  it.each(["create", "update"] as const)(
+    "recovers an approved contact %s committed before tool settlement exactly once",
+    async (kind) => {
+      const directory = temporary();
+      const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+      let approvals = 0;
+      const approve: Approver = async () => {
+        approvals += 1;
+        return { approved: true, by: "test" };
+      };
+      const normalRole = frontdesk({ calendar, approve });
+      let reached!: () => void;
+      const barrier = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      const pauseAfterCommit = hook(ToolTask, {
+        afterTool: async (call, result, _api, context) => {
+          if (call.name !== `${kind}_contact`) return result;
+          reached();
+          await awaitWithContext(new Promise<never>(() => {}), context);
+          return result;
+        },
+      });
+      const [roleExtension, ...rest] = normalRole.extensions;
+      if (roleExtension === undefined) throw new Error("missing role extension");
+      const interrupted: RoleBundle = {
+        extensions: [
+          { ...roleExtension, hooks: [...(roleExtension.hooks ?? []), pauseAfterCommit] },
+          ...rest,
+        ],
+        agent: normalRole.agent,
+      };
+      const provider = `recover-contact-${kind}`;
+      const firstFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+      firstFaux.setResponses([
+        fauxAssistantMessage(
+          fauxToolCall(
+            `${kind}_contact`,
+            kind === "create"
+              ? { name: "Recovered Guest", email: "guest@example.com" }
+              : {
+                  id: "contact-1",
+                  expectedRevision: 1,
+                  name: "Corrected Guest",
+                },
+          ),
+          { stopReason: "toolUse" },
+        ),
+      ]);
+      const firstModels = createModels();
+      firstModels.setProvider(firstFaux.provider);
+      const solo = await openSolo({
+        directory,
+        role: interrupted,
+        models: firstModels,
+        model: { provider, modelId: "model" },
+      });
+      if (kind === "update") {
+        const create = contactTools().find((tool) => tool.name === "create_contact");
+        if (create === undefined) throw new Error("missing create_contact tool");
+        await create.execute(
+          { name: "Original Guest", email: "guest@example.com" },
+          {
+            conversationId: 99,
+            taskId: 99,
+            callId: "seed",
+            commit: solo.harness.commit.bind(solo.harness),
+            snapshot: solo.harness.snapshot.bind(solo.harness),
+          } as never,
+          BACKGROUND_CONTEXT,
+        );
+      }
+      const pending = solo.submit(`please ${kind} contact`, `contact-${kind}-request`);
+      await barrier;
+      const [submission] = (await solo.harness.inspect(BACKGROUND_CONTEXT)).submissions;
+      const before = await solo.harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT);
+      expect(before?.contacts).toHaveLength(1);
+      expect(before?.contacts[0]).toMatchObject({
+        name: kind === "create" ? "Recovered Guest" : "Corrected Guest",
+        revision: kind === "create" ? 1 : 2,
+      });
+      await solo.close();
+      await expect(pending).rejects.toThrow();
+
+      const resumedFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+      resumedFaux.setResponses([fauxAssistantMessage("Recovered the contact write.")]);
+      const resumedModels = createModels();
+      resumedModels.setProvider(resumedFaux.provider);
+      const reopened = await openSolo({ directory, role: normalRole, models: resumedModels });
+      const [result] = await reopened.resume();
+      expect(result?.submissionId).toBe(submission?.id);
+      expect(result?.settlement.status).toBe("done");
+      expect(approvals).toBe(1);
+      const after = await reopened.harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT);
+      expect(after?.contacts).toEqual(before?.contacts);
+      expect(after?.operations).toHaveLength(kind === "create" ? 1 : 2);
       await reopened.close();
       calendar.close();
     },
@@ -754,6 +987,154 @@ describe("openSolo", () => {
     await reopened.close();
     calendar.close();
   });
+
+  it.each(["local", "google"] as const)(
+    "recovers a %s booking between the calendar effect and contact link with pinned identity",
+    async (backend) => {
+      const directory = temporary();
+      const decisions = openLocalCalendar(join(directory, "calendar.sqlite"));
+      const googleFixture = googleMutationFixture();
+      const identity = {
+        version: 1 as const,
+        backend: "google" as const,
+        calendarId: "cal",
+        timeZone: "UTC" as const,
+        workingHours: { start: "09:00" as const, end: "12:00" as const },
+        durationMinutes: 60 as const,
+      };
+      const calendar: Calendar =
+        backend === "local"
+          ? decisions
+          : createGoogleCalendarHost({
+              client: createGoogleCalendar({
+                calendarId: "cal",
+                getAccessToken: async () => "token",
+                timeZone: "UTC",
+                workingHours: { start: "09:00", end: "12:00" },
+                durationMinutes: 60,
+                fetch: googleFixture.transport,
+              }),
+              decisions,
+              durationMinutes: 60,
+            });
+      let approvals = 0;
+      const approve: Approver = async () => {
+        approvals += 1;
+        return { approved: true, by: "test" };
+      };
+      let reached!: () => void;
+      const afterEffect = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      let release!: () => void;
+      const holdReturn = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const interruptedCalendar: Calendar = {
+        freeSlots: calendar.freeSlots.bind(calendar),
+        listBookings: calendar.listBookings.bind(calendar),
+        reschedule: calendar.reschedule.bind(calendar),
+        cancel: calendar.cancel.bind(calendar),
+        async book(start, customer, key) {
+          const booking = await calendar.book(start, customer, key);
+          reached();
+          await holdReturn;
+          return booking;
+        },
+      };
+      const provider = `contact-link-${backend}`;
+      const firstFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+      firstFaux.setResponses([
+        fauxAssistantMessage(
+          fauxToolCall("book_appointment", {
+            start: "2030-01-15T09:00:00Z",
+            customer: "Pinned Guest",
+            contactId: "contact-1",
+          }),
+          { stopReason: "toolUse" },
+        ),
+      ]);
+      const firstModels = createModels();
+      firstModels.setProvider(firstFaux.provider);
+      const solo = await openSolo({
+        directory,
+        role: frontdesk({ calendar: interruptedCalendar, approve }),
+        models: firstModels,
+        model: { provider, modelId: "model" },
+        ...(backend === "google" ? { connectorIdentity: identity } : {}),
+      });
+      const [create, update] = ["create_contact", "update_contact"].map((name) => {
+        const tool = contactTools().find((candidate) => candidate.name === name);
+        if (tool === undefined) throw new Error(`missing ${name}`);
+        return tool;
+      });
+      await create?.execute(
+        { name: "Pinned Guest", email: "guest@example.com" },
+        {
+          conversationId: 77,
+          taskId: 77,
+          callId: "seed-contact",
+          commit: solo.harness.commit.bind(solo.harness),
+          snapshot: solo.harness.snapshot.bind(solo.harness),
+        } as never,
+        BACKGROUND_CONTEXT,
+      );
+      const pending = solo.submit("Book the pinned guest", `contact-link-${backend}`);
+      await afterEffect;
+      await update?.execute(
+        { id: "contact-1", expectedRevision: 1, name: "Renamed Guest" },
+        {
+          conversationId: 88,
+          taskId: 88,
+          callId: "rename-contact",
+          commit: solo.harness.commit.bind(solo.harness),
+          snapshot: solo.harness.snapshot.bind(solo.harness),
+        } as never,
+        BACKGROUND_CONTEXT,
+      );
+      expect(await solo.harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT)).toMatchObject({
+        contacts: [{ name: "Renamed Guest", revision: 2, bookingIds: [] }],
+        bookingLinks: [],
+      });
+      const [submission] = (await solo.harness.inspect(BACKGROUND_CONTEXT)).submissions;
+      const closing = solo.close();
+      release();
+      await closing;
+      await expect(pending).rejects.toThrow();
+
+      const resumedFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+      resumedFaux.setResponses([fauxAssistantMessage("Recovered the linked booking.")]);
+      const resumedModels = createModels();
+      resumedModels.setProvider(resumedFaux.provider);
+      const reopened = await openSolo({
+        directory,
+        role: frontdesk({ calendar, approve }),
+        models: resumedModels,
+        ...(backend === "google" ? { connectorIdentity: identity } : {}),
+      });
+      const [result] = await reopened.resume();
+      expect(result?.submissionId).toBe(submission?.id);
+      expect(result?.settlement.status).toBe("done");
+      const bookings = await calendar.listBookings();
+      expect(bookings).toHaveLength(1);
+      expect(bookings[0]?.customer).toBe("Pinned Guest");
+      expect(await reopened.harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT)).toMatchObject({
+        contacts: [
+          {
+            id: "contact-1",
+            name: "Renamed Guest",
+            revision: 2,
+            bookingIds: [bookings[0]?.id],
+          },
+        ],
+        bookingLinks: [{ contactId: "contact-1", bookingId: bookings[0]?.id }],
+      });
+      expect(approvals).toBe(1);
+      if (backend === "google") expect(googleFixture.writes.posts).toBe(1);
+      await reopened.close();
+      decisions.close();
+    },
+  );
 
   it.each(["reschedule", "cancel"] as const)(
     "recovers a lost Google %s response through the actual Harness without a second write",

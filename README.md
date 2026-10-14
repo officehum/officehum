@@ -44,6 +44,31 @@ and cancellation remain ordinary durable `start` submissions; there are no direc
 commands. The agent lists current bookings, checks the target schedule before a move, and requests
 the matching operator approval.
 
+Contacts are session-local durable profiles. Create and correct them through ordinary approved
+`start --message` submissions, then use the read-only `contacts` command to inspect current IDs,
+revisions, names, and channels without loading a model or calendar provider:
+
+```sh
+node packages/cli/dist/index.js start \
+  --state .officehum/frontdesk-live \
+  --message "Create a contact named Example Guest with email guest@example.test" \
+  --request-id contact-create-1 \
+  --approval allow
+node packages/cli/dist/index.js contacts --state .officehum/frontdesk-live
+node packages/cli/dist/index.js start \
+  --state .officehum/frontdesk-live \
+  --message "For contact contact-1 at revision 1, clear email and set phone to +15551234567" \
+  --request-id contact-update-1 \
+  --approval allow
+```
+
+Profile corrections require the listed revision. Omitting a channel keeps it unchanged; explicitly
+using `null` clears it. Email addresses and international phone numbers are unique, while equal names
+remain separate identities. To associate a booking, ask the agent to use the exact contact ID and
+the contact's current name. A booking without a contact ID keeps the existing free-text behavior and
+does not create a profile. Contact profiles and booking links live only in the selected state
+directory; they are not synchronized to Google Contacts or embedded in provider events.
+
 ```sh
 node packages/cli/dist/index.js bookings --state .officehum/frontdesk-live
 node packages/cli/dist/index.js start \

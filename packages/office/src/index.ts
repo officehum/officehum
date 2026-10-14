@@ -38,6 +38,7 @@ export {
   type OpenSoloOptions,
   openSolo,
   readConnectorIdentity,
+  readSoloDocument,
   type SoloResult,
   type SoloSession,
 } from "./solo.js";
