@@ -1,4 +1,6 @@
+import { createHmac } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -12,14 +14,16 @@ import {
 import frontdesk from "@officehum/frontdesk";
 import {
   createDemoModels,
+  durableInboundReplyApprover,
   openConsoleMessenger,
   openLocalCalendar,
+  openResendInbox,
   openSolo,
   readMessengerIdentity,
 } from "@officehum/office";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeCalendar } from "../../google-calendar/src/index.js";
-import { type CliIo, cliApprover, runCli } from "./cli.js";
+import { type CliIo, cliApprover, cliReplyDecision, interruptCli, runCli } from "./cli.js";
 import { createTerminalIo } from "./terminal-io.js";
 
 const temps: string[] = [];
@@ -115,6 +119,28 @@ async function createGoogleState(directory: string, calendarId = "calendar@examp
   });
   await solo.close();
   calendar.close();
+}
+
+async function freeLoopbackPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("missing loopback port");
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error === undefined ? resolve() : reject(error))),
+  );
+  return address.port;
+}
+
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  for (let attempts = 0; attempts < 100; attempts += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("timed out waiting for CLI state");
 }
 
 describe("runCli", () => {
@@ -257,6 +283,50 @@ describe("runCli", () => {
     expect(demo.errors.join("\n")).toMatch(/synthetic demo.*console/i);
     const contacts = io();
     expect(await runCli(["contacts", "--messenger", "console"], contacts.io)).toBe(2);
+  });
+
+  it("rejects console listening and malformed webhook secrets before opening runtime state", async () => {
+    const consoleCapture = io();
+    expect(
+      await runCli(["listen", "--messenger", "console", "--port", "8787"], consoleCapture.io),
+    ).toBe(1);
+    expect(consoleCapture.errors.join("\n")).toContain("requires the Resend Messenger");
+
+    const directory = state();
+    const names = [
+      "RESEND_ACCOUNT_ID",
+      "RESEND_FROM_EMAIL",
+      "RESEND_SUBJECT",
+      "RESEND_API_KEY",
+      "RESEND_INBOUND_EMAIL",
+      "RESEND_WEBHOOK_SECRET",
+    ] as const;
+    const prior = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    Object.assign(process.env, {
+      RESEND_ACCOUNT_ID: "account_test",
+      RESEND_FROM_EMAIL: "desk@example.test",
+      RESEND_SUBJECT: "Front Desk",
+      RESEND_API_KEY: "synthetic",
+      RESEND_INBOUND_EMAIL: "desk@example.test",
+      RESEND_WEBHOOK_SECRET: "not-base64",
+    });
+    try {
+      const malformed = io();
+      expect(
+        await runCli(
+          ["listen", "--state", directory, "--messenger", "resend", "--port", "8787"],
+          malformed.io,
+        ),
+      ).toBe(1);
+      expect(malformed.errors).toEqual(["RESEND_WEBHOOK_SECRET is invalid."]);
+      expect(existsSync(join(directory, "inbound.sqlite"))).toBe(false);
+    } finally {
+      for (const name of names) {
+        const value = prior[name];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
   });
 
   it("reopens a fresh Resend host for the resume probe and live session", async () => {
@@ -428,6 +498,268 @@ describe("runCli", () => {
       }),
     ).toBe(0);
     expect(google.output).toEqual(["No contacts."]);
+  });
+
+  it("prints only sanitized blocked inbox metadata without credentials or models", async () => {
+    const directory = state();
+    const now = Date.parse("2030-01-01T00:00:00.000Z");
+    const secret = `whsec_${Buffer.from("cli-inbox-secret").toString("base64")}`;
+    const inbox = openResendInbox(join(directory, "inbound.sqlite"), {
+      authority: {
+        version: 1,
+        messengerId: "officehum.resend.v1:test",
+        accountId: "account_test",
+        fromEmail: "desk@example.test",
+        inboundEmail: "desk@example.test",
+      },
+      getApiKey: async () => {
+        throw new Error("inbox inspection must not request a credential");
+      },
+      getWebhookSecrets: async () => [secret],
+      now: () => now,
+    });
+    const event = {
+      type: "email.received",
+      created_at: "2030-01-01T00:00:00.000Z",
+      data: {
+        email_id: "66666666-6666-4666-8666-666666666666",
+        from: "private-sender@example.test",
+        to: ["other@example.test"],
+        subject: "Private subject",
+        message_id: "<private@example.test>",
+        attachments: [],
+      },
+    };
+    const raw = new TextEncoder().encode(JSON.stringify(event));
+    const timestamp = String(Math.floor(now / 1000));
+    const signature = createHmac("sha256", Buffer.from(secret.slice(6), "base64"))
+      .update(`evt_cli_inbox.${timestamp}.`)
+      .update(raw)
+      .digest("base64");
+    await inbox.accept(raw, {
+      id: "evt_cli_inbox",
+      timestamp,
+      signature: `v1,${signature}`,
+    });
+    expect(inbox.summaries()).toEqual([
+      expect.objectContaining({ state: "blocked", reason: "route_mismatch" }),
+    ]);
+    await inbox.close();
+
+    const capture = io();
+    expect(
+      await runCli(["inbox", "--state", directory], capture.io, {
+        createLiveModels: () => {
+          throw new Error("inbox inspection must not construct models");
+        },
+      }),
+    ).toBe(0);
+    expect(capture.output).toEqual([
+      JSON.stringify({
+        emailId: event.data.email_id,
+        state: "blocked",
+        reason: "route_mismatch",
+        conversationId: null,
+        submissionId: null,
+      }),
+    ]);
+    expect(capture.output.join("\n")).not.toMatch(/private|sender|subject/iu);
+  });
+
+  it("serializes two customer reply prompts so deny and allow answers cannot cross", async () => {
+    const directory = state();
+    const inbox = openResendInbox(join(directory, "inbound.sqlite"), {
+      authority: {
+        version: 1,
+        messengerId: "officehum.resend.v1:test",
+        accountId: "account_test",
+        fromEmail: "desk@example.test",
+        inboundEmail: "desk@example.test",
+      },
+      getApiKey: async () => "synthetic",
+      getWebhookSecrets: async () => [
+        `whsec_${Buffer.from("cli-prompt-secret").toString("base64")}`,
+      ],
+    });
+    const prompts: string[] = [];
+    const answers = ["deny", "allow"];
+    const terminal: CliIo = {
+      output: (line) => prompts.push(line),
+      error: () => {},
+      readApproval: async () => answers.shift(),
+    };
+    const decide = durableInboundReplyApprover(
+      inbox,
+      cliReplyDecision(undefined, terminal, () => {}),
+    );
+    const request = (conversationId: string, callId: string, to: string) => ({
+      approvalId: "confirm_inbound_reply",
+      description: "Confirm exact threaded reply",
+      tool: "reply_message",
+      arguments: { target: { receiptId: callId, to }, text: `Reply to ${to}` },
+      conversationId,
+      taskId: "task",
+      callId,
+    });
+    const first = request("101", "call-first", "first@example.test");
+    const second = request("202", "call-second", "second@example.test");
+    await expect(
+      Promise.all([decide(first, BACKGROUND_CONTEXT), decide(second, BACKGROUND_CONTEXT)]),
+    ).resolves.toEqual([
+      expect.objectContaining({ approved: false }),
+      expect.objectContaining({ approved: true }),
+    ]);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toContain("first@example.test");
+    expect(prompts[0]).not.toContain("second@example.test");
+    expect(prompts[1]).toContain("second@example.test");
+    await inbox.close();
+  });
+
+  it("listens, inspects the durable receipt, and resumes one exact threaded reply", async () => {
+    const directory = state();
+    const port = await freeLoopbackPort();
+    const secret = `whsec_${Buffer.from("cli-listen-secret").toString("base64")}`;
+    const emailId = "77777777-7777-4777-8777-777777777777";
+    const eventId = "evt_cli_listen";
+    const event = {
+      type: "email.received",
+      created_at: new Date().toISOString(),
+      data: {
+        email_id: emailId,
+        from: "guest@example.test",
+        to: ["desk@example.test"],
+        subject: "Availability",
+        message_id: "<cli-listen@example.test>",
+        attachments: [],
+      },
+    };
+    const raw = JSON.stringify(event);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = createHmac("sha256", Buffer.from(secret.slice(6), "base64"))
+      .update(`${eventId}.${timestamp}.${raw}`)
+      .digest("base64");
+    const received = {
+      id: emailId,
+      from: "guest@example.test",
+      to: ["desk@example.test"],
+      subject: "Availability",
+      message_id: "<cli-listen@example.test>",
+      reply_to: "guest@example.test",
+      headers: {
+        "message-id": "<cli-listen@example.test>",
+        "reply-to": "guest@example.test",
+      },
+      authentication: { dmarc: "pass" },
+      text: "Is tomorrow open?",
+      html: "",
+      attachments: [],
+    };
+    const priorEnvironment = {
+      account: process.env.RESEND_ACCOUNT_ID,
+      from: process.env.RESEND_FROM_EMAIL,
+      subject: process.env.RESEND_SUBJECT,
+      key: process.env.RESEND_API_KEY,
+      inbound: process.env.RESEND_INBOUND_EMAIL,
+      webhook: process.env.RESEND_WEBHOOK_SECRET,
+    };
+    const nativeFetch = globalThis.fetch;
+    let replyPosts = 0;
+    const provider = fauxProvider({ provider: "openai", models: [{ id: "gpt-6-sol" }] });
+    provider.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall("reply_message", { receiptId: emailId, text: "Tomorrow is open." }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("PRIVATE MODEL ANSWER"),
+    ]);
+    const models = createModels();
+    models.setProvider(provider.provider);
+    process.env.RESEND_ACCOUNT_ID = "account_test";
+    process.env.RESEND_FROM_EMAIL = "desk@example.test";
+    process.env.RESEND_SUBJECT = "Front Desk";
+    process.env.RESEND_API_KEY = "synthetic";
+    process.env.RESEND_INBOUND_EMAIL = "desk@example.test";
+    process.env.RESEND_WEBHOOK_SECRET = secret;
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("http://127.0.0.1:")) return nativeFetch(input, init);
+      if (url.includes(`/emails/receiving/${emailId}`)) return Response.json(received);
+      if (url === "https://api.resend.com/emails" && init?.method === "POST") {
+        replyPosts += 1;
+        return Response.json({ id: "88888888-8888-4888-8888-888888888888" });
+      }
+      throw new Error("unexpected synthetic network request");
+    };
+    const dependencies = {
+      createLiveModels: () => ({
+        models,
+        model: { provider: "openai", modelId: "gpt-6-sol" },
+      }),
+    };
+    try {
+      const listening = io();
+      const running = runCli(
+        ["listen", "--state", directory, "--messenger", "resend", "--port", String(port)],
+        listening.io,
+        dependencies,
+      );
+      await waitUntil(() => listening.output.some((line) => line.includes("Inbound listener:")));
+      const response = await nativeFetch(`http://127.0.0.1:${port}/webhooks/resend`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "svix-id": eventId,
+          "svix-timestamp": timestamp,
+          "svix-signature": `v1,${signature}`,
+        },
+        body: raw,
+      });
+      expect(response.status).toBe(202);
+      await interruptCli();
+      expect(await running).toBe(0);
+
+      const before = io();
+      expect(await runCli(["inbox", "--state", directory], before.io, dependencies)).toBe(0);
+      expect(before.output).toEqual([
+        JSON.stringify({
+          emailId,
+          state: "received",
+          reason: null,
+          conversationId: null,
+          submissionId: null,
+        }),
+      ]);
+
+      const resumed = io();
+      expect(
+        await runCli(
+          ["resume", "--state", directory, "--messenger", "resend", "--approval", "allow"],
+          resumed.io,
+          dependencies,
+        ),
+      ).toBe(0);
+      expect(resumed.errors).toEqual([]);
+      expect(resumed.output.join("\n")).not.toContain("PRIVATE MODEL ANSWER");
+      expect(replyPosts).toBe(1);
+      const after = io();
+      expect(await runCli(["inbox", "--state", directory], after.io, dependencies)).toBe(0);
+      expect(after.output.join("\n")).toContain('"state":"settled"');
+    } finally {
+      await interruptCli();
+      globalThis.fetch = nativeFetch;
+      for (const [name, value] of Object.entries({
+        RESEND_ACCOUNT_ID: priorEnvironment.account,
+        RESEND_FROM_EMAIL: priorEnvironment.from,
+        RESEND_SUBJECT: priorEnvironment.subject,
+        RESEND_API_KEY: priorEnvironment.key,
+        RESEND_INBOUND_EMAIL: priorEnvironment.inbound,
+        RESEND_WEBHOOK_SECRET: priorEnvironment.webhook,
+      })) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
   });
 
   it("does not resume or settle pending work while inspecting contacts", async () => {

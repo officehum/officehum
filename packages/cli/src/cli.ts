@@ -14,22 +14,34 @@ import {
   type ConnectorIdentity,
   createDemoModels,
   createGoogleCalendarHost,
+  createResendReplyMessenger,
   type DecisionStore,
+  durableInboundReplyApprover,
   type GoogleConnectorIdentity,
   hasDurableLocalState,
   hasDurableMessagingState,
+  type InboundSession,
+  type InternalResendInbox,
+  inboundAwareApprover,
   type LocalCalendar,
   type MessengerIdentity,
   messengerIdentityString,
   openConsoleMessenger,
+  openInboundSession,
   openLocalCalendar,
+  openResendInbox,
+  openResendListener,
   openResendMessenger,
   openSolo,
   PI_DURABLE_VERSION,
   parseMessengerIdentity,
+  type ResendListener,
   type ResendMessenger,
   type ResendMessengerOptions,
+  type ResendReplyMessenger,
   readConnectorIdentity,
+  readInboundAuthority,
+  readInboundInbox,
   readMessengerIdentity,
   readSoloDocument,
   type SoloResult,
@@ -45,7 +57,7 @@ export interface CliIo {
 
 class UsageError extends Error {}
 
-let activeSession: SoloSession | undefined;
+let activeSession: { close(): Promise<void> } | undefined;
 
 /** Called by the executable's SIGINT handler so unfinished durable work remains resumable. */
 export async function interruptCli(): Promise<void> {
@@ -62,6 +74,7 @@ type Parsed = {
   model: string;
   calendar?: "local" | "google";
   messenger?: "console" | "resend";
+  port: number;
 };
 
 export interface CliDependencies {
@@ -77,6 +90,8 @@ const USAGE = `Usage:
   officehum demo [--state DIR] [--approval allow|deny] [--calendar local] [--messenger console]
   officehum start --message TEXT --request-id ID [--state DIR] [--model ID] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
   officehum resume [--state DIR] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
+  officehum listen [--state DIR] [--model ID] [--approval allow|deny] [--calendar local|google] --messenger resend [--port PORT]
+  officehum inbox [--state DIR]
   officehum bookings [--state DIR] [--calendar local|google]
   officehum contacts [--state DIR]
   officehum --version`;
@@ -89,6 +104,7 @@ function parse(args: string[]): Parsed {
     state: ".officehum/frontdesk",
     approval: undefined,
     model: "gpt-6-sol",
+    port: 8787,
   };
   const allowed = new Set(
     command === "start"
@@ -103,11 +119,13 @@ function parse(args: string[]): Parsed {
         ]
       : command === "demo" || command === "resume"
         ? ["--state", "--approval", "--calendar", "--messenger"]
-        : command === "bookings"
-          ? ["--state", "--calendar"]
-          : command === "contacts"
-            ? ["--state"]
-            : [],
+        : command === "listen"
+          ? ["--state", "--approval", "--model", "--calendar", "--messenger", "--port"]
+          : command === "bookings"
+            ? ["--state", "--calendar"]
+            : command === "contacts" || command === "inbox"
+              ? ["--state"]
+              : [],
   );
   for (let index = 0; index < rest.length; index += 2) {
     const option = rest[index];
@@ -122,7 +140,13 @@ function parse(args: string[]): Parsed {
     else if (option === "--message") parsed.message = value;
     else if (option === "--request-id") parsed.requestId = value;
     else if (option === "--model") parsed.model = value;
-    else if (option === "--messenger") {
+    else if (option === "--port") {
+      const port = Number(value);
+      if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+        throw new UsageError("--port must be an integer from 1 through 65535.");
+      }
+      parsed.port = port;
+    } else if (option === "--messenger") {
       if (value !== "console" && value !== "resend") {
         throw new UsageError("--messenger must be console or resend.");
       }
@@ -168,10 +192,7 @@ export function cliApprover(
     if (prior !== undefined) return prior;
     let answer = mode;
     if (answer === undefined) {
-      io.output(
-        `Approval required: ${request.description}\nTool: ${request.tool}\nArguments: ${JSON.stringify(request.arguments)}`,
-      );
-      const read = await io.readApproval("Type allow or deny: ");
+      const read = await queuedApprovalRead(request, io, context);
       if (read === undefined) {
         interrupt();
         await awaitWithContext(new Promise<never>(() => {}), context);
@@ -187,6 +208,56 @@ export function cliApprover(
       by: mode === undefined ? "local-operator" : "cli-option",
       ...(answer === "deny" ? { note: "Declined by the local operator" } : {}),
     });
+  };
+}
+
+const terminalApprovalQueues = new WeakMap<CliIo, Promise<void>>();
+
+async function queuedApprovalRead(
+  request: ApprovalRequest,
+  io: CliIo,
+  context: HookContext,
+): Promise<string | undefined> {
+  const prior = terminalApprovalQueues.get(io) ?? Promise.resolve();
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  terminalApprovalQueues.set(
+    io,
+    prior.then(() => held),
+  );
+  try {
+    await awaitWithContext(prior, context);
+    io.output(
+      `Approval required: ${request.description}\nTool: ${request.tool}\nArguments: ${JSON.stringify(request.arguments)}`,
+    );
+    return await awaitWithContext(io.readApproval("Type allow or deny: "), context);
+  } finally {
+    release();
+  }
+}
+
+export function cliReplyDecision(mode: ApprovalMode, io: CliIo, interrupt: () => void): Approver {
+  return async (request, context) => {
+    let answer = mode;
+    if (answer === undefined) {
+      const read = await queuedApprovalRead(request, io, context);
+      if (read === undefined) {
+        interrupt();
+        await awaitWithContext(new Promise<never>(() => {}), context);
+        throw new Error("approval input ended");
+      }
+      if (read !== "allow" && read !== "deny") {
+        throw new Error('Approval must be exactly "allow" or "deny".');
+      }
+      answer = read;
+    }
+    return {
+      approved: answer === "allow",
+      by: mode === undefined ? "local-operator" : "cli-option",
+      ...(answer === "deny" ? { note: "Declined by the local operator" } : {}),
+    };
   };
 }
 
@@ -308,6 +379,39 @@ function requireResendApiKey(): string {
   return key;
 }
 
+function requireInboundEmail(): string {
+  const value = process.env.RESEND_INBOUND_EMAIL;
+  if (value === undefined || value.trim().length === 0) {
+    throw new Error("Set RESEND_INBOUND_EMAIL before inbound email use.");
+  }
+  return value;
+}
+
+function webhookSecrets(): readonly string[] {
+  const current = process.env.RESEND_WEBHOOK_SECRET;
+  if (current === undefined || current.trim().length === 0) {
+    throw new Error("Set RESEND_WEBHOOK_SECRET before listening for inbound email.");
+  }
+  const previous = process.env.RESEND_WEBHOOK_SECRET_PREVIOUS;
+  const values =
+    previous === undefined || previous.trim().length === 0 ? [current] : [current, previous];
+  for (const value of values) {
+    if (!value.startsWith("whsec_") || value.length > 1000) {
+      throw new Error("RESEND_WEBHOOK_SECRET is invalid.");
+    }
+    const encoded = value.slice(6);
+    if (
+      encoded.length === 0 ||
+      encoded.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded) ||
+      Buffer.from(encoded, "base64").toString("base64") !== encoded
+    ) {
+      throw new Error("RESEND_WEBHOOK_SECRET is invalid.");
+    }
+  }
+  return values;
+}
+
 type HostedMessenger = Messenger & { close(): void | Promise<void> };
 
 function createRoleFactory(
@@ -419,10 +523,32 @@ function printResult(result: SoloResult, io: CliIo): number {
   return 0;
 }
 
+function printInboundResult(result: SoloResult, io: CliIo): number {
+  io.output(`Submission: ${result.submissionId}`);
+  io.output(`Outcome: ${result.settlement.status}`);
+  if (result.settlement.status === "unanswered") {
+    io.error("Inbound submission was unanswered.");
+    return 1;
+  }
+  return 0;
+}
+
 function modelLabel(model: ModelRef): string {
   if (model.provider === "officehum-demo") return `synthetic demo (${model.modelId})`;
   if (model.provider === "openai") return `live OpenAI (${model.modelId})`;
   return `${model.provider}/${model.modelId}`;
+}
+
+async function closeEvery(actions: readonly (() => void | Promise<void>)[]): Promise<boolean> {
+  let failed = false;
+  for (const action of actions) {
+    try {
+      await action();
+    } catch {
+      failed = true;
+    }
+  }
+  return failed;
 }
 
 async function openForRun(
@@ -493,11 +619,373 @@ async function openForRun(
   }
 }
 
+type InboundHosted = {
+  inbox: InternalResendInbox;
+  reply: ResendReplyMessenger;
+  role: ReturnType<typeof frontdesk>;
+};
+
+function customerTools(role: ReturnType<typeof frontdesk>) {
+  const offered = role.extensions
+    .flatMap((extension) => extension.tools ?? [])
+    .filter(({ name }) => name === "check_schedule" || name === "reply_message");
+  const selection = role.agent.tools;
+  if (selection === undefined || selection === null) return offered;
+  if ("remove" in selection) {
+    const removed = new Set(selection.remove.map(({ name }) => name));
+    return offered.filter(({ name }) => !removed.has(name));
+  }
+  const selected = new Set(selection.map(({ name }) => name));
+  return offered.filter(({ name }) => selected.has(name));
+}
+
+async function openInboundRuntime(
+  parsed: Parsed,
+  calendar: HostCalendar,
+  connectorIdentity: ConnectorIdentity,
+  messengerIdentity: Extract<MessengerIdentity, { backend: "resend" }>,
+  runtime: { models: ReturnType<typeof createModels>; model: ModelRef },
+  rootDecision: Approver,
+  replyDecision: Approver,
+  dependencies: CliDependencies,
+): Promise<{
+  solo: SoloSession;
+  hosted: InboundHosted;
+  model: ModelRef;
+  attach(): void;
+}> {
+  let attachedHarness: SoloSession["harness"] | undefined;
+  let hosted: InboundHosted | undefined;
+  const savedAuthority = readInboundAuthority(parsed.state);
+  const solo = await openSolo({
+    directory: parsed.state,
+    models: runtime.models,
+    model: runtime.model,
+    messengerIdentity,
+    connectorIdentity,
+    createRole: async () => {
+      let outbound: HostedMessenger | undefined;
+      let inbox: InternalResendInbox | undefined;
+      let reply: ResendReplyMessenger | undefined;
+      try {
+        outbound = (dependencies.openResendMessenger ?? openResendMessenger)(
+          join(parsed.state, "email.sqlite"),
+          {
+            accountId: messengerIdentity.accountId,
+            fromEmail: messengerIdentity.fromEmail,
+            subject: messengerIdentity.subject,
+            getApiKey: async () => requireResendApiKey(),
+          },
+        );
+        inbox = openResendInbox(join(parsed.state, "inbound.sqlite"), {
+          authority: savedAuthority,
+          getApiKey: async () => requireResendApiKey(),
+          getWebhookSecrets: async () => webhookSecrets(),
+        });
+        reply = createResendReplyMessenger({
+          inbox,
+          getHarness: () => attachedHarness,
+          getApiKey: async () => requireResendApiKey(),
+        });
+        const role = frontdesk({
+          calendar,
+          messenger: outbound,
+          approve: inboundAwareApprover(() => attachedHarness, rootDecision),
+          replyMessenger: reply,
+          approveReply: durableInboundReplyApprover(inbox, replyDecision),
+        });
+        hosted = { inbox, reply, role };
+        return {
+          role,
+          close: async () => {
+            if (
+              await closeEvery([
+                async () => reply?.close(),
+                async () => inbox?.close(),
+                async () => outbound?.close(),
+              ])
+            ) {
+              throw new Error("Inbound hosted cleanup failed.");
+            }
+          },
+        };
+      } catch (error) {
+        await closeEvery([
+          async () => reply?.close(),
+          async () => inbox?.close(),
+          async () => outbound?.close(),
+        ]);
+        throw error;
+      }
+    },
+  });
+  if (hosted === undefined) {
+    await solo.close();
+    throw new Error("Inbound role resources were not created.");
+  }
+  return {
+    solo,
+    hosted,
+    model: runtime.model,
+    attach() {
+      attachedHarness = solo.harness;
+    },
+  };
+}
+
+async function runListen(
+  parsed: Parsed,
+  io: CliIo,
+  dependencies: CliDependencies,
+): Promise<number> {
+  parsed.messenger ??= "resend";
+  const messengerIdentity = selectedMessengerIdentity(parsed);
+  if (messengerIdentity.backend !== "resend") {
+    throw new Error("Inbound listening requires the Resend Messenger.");
+  }
+  requireResendApiKey();
+  const inboundEmail = requireInboundEmail();
+  webhookSecrets();
+  const { calendar, identity } = openCalendar(parsed, dependencies);
+  const runtime = liveModels(parsed.model, dependencies);
+  let solo: SoloSession | undefined;
+  let attachedHarness: SoloSession["harness"] | undefined;
+  let hosted: InboundHosted | undefined;
+  let listener: ResendListener | undefined;
+  let session: InboundSession | undefined;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let stopped = false;
+  let stop!: () => void;
+  const done = new Promise<void>((resolve) => {
+    stop = resolve;
+  });
+  let closePromise: Promise<void> | undefined;
+  const close = async (): Promise<void> => {
+    closePromise ??= (async () => {
+      stopped = true;
+      if (timer !== undefined) clearInterval(timer);
+      const failed = await closeEvery([
+        async () => listener?.close(),
+        async () => session?.close(),
+        async () => solo?.close(),
+      ]);
+      stop();
+      if (failed) throw new Error("Inbound shutdown failed.");
+    })();
+    return closePromise;
+  };
+  const interrupt = () => void close();
+  const rootDecision = cliApprover(calendar, parsed.approval, io, interrupt);
+  const replyDecision = cliReplyDecision(parsed.approval, io, interrupt);
+  try {
+    solo = await openSolo({
+      directory: parsed.state,
+      models: runtime.models,
+      model: runtime.model,
+      messengerIdentity,
+      connectorIdentity: identity,
+      createRole: async () => {
+        let outbound: HostedMessenger | undefined;
+        let inbox: InternalResendInbox | undefined;
+        let reply: ResendReplyMessenger | undefined;
+        try {
+          outbound = (dependencies.openResendMessenger ?? openResendMessenger)(
+            join(parsed.state, "email.sqlite"),
+            {
+              accountId: messengerIdentity.accountId,
+              fromEmail: messengerIdentity.fromEmail,
+              subject: messengerIdentity.subject,
+              getApiKey: async () => requireResendApiKey(),
+            },
+          );
+          inbox = openResendInbox(join(parsed.state, "inbound.sqlite"), {
+            authority: {
+              version: 1,
+              messengerId: messengerIdentityString(messengerIdentity),
+              accountId: messengerIdentity.accountId,
+              fromEmail: messengerIdentity.fromEmail,
+              inboundEmail,
+            },
+            getApiKey: async () => requireResendApiKey(),
+            getWebhookSecrets: async () => webhookSecrets(),
+          });
+          reply = createResendReplyMessenger({
+            inbox,
+            getHarness: () => attachedHarness,
+            getApiKey: async () => requireResendApiKey(),
+          });
+          const role = frontdesk({
+            calendar,
+            messenger: outbound,
+            approve: inboundAwareApprover(() => attachedHarness, rootDecision),
+            replyMessenger: reply,
+            approveReply: durableInboundReplyApprover(inbox, replyDecision),
+          });
+          hosted = { inbox, reply, role };
+          return {
+            role,
+            close: async () => {
+              if (
+                await closeEvery([
+                  async () => reply?.close(),
+                  async () => inbox?.close(),
+                  async () => outbound?.close(),
+                ])
+              ) {
+                throw new Error("Inbound hosted cleanup failed.");
+              }
+            },
+          };
+        } catch (error) {
+          await closeEvery([
+            async () => reply?.close(),
+            async () => inbox?.close(),
+            async () => outbound?.close(),
+          ]);
+          throw error;
+        }
+      },
+    });
+    attachedHarness = solo.harness;
+    if (hosted === undefined) throw new Error("Inbound role resources were not created.");
+    session = openInboundSession({
+      solo,
+      inbox: hosted.inbox,
+      customerAgent: {
+        ...hosted.role.agent,
+        model: runtime.model,
+        tools: customerTools(hosted.role),
+      },
+    });
+    await session.reconcile();
+    await session.tick();
+    listener = await openResendListener({ inbox: hosted.inbox, port: parsed.port });
+    timer = setInterval(() => {
+      void session?.tick().catch(() => io.error("Inbound worker tick failed."));
+    }, 5000);
+    activeSession = { close };
+    io.output(`Inbound listener: ${listener.address}/webhooks/resend`);
+    io.output(`Approval: ${parsed.approval ?? "interactive review"}`);
+    if (stopped) await close();
+    await done;
+    return 0;
+  } finally {
+    try {
+      await close();
+    } finally {
+      if (activeSession?.close === close) activeSession = undefined;
+      calendar.close();
+    }
+  }
+}
+
+async function runInboundResume(
+  parsed: Parsed,
+  io: CliIo,
+  dependencies: CliDependencies,
+): Promise<number> {
+  const selected = selectedMessengerIdentity(parsed);
+  if (selected.backend !== "resend")
+    throw new Error("Inbound resume requires the Resend Messenger.");
+  requireResendApiKey();
+  const { calendar, identity } = openCalendar(parsed, dependencies);
+  let active: Awaited<ReturnType<typeof openInboundRuntime>> | undefined;
+  let probe: Awaited<ReturnType<typeof openInboundRuntime>> | undefined;
+  let session: InboundSession | undefined;
+  let closeRequested = false;
+  let closePromise: Promise<void> | undefined;
+  const close = async (): Promise<void> => {
+    closePromise ??= (async () => {
+      closeRequested = true;
+      if (
+        await closeEvery([
+          async () => session?.close(),
+          async () => active?.solo.close(),
+          async () => probe?.solo.close(),
+        ])
+      ) {
+        throw new Error("Inbound shutdown failed.");
+      }
+    })();
+    return closePromise;
+  };
+  const interrupt = () => void close();
+  const rootDecision = cliApprover(calendar, parsed.approval, io, interrupt);
+  const replyDecision = cliReplyDecision(parsed.approval, io, interrupt);
+  try {
+    const demo = createDemoModels();
+    probe = await openInboundRuntime(
+      parsed,
+      calendar,
+      identity,
+      selected,
+      demo,
+      rootDecision,
+      replyDecision,
+      dependencies,
+    );
+    activeSession = { close };
+    const agent = await probe.solo.root.agent(BACKGROUND_CONTEXT);
+    if (agent.model?.provider === "officehum-demo") {
+      active = probe;
+      probe = undefined;
+      io.output(`Mode: ${modelLabel(agent.model)}`);
+    } else {
+      await probe.solo.close();
+      probe = undefined;
+      const runtime = liveModels(agent.model?.modelId ?? parsed.model, dependencies);
+      active = await openInboundRuntime(
+        parsed,
+        calendar,
+        identity,
+        selected,
+        runtime,
+        rootDecision,
+        replyDecision,
+        dependencies,
+      );
+      io.output(`Mode: ${modelLabel(runtime.model)}`);
+    }
+    active.attach();
+    session = openInboundSession({
+      solo: active.solo,
+      inbox: active.hosted.inbox,
+      customerAgent: {
+        ...active.hosted.role.agent,
+        model: active.model,
+        tools: customerTools(active.hosted.role),
+      },
+    });
+    await session.reconcile();
+    await session.tick();
+    if (closeRequested) await close();
+    printMessenger(selected, messengerIdentityString(selected), io);
+    const results = await active.solo.resume();
+    await active.solo.harness.waitForIdle(BACKGROUND_CONTEXT);
+    await session.reconcile();
+    if (results.length === 0) {
+      io.output("No pending work.");
+      return 0;
+    }
+    return results.reduce((code, result) => Math.max(code, printInboundResult(result, io)), 0);
+  } finally {
+    try {
+      await close();
+    } finally {
+      if (activeSession?.close === close) activeSession = undefined;
+      calendar.close();
+    }
+  }
+}
+
 async function runResume(
   parsed: Parsed,
   io: CliIo,
   dependencies: CliDependencies,
 ): Promise<number> {
+  if (existsSync(join(parsed.state, "inbound.sqlite"))) {
+    return runInboundResume(parsed, io, dependencies);
+  }
   const messengerIdentity = selectedMessengerIdentity(parsed);
   if (messengerIdentity.backend === "resend") requireResendApiKey();
   const { calendar, identity } = openCalendar(parsed, dependencies);
@@ -572,7 +1060,11 @@ export async function runCli(
       return 0;
     }
     const parsed = parse(args);
-    if (!new Set(["demo", "start", "resume", "bookings", "contacts"]).has(parsed.command)) {
+    if (
+      !new Set(["demo", "start", "resume", "listen", "inbox", "bookings", "contacts"]).has(
+        parsed.command,
+      )
+    ) {
       throw new UsageError(`Unknown command: ${parsed.command}\n${USAGE}`);
     }
     if (parsed.command === "contacts") {
@@ -588,6 +1080,15 @@ export async function runCli(
       }
       return 0;
     }
+    if (parsed.command === "inbox") {
+      if (!existsSync(join(parsed.state, "inbound.sqlite"))) {
+        throw new Error("No inbound inbox exists for this state directory.");
+      }
+      const summaries = await readInboundInbox(parsed.state);
+      if (summaries.length === 0) io.output("No inbound email receipts.");
+      else for (const summary of summaries) io.output(JSON.stringify(summary));
+      return 0;
+    }
     if (parsed.command === "bookings") {
       const { calendar } = openCalendar(parsed, dependencies);
       try {
@@ -600,6 +1101,7 @@ export async function runCli(
       return 0;
     }
     if (parsed.command === "resume") return await runResume(parsed, io, dependencies);
+    if (parsed.command === "listen") return await runListen(parsed, io, dependencies);
 
     const demo = parsed.command === "demo";
     const opened = await openForRun(parsed, io, demo, dependencies);

@@ -299,6 +299,16 @@ function acquireLock(directory: string): { release(): void } {
   }
 }
 
+/** Run a synchronous state inspection under the same exclusive ownership guard as openSolo. */
+export function withSoloOwnership<T>(directory: string, action: () => T): T {
+  const lock = acquireLock(directory);
+  try {
+    return action();
+  } finally {
+    lock.release();
+  }
+}
+
 /** Read one existing session document while retaining the same exclusive state ownership as openSolo. */
 export async function readSoloDocument<T extends JsonObject>(
   directory: string,

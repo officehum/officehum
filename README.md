@@ -116,8 +116,36 @@ still requires the credential. Unknown provider outcomes may retry only with the
 and key before the persisted first-attempt time plus 23 hours. At the cutoff, or after a detected
 clock regression, automatic retry stops: retain the state and inspect Resend before authorizing a
 separate new submission. Previously saved accepted receipts remain replayable without a credential.
-Inbound email, threads, HTML, attachments, SMS delivery, provider account setup, and a read-only
-messages CLI remain deferred.
+
+Inbound Resend email uses a separate durable `inbound.sqlite` ledger and a native loopback webhook
+listener. Configure the nonsecret inbound mailbox with `RESEND_INBOUND_EMAIL`; provide
+`RESEND_WEBHOOK_SECRET` and, during rotation, optional `RESEND_WEBHOOK_SECRET_PREVIOUS` through the
+shell or approved secret store. Build first, then start the listener:
+
+```sh
+npm run build
+node packages/cli/dist/index.js listen \
+  --state .officehum/frontdesk-resend \
+  --messenger resend \
+  --port 8787
+node packages/cli/dist/index.js inbox --state .officehum/frontdesk-resend
+node packages/cli/dist/index.js resume --state .officehum/frontdesk-resend
+```
+
+The listener binds `127.0.0.1` and accepts only `POST /webhooks/resend`. Resend needs a separately
+configured public HTTPS forwarder to that local endpoint; Office Hum does not create a tunnel,
+change DNS, or configure the provider. Default reply approval is interactive review. Explicit
+`--approval allow` applies to approval requests handled by that runtime; customer email never
+supplies approval or widens the customer tools beyond availability and replying.
+
+`inbox` prints receipt IDs, state, reason codes, and conversation/submission IDs without sender,
+subject, body, headers, attachment names, or credentials. Blocked receipts remain for inspection.
+Pending uncertain sends retain their original target and provider key and stop automatic retries at
+exactly 23 hours. Each inbound receipt permits one distinct reply operation. Preserve
+`inbound.sqlite`, `email.sqlite`, `messenger.json`, and the Harness directory together. HTML is
+converted locally; attachments remain inert metadata and are never downloaded. Live provider
+send/receive acceptance still requires a human-configured webhook and a separate live verification.
+SMS delivery and provider account setup remain deferred.
 
 ```sh
 node packages/cli/dist/index.js bookings --state .officehum/frontdesk-live
@@ -192,7 +220,8 @@ provider/model, and the CLI rejects cross-mode reuse before admitting input. The
 `.officehum/frontdesk`: Pi Durable JSONL data is under `harness/`; bookings, tombstones, approval
 decisions, and pending/completed calendar operations are in `calendar.sqlite`; synthetic message
 outbox rows are in `messages.sqlite`; Resend operations and accepted receipts are in `email.sqlite`;
-the immutable transport authority is in `messenger.json`; and a lifetime
+signed inbound receipts, routing bindings, reply approvals, and reply operations are in
+`inbound.sqlite`; the immutable transport authority is in `messenger.json`; and a lifetime
 transaction in `ownership.sqlite` enforces one process at a time. An identity-free state with a
 harness or any persisted booking, approval, or operation record is treated as legacy local state; an
 empty preflight calendar database remains available for initial binding.
