@@ -12,6 +12,7 @@
     { "name": "create_contact", "replay": "safe" },
     { "name": "update_contact", "replay": "safe" },
     { "name": "send_message", "replay": "safe" },
+    { "name": "reply_message", "replay": "safe" },
     { "name": "book_appointment", "replay": "safe" },
     { "name": "reschedule_appointment", "replay": "safe" },
     { "name": "cancel_appointment", "replay": "safe" }

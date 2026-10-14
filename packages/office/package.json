@@ -29,6 +29,10 @@
     "@earendil-works/pi-ai": "1.0.2",
     "@earendil-works/pi-durable": "1.0.2",
     "@officehum/google-calendar": "0.0.0",
-    "@officehum/sdk": "0.0.0"
+    "@officehum/sdk": "0.0.0",
+    "html-to-text": "10.0.1"
+  },
+  "devDependencies": {
+    "@types/html-to-text": "9.0.4"
   }
 }

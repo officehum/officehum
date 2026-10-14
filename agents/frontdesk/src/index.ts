@@ -5,6 +5,7 @@ import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { contactTools, linkBookingContact, pinBookingContact } from "./contacts.js";
 import { firstContactCondition, type Messenger, messagingTools } from "./messaging.js";
+import { inboundCustomerToolGuard, type ReplyMessenger, repliesTools } from "./replies.js";
 
 export { type Contact, ContactsDoc } from "./contacts.js";
 export {
@@ -16,6 +17,15 @@ export {
   type MessagesDocument,
   type Messenger,
 } from "./messaging.js";
+export {
+  inboundCustomerToolGuard,
+  RepliesDoc,
+  type ReplyDeliveryReceipt,
+  type ReplyMessenger,
+  type ReplyRecord,
+  type ReplyTarget,
+  repliesTools,
+} from "./replies.js";
 
 export interface Booking {
   readonly id: string;
@@ -42,6 +52,8 @@ export interface FrontDeskOptions {
   readonly messenger?: Messenger;
   readonly overlays?: readonly string[];
   readonly approve?: Approver;
+  readonly replyMessenger?: ReplyMessenger;
+  readonly approveReply?: Approver;
 }
 
 export default function frontdesk(options: FrontDeskOptions): DefinedRole {
@@ -162,6 +174,7 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
       listBookings,
       ...contactTools(),
       ...messagingTools(options.messenger),
+      ...repliesTools(options.replyMessenger, options.approveReply),
       book,
       reschedule,
       cancel,
@@ -169,5 +182,6 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
     when: { first_contact: firstContactCondition },
+    hooks: [inboundCustomerToolGuard()],
   });
 }

@@ -33,6 +33,14 @@ export {
   type GoogleCalendarHost,
 } from "./google-calendar.js";
 export {
+  InboundConversationDoc,
+  type InboundRoute,
+  InboundRoutesDoc,
+  type InboundSession,
+  inboundAwareApprover,
+  openInboundSession,
+} from "./inbound-session.js";
+export {
   type Booking,
   canonicalAppointmentStart,
   type LocalCalendar,
@@ -50,12 +58,46 @@ export {
   readMessengerIdentity,
 } from "./messenger-identity.js";
 export {
+  canonicalJson as canonicalInboundJson,
+  canonicalMailbox,
+  type InboundAttachment,
+  type NormalizedInboundEmail,
+  normalizeReceivedEmail,
+  parseReceivingEvent,
+  type ReceivingEvent,
+  type SignedWebhookHeaders,
+  verifySvixWebhook,
+} from "./resend-inbound.js";
+export {
+  durableInboundReplyApprover,
+  type InboundAuthority,
+  type InboxSummary,
+  type InternalResendInbox,
+  openResendInbox,
+  type ReceiveResult,
+  type ResendInboundOptions,
+  type ResendInbox,
+  readInboundAuthority,
+  readInboundInbox,
+  type StoredInboundReceipt,
+} from "./resend-inbox.js";
+export {
+  openResendListener,
+  type ResendListener,
+} from "./resend-listener.js";
+export {
   openResendMessenger,
   type ResendDeliveryReceipt,
   type ResendMessageIntent,
   type ResendMessenger,
   type ResendMessengerOptions,
 } from "./resend-messenger.js";
+export {
+  createResendReplyMessenger,
+  type ReplyMessenger,
+  type ReplyTarget,
+  type ResendReplyMessenger,
+} from "./resend-replies.js";
 export {
   type ConnectorIdentity,
   type GoogleConnectorIdentity,

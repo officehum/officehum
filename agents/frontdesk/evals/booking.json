@@ -12,6 +12,7 @@
         "create_contact": { "text": "Saved contact-1 at revision 1" },
         "update_contact": { "text": "Saved contact-1 at revision 2" },
         "send_message": { "text": "Accepted by transport." },
+        "reply_message": { "text": "Accepted by transport." },
         "book_appointment": { "text": "Booked demo-1 at 2030-01-15T09:00:00Z" },
         "reschedule_appointment": { "text": "Rescheduled demo-1" },
         "cancel_appointment": { "text": "Canceled demo-1" }
@@ -40,6 +41,7 @@
         "create_contact": { "text": "Blocked: declined" },
         "update_contact": { "text": "Blocked: declined" },
         "send_message": { "text": "Blocked: declined" },
+        "reply_message": { "text": "Blocked: declined" },
         "book_appointment": { "text": "Blocked: declined" },
         "reschedule_appointment": { "text": "Blocked: declined" },
         "cancel_appointment": { "text": "Blocked: declined" }
@@ -61,6 +63,7 @@
         "create_contact": { "text": "Saved contact-1 at revision 1" },
         "update_contact": { "text": "Saved contact-1 at revision 2" },
         "send_message": { "text": "Accepted by transport." },
+        "reply_message": { "text": "Accepted by transport." },
         "book_appointment": { "text": "Slot unavailable", "isError": true },
         "reschedule_appointment": { "text": "Slot unavailable", "isError": true },
         "cancel_appointment": { "text": "Unknown booking", "isError": true }
