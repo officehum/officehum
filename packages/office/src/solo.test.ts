@@ -40,8 +40,11 @@ import frontdesk, {
 import { createGoogleCalendar } from "../../google-calendar/src/index.js";
 import { openConsoleMessenger } from "./console-messenger.js";
 import { createDemoModels } from "./demo-model.js";
+import { ResendFetchFixture } from "./fixtures/resend-fetch.js";
 import { createGoogleCalendarHost } from "./google-calendar.js";
 import { openLocalCalendar } from "./local-calendar.js";
+import { messengerIdentityString } from "./messenger-identity.js";
+import { openResendMessenger } from "./resend-messenger.js";
 import { openSolo, readSoloDocument } from "./solo.js";
 
 const temps: string[] = [];
@@ -162,6 +165,84 @@ function scriptedModels() {
 }
 
 describe("openSolo", () => {
+  it("creates hosted roles only after Messenger binding and keeps ownership through async cleanup", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    let factoryCalls = 0;
+    let releaseCleanup!: () => void;
+    const cleanupBarrier = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    const hosted = await openSolo({
+      directory,
+      createRole: async () => {
+        factoryCalls += 1;
+        return { role, close: async () => cleanupBarrier };
+      },
+      messengerIdentity: { version: 1, backend: "console" },
+      ...createDemoModels(),
+    });
+    expect(factoryCalls).toBe(1);
+    const closing = hosted.close();
+    await expect(
+      openSolo({
+        directory,
+        createRole: async () => {
+          factoryCalls += 1;
+          return { role, close: () => {} };
+        },
+        messengerIdentity: { version: 1, backend: "console" },
+        ...createDemoModels(),
+      }),
+    ).rejects.toThrow(/owned|active/i);
+    expect(factoryCalls).toBe(1);
+    releaseCleanup();
+    await closing;
+
+    const reopened = await openSolo({
+      directory,
+      role,
+      messengerIdentity: { version: 1, backend: "console" },
+      ...createDemoModels(),
+    });
+    await reopened.close();
+    calendar.close();
+  });
+
+  it("rejects a hosted role authority mismatch before calling its factory", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const original = await openSolo({
+      directory,
+      role,
+      messengerIdentity: { version: 1, backend: "console" },
+      ...createDemoModels(),
+    });
+    await original.close();
+    let calls = 0;
+    await expect(
+      openSolo({
+        directory,
+        createRole: async () => {
+          calls += 1;
+          return { role, close: () => {} };
+        },
+        messengerIdentity: {
+          version: 1,
+          backend: "resend",
+          accountId: "account",
+          fromEmail: "desk@example.test",
+          subject: "Front Desk",
+        },
+        ...createDemoModels(),
+      }),
+    ).rejects.toThrow(/Messenger identity mismatch/i);
+    expect(calls).toBe(0);
+    calendar.close();
+  });
+
   it("persists immutable connector identity and rejects mismatches before opening the harness", async () => {
     const directory = temporary();
     const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
@@ -936,6 +1017,466 @@ describe("openSolo", () => {
     calendar.close();
   });
 
+  it.each(["local", "google"] as const)(
+    "recovers a lost Resend response through the fsynced %s Harness with one acceptance",
+    async (backend) => {
+      const directory = temporary();
+      const decisions = openLocalCalendar(join(directory, "calendar.sqlite"));
+      const connectorIdentity =
+        backend === "google"
+          ? {
+              version: 1 as const,
+              backend: "google" as const,
+              calendarId: "cal",
+              timeZone: "UTC" as const,
+              workingHours: { start: "09:00" as const, end: "12:00" as const },
+              durationMinutes: 60 as const,
+            }
+          : undefined;
+      const calendar =
+        backend === "local"
+          ? decisions
+          : createGoogleCalendarHost({
+              client: createGoogleCalendar({
+                calendarId: "cal",
+                getAccessToken: async () => "synthetic-google-token",
+                timeZone: "UTC",
+                workingHours: { start: "09:00", end: "12:00" },
+                durationMinutes: 60,
+                fetch: googleMutationFixture().transport,
+              }),
+              decisions,
+              durationMinutes: 60,
+            });
+      const fixture = new ResendFetchFixture();
+      const acceptedByProvider = fixture.loseResponseUntilAbort();
+      const messengerIdentity = {
+        version: 1 as const,
+        backend: "resend" as const,
+        accountId: "test-account",
+        fromEmail: "desk@example.test",
+        subject: "Front Desk",
+      };
+      const messengerId = messengerIdentityString(messengerIdentity);
+      let approvals = 0;
+      const createRole = () => {
+        const messenger = openResendMessenger(join(directory, "email.sqlite"), {
+          accountId: messengerIdentity.accountId,
+          fromEmail: messengerIdentity.fromEmail,
+          subject: messengerIdentity.subject,
+          getApiKey: async () => "synthetic-resend-key",
+          fetch: fixture.fetch,
+          now: () => fixture.now,
+        });
+        return {
+          role: frontdesk({
+            calendar,
+            messenger,
+            approve: async () => {
+              approvals += 1;
+              return { approved: true, by: "test" };
+            },
+          }),
+          close: () => messenger.close(),
+        };
+      };
+      const provider = `recover-resend-${backend}`;
+      const firstFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+      firstFaux.setResponses([
+        fauxAssistantMessage(
+          fauxToolCall("send_message", {
+            contactId: "contact-1",
+            channel: "email",
+            to: "guest@example.test",
+            text: "Recover the accepted email",
+            messengerId,
+          }),
+          { stopReason: "toolUse" },
+        ),
+      ]);
+      const firstModels = createModels();
+      firstModels.setProvider(firstFaux.provider);
+      const solo = await openSolo({
+        directory,
+        createRole,
+        messengerIdentity,
+        models: firstModels,
+        model: { provider, modelId: "model" },
+        ...(connectorIdentity === undefined ? {} : { connectorIdentity }),
+      });
+      const create = contactTools().find((tool) => tool.name === "create_contact");
+      if (create === undefined) throw new Error("missing create_contact");
+      await create.execute(
+        { name: "Guest", email: "guest@example.test" },
+        {
+          conversationId: 91,
+          taskId: 91,
+          callId: "seed",
+          commit: solo.harness.commit.bind(solo.harness),
+          snapshot: solo.harness.snapshot.bind(solo.harness),
+        } as never,
+        BACKGROUND_CONTEXT,
+      );
+      const pending = solo.submit("Send the email", `resend-recovery-${backend}`);
+      await acceptedByProvider;
+      const [submission] = (await solo.harness.inspect(BACKGROUND_CONTEXT)).submissions;
+      expect(fixture.acceptances).toBe(1);
+      expect(await solo.harness.snapshot(MessagesDoc, BACKGROUND_CONTEXT)).toBeUndefined();
+      await solo.close();
+      await pending.catch(() => {});
+
+      const resumedFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+      resumedFaux.setResponses([fauxAssistantMessage("Recovered the accepted email.")]);
+      const resumedModels = createModels();
+      resumedModels.setProvider(resumedFaux.provider);
+      const reopened = await openSolo({
+        directory,
+        createRole,
+        messengerIdentity,
+        models: resumedModels,
+        ...(connectorIdentity === undefined ? {} : { connectorIdentity }),
+      });
+      const [result] = await reopened.resume();
+      expect(result?.submissionId).toBe(submission?.id);
+      expect(result?.settlement.status).toBe("done");
+      expect(fixture.posts).toBe(2);
+      expect(fixture.acceptances).toBe(1);
+      expect(approvals).toBe(1);
+      expect(
+        (await reopened.harness.snapshot(MessagesDoc, BACKGROUND_CONTEXT))?.messages,
+      ).toHaveLength(1);
+      await reopened.close();
+      calendar.close();
+    },
+  );
+
+  it("blocks expired Resend uncertainty during Harness recovery without a POST or success history", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const fixture = new ResendFetchFixture();
+    const acceptedByProvider = fixture.loseResponseUntilAbort();
+    const messengerIdentity = {
+      version: 1 as const,
+      backend: "resend" as const,
+      accountId: "test-account",
+      fromEmail: "desk@example.test",
+      subject: "Front Desk",
+    };
+    const messengerId = messengerIdentityString(messengerIdentity);
+    let approvals = 0;
+    const createRole = () => {
+      const messenger = openResendMessenger(join(directory, "email.sqlite"), {
+        accountId: messengerIdentity.accountId,
+        fromEmail: messengerIdentity.fromEmail,
+        subject: messengerIdentity.subject,
+        getApiKey: async () => "synthetic-resend-key",
+        fetch: fixture.fetch,
+        now: () => fixture.now,
+      });
+      return {
+        role: frontdesk({
+          calendar,
+          messenger,
+          approve: async () => {
+            approvals += 1;
+            return { approved: true, by: "test" };
+          },
+        }),
+        close: () => messenger.close(),
+      };
+    };
+    const provider = "recover-expired-resend";
+    const firstFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+    firstFaux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall("send_message", {
+          contactId: "contact-1",
+          channel: "email",
+          to: "guest@example.test",
+          text: "Expired uncertain email",
+          messengerId,
+        }),
+        { stopReason: "toolUse" },
+      ),
+    ]);
+    const firstModels = createModels();
+    firstModels.setProvider(firstFaux.provider);
+    const solo = await openSolo({
+      directory,
+      createRole,
+      messengerIdentity,
+      models: firstModels,
+      model: { provider, modelId: "model" },
+    });
+    const create = contactTools().find((tool) => tool.name === "create_contact");
+    if (create === undefined) throw new Error("missing create_contact");
+    await create.execute(
+      { name: "Guest", email: "guest@example.test" },
+      {
+        conversationId: 92,
+        taskId: 92,
+        callId: "seed",
+        commit: solo.harness.commit.bind(solo.harness),
+        snapshot: solo.harness.snapshot.bind(solo.harness),
+      } as never,
+      BACKGROUND_CONTEXT,
+    );
+    const pending = solo.submit("Send the expired email", "expired-resend");
+    await acceptedByProvider;
+    await solo.close();
+    await pending.catch(() => {});
+    expect(fixture.posts).toBe(1);
+    fixture.now += 23 * 60 * 60 * 1000;
+
+    const resumedFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+    resumedFaux.setResponses([fauxAssistantMessage("The uncertain email needs investigation.")]);
+    const resumedModels = createModels();
+    resumedModels.setProvider(resumedFaux.provider);
+    const reopened = await openSolo({
+      directory,
+      createRole,
+      messengerIdentity,
+      models: resumedModels,
+    });
+    await reopened.resume();
+    expect(fixture.posts).toBe(1);
+    expect(fixture.acceptances).toBe(1);
+    expect(approvals).toBe(1);
+    expect(await reopened.harness.snapshot(MessagesDoc, BACKGROUND_CONTEXT)).toBeUndefined();
+    await reopened.close();
+    calendar.close();
+  });
+
+  it("does not POST when the Resend first-contact decision is denied", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const fixture = new ResendFetchFixture();
+    const messengerIdentity = {
+      version: 1 as const,
+      backend: "resend" as const,
+      accountId: "test-account",
+      fromEmail: "desk@example.test",
+      subject: "Front Desk",
+    };
+    const messengerId = messengerIdentityString(messengerIdentity);
+    const provider = "deny-resend-first-contact";
+    const faux = fauxProvider({ provider, models: [{ id: "model" }] });
+    faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall("send_message", {
+          contactId: "contact-1",
+          channel: "email",
+          to: "guest@example.test",
+          text: "Do not send",
+          messengerId,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("The message was not sent."),
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const solo = await openSolo({
+      directory,
+      createRole: () => {
+        const messenger = openResendMessenger(join(directory, "email.sqlite"), {
+          accountId: messengerIdentity.accountId,
+          fromEmail: messengerIdentity.fromEmail,
+          subject: messengerIdentity.subject,
+          getApiKey: async () => "synthetic-resend-key",
+          fetch: fixture.fetch,
+          now: () => fixture.now,
+        });
+        return {
+          role: frontdesk({
+            calendar,
+            messenger,
+            approve: async (request) => ({
+              approved: request.approvalId !== "first_contact",
+              by: "test",
+            }),
+          }),
+          close: () => messenger.close(),
+        };
+      },
+      messengerIdentity,
+      models,
+      model: { provider, modelId: "model" },
+    });
+    const create = contactTools().find((tool) => tool.name === "create_contact");
+    if (create === undefined) throw new Error("missing create_contact");
+    await create.execute(
+      { name: "Guest", email: "guest@example.test" },
+      {
+        conversationId: 94,
+        taskId: 94,
+        callId: "seed",
+        commit: solo.harness.commit.bind(solo.harness),
+        snapshot: solo.harness.snapshot.bind(solo.harness),
+      } as never,
+      BACKGROUND_CONTEXT,
+    );
+    expect((await solo.submit("Try the denied email", "denied-resend")).settlement.status).toBe(
+      "done",
+    );
+    expect(fixture.posts).toBe(0);
+    expect(await solo.harness.snapshot(MessagesDoc, BACKGROUND_CONTEXT)).toBeUndefined();
+    await solo.close();
+    calendar.close();
+  });
+
+  it.each(["receipt", "history"] as const)(
+    "recovers Resend %s persisted before interrupted tool settlement without another POST",
+    async (stage) => {
+      const directory = temporary();
+      const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+      const fixture = new ResendFetchFixture();
+      const messengerIdentity = {
+        version: 1 as const,
+        backend: "resend" as const,
+        accountId: "test-account",
+        fromEmail: "desk@example.test",
+        subject: "Front Desk",
+      };
+      const messengerId = messengerIdentityString(messengerIdentity);
+      let approvals = 0;
+      let firstPhase = true;
+      let reached!: () => void;
+      const barrier = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      const responseAbort = new AbortController();
+      const createRole = () => {
+        const messenger = openResendMessenger(join(directory, "email.sqlite"), {
+          accountId: messengerIdentity.accountId,
+          fromEmail: messengerIdentity.fromEmail,
+          subject: messengerIdentity.subject,
+          getApiKey: async () => "synthetic-resend-key",
+          fetch: fixture.fetch,
+          now: () => fixture.now,
+        });
+        const roleMessenger: Messenger =
+          firstPhase && stage === "receipt"
+            ? {
+                identity: messenger.identity,
+                async send(intent, options) {
+                  const receipt = await messenger.send(intent, options);
+                  reached();
+                  await new Promise<never>((_resolve, reject) => {
+                    responseAbort.signal.addEventListener(
+                      "abort",
+                      () => reject(responseAbort.signal.reason),
+                      { once: true },
+                    );
+                  });
+                  return receipt;
+                },
+              }
+            : messenger;
+        const baseRole = frontdesk({
+          calendar,
+          messenger: roleMessenger,
+          approve: async () => {
+            approvals += 1;
+            return { approved: true, by: "test" };
+          },
+        });
+        let role = baseRole;
+        if (firstPhase && stage === "history") {
+          const pauseAfterHistory = hook(ToolTask, {
+            afterTool: async (call, result, _api, context) => {
+              if (call.name !== "send_message") return result;
+              reached();
+              await awaitWithContext(new Promise<never>(() => {}), context);
+              return result;
+            },
+          });
+          const [extension, ...rest] = baseRole.extensions;
+          if (extension === undefined) throw new Error("missing role extension");
+          role = {
+            extensions: [
+              { ...extension, hooks: [...(extension.hooks ?? []), pauseAfterHistory] },
+              ...rest,
+            ],
+            agent: baseRole.agent,
+          };
+        }
+        return {
+          role,
+          close: async () => {
+            responseAbort.abort(new Error("interrupt after receipt"));
+            await messenger.close();
+          },
+        };
+      };
+      const provider = `recover-resend-${stage}`;
+      const firstFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+      firstFaux.setResponses([
+        fauxAssistantMessage(
+          fauxToolCall("send_message", {
+            contactId: "contact-1",
+            channel: "email",
+            to: "guest@example.test",
+            text: `Recover ${stage}`,
+            messengerId,
+          }),
+          { stopReason: "toolUse" },
+        ),
+      ]);
+      const firstModels = createModels();
+      firstModels.setProvider(firstFaux.provider);
+      const solo = await openSolo({
+        directory,
+        createRole,
+        messengerIdentity,
+        models: firstModels,
+        model: { provider, modelId: "model" },
+      });
+      const create = contactTools().find((tool) => tool.name === "create_contact");
+      if (create === undefined) throw new Error("missing create_contact");
+      await create.execute(
+        { name: "Guest", email: "guest@example.test" },
+        {
+          conversationId: 93,
+          taskId: 93,
+          callId: "seed",
+          commit: solo.harness.commit.bind(solo.harness),
+          snapshot: solo.harness.snapshot.bind(solo.harness),
+        } as never,
+        BACKGROUND_CONTEXT,
+      );
+      const pending = solo.submit(`Send through ${stage}`, `resend-${stage}`);
+      await barrier;
+      expect(fixture.posts).toBe(1);
+      expect(fixture.acceptances).toBe(1);
+      const before = await solo.harness.snapshot(MessagesDoc, BACKGROUND_CONTEXT);
+      expect(before?.messages.length ?? 0).toBe(stage === "history" ? 1 : 0);
+      await solo.close();
+      await pending.catch(() => {});
+      firstPhase = false;
+
+      const resumedFaux = fauxProvider({ provider, models: [{ id: "model" }] });
+      resumedFaux.setResponses([fauxAssistantMessage(`Recovered ${stage}.`)]);
+      const resumedModels = createModels();
+      resumedModels.setProvider(resumedFaux.provider);
+      const reopened = await openSolo({
+        directory,
+        createRole,
+        messengerIdentity,
+        models: resumedModels,
+      });
+      await reopened.resume();
+      expect(fixture.posts).toBe(1);
+      expect(fixture.acceptances).toBe(1);
+      expect(approvals).toBe(1);
+      expect(
+        (await reopened.harness.snapshot(MessagesDoc, BACKGROUND_CONTEXT))?.messages,
+      ).toHaveLength(1);
+      await reopened.close();
+      calendar.close();
+    },
+  );
+
   it("does not execute an approved console intent after the Messenger identity changes", async () => {
     const directory = temporary();
     const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
@@ -1443,7 +1984,22 @@ describe("openSolo", () => {
     writeFileSync(join(directory, "harness"), "broken");
     const { models, model } = scriptedModels();
     const brokenRole = { extensions: [], agent: { model } } as RoleBundle;
-    await expect(openSolo({ directory, role: brokenRole, models, model })).rejects.toThrow();
+    let hostedClosed = 0;
+    await expect(
+      openSolo({
+        directory,
+        createRole: async () => ({
+          role: brokenRole,
+          close: async () => {
+            hostedClosed += 1;
+          },
+        }),
+        messengerIdentity: { version: 1, backend: "console" },
+        models,
+        model,
+      }),
+    ).rejects.toThrow();
+    expect(hostedClosed).toBe(1);
     rmSync(join(directory, "harness"), { recursive: true, force: true });
     const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
     const recovered = await openSolo({ directory, role: frontdesk({ calendar }), models, model });

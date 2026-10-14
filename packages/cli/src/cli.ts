@@ -4,7 +4,7 @@ import { awaitWithContext, BACKGROUND_CONTEXT } from "@earendil-works/chord/cont
 import { createModels } from "@earendil-works/pi-ai/models";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import type { ModelRef } from "@earendil-works/pi-durable";
-import frontdesk, { ContactsDoc } from "@officehum/frontdesk";
+import frontdesk, { ContactsDoc, type Messenger } from "@officehum/frontdesk";
 import {
   type CalendarClient,
   createGoogleCalendar,
@@ -12,18 +12,25 @@ import {
 } from "@officehum/google-calendar";
 import {
   type ConnectorIdentity,
-  type ConsoleMessenger,
   createDemoModels,
   createGoogleCalendarHost,
   type DecisionStore,
   type GoogleConnectorIdentity,
   hasDurableLocalState,
+  hasDurableMessagingState,
   type LocalCalendar,
+  type MessengerIdentity,
+  messengerIdentityString,
   openConsoleMessenger,
   openLocalCalendar,
+  openResendMessenger,
   openSolo,
   PI_DURABLE_VERSION,
+  parseMessengerIdentity,
+  type ResendMessenger,
+  type ResendMessengerOptions,
   readConnectorIdentity,
+  readMessengerIdentity,
   readSoloDocument,
   type SoloResult,
   type SoloSession,
@@ -54,6 +61,7 @@ type Parsed = {
   requestId?: string;
   model: string;
   calendar?: "local" | "google";
+  messenger?: "console" | "resend";
 };
 
 export interface CliDependencies {
@@ -62,12 +70,13 @@ export interface CliDependencies {
     readonly models: ReturnType<typeof createModels>;
     readonly model: ModelRef;
   };
+  readonly openResendMessenger?: (path: string, options: ResendMessengerOptions) => ResendMessenger;
 }
 
 const USAGE = `Usage:
-  officehum demo [--state DIR] [--approval allow|deny] [--calendar local]
-  officehum start --message TEXT --request-id ID [--state DIR] [--model ID] [--approval allow|deny] [--calendar local|google]
-  officehum resume [--state DIR] [--approval allow|deny] [--calendar local|google]
+  officehum demo [--state DIR] [--approval allow|deny] [--calendar local] [--messenger console]
+  officehum start --message TEXT --request-id ID [--state DIR] [--model ID] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
+  officehum resume [--state DIR] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
   officehum bookings [--state DIR] [--calendar local|google]
   officehum contacts [--state DIR]
   officehum --version`;
@@ -83,9 +92,17 @@ function parse(args: string[]): Parsed {
   };
   const allowed = new Set(
     command === "start"
-      ? ["--state", "--approval", "--message", "--request-id", "--model", "--calendar"]
+      ? [
+          "--state",
+          "--approval",
+          "--message",
+          "--request-id",
+          "--model",
+          "--calendar",
+          "--messenger",
+        ]
       : command === "demo" || command === "resume"
-        ? ["--state", "--approval", "--calendar"]
+        ? ["--state", "--approval", "--calendar", "--messenger"]
         : command === "bookings"
           ? ["--state", "--calendar"]
           : command === "contacts"
@@ -105,7 +122,12 @@ function parse(args: string[]): Parsed {
     else if (option === "--message") parsed.message = value;
     else if (option === "--request-id") parsed.requestId = value;
     else if (option === "--model") parsed.model = value;
-    else if (option === "--calendar") {
+    else if (option === "--messenger") {
+      if (value !== "console" && value !== "resend") {
+        throw new UsageError("--messenger must be console or resend.");
+      }
+      parsed.messenger = value;
+    } else if (option === "--calendar") {
       if (value !== "local" && value !== "google") {
         throw new UsageError("--calendar must be local or google.");
       }
@@ -123,6 +145,9 @@ function parse(args: string[]): Parsed {
   }
   if (command === "demo" && parsed.calendar === "google") {
     throw new UsageError("The synthetic demo uses only the local calendar.");
+  }
+  if (command === "demo" && parsed.messenger === "resend") {
+    throw new UsageError("The synthetic demo uses only the console Messenger.");
   }
   return parsed;
 }
@@ -226,6 +251,109 @@ function selectedIdentity(parsed: Parsed): ConnectorIdentity {
   return googleIdentity(configured);
 }
 
+function selectedMessengerIdentity(parsed: Parsed): MessengerIdentity {
+  const stored = readMessengerIdentity(parsed.state);
+  const legacy = stored === undefined && hasDurableMessagingState(parsed.state);
+  const backend = parsed.messenger ?? stored?.backend ?? "console";
+  if (legacy && backend !== "console") {
+    throw new Error("Legacy Front Desk state is bound to the console Messenger.");
+  }
+  if (stored !== undefined && backend !== stored.backend) {
+    throw new Error(
+      `Front Desk Messenger identity mismatch: state uses ${stored.backend}, requested ${backend}.`,
+    );
+  }
+  if (backend === "console") return { version: 1, backend: "console" };
+
+  const configured = {
+    accountId: process.env.RESEND_ACCOUNT_ID,
+    fromEmail: process.env.RESEND_FROM_EMAIL,
+    subject: process.env.RESEND_SUBJECT,
+  };
+  if (stored?.backend === "resend") {
+    if (configured.accountId !== undefined && configured.accountId !== stored.accountId) {
+      throw new Error("RESEND_ACCOUNT_ID does not match the persisted Messenger identity.");
+    }
+    if (configured.fromEmail !== undefined && configured.fromEmail !== stored.fromEmail) {
+      throw new Error("RESEND_FROM_EMAIL does not match the persisted Messenger identity.");
+    }
+    if (configured.subject !== undefined && configured.subject !== stored.subject) {
+      throw new Error("RESEND_SUBJECT does not match the persisted Messenger identity.");
+    }
+    return stored;
+  }
+  if (configured.accountId === undefined || configured.accountId.length === 0) {
+    throw new Error("Set RESEND_ACCOUNT_ID for initial Resend binding.");
+  }
+  if (configured.fromEmail === undefined || configured.fromEmail.length === 0) {
+    throw new Error("Set RESEND_FROM_EMAIL for initial Resend binding.");
+  }
+  if (configured.subject === undefined || configured.subject.length === 0) {
+    throw new Error("Set RESEND_SUBJECT for initial Resend binding.");
+  }
+  return parseMessengerIdentity({
+    version: 1,
+    backend: "resend",
+    accountId: configured.accountId,
+    fromEmail: configured.fromEmail,
+    subject: configured.subject,
+  });
+}
+
+function requireResendApiKey(): string {
+  const key = process.env.RESEND_API_KEY;
+  if (key === undefined || key.trim().length === 0) {
+    throw new Error("Set RESEND_API_KEY in your shell before Resend use.");
+  }
+  return key;
+}
+
+type HostedMessenger = Messenger & { close(): void | Promise<void> };
+
+function createRoleFactory(
+  parsed: Parsed,
+  calendar: HostCalendar,
+  approve: Approver,
+  identity: MessengerIdentity,
+  dependencies: CliDependencies,
+) {
+  return async () => {
+    let messenger: HostedMessenger | undefined;
+    try {
+      messenger =
+        identity.backend === "console"
+          ? openConsoleMessenger(join(parsed.state, "messages.sqlite"))
+          : (dependencies.openResendMessenger ?? openResendMessenger)(
+              join(parsed.state, "email.sqlite"),
+              {
+                accountId: identity.accountId,
+                fromEmail: identity.fromEmail,
+                subject: identity.subject,
+                getApiKey: async () => requireResendApiKey(),
+              },
+            );
+      return {
+        role: frontdesk({ calendar, approve, messenger }),
+        close: () => messenger?.close(),
+      };
+    } catch (error) {
+      await messenger?.close();
+      throw error;
+    }
+  };
+}
+
+function printMessenger(identity: MessengerIdentity, messengerId: string, io: CliIo): void {
+  if (identity.backend === "console") {
+    io.output("Messaging: console outbox; no customer delivery.");
+    io.output(`Messenger identity: ${messengerId}`);
+    return;
+  }
+  io.output(
+    `Messaging: Resend transport acceptance (not confirmed delivery). Account: ${identity.accountId}. From: ${identity.fromEmail}. Subject: ${identity.subject}. Identity: ${messengerId}`,
+  );
+}
+
 function requireGoogleToken(): void {
   if (!process.env.GOOGLE_CALENDAR_ACCESS_TOKEN?.trim()) {
     throw new Error("Set GOOGLE_CALENDAR_ACCESS_TOKEN in your shell before Google Calendar use.");
@@ -306,10 +434,15 @@ async function openForRun(
   calendar: HostCalendar;
   solo: SoloSession;
   model: ModelRef;
-  messenger: ConsoleMessenger;
+  messengerIdentity: MessengerIdentity;
+  messengerId: string;
 }> {
+  const messengerIdentity = selectedMessengerIdentity(parsed);
+  if (demo && messengerIdentity.backend !== "console") {
+    throw new Error("The synthetic demo uses only the console Messenger.");
+  }
+  if (messengerIdentity.backend === "resend") requireResendApiKey();
   const { calendar, identity } = openCalendar(parsed, dependencies);
-  let messenger: ConsoleMessenger | undefined;
   let solo: SoloSession | undefined;
   let closeRequested = false;
   const interrupt = () => {
@@ -317,18 +450,17 @@ async function openForRun(
     void solo?.close();
   };
   try {
-    messenger = openConsoleMessenger(join(parsed.state, "messages.sqlite"));
     const approve = cliApprover(
       calendar,
       demo && parsed.approval === undefined ? "allow" : parsed.approval,
       io,
       interrupt,
     );
-    const role = frontdesk({ calendar, approve, messenger });
     const runtime = demo ? createDemoModels() : liveModels(parsed.model, dependencies);
     solo = await openSolo({
       directory: parsed.state,
-      role,
+      createRole: createRoleFactory(parsed, calendar, approve, messengerIdentity, dependencies),
+      messengerIdentity,
       ...runtime,
       connectorIdentity: identity,
     });
@@ -343,17 +475,19 @@ async function openForRun(
       );
     }
     if (closeRequested) await solo.close();
-    return { calendar, solo, model: actualModel, messenger };
+    return {
+      calendar,
+      solo,
+      model: actualModel,
+      messengerIdentity,
+      messengerId: messengerIdentityString(messengerIdentity),
+    };
   } catch (error) {
     try {
       await solo?.close();
     } finally {
       if (activeSession === solo) activeSession = undefined;
-      try {
-        messenger?.close();
-      } finally {
-        calendar.close();
-      }
+      calendar.close();
     }
     throw error;
   }
@@ -364,11 +498,11 @@ async function runResume(
   io: CliIo,
   dependencies: CliDependencies,
 ): Promise<number> {
+  const messengerIdentity = selectedMessengerIdentity(parsed);
+  if (messengerIdentity.backend === "resend") requireResendApiKey();
   const { calendar, identity } = openCalendar(parsed, dependencies);
-  let messenger: ConsoleMessenger | undefined;
   let probe: SoloSession | undefined;
   try {
-    messenger = openConsoleMessenger(join(parsed.state, "messages.sqlite"));
     let active: SoloSession | undefined;
     let closeRequested = false;
     const interrupt = () => {
@@ -376,11 +510,11 @@ async function runResume(
       void active?.close();
     };
     const approve = cliApprover(calendar, parsed.approval, io, interrupt);
-    const role = frontdesk({ calendar, approve, messenger });
     const demo = createDemoModels();
     probe = await openSolo({
       directory: parsed.state,
-      role,
+      createRole: createRoleFactory(parsed, calendar, approve, messengerIdentity, dependencies),
+      messengerIdentity,
       ...demo,
       connectorIdentity: identity,
     });
@@ -396,7 +530,8 @@ async function runResume(
       const runtime = liveModels(agent.model?.modelId ?? parsed.model, dependencies);
       active = await openSolo({
         directory: parsed.state,
-        role,
+        createRole: createRoleFactory(parsed, calendar, approve, messengerIdentity, dependencies),
+        messengerIdentity,
         ...runtime,
         connectorIdentity: identity,
       });
@@ -404,7 +539,7 @@ async function runResume(
       io.output(`Mode: ${modelLabel(runtime.model)}`);
     }
     if (closeRequested) await active.close();
-    io.output("Messaging: console outbox; no customer delivery.");
+    printMessenger(messengerIdentity, messengerIdentityString(messengerIdentity), io);
     try {
       const results = await active.resume();
       if (results.length === 0) {
@@ -421,11 +556,7 @@ async function runResume(
       await probe?.close();
     } finally {
       if (activeSession === probe) activeSession = undefined;
-      try {
-        messenger?.close();
-      } finally {
-        calendar.close();
-      }
+      calendar.close();
     }
   }
 }
@@ -474,7 +605,7 @@ export async function runCli(
     const opened = await openForRun(parsed, io, demo, dependencies);
     try {
       io.output(`Mode: ${modelLabel(opened.model)}`);
-      io.output("Messaging: console outbox; no customer delivery.");
+      printMessenger(opened.messengerIdentity, opened.messengerId, io);
       if (demo && parsed.approval === undefined) {
         io.output("Synthetic demo approval: allow (default)");
       }
@@ -488,11 +619,7 @@ export async function runCli(
         await opened.solo.close();
       } finally {
         if (activeSession === opened.solo) activeSession = undefined;
-        try {
-          opened.messenger.close();
-        } finally {
-          opened.calendar.close();
-        }
+        opened.calendar.close();
       }
     }
   } catch (error) {

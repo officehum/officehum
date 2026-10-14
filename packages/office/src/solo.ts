@@ -21,6 +21,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
 import type { RoleBundle } from "@officehum/sdk";
+import { bindMessengerIdentity, type MessengerIdentity } from "./messenger-identity.js";
 
 export interface SoloResult {
   readonly submissionId: SubmissionId;
@@ -36,13 +37,31 @@ export interface SoloSession {
   close(): Promise<void>;
 }
 
-export interface OpenSoloOptions {
+type OpenSoloBaseOptions = {
   readonly directory: string;
-  readonly role: RoleBundle;
   readonly models: Models;
   readonly model?: ModelRef;
   readonly connectorIdentity?: ConnectorIdentity;
-}
+};
+
+export type HostedSoloRole = {
+  readonly role: RoleBundle;
+  readonly close: () => void | Promise<void>;
+};
+
+export type OpenSoloOptions = OpenSoloBaseOptions &
+  (
+    | {
+        readonly role: RoleBundle;
+        readonly createRole?: never;
+        readonly messengerIdentity?: MessengerIdentity;
+      }
+    | {
+        readonly role?: never;
+        readonly createRole: () => HostedSoloRole | Promise<HostedSoloRole>;
+        readonly messengerIdentity: MessengerIdentity;
+      }
+  );
 
 export type LocalConnectorIdentity = { readonly version: 1; readonly backend: "local" };
 export type GoogleConnectorIdentity = {
@@ -325,11 +344,53 @@ async function resultFor(
 export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
   const lock = acquireLock(options.directory);
   let harness: Harness | undefined;
+  let hostedClose: HostedSoloRole["close"] | undefined;
+  const shutdown = async (): Promise<void> => {
+    const closures: Promise<void>[] = [];
+    if (harness !== undefined) {
+      try {
+        closures.push(harness.close(BACKGROUND_CONTEXT));
+      } catch (error) {
+        closures.push(Promise.reject(error));
+      }
+    }
+    if (hostedClose !== undefined) {
+      try {
+        closures.push(Promise.resolve(hostedClose()));
+      } catch (error) {
+        closures.push(Promise.reject(error));
+      }
+    }
+    const settled = await Promise.allSettled(closures);
+    const failure = settled.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failure !== undefined) throw failure.reason;
+  };
   try {
     const existingHarness = existsSync(join(options.directory, "harness"));
     bindConnectorIdentity(options.directory, options.connectorIdentity);
+    if (options.messengerIdentity !== undefined) {
+      bindMessengerIdentity(options.directory, options.messengerIdentity);
+    }
+    const role =
+      options.createRole === undefined
+        ? options.role
+        : await (async () => {
+            const hosted = await options.createRole();
+            if (
+              hosted === null ||
+              typeof hosted !== "object" ||
+              typeof hosted.close !== "function" ||
+              hosted.role === undefined
+            ) {
+              throw new Error("Hosted Front Desk role factory returned an invalid result.");
+            }
+            hostedClose = hosted.close;
+            return hosted.role;
+          })();
     const registry = createRegistry();
-    for (const extension of options.role.extensions) registry.install(extension);
+    for (const extension of role.extensions) registry.install(extension);
     const storage = await openNodeJsonlStorage(
       join(options.directory, "harness"),
       BACKGROUND_CONTEXT,
@@ -337,11 +398,9 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
     );
     harness = await Harness.open(storage, { models: options.models, registry }, BACKGROUND_CONTEXT);
     const agent =
-      options.model === undefined
-        ? options.role.agent
-        : { ...options.role.agent, model: options.model };
+      options.model === undefined ? role.agent : { ...role.agent, model: options.model };
     const root = await harness.root(BACKGROUND_CONTEXT, { agent });
-    const roleTools = options.role.agent.tools;
+    const roleTools = role.agent.tools;
     const roleRemovals = new Set(
       roleTools !== undefined && roleTools !== null && "remove" in roleTools
         ? roleTools.remove.map(({ name }) => name)
@@ -425,7 +484,7 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
       async close() {
         closePromise ??= (async () => {
           try {
-            await harness?.close(BACKGROUND_CONTEXT);
+            await shutdown();
           } finally {
             lock.release();
           }
@@ -435,11 +494,15 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
     };
     return session;
   } catch (error) {
+    let cleanupError: unknown;
     try {
-      await harness?.close(BACKGROUND_CONTEXT);
+      await shutdown();
+    } catch (failure) {
+      cleanupError = failure;
     } finally {
       lock.release();
     }
+    if (cleanupError !== undefined) throw cleanupError;
     throw error;
   }
 }

@@ -69,9 +69,9 @@ the contact's current name. A booking without a contact ID keeps the existing fr
 does not create a profile. Contact profiles and booking links live only in the selected state
 directory; they are not synchronized to Google Contacts or embedded in provider events.
 
-Messaging uses the same ordinary durable submission path. The current host is a local console
-outbox only: it records the exact intent in `messages.sqlite` and never contacts a customer. Use an
-exact saved contact ID and canonical destination:
+Messaging uses the same ordinary durable submission path. The default console host records the
+exact intent in `messages.sqlite` and never contacts a customer. Use an exact saved contact ID and
+canonical destination:
 
 ```sh
 node packages/cli/dist/index.js start \
@@ -86,8 +86,38 @@ needs approval. Later messages to that same tuple use its successful durable his
 part of the tuple requires fresh approval. Approval alone, failed sends, bookings, and contact edits
 do not establish that history. Recovery after an intent is pinned keeps the approved old destination
 and text; it cannot redirect to a later contact edit. `Recorded in console outbox; no customer
-delivery` is the strongest claim the console host makes. Provider delivery, named approval limits,
-and a read-only messages CLI are deferred.
+delivery` is the strongest claim the console host makes.
+
+For real outbound plain-text email, explicitly select Resend on a fresh state directory. The account
+ID is an operator-chosen, stable authority namespace; keep it unchanged when rotating credentials.
+The sender must be a canonical lowercase mailbox, and the fixed subject is shown before work runs
+and included in every provider request. Populate `RESEND_API_KEY` through your shell or approved
+secret store without placing it in a project file or command argument.
+
+```sh
+export RESEND_ACCOUNT_ID="frontdesk-production"
+export RESEND_FROM_EMAIL="frontdesk@example.com"
+export RESEND_SUBJECT="Front Desk"
+# Populate RESEND_API_KEY from the approved secret store in this shell.
+node packages/cli/dist/index.js start \
+  --messenger resend \
+  --state .officehum/frontdesk-resend \
+  --message "List contacts, then send contact-1 at guest@example.test exactly: Appointment confirmed." \
+  --request-id message-contact-1 \
+  --approval allow
+node packages/cli/dist/index.js resume --state .officehum/frontdesk-resend
+```
+
+`Accepted by transport` means Resend accepted the idempotent request; it does not confirm inbox
+delivery. Console history never authorizes a Resend first contact because the transport identities
+differ. A state directory is permanently bound to its initial Messenger authority, including the
+Resend account namespace, sender, and subject. Resume infers that saved nonsecret configuration and
+still requires the credential. Unknown provider outcomes may retry only with the original payload
+and key before the persisted first-attempt time plus 23 hours. At the cutoff, or after a detected
+clock regression, automatic retry stops: retain the state and inspect Resend before authorizing a
+separate new submission. Previously saved accepted receipts remain replayable without a credential.
+Inbound email, threads, HTML, attachments, SMS delivery, provider account setup, and a read-only
+messages CLI remain deferred.
 
 ```sh
 node packages/cli/dist/index.js bookings --state .officehum/frontdesk-live
@@ -161,10 +191,13 @@ Use separate state directories for demo and live modes; a persisted conversation
 provider/model, and the CLI rejects cross-mode reuse before admitting input. The default state is
 `.officehum/frontdesk`: Pi Durable JSONL data is under `harness/`; bookings, tombstones, approval
 decisions, and pending/completed calendar operations are in `calendar.sqlite`; synthetic message
-outbox rows are in `messages.sqlite`; and a lifetime
+outbox rows are in `messages.sqlite`; Resend operations and accepted receipts are in `email.sqlite`;
+the immutable transport authority is in `messenger.json`; and a lifetime
 transaction in `ownership.sqlite` enforces one process at a time. An identity-free state with a
 harness or any persisted booking, approval, or operation record is treated as legacy local state; an
 empty preflight calendar database remains available for initial binding.
+Retain `email.sqlite` and `messenger.json` together for recovery. Copying or deleting a state cannot
+provide a global duplicate guarantee once the provider's idempotency window has elapsed.
 `owner.lock` records its PID for diagnostics. A second live owner is rejected; after a crash,
 the operating system releases the SQLite lock and the next owner reclaims a dead PID marker.
 Malformed markers are left in place for inspection.
