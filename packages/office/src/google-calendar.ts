@@ -1,4 +1,4 @@
-import type { CalendarClient } from "@officehum/google-calendar";
+import type { CalendarBooking, CalendarClient } from "@officehum/google-calendar";
 import type { ApprovalDecision, ApprovalRequest } from "@officehum/sdk";
 import type { Booking, CalendarOperation, CalendarStore, Cancellation } from "./calendar-store.js";
 import { canonicalAppointmentStart } from "./local-calendar.js";
@@ -42,14 +42,34 @@ function portableBooking(value: {
   };
 }
 
-function completedBooking(operation: CalendarOperation, active: readonly Booking[]): Booking {
+function canonicalProviderInstant(value: string): string {
+  const instant = new Date(value);
+  if (Number.isNaN(instant.valueOf())) throw new Error("Google Calendar returned an invalid time.");
+  return instant.toISOString().replace(".000Z", "Z");
+}
+
+function expectedEnd(start: string, durationMinutes: number): string {
+  return new Date(new Date(start).valueOf() + durationMinutes * 60_000)
+    .toISOString()
+    .replace(".000Z", "Z");
+}
+
+function completedBooking(
+  operation: CalendarOperation,
+  active: readonly CalendarBooking[],
+  durationMinutes: number,
+): Booking {
   const result = operation.result;
   if (result === undefined || "status" in result) throw new Error("Malformed booking receipt.");
   const current = active.find((booking) => booking.id === result.id);
+  if (current === undefined) {
+    throw new Error("The completed booking was canceled, changed, or superseded.");
+  }
+  const portable = portableBooking(current);
   if (
-    current === undefined ||
-    current.start !== result.start ||
-    current.customer !== result.customer
+    portable.start !== result.start ||
+    portable.customer !== result.customer ||
+    canonicalProviderInstant(current.end) !== expectedEnd(result.start, durationMinutes)
   ) {
     throw new Error("The completed booking was canceled, changed, or superseded.");
   }
@@ -65,8 +85,9 @@ export function createGoogleCalendarHost(options: {
     throw new Error("Google Calendar host duration must be a positive whole number of minutes.");
   }
 
+  const rawList = (): Promise<CalendarBooking[]> => options.client.listBookings();
   const list = async (): Promise<Booking[]> =>
-    (await options.client.listBookings())
+    (await rawList())
       .map(portableBooking)
       .sort(
         (left, right) => left.start.localeCompare(right.start) || left.id.localeCompare(right.id),
@@ -99,7 +120,8 @@ export function createGoogleCalendarHost(options: {
       const argsJson = JSON.stringify({ kind: "book", start, customer });
       return enqueue(async () => {
         const operation = options.decisions.bindOperation(key, "book", argsJson);
-        if (operation.result !== undefined) return completedBooking(operation, await list());
+        if (operation.result !== undefined)
+          return completedBooking(operation, await rawList(), options.durationMinutes);
         const result = portableBooking(
           await options.client.book({ ...slot(start), customer, requestId: key }),
         );
@@ -114,7 +136,8 @@ export function createGoogleCalendarHost(options: {
       const argsJson = JSON.stringify({ kind: "reschedule", id, start });
       return enqueue(async () => {
         let operation = options.decisions.bindOperation(key, "reschedule", argsJson);
-        if (operation.result !== undefined) return completedBooking(operation, await list());
+        if (operation.result !== undefined)
+          return completedBooking(operation, await rawList(), options.durationMinutes);
         if (operation.booking === undefined) {
           const current = (await list()).find((booking) => booking.id === id);
           if (current === undefined) throw new Error("Managed booking was not found.");

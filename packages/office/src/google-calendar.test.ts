@@ -2,9 +2,70 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { type CalendarClient, fakeCalendar } from "../../google-calendar/src/index.js";
+import {
+  type CalendarClient,
+  createGoogleCalendar,
+  fakeCalendar,
+} from "../../google-calendar/src/index.js";
 import { createGoogleCalendarHost } from "./google-calendar.js";
 import { openLocalCalendar } from "./local-calendar.js";
+
+function googleRestFixture() {
+  const events = new Map<string, Record<string, unknown>>();
+  const writes = { posts: 0, patches: 0, deletes: 0 };
+  const transport: typeof fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/freeBusy")) {
+      return new Response(JSON.stringify({ calendars: { cal: { busy: [] } } }), { status: 200 });
+    }
+    const eventPath = /\/events\/([^/]+)$/.exec(url.pathname);
+    if (eventPath !== null) {
+      const id = decodeURIComponent(eventPath[1] ?? "");
+      const event = events.get(id);
+      if (init.method === "PATCH") {
+        if (event === undefined) return new Response(undefined, { status: 404 });
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        const previousPrivate = (event.extendedProperties as Record<string, unknown>).private as
+          | Record<string, unknown>
+          | undefined;
+        const nextPrivate = (body.extendedProperties as Record<string, unknown>).private as
+          | Record<string, unknown>
+          | undefined;
+        const updated = {
+          ...event,
+          ...body,
+          id,
+          status: "confirmed",
+          etag: `"etag-${writes.patches + 1}"`,
+          extendedProperties: { private: { ...previousPrivate, ...nextPrivate } },
+        };
+        events.set(id, updated);
+        writes.patches += 1;
+        return new Response(JSON.stringify(updated), { status: 200 });
+      }
+      if (init.method === "DELETE") {
+        events.delete(id);
+        writes.deletes += 1;
+        return new Response(undefined, { status: 204 });
+      }
+      return new Response(JSON.stringify(event ?? {}), {
+        status: event === undefined ? 404 : 200,
+      });
+    }
+    if (url.pathname.endsWith("/events") && init.method === "POST") {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      const event = { ...body, status: "confirmed", etag: `"etag-post-${writes.posts + 1}"` };
+      events.set(String(body.id), event);
+      writes.posts += 1;
+      return new Response(JSON.stringify(event), { status: 200 });
+    }
+    if (url.pathname.endsWith("/events")) {
+      return new Response(JSON.stringify({ items: [...events.values()] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ timeZone: "UTC" }), { status: 200 });
+  };
+  return { events, transport, writes };
+}
 
 describe("Google Calendar host adapter", () => {
   it("maps portable slots and bookings while keeping approvals in local SQLite", async () => {
@@ -89,6 +150,47 @@ describe("Google Calendar host adapter", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it.each(["book", "reschedule"] as const)(
+    "rejects a completed %s replay after provider end-only drift without another write",
+    async (kind) => {
+      const directory = mkdtempSync(join(tmpdir(), "officehum-google-host-"));
+      try {
+        const decisions = openLocalCalendar(join(directory, "calendar.sqlite"));
+        const rest = googleRestFixture();
+        const client = createGoogleCalendar({
+          calendarId: "cal",
+          timeZone: "UTC",
+          workingHours: { start: "09:00", end: "12:00" },
+          durationMinutes: 60,
+          getAccessToken: async () => "test-token",
+          fetch: rest.transport,
+        });
+        const host = createGoogleCalendarHost({ client, decisions, durationMinutes: 60 });
+        const booked = await host.book("2030-01-15T09:00:00Z", "Guest", "book-key");
+        if (kind === "reschedule") {
+          await host.reschedule(booked.id, "2030-01-15T10:00:00Z", "move-key");
+        }
+        const replay =
+          kind === "book"
+            ? () => host.book("2030-01-15T09:00:00Z", "Guest", "book-key")
+            : () => host.reschedule(booked.id, "2030-01-15T10:00:00Z", "move-key");
+        const event = rest.events.get(booked.id);
+        if (event === undefined) throw new Error("missing REST fixture event");
+        event.end = {
+          dateTime: kind === "book" ? "2030-01-15T11:00:00Z" : "2030-01-15T12:00:00Z",
+          timeZone: "UTC",
+        };
+        const writesBeforeReplay = { ...rest.writes };
+
+        await expect(replay()).rejects.toThrow(/changed|superseded/i);
+        expect(rest.writes).toEqual(writesBeforeReplay);
+        host.close();
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("rejects unknown first-time cancellation without DELETE and recovers an exact pending one", async () => {
     const directory = mkdtempSync(join(tmpdir(), "officehum-google-host-"));

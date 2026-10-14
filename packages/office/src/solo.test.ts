@@ -11,7 +11,8 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
-import { hook, ToolTask } from "@earendil-works/pi-durable";
+import { createRegistry, Harness, hook, ToolTask } from "@earendil-works/pi-durable";
+import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
 import type { Approver, RoleBundle } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import frontdesk from "../../../agents/frontdesk/src/index.js";
@@ -314,20 +315,30 @@ describe("openSolo", () => {
     const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
     const role = frontdesk({ calendar });
     const runtime = scriptedModels();
-    const original = await openSolo({ directory, role, ...runtime });
+    const registry = createRegistry();
+    for (const extension of role.extensions) registry.install(extension);
+    const storage = await openNodeJsonlStorage(join(directory, "harness"), BACKGROUND_CONTEXT, {
+      fsync: true,
+    });
+    const legacyHarness = await Harness.open(
+      storage,
+      { models: runtime.models, registry },
+      BACKGROUND_CONTEXT,
+    );
+    const original = await legacyHarness.root(BACKGROUND_CONTEXT, { agent: role.agent });
     const registrations = role.extensions.flatMap((extension) => extension.tools ?? []);
     const oldTools = registrations.filter((tool) =>
       ["check_schedule", "book_appointment"].includes(tool.name),
     );
-    await original.root.configure({ tools: oldTools }, BACKGROUND_CONTEXT);
-    const originalAgent = await original.root.agent(BACKGROUND_CONTEXT);
+    await original.configure({ tools: oldTools }, BACKGROUND_CONTEXT);
+    const originalAgent = await original.agent(BACKGROUND_CONTEXT);
     expect(originalAgent.tools.map(({ name }) => name).sort()).toEqual([
       "book_appointment",
       "check_schedule",
     ]);
-    const rootId = original.root.id;
+    const rootId = original.id;
     const model = originalAgent.model;
-    await original.close();
+    await legacyHarness.close(BACKGROUND_CONTEXT);
 
     const reopened = await openSolo({ directory, role, models: runtime.models });
     expect(reopened.root.id).toBe(rootId);
@@ -341,6 +352,54 @@ describe("openSolo", () => {
         "cancel_appointment",
       ]),
     );
+    await reopened.close();
+    calendar.close();
+  });
+
+  it("keeps lifecycle tools disabled by a role overlay across fresh open and reopen", async () => {
+    const directory = temporary();
+    const overlay = join(directory, "overlay");
+    mkdirSync(overlay);
+    writeFileSync(
+      join(overlay, "settings.json"),
+      JSON.stringify({ tools: ["-cancel_appointment", "-reschedule_appointment"] }),
+    );
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar, overlays: [overlay] });
+    const runtime = createDemoModels();
+
+    const opened = await openSolo({ directory, role, ...runtime });
+    expect((await opened.root.agent(BACKGROUND_CONTEXT)).tools.map(({ name }) => name)).not.toEqual(
+      expect.arrayContaining(["cancel_appointment", "reschedule_appointment"]),
+    );
+    await opened.close();
+
+    const reopened = await openSolo({ directory, role, ...runtime });
+    expect(
+      (await reopened.root.agent(BACKGROUND_CONTEXT)).tools.map(({ name }) => name),
+    ).not.toEqual(expect.arrayContaining(["cancel_appointment", "reschedule_appointment"]));
+    await reopened.close();
+    calendar.close();
+  });
+
+  it("preserves an explicit persisted lifecycle-tool removal across reopen", async () => {
+    const directory = temporary();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const runtime = createDemoModels();
+    const cancel = role.extensions
+      .flatMap((extension) => extension.tools ?? [])
+      .find((tool) => tool.name === "cancel_appointment");
+    if (cancel === undefined) throw new Error("missing cancellation tool");
+
+    const opened = await openSolo({ directory, role, ...runtime });
+    await opened.root.configure({ tools: { remove: [cancel] } }, BACKGROUND_CONTEXT);
+    await opened.close();
+
+    const reopened = await openSolo({ directory, role, ...runtime });
+    expect(
+      (await reopened.root.agent(BACKGROUND_CONTEXT)).tools.map(({ name }) => name),
+    ).not.toContain("cancel_appointment");
     await reopened.close();
     calendar.close();
   });
