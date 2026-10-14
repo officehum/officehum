@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -26,6 +26,49 @@ function fixtureOptions(fixture: ResendFetchFixture): ResendMessengerOptions {
     fetch: fixture.fetch,
     now: () => fixture.now,
   };
+}
+
+function tableNames(path: string): string[] {
+  const database = new DatabaseSync(path);
+  try {
+    return (
+      database
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+        .all() as unknown as { name: string }[]
+    ).map(({ name }) => name);
+  } finally {
+    database.close();
+  }
+}
+
+function responseWithBlockedCancel(options: { oversized?: boolean } = {}) {
+  let cancelReached!: () => void;
+  let releaseCancel!: () => void;
+  const cancelStarted = new Promise<void>((resolve) => {
+    cancelReached = resolve;
+  });
+  const cancelRelease = new Promise<void>((resolve) => {
+    releaseCancel = resolve;
+  });
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(options.oversized ? "x".repeat(65 * 1024) : '{"id":"'),
+        );
+      },
+      cancel() {
+        cancelReached();
+        return cancelRelease;
+      },
+    }),
+    { status: 200 },
+  );
+  return { response, cancelStarted, releaseCancel };
+}
+
+async function flushPromises(): Promise<void> {
+  for (let index = 0; index < 10; index += 1) await Promise.resolve();
 }
 
 describe("Resend Messenger", () => {
@@ -275,6 +318,116 @@ describe("Resend Messenger", () => {
     }
   });
 
+  it("does not wait for blocked response cancellation after the request deadline", async () => {
+    vi.useFakeTimers();
+    const blocked = responseWithBlockedCancel();
+    const fixture = new ResendFetchFixture();
+    const host = openResendMessenger(file(), {
+      ...fixtureOptions(fixture),
+      fetch: async () => blocked.response,
+    });
+    let sendOutcome = "pending";
+    const pending = host.send(intent, { requestId: "blocked-timeout-cancel" });
+    void pending.then(
+      () => {
+        sendOutcome = "resolved";
+      },
+      () => {
+        sendOutcome = "rejected";
+      },
+    );
+    try {
+      await vi.advanceTimersByTimeAsync(30_000);
+      await blocked.cancelStarted;
+      await flushPromises();
+      expect(sendOutcome).toBe("rejected");
+
+      let closeFinished = false;
+      const closing = host.close().then(() => {
+        closeFinished = true;
+      });
+      await flushPromises();
+      expect(closeFinished).toBe(true);
+      await closing;
+    } finally {
+      blocked.releaseCancel();
+      await pending.catch(() => {});
+      await host.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not wait for blocked response cancellation when the host closes", async () => {
+    const blocked = responseWithBlockedCancel();
+    const fixture = new ResendFetchFixture();
+    const host = openResendMessenger(file(), {
+      ...fixtureOptions(fixture),
+      fetch: async () => blocked.response,
+    });
+    let sendOutcome = "pending";
+    let closeFinished = false;
+    const pending = host.send(intent, { requestId: "blocked-close-cancel" });
+    void pending.then(
+      () => {
+        sendOutcome = "resolved";
+      },
+      () => {
+        sendOutcome = "rejected";
+      },
+    );
+    await flushPromises();
+    const closing = host.close().then(() => {
+      closeFinished = true;
+    });
+    try {
+      await blocked.cancelStarted;
+      await flushPromises();
+      expect(sendOutcome).toBe("rejected");
+      expect(closeFinished).toBe(true);
+      await closing;
+    } finally {
+      blocked.releaseCancel();
+      await pending.catch(() => {});
+      await closing;
+    }
+  });
+
+  it("does not wait for blocked response cancellation after the size limit", async () => {
+    const blocked = responseWithBlockedCancel({ oversized: true });
+    const fixture = new ResendFetchFixture();
+    const host = openResendMessenger(file(), {
+      ...fixtureOptions(fixture),
+      fetch: async () => blocked.response,
+    });
+    let sendOutcome = "pending";
+    const pending = host.send(intent, { requestId: "blocked-oversize-cancel" });
+    void pending.then(
+      () => {
+        sendOutcome = "resolved";
+      },
+      () => {
+        sendOutcome = "rejected";
+      },
+    );
+    try {
+      await blocked.cancelStarted;
+      await flushPromises();
+      expect(sendOutcome).toBe("rejected");
+
+      let closeFinished = false;
+      const closing = host.close().then(() => {
+        closeFinished = true;
+      });
+      await flushPromises();
+      expect(closeFinished).toBe(true);
+      await closing;
+    } finally {
+      blocked.releaseCancel();
+      await pending.catch(() => {});
+      await host.close();
+    }
+  });
+
   it("closes while a credential callback is still pending and prevents dispatch", async () => {
     const fixture = new ResendFetchFixture();
     let reached!: () => void;
@@ -355,6 +508,93 @@ describe("Resend Messenger", () => {
     expect(() => openResendMessenger(unsafePath, fixtureOptions(fixture))).toThrow(
       /malformed email ledger/i,
     );
+  });
+
+  it("does not recreate a missing operations table or renew an accepted provider request", async () => {
+    const fixture = new ResendFetchFixture();
+    fixture.loseNextResponse = true;
+    const path = file();
+    const host = openResendMessenger(path, fixtureOptions(fixture));
+    await expect(host.send(intent, { requestId: "lost-before-schema-damage" })).rejects.toThrow(
+      /outcome is uncertain/i,
+    );
+    await host.close();
+    expect(fixture.acceptances).toBe(1);
+
+    const database = new DatabaseSync(path);
+    const namespace = database
+      .prepare("SELECT ledger_namespace FROM email_metadata WHERE singleton = 1")
+      .get() as { ledger_namespace: string };
+    database.exec("DROP TABLE email_operations");
+    database.close();
+    fixture.now += 24 * 60 * 60 * 1000;
+
+    expect(() => openResendMessenger(path, fixtureOptions(fixture))).toThrow(
+      /malformed email ledger schema/i,
+    );
+    expect(tableNames(path)).toEqual(["email_metadata"]);
+    const unchanged = new DatabaseSync(path);
+    expect(
+      unchanged.prepare("SELECT ledger_namespace FROM email_metadata WHERE singleton = 1").get(),
+    ).toEqual(namespace);
+    unchanged.close();
+    expect(fixture.posts).toBe(1);
+    expect(fixture.acceptances).toBe(1);
+  });
+
+  it.each([
+    ["missing metadata", "DROP TABLE email_metadata", ["email_operations"]],
+    [
+      "both tables missing",
+      "DROP TABLE email_operations; DROP TABLE email_metadata",
+      [] as string[],
+    ],
+  ])(
+    "rejects an existing ledger with %s without repairing it",
+    async (_name, damage, remaining) => {
+      const fixture = new ResendFetchFixture();
+      const path = file();
+      const host = openResendMessenger(path, fixtureOptions(fixture));
+      await host.close();
+      const database = new DatabaseSync(path);
+      database.exec(damage as string);
+      database.close();
+
+      expect(() => openResendMessenger(path, fixtureOptions(fixture))).toThrow(
+        /malformed email ledger schema/i,
+      );
+      expect(tableNames(path)).toEqual(remaining);
+    },
+  );
+
+  it("rejects missing metadata without generating a replacement namespace", async () => {
+    const fixture = new ResendFetchFixture();
+    const path = file();
+    const host = openResendMessenger(path, fixtureOptions(fixture));
+    await host.close();
+    const database = new DatabaseSync(path);
+    database.exec("DELETE FROM email_metadata");
+    database.close();
+
+    expect(() => openResendMessenger(path, fixtureOptions(fixture))).toThrow(
+      /malformed email ledger metadata/i,
+    );
+    const unchanged = new DatabaseSync(path);
+    expect(unchanged.prepare("SELECT COUNT(*) AS count FROM email_metadata").get()).toEqual({
+      count: 0,
+    });
+    unchanged.close();
+  });
+
+  it("rejects a preexisting empty database without initializing it", () => {
+    const fixture = new ResendFetchFixture();
+    const path = file();
+    writeFileSync(path, "");
+
+    expect(() => openResendMessenger(path, fixtureOptions(fixture))).toThrow(
+      /malformed email ledger schema/i,
+    );
+    expect(tableNames(path)).toEqual([]);
   });
 
   it("deduplicates same-key sends across independently opened adapters", async () => {

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { closeSync, mkdirSync, openSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -138,7 +138,7 @@ async function boundedBody(response: Response, signal: AbortSignal): Promise<str
       try {
         next = await Promise.race([reader.read(), aborted]);
       } catch (error) {
-        if (signal.aborted) await reader.cancel().catch(() => {});
+        if (signal.aborted) cancelReader(reader);
         throw error;
       } finally {
         signal.removeEventListener("abort", onAbort);
@@ -146,13 +146,17 @@ async function boundedBody(response: Response, signal: AbortSignal): Promise<str
       if (next.done) break;
       length += next.value.byteLength;
       if (length > RESPONSE_LIMIT) {
-        await reader.cancel();
+        cancelReader(reader);
         throw new Error("Resend response was invalid.");
       }
       chunks.push(next.value);
     }
   } finally {
-    reader.releaseLock();
+    try {
+      reader.releaseLock();
+    } catch {
+      // A native stream may keep its read pending while cancellation stalls.
+    }
   }
   const joined = new Uint8Array(length);
   let offset = 0;
@@ -164,6 +168,32 @@ async function boundedBody(response: Response, signal: AbortSignal): Promise<str
     return new TextDecoder("utf-8", { fatal: true }).decode(joined);
   } catch {
     throw new Error("Resend response was invalid.");
+  }
+}
+
+function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>): void {
+  try {
+    void reader.cancel().catch(() => {});
+  } catch {
+    // Cancellation is cleanup only and must not extend the request deadline.
+  }
+}
+
+function tableNames(database: DatabaseSync): string[] {
+  return (
+    database
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .all() as unknown as { name: string }[]
+  ).map(({ name }) => name);
+}
+
+function reserveFreshLedger(path: string): boolean {
+  try {
+    closeSync(openSync(path, "wx", 0o600));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
   }
 }
 
@@ -266,35 +296,45 @@ export function openResendMessenger(
   const transport = options.fetch ?? globalThis.fetch;
   const clock = options.now ?? Date.now;
   mkdirSync(dirname(path), { recursive: true });
+  const freshPath = reserveFreshLedger(path);
   const database = new DatabaseSync(path);
   let namespace = "";
   try {
     database.exec(
       `PRAGMA busy_timeout = 5000;
        PRAGMA synchronous = FULL;
-       PRAGMA journal_mode = WAL;
-       CREATE TABLE IF NOT EXISTS email_metadata (
-         singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-         schema_version INTEGER NOT NULL,
-         authority_json TEXT NOT NULL,
-         ledger_namespace TEXT NOT NULL
-       );
-       CREATE TABLE IF NOT EXISTS email_operations (
-         request_id TEXT PRIMARY KEY,
-         intent_json TEXT NOT NULL,
-         payload_json TEXT NOT NULL,
-         provider_key TEXT NOT NULL,
-         first_attempt_at INTEGER NOT NULL,
-         last_observed_at INTEGER NOT NULL,
-         state TEXT NOT NULL,
-         receipt_id TEXT
-       );`,
+       PRAGMA journal_mode = WAL;`,
     );
-    const tables = (
-      database
-        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-        .all() as unknown as { name: string }[]
-    ).map(({ name }) => name);
+    if (freshPath && tableNames(database).length === 0) {
+      inTransaction(database, () => {
+        if (tableNames(database).length !== 0) return;
+        const initialNamespace = randomUUID();
+        database.exec(
+          `CREATE TABLE email_metadata (
+             singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+             schema_version INTEGER NOT NULL,
+             authority_json TEXT NOT NULL,
+             ledger_namespace TEXT NOT NULL
+           );
+           CREATE TABLE email_operations (
+             request_id TEXT PRIMARY KEY,
+             intent_json TEXT NOT NULL,
+             payload_json TEXT NOT NULL,
+             provider_key TEXT NOT NULL,
+             first_attempt_at INTEGER NOT NULL,
+             last_observed_at INTEGER NOT NULL,
+             state TEXT NOT NULL,
+             receipt_id TEXT
+           );`,
+        );
+        database
+          .prepare(
+            "INSERT INTO email_metadata (singleton, schema_version, authority_json, ledger_namespace) VALUES (1, 1, ?, ?)",
+          )
+          .run(authorityJson, initialNamespace);
+      });
+    }
+    const tables = tableNames(database);
     const metadataColumns = (
       database.prepare("PRAGMA table_info(email_metadata)").all() as unknown as { name: string }[]
     ).map(({ name }) => name);
@@ -320,15 +360,7 @@ export function openResendMessenger(
       ledger_namespace: string;
     }[];
     if (metadataRows.length === 0) {
-      if (database.prepare("SELECT 1 FROM email_operations LIMIT 1").get() !== undefined) {
-        throw new Error("Malformed email ledger metadata.");
-      }
-      namespace = randomUUID();
-      database
-        .prepare(
-          "INSERT INTO email_metadata (singleton, schema_version, authority_json, ledger_namespace) VALUES (1, 1, ?, ?)",
-        )
-        .run(authorityJson, namespace);
+      throw new Error("Malformed email ledger metadata.");
     } else {
       const metadata = metadataRows[0];
       if (
