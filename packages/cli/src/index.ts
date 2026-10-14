@@ -1,13 +1,26 @@
 #!/usr/bin/env node
-/**
- * @officehum/cli — M0 scaffold. Commands (start, board, watch, steer) land in RASF-3068.
- */
-import { PI_DURABLE_VERSION } from "@officehum/office";
+import { stdin, stdout } from "node:process";
+import { createInterface } from "node:readline/promises";
+import { interruptCli, runCli } from "./cli.js";
 
-const [command] = process.argv.slice(2);
+const io = {
+  output: (line: string) => console.log(line),
+  error: (line: string) => console.error(line),
+  readApproval: async (prompt: string) => {
+    if (!stdin.isTTY) return undefined;
+    const readline = createInterface({ input: stdin, output: stdout });
+    try {
+      return await readline.question(prompt);
+    } finally {
+      readline.close();
+    }
+  },
+};
 
-if (command === "--version" || command === "-v") {
-  console.log(`officehum 0.0.0 (Pi Durable ${PI_DURABLE_VERSION})`);
-} else {
-  console.log("officehum: nothing to run yet. Commands arrive in milestone M1.");
-}
+let interrupted = false;
+process.once("SIGINT", () => {
+  interrupted = true;
+  void interruptCli();
+});
+const code = await runCli(process.argv.slice(2), io);
+process.exitCode = interrupted ? 130 : code;

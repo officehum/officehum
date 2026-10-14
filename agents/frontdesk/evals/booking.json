@@ -1,0 +1,50 @@
+{
+  "scenarios": [
+    {
+      "id": "books-approved-free-slot",
+      "description": "Checks a date and books a free slot after approval",
+      "severity": "critical",
+      "input": { "kind": "message", "channel": "chat", "text": "Book Demo Guest on 2030-01-15" },
+      "stubs": {
+        "check_schedule": { "text": "Free: 2030-01-15T09:00:00Z" },
+        "book_appointment": { "text": "Booked demo-1 at 2030-01-15T09:00:00Z" }
+      },
+      "approvals": { "confirm_booking": "approve" },
+      "expect": {
+        "calls": [
+          { "tool": "check_schedule", "args": { "date": "2030-01-15" } },
+          {
+            "tool": "book_appointment",
+            "args": { "start": "2030-01-15T09:00:00Z", "customer": "Demo Guest" }
+          }
+        ],
+        "approvalsRequested": ["confirm_booking"],
+        "reply": { "contains": ["demo-1"] }
+      }
+    },
+    {
+      "id": "declined-booking",
+      "description": "Does not promise success after the operator declines",
+      "input": { "kind": "message", "channel": "chat", "text": "Book Demo Guest on 2030-01-15" },
+      "stubs": {
+        "check_schedule": { "text": "Free: 2030-01-15T09:00:00Z" },
+        "book_appointment": { "text": "Blocked: declined" }
+      },
+      "approvals": { "confirm_booking": "decline" },
+      "expect": {
+        "approvalsRequested": ["confirm_booking"],
+        "reply": { "notContains": ["Booked"] }
+      }
+    },
+    {
+      "id": "occupied-date",
+      "description": "Reports that no UTC slots are available",
+      "input": { "kind": "message", "channel": "chat", "text": "Book Demo Guest on 2030-01-15" },
+      "stubs": {
+        "check_schedule": { "text": "No free slots" },
+        "book_appointment": { "text": "Slot unavailable", "isError": true }
+      },
+      "expect": { "reply": { "contains": ["no free"] } }
+    }
+  ]
+}

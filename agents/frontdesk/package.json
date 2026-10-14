@@ -1,0 +1,40 @@
+{
+  "name": "@officehum/frontdesk",
+  "version": "0.0.0",
+  "description": "Portable Front Desk role for checking and booking UTC appointment slots.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "officehum.json",
+    "AGENTS.md",
+    "APPEND_SYSTEM.md",
+    "evals"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "1.0.x",
+    "@earendil-works/pi-durable": "1.0.x"
+  },
+  "dependencies": {
+    "@officehum/sdk": "0.0.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.0.2",
+    "@earendil-works/pi-durable": "1.0.2"
+  }
+}

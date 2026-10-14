@@ -9,3 +9,16 @@ export type { AgentManifest, Department } from "@officehum/sdk";
 
 /** Exact Pi Durable version this release is built and tested against. Bumped by the upgrade pipeline. */
 export const PI_DURABLE_VERSION = "1.0.2";
+
+export { createDemoModels } from "./demo-model.js";
+export {
+  type Booking,
+  type LocalCalendar,
+  openLocalCalendar,
+} from "./local-calendar.js";
+export {
+  type OpenSoloOptions,
+  openSolo,
+  type SoloResult,
+  type SoloSession,
+} from "./solo.js";
