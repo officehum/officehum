@@ -4,8 +4,18 @@ import { defineTool } from "@earendil-works/pi-durable";
 import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { contactTools, linkBookingContact, pinBookingContact } from "./contacts.js";
+import { firstContactCondition, type Messenger, messagingTools } from "./messaging.js";
 
 export { type Contact, ContactsDoc } from "./contacts.js";
+export {
+  type DeliveryReceipt,
+  type MessageChannel,
+  type MessageIntent,
+  type MessageRecord,
+  MessagesDoc,
+  type MessagesDocument,
+  type Messenger,
+} from "./messaging.js";
 
 export interface Booking {
   readonly id: string;
@@ -29,6 +39,7 @@ export interface Calendar {
 
 export interface FrontDeskOptions {
   readonly calendar: Calendar;
+  readonly messenger?: Messenger;
   readonly overlays?: readonly string[];
   readonly approve?: Approver;
 }
@@ -146,8 +157,17 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
-    tools: [checkSchedule, listBookings, ...contactTools(), book, reschedule, cancel],
+    tools: [
+      checkSchedule,
+      listBookings,
+      ...contactTools(),
+      ...messagingTools(options.messenger),
+      book,
+      reschedule,
+      cancel,
+    ],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
+    when: { first_contact: firstContactCondition },
   });
 }

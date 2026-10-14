@@ -10,7 +10,12 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import frontdesk from "@officehum/frontdesk";
-import { createDemoModels, openLocalCalendar, openSolo } from "@officehum/office";
+import {
+  createDemoModels,
+  openConsoleMessenger,
+  openLocalCalendar,
+  openSolo,
+} from "@officehum/office";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeCalendar } from "../../google-calendar/src/index.js";
 import { type CliIo, cliApprover, runCli } from "./cli.js";
@@ -236,6 +241,10 @@ describe("runCli", () => {
       0,
     );
     expect(allowed.output.join("\n")).toContain("synthetic");
+    expect(allowed.output).toContain("Messaging: console outbox; no customer delivery.");
+    const outbox = openConsoleMessenger(join(allowedState, "messages.sqlite"));
+    expect(outbox.messages()).toEqual([]);
+    outbox.close();
     const listing = io();
     expect(await runCli(["bookings", "--state", allowedState], listing.io)).toBe(0);
     expect(listing.output.join("\n")).toContain("2030-01-15T09:00:00Z");

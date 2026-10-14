@@ -21,6 +21,8 @@ export {
   skillExtensionName,
 } from "./agent.js";
 export {
+  type ApprovalCondition,
+  type ApprovalConditionContext,
   type ApprovalDecision,
   type ApprovalGateOptions,
   type ApprovalRequest,

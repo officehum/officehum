@@ -1,4 +1,4 @@
-import type { HookApi, ToolHooks } from "@earendil-works/pi-durable";
+import { defineDoc, type HookApi, type ToolHooks } from "@earendil-works/pi-durable";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ApprovalGateOptions,
@@ -14,7 +14,10 @@ const approvals = [
 const context = {} as HookContext;
 
 /** A stand-in for the tool task's hook API: its memo is a map, as durable as this test needs. */
-function hookApi(memos = new Map<string, unknown>()): HookApi {
+function hookApi(
+  memos = new Map<string, unknown>(),
+  snapshots = new Map<string, unknown>(),
+): HookApi {
   return {
     taskId: "task-1",
     conversationId: "conversation-1",
@@ -22,6 +25,9 @@ function hookApi(memos = new Map<string, unknown>()): HookApi {
       if (rest.length === 2 && !memos.has(name)) memos.set(name, rest[0]);
       return memos.get(name);
     },
+    snapshot: async (token: { definition: { kind: string } }) =>
+      snapshots.get(token.definition.kind),
+    snapshotAsOf: async () => undefined,
   } as unknown as HookApi;
 }
 
@@ -92,7 +98,198 @@ describe("approvalGate", () => {
     const again = await gate(call("book_appointment", {}), hookApi(memos), context);
     expect(again).toBeUndefined();
     expect(approve).toHaveBeenCalledOnce();
-    expect([...memos.values()]).toEqual([{ approved: true, by: "Sam", note: null }]);
+    expect([...memos.values()]).toEqual([
+      { tool: "book_appointment", argsJson: "{}", required: true },
+      { approved: true, by: "Sam", note: null },
+    ]);
+  });
+
+  it("gives async conditions a bound read-only document reader", async () => {
+    const HistoryDoc = defineDoc<{ known: boolean }>({
+      kind: "test.approval-history",
+      version: 1,
+      scope: "session",
+      initial: () => ({ known: false }),
+    });
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    let readerKeys: string[] = [];
+    const gate = beforeTool({
+      approvals,
+      approve,
+      when: {
+        book_after_hours: async (_args, environment, predicateContext) => {
+          readerKeys = Object.keys(environment.read).sort();
+          expect(predicateContext).toBe(context);
+          return !((await environment.read.snapshot(HistoryDoc, predicateContext))?.known ?? false);
+        },
+      },
+    });
+    await gate(
+      call("book_appointment", { customer: "Ada" }),
+      hookApi(new Map(), new Map([["test.approval-history", { known: false }]])),
+      context,
+    );
+    expect(readerKeys).toEqual(["snapshot", "snapshotAsOf"]);
+    expect(approve).toHaveBeenCalledOnce();
+  });
+
+  it("persists true and false applicability before approval or bypass", async () => {
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    const trueMemos = new Map<string, unknown>();
+    const falseMemos = new Map<string, unknown>();
+    const required = vi.fn(
+      async (args: Readonly<Record<string, unknown>>) => args.required === true,
+    );
+    const gate = beforeTool({ approvals, approve, when: { book_after_hours: required } });
+
+    await gate(call("book_appointment", { required: true }), hookApi(trueMemos), context);
+    await gate(
+      call("book_appointment", { required: false }, "call-2"),
+      hookApi(falseMemos),
+      context,
+    );
+
+    expect(trueMemos.get("officehum.approval-intent.call-1.book_after_hours")).toEqual({
+      tool: "book_appointment",
+      argsJson: '{"required":true}',
+      required: true,
+    });
+    expect(falseMemos.get("officehum.approval-intent.call-2.book_after_hours")).toEqual({
+      tool: "book_appointment",
+      argsJson: '{"required":false}',
+      required: false,
+    });
+    expect(approve).toHaveBeenCalledOnce();
+  });
+
+  it("replays immutable false applicability after durable state changes", async () => {
+    const memos = new Map<string, unknown>();
+    let known = true;
+    const applies = vi.fn(async () => !known);
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    const gate = beforeTool({ approvals, approve, when: { book_after_hours: applies } });
+
+    await gate(
+      call("book_appointment", { b: 2, nested: { z: 1, a: 0 }, a: 1 }),
+      hookApi(memos),
+      context,
+    );
+    known = false;
+    await gate(
+      call("book_appointment", { a: 1, nested: { a: 0, z: 1 }, b: 2 }),
+      hookApi(memos),
+      context,
+    );
+
+    expect(applies).toHaveBeenCalledOnce();
+    expect(approve).not.toHaveBeenCalled();
+    expect(memos.get("officehum.approval-intent.call-1.book_after_hours")).toEqual({
+      tool: "book_appointment",
+      argsJson: '{"a":1,"b":2,"nested":{"a":0,"z":1}}',
+      required: false,
+    });
+  });
+
+  it("rejects changed arguments under a call identity before reusing applicability or a decision", async () => {
+    const memos = new Map<string, unknown>();
+    const gate = beforeTool({
+      approvals,
+      approve: async () => ({ approved: true }),
+      when: { book_after_hours: () => true },
+    });
+    await gate(call("book_appointment", { start: "one" }), hookApi(memos), context);
+    await expect(
+      gate(call("book_appointment", { start: "two" }), hookApi(memos), context),
+    ).rejects.toThrow(/different tool or arguments/i);
+  });
+
+  it("preserves legacy approved and declined decisions without applicability memos", async () => {
+    const approved = new Map<string, unknown>([
+      ["officehum.approval.call-1.book_after_hours", { approved: true, by: null, note: null }],
+    ]);
+    const declined = new Map<string, unknown>([
+      [
+        "officehum.approval.call-1.book_after_hours",
+        { approved: false, by: "Sam", note: "legacy decline" },
+      ],
+    ]);
+    const applies = vi.fn(() => false);
+    const gate = beforeTool({ approvals, when: { book_after_hours: applies } });
+    expect(
+      await gate(call("book_appointment", { changed: true }), hookApi(approved), context),
+    ).toBeUndefined();
+    expect(
+      (await gate(call("book_appointment", { changed: true }), hookApi(declined), context))?.block,
+    ).toContain("legacy decline");
+    expect(applies).not.toHaveBeenCalled();
+  });
+
+  it("keeps a persisted decline after later history makes the tuple known", async () => {
+    const memos = new Map<string, unknown>();
+    let known = false;
+    const applies = vi.fn(() => !known);
+    const gate = beforeTool({
+      approvals,
+      approve: async () => ({ approved: false, by: "operator", note: "declined first contact" }),
+      when: { book_after_hours: applies },
+    });
+    expect(
+      (await gate(call("book_appointment", { target: "same" }), hookApi(memos), context))?.block,
+    ).toContain("declined first contact");
+    known = true;
+    expect(
+      (await gate(call("book_appointment", { target: "same" }), hookApi(memos), context))?.block,
+    ).toContain("declined first contact");
+    expect(applies).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [
+      "throws",
+      () => {
+        throw new Error("predicate failed");
+      },
+    ],
+    [
+      "rejects",
+      async () => {
+        throw new Error("predicate failed");
+      },
+    ],
+    ["returns a nonboolean", () => "yes"],
+  ])("fails safe when an async condition %s", async (_label, condition) => {
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    const gate = beforeTool({
+      approvals,
+      approve,
+      when: { book_after_hours: condition as never },
+    });
+    await gate(call("book_appointment", {}), hookApi(), context);
+    expect(approve).toHaveBeenCalledOnce();
+  });
+
+  it("propagates active cancellation from a condition", async () => {
+    const controller = new AbortController();
+    const cancelled = {
+      abortSignal: controller.signal,
+      value: () => undefined,
+      toString: () => "cancelled test",
+    } as HookContext;
+    controller.abort(new Error("cancelled"));
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    const gate = beforeTool({
+      approvals,
+      approve,
+      when: {
+        book_after_hours: async () => {
+          throw new Error("predicate interrupted");
+        },
+      },
+    });
+    await expect(gate(call("book_appointment", {}), hookApi(), cancelled)).rejects.toThrow(
+      "cancelled",
+    );
+    expect(approve).not.toHaveBeenCalled();
   });
 });
 

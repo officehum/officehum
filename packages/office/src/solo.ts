@@ -60,6 +60,7 @@ const LEGACY_FRONTDESK_TOOLS = ["check_schedule", "book_appointment"] as const;
 const LIFECYCLE_TOOLS = ["list_bookings", "reschedule_appointment", "cancel_appointment"] as const;
 const PRE_CONTACT_TOOLS = [...LEGACY_FRONTDESK_TOOLS, ...LIFECYCLE_TOOLS] as const;
 const CONTACT_TOOLS = ["list_contacts", "create_contact", "update_contact"] as const;
+const MESSAGE_TOOLS = ["send_message"] as const;
 const LifecycleToolsMigrationDoc = defineDoc<{ completed: boolean }>({
   kind: "officehum.frontdesk.lifecycle-tools-migration",
   version: 1,
@@ -70,6 +71,14 @@ const LifecycleToolsMigrationDoc = defineDoc<{ completed: boolean }>({
 });
 const ContactToolsMigrationDoc = defineDoc<{ completed: boolean }>({
   kind: "officehum.frontdesk.contact-tools-migration",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "current",
+  initial: () => ({ completed: false }),
+});
+const MessageToolsMigrationDoc = defineDoc<{ completed: boolean }>({
+  kind: "officehum.frontdesk.message-tools-migration",
   version: 1,
   scope: "conversation",
   history: "latest",
@@ -342,6 +351,7 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
       const state = await transaction.doc(AgentDoc, root.id);
       const migration = await transaction.doc(LifecycleToolsMigrationDoc, root.id);
       const contactMigration = await transaction.doc(ContactToolsMigrationDoc, root.id);
+      const messageMigration = await transaction.doc(MessageToolsMigrationDoc, root.id);
       const stored = state.tools;
       if (Array.isArray(stored)) {
         const selected = [...stored];
@@ -365,6 +375,19 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
             if (!roleRemovals.has(name)) selected.push(name);
           }
         }
+        const looksPreMessaging =
+          existingHarness &&
+          !messageMigration.completed &&
+          LEGACY_FRONTDESK_TOOLS.every((name) => selected.includes(name)) &&
+          [...LIFECYCLE_TOOLS, ...CONTACT_TOOLS].every(
+            (name) => selected.includes(name) || roleRemovals.has(name),
+          ) &&
+          MESSAGE_TOOLS.every((name) => !selected.includes(name));
+        if (looksPreMessaging) {
+          for (const name of MESSAGE_TOOLS) {
+            if (!roleRemovals.has(name)) selected.push(name);
+          }
+        }
         state.tools = selected.filter((name) => !roleRemovals.has(name));
       } else {
         const removed = new Set(stored?.remove ?? []);
@@ -373,6 +396,7 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
       }
       migration.completed = true;
       contactMigration.completed = true;
+      messageMigration.completed = true;
     }, BACKGROUND_CONTEXT);
     let closePromise: Promise<void> | undefined;
     const session: SoloSession = {
