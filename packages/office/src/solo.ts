@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
 import {
@@ -50,33 +51,38 @@ function isAlive(pid: number): boolean {
 function acquireLock(directory: string): { release(): void } {
   mkdirSync(directory, { recursive: true });
   const path = join(directory, "owner.lock");
+  const database = new DatabaseSync(join(directory, "ownership.sqlite"));
   const record: LockRecord = { pid: process.pid, token: randomUUID() };
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  let held = false;
+  let released = false;
+  const releaseDatabase = () => {
+    if (held) database.exec("ROLLBACK");
+    held = false;
+    database.close();
+  };
+  try {
+    database.exec(
+      "PRAGMA busy_timeout = 1000; CREATE TABLE IF NOT EXISTS ownership_guard (id INTEGER PRIMARY KEY CHECK (id = 1)); PRAGMA busy_timeout = 0;",
+    );
     try {
-      const descriptor = openSync(path, "wx", 0o600);
-      try {
-        writeFileSync(descriptor, JSON.stringify(record), "utf8");
-      } finally {
-        closeSync(descriptor);
-      }
-      return {
-        release() {
-          try {
-            const current = JSON.parse(readFileSync(path, "utf8")) as LockRecord;
-            if (current.token === record.token) unlinkSync(path);
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-          }
-        },
-      };
+      database.exec("BEGIN IMMEDIATE");
+      held = true;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      let owner: LockRecord;
-      try {
-        owner = JSON.parse(readFileSync(path, "utf8")) as LockRecord;
-      } catch {
-        throw new Error(`Malformed ownership lock at ${path}; inspect it before retrying.`);
+      throw new Error("Front Desk state is owned by another active process.", { cause: error });
+    }
+
+    let owner: LockRecord | undefined;
+    try {
+      owner = JSON.parse(readFileSync(path, "utf8")) as LockRecord;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        if (error instanceof SyntaxError) {
+          throw new Error(`Malformed ownership lock at ${path}; inspect it before retrying.`);
+        }
+        throw error;
       }
+    }
+    if (owner !== undefined) {
       if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0 || typeof owner.token !== "string") {
         throw new Error(`Malformed ownership lock at ${path}; inspect it before retrying.`);
       }
@@ -85,8 +91,31 @@ function acquireLock(directory: string): { release(): void } {
       }
       unlinkSync(path);
     }
+    writeFileSync(path, JSON.stringify(record), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    return {
+      release() {
+        if (released) return;
+        released = true;
+        let failure: unknown;
+        try {
+          try {
+            const current = JSON.parse(readFileSync(path, "utf8")) as LockRecord;
+            if (current.token === record.token) unlinkSync(path);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          }
+        } catch (error) {
+          failure = error;
+        } finally {
+          releaseDatabase();
+        }
+        if (failure !== undefined) throw failure;
+      },
+    };
+  } catch (error) {
+    releaseDatabase();
+    throw error;
   }
-  throw new Error(`Could not acquire Front Desk ownership lock at ${path}.`);
 }
 
 async function resultFor(
@@ -126,7 +155,7 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
         ? options.role.agent
         : { ...options.role.agent, model: options.model };
     const root = await harness.root(BACKGROUND_CONTEXT, { agent });
-    let closed = false;
+    let closePromise: Promise<void> | undefined;
     const session: SoloSession = {
       harness,
       root,
@@ -151,13 +180,14 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
         return results;
       },
       async close() {
-        if (closed) return;
-        closed = true;
-        try {
-          await harness?.close(BACKGROUND_CONTEXT);
-        } finally {
-          lock.release();
-        }
+        closePromise ??= (async () => {
+          try {
+            await harness?.close(BACKGROUND_CONTEXT);
+          } finally {
+            lock.release();
+          }
+        })();
+        return closePromise;
       },
     };
     return session;

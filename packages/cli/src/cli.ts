@@ -1,7 +1,8 @@
 import { join } from "node:path";
-import { awaitWithContext } from "@earendil-works/chord/context";
+import { awaitWithContext, BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+import type { ModelRef } from "@earendil-works/pi-durable";
 import frontdesk from "@officehum/frontdesk";
 import {
   createDemoModels,
@@ -151,11 +152,17 @@ function printResult(result: SoloResult, io: CliIo): number {
   return 0;
 }
 
+function modelLabel(model: ModelRef): string {
+  if (model.provider === "officehum-demo") return `synthetic demo (${model.modelId})`;
+  if (model.provider === "openai") return `live OpenAI (${model.modelId})`;
+  return `${model.provider}/${model.modelId}`;
+}
+
 async function openForRun(
   parsed: Parsed,
   io: CliIo,
   demo: boolean,
-): Promise<{ calendar: LocalCalendar; solo: SoloSession }> {
+): Promise<{ calendar: LocalCalendar; solo: SoloSession; model: ModelRef }> {
   const calendar = openLocalCalendar(join(parsed.state, "calendar.sqlite"));
   let solo: SoloSession | undefined;
   let closeRequested = false;
@@ -174,10 +181,20 @@ async function openForRun(
     const runtime = demo ? createDemoModels() : liveModels(parsed.model);
     solo = await openSolo({ directory: parsed.state, role, ...runtime });
     activeSession = solo;
+    const actualModel = (await solo.root.agent(BACKGROUND_CONTEXT)).model;
+    if (actualModel === undefined) throw new Error("The persisted Front Desk root has no model.");
+    const requestedProvider = demo ? "officehum-demo" : "openai";
+    if (actualModel.provider !== requestedProvider) {
+      const requested = demo ? "the synthetic demo" : "live OpenAI";
+      throw new Error(
+        `State ${parsed.state} already uses ${modelLabel(actualModel)}; use a fresh --state directory for ${requested}.`,
+      );
+    }
     if (closeRequested) await solo.close();
-    return { calendar, solo };
+    return { calendar, solo, model: actualModel };
   } catch (error) {
     await solo?.close();
+    if (activeSession === solo) activeSession = undefined;
     calendar.close();
     throw error;
   }
@@ -198,20 +215,18 @@ async function runResume(parsed: Parsed, io: CliIo): Promise<number> {
     const demo = createDemoModels();
     probe = await openSolo({ directory: parsed.state, role, ...demo });
     activeSession = probe;
-    const agent = await probe.root.agent(
-      (await import("@earendil-works/chord/context")).BACKGROUND_CONTEXT,
-    );
+    const agent = await probe.root.agent(BACKGROUND_CONTEXT);
     if (agent.model?.provider === "officehum-demo") {
       active = probe;
       probe = undefined;
-      io.output("Mode: synthetic demo");
+      io.output(`Mode: ${modelLabel(agent.model)}`);
     } else {
       await probe.close();
       probe = undefined;
       const runtime = liveModels(agent.model?.modelId ?? parsed.model);
       active = await openSolo({ directory: parsed.state, role, ...runtime });
       activeSession = active;
-      io.output(`Mode: live OpenAI (${runtime.model.modelId})`);
+      io.output(`Mode: ${modelLabel(runtime.model)}`);
     }
     if (closeRequested) await active.close();
     try {
@@ -258,7 +273,7 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
     const demo = parsed.command === "demo";
     const opened = await openForRun(parsed, io, demo);
     try {
-      io.output(demo ? "Mode: synthetic demo" : `Mode: live OpenAI (${parsed.model})`);
+      io.output(`Mode: ${modelLabel(opened.model)}`);
       if (demo && parsed.approval === undefined) {
         io.output("Synthetic demo approval: allow (default)");
       }

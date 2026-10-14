@@ -27,7 +27,8 @@
 - A booking key retried with changed start/customer must reject instead of returning an unrelated success.
 - A valid-looking but nonexistent date or off-inventory timestamp must fail before mutation.
 - Approval EOF/interruption must leave pending work; absent input never means approval.
-- Opening an already active directory or failing initialization must neither corrupt the harness nor strand a newly acquired lock.
+- Lifetime SQLite ownership must serialize stale-marker reclamation across processes; crash and initialization failure release ownership.
+- Demo/live mode mismatch must fail before input admission and preserve the existing root.
 - Reopening a pending booking after its effect committed must settle the original request without another effect or another recorded decision.
 
 ---
@@ -130,7 +131,7 @@ if (settled.status === "done" && settled.type === "input") {
 }
 ```
 
-`Harness.inspect()` provides unsettled submissions. Reacquire each via `harness.submission(id,context)`, call `resume()`, and await their settlement. Do not reset the root. Lock acquisition uses exclusive creation, PID liveness, and an owner token; cleanup only removes its own lock. Wrap all acquired resources in failure/finally cleanup.
+`Harness.inspect()` provides unsettled submissions. Reacquire each via `harness.submission(id,context)`, call `resume()`, and await their settlement. Do not reset the root. Hold a `BEGIN IMMEDIATE` transaction in a separate ownership SQLite database for the session lifetime; perform PID/token marker checks and cleanup only while holding it, close the Harness before release, and rely on kernel lock release after process death. Wrap all acquired resources in failure/finally cleanup.
 
 Demo registration uses `fauxProvider({provider:"officehum-demo",models:[{id:"frontdesk-demo"}]})`, `createModels()`, and `models.setProvider(faux.provider)`. Set three identical transcript-driven response factories with `faux.setResponses`; each looks at latest user/tool-result messages to choose schedule, booking, or final actual outcome. Tool-use messages use `fauxAssistantMessage(fauxToolCall(name,args),{stopReason:"toolUse"})`. Reopening reconstructs progress from transcript, never `callCount`. Denial, empty availability, or tool error produces truthful final text.
 
@@ -138,7 +139,7 @@ Demo registration uses `fauxProvider({provider:"officehum-demo",models:[{id:"fro
 
 Live model setup checks nonempty `process.env.OPENAI_API_KEY`, creates models, installs `openaiProvider()`, then checks `models.getModel("openai",modelId)`. A missing key or unknown model raises an actionable error before admitting input; never print the key.
 
-Default live model is `gpt-6-sol`, verified against the installed catalog; allow `--model` to select another known catalog model. CLI imports role plus host adapter/calendar/demo. Persisted root provider selects demo versus live on resume; inspect existing root state before requiring a live credential, without scheduling work. Approver first returns `calendar.decision(key)` if present, otherwise consumes explicit allow/deny or interactive exact tokens, records the decision, and returns the stored winner. EOF interrupts pending work instead of returning approved. SIGINT cleanup calls harness close, not abort. `bookings` opens only the calendar and prints its actual records. Output includes synthetic/live mode, submission ID, and outcome.
+Default live model is `gpt-6-sol`, verified against the installed catalog; allow `--model` to select another known catalog model. CLI imports role plus host adapter/calendar/demo. Under ownership, inspect the persisted root model before admission, reject demo/live mismatch with a fresh-state instruction, and label the persisted model. Resume selects its runtime from that model. Approver first returns `calendar.decision(key)` if present, otherwise consumes explicit allow/deny or interactive exact tokens, records the decision, and returns the stored winner. The real readline adapter translates Ctrl-D/Ctrl-C into cancellation so the pending submission survives; unexpected I/O errors still surface. SIGINT cleanup calls harness close, not abort. `bookings` opens only the calendar and prints its actual records. Output includes synthetic/live mode, submission ID, and outcome.
 
 - [ ] **Step 7: Integrate build, lint, runtime hygiene, and user docs.** Add `@officehum/frontdesk` to root build/typecheck after SDK and before CLI. Add it to CLI dependencies. Run `npm install --package-lock-only` to capture workspace/direct dependency changes, then `npm install` or `npm ci` as appropriate to refresh workspace links. Add `!!**/.claude/worktrees` to Biome `files.includes` to stop nested configuration discovery; do not delete worktrees or modify their configs. Ignore `.officehum/`. README provides exact demo/live/start/resume/bookings commands, UTC semantics, mandatory booking approval, state layout, stale/active lock behavior, and env-only credential setup without embedding a key.
 

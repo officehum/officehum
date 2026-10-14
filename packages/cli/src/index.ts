@@ -1,26 +1,20 @@
 #!/usr/bin/env node
-import { stdin, stdout } from "node:process";
-import { createInterface } from "node:readline/promises";
+import { stderr, stdin, stdout } from "node:process";
 import { interruptCli, runCli } from "./cli.js";
+import { createTerminalIo, type TerminalInterrupt, terminalExitCode } from "./terminal-io.js";
 
-const io = {
-  output: (line: string) => console.log(line),
-  error: (line: string) => console.error(line),
-  readApproval: async (prompt: string) => {
-    if (!stdin.isTTY) return undefined;
-    const readline = createInterface({ input: stdin, output: stdout });
-    try {
-      return await readline.question(prompt);
-    } finally {
-      readline.close();
-    }
+let terminalInterrupt: TerminalInterrupt | undefined;
+const io = createTerminalIo({
+  input: stdin,
+  output: stdout,
+  error: stderr,
+  onInterrupt: (kind) => {
+    terminalInterrupt = kind;
   },
-};
-
-let interrupted = false;
+});
 process.once("SIGINT", () => {
-  interrupted = true;
+  terminalInterrupt = "sigint";
   void interruptCli();
 });
 const code = await runCli(process.argv.slice(2), io);
-process.exitCode = interrupted ? 130 : code;
+process.exitCode = terminalExitCode(code, terminalInterrupt);

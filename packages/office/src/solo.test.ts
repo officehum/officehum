@@ -1,6 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { type ChildProcess, fork } from "node:child_process";
+import { once } from "node:events";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { awaitWithContext, BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
@@ -25,6 +28,32 @@ const temporary = () => {
   temps.push(directory);
   return directory;
 };
+
+type ChildResult =
+  | { status: "opened"; pid: number; marker: { pid: number; token: string } }
+  | { status: "error"; message: string };
+
+function ownerChild(directory: string, side: string, forceRace = false): ChildProcess {
+  return fork(fileURLToPath(new URL("fixtures/solo-owner-child.mjs", import.meta.url)), [], {
+    cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+    env: {
+      ...process.env,
+      OFFICEHUM_TEST_DIRECTORY: directory,
+      OFFICEHUM_TEST_SIDE: side,
+      ...(forceRace ? { OFFICEHUM_TEST_FORCE_STALE_RACE: "1" } : {}),
+    },
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+  });
+}
+
+async function childResult(child: ChildProcess): Promise<ChildResult> {
+  const [message] = (await once(child, "message")) as [ChildResult];
+  return message;
+}
+
+async function waitForExit(child: ChildProcess): Promise<void> {
+  if (child.exitCode === null && child.signalCode === null) await once(child, "exit");
+}
 
 function scriptedModels() {
   const faux = fauxProvider({ provider: "solo-test", models: [{ id: "model" }] });
@@ -84,6 +113,49 @@ describe("openSolo", () => {
     const recovered = await openSolo({ directory, role, models, model });
     await recovered.close();
     calendar.close();
+  });
+
+  it("serializes two real processes racing to reclaim one stale owner", async () => {
+    const directory = temporary();
+    writeFileSync(
+      join(directory, "owner.lock"),
+      JSON.stringify({ pid: 99_999_999, token: "stale" }),
+    );
+    const a = ownerChild(directory, "a", true);
+    const b = ownerChild(directory, "b", true);
+    const aResult = childResult(a);
+    const bResult = childResult(b);
+    const first = await Promise.race([aResult, bResult]);
+    if (first.status === "error") {
+      writeFileSync(join(directory, "a-ready"), "released");
+      writeFileSync(join(directory, "b-stale-read"), "released");
+    }
+    const results = await Promise.all([aResult, bResult]);
+    const opened = results.filter(
+      (result): result is Extract<ChildResult, { status: "opened" }> => result.status === "opened",
+    );
+    expect(opened).toHaveLength(1);
+    expect(JSON.parse(readFileSync(join(directory, "owner.lock"), "utf8"))).toEqual(
+      opened[0]?.marker,
+    );
+    if ((await aResult).status === "opened" && a.connected) a.send("close");
+    if ((await bResult).status === "opened" && b.connected) b.send("close");
+    await Promise.all([waitForExit(a), waitForExit(b)]);
+  });
+
+  it("releases process ownership after abrupt termination", async () => {
+    const directory = temporary();
+    const first = ownerChild(directory, "first");
+    const firstResult = await childResult(first);
+    expect(firstResult.status).toBe("opened");
+    first.kill("SIGKILL");
+    await once(first, "exit");
+
+    const recovered = ownerChild(directory, "recovered");
+    const recoveredResult = await childResult(recovered);
+    expect(recoveredResult.status).toBe("opened");
+    recovered.send?.("close");
+    await once(recovered, "exit");
   });
 
   it("releases its lock when initialization fails", async () => {
