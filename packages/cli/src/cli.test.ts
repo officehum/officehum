@@ -132,6 +132,103 @@ describe("runCli", () => {
     expect(capture.errors.join("\n")).toContain("--request-id");
   });
 
+  it("inspects empty and populated contacts without credentials or provider setup", async () => {
+    const absent = state();
+    const empty = io();
+    expect(await runCli(["contacts", "--state", absent], empty.io)).toBe(0);
+    expect(empty.output).toEqual(["No contacts."]);
+    expect(existsSync(join(absent, "harness"))).toBe(false);
+
+    const directory = state();
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const role = frontdesk({ calendar });
+    const solo = await openSolo({ directory, role, ...createDemoModels() });
+    const create = role.extensions
+      .flatMap((extension) => extension.tools ?? [])
+      .find((tool) => tool.name === "create_contact");
+    if (create === undefined) throw new Error("missing create_contact tool");
+    await create.execute(
+      { name: "Zulu Guest", phone: "+15551234567" },
+      {
+        conversationId: 1,
+        taskId: 1,
+        callId: "seed-zulu",
+        commit: solo.harness.commit.bind(solo.harness),
+        snapshot: solo.harness.snapshot.bind(solo.harness),
+      } as never,
+      BACKGROUND_CONTEXT,
+    );
+    await create.execute(
+      { name: "Alpha Guest", email: "alpha@example.com" },
+      {
+        conversationId: 1,
+        taskId: 1,
+        callId: "seed-alpha",
+        commit: solo.harness.commit.bind(solo.harness),
+        snapshot: solo.harness.snapshot.bind(solo.harness),
+      } as never,
+      BACKGROUND_CONTEXT,
+    );
+    await solo.close();
+    calendar.close();
+
+    const populated = io();
+    expect(await runCli(["contacts", "--state", directory], populated.io)).toBe(0);
+    expect(populated.output).toEqual([
+      JSON.stringify({
+        id: "contact-2",
+        revision: 1,
+        name: "Alpha Guest",
+        email: "alpha@example.com",
+        phone: null,
+      }),
+      JSON.stringify({
+        id: "contact-1",
+        revision: 1,
+        name: "Zulu Guest",
+        email: null,
+        phone: "+15551234567",
+      }),
+    ]);
+
+    const googleDirectory = state();
+    await createGoogleState(googleDirectory);
+    const google = io();
+    expect(
+      await runCli(["contacts", "--state", googleDirectory], google.io, {
+        createGoogleCalendar: () => {
+          throw new Error("contacts must not construct a provider client");
+        },
+        createLiveModels: () => {
+          throw new Error("contacts must not construct models");
+        },
+      }),
+    ).toBe(0);
+    expect(google.output).toEqual(["No contacts."]);
+  });
+
+  it("does not resume or settle pending work while inspecting contacts", async () => {
+    const directory = state();
+    const submissionId = await createPendingDemo(directory);
+    const capture = io();
+    expect(await runCli(["contacts", "--state", directory], capture.io)).toBe(0);
+    expect(capture.output).toEqual(["No contacts."]);
+
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const solo = await openSolo({
+      directory,
+      role: frontdesk({ calendar }),
+      ...createDemoModels(),
+    });
+    const pending = (await solo.harness.inspect(BACKGROUND_CONTEXT)).submissions;
+    expect(pending.map((record) => String(record.id))).toContain(submissionId);
+    expect(
+      pending.find((record) => String(record.id) === submissionId)?.settlement,
+    ).toBeUndefined();
+    await solo.close();
+    calendar.close();
+  });
+
   it("runs deterministic allow and deny demos and lists bookings without credentials", async () => {
     const allowedState = state();
     const allowed = io();

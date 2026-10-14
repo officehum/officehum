@@ -9,9 +9,13 @@ import {
   AssistantEntry,
   type Conversation,
   createRegistry,
+  createSession,
   defineDoc,
   Harness,
+  type JsonObject,
   type ModelRef,
+  type Session,
+  type SessionDocToken,
   type SettledSubmissionRecord,
   type SubmissionId,
 } from "@earendil-works/pi-durable";
@@ -54,8 +58,18 @@ export type ConnectorIdentity = LocalConnectorIdentity | GoogleConnectorIdentity
 const LOCAL_IDENTITY: LocalConnectorIdentity = { version: 1, backend: "local" };
 const LEGACY_FRONTDESK_TOOLS = ["check_schedule", "book_appointment"] as const;
 const LIFECYCLE_TOOLS = ["list_bookings", "reschedule_appointment", "cancel_appointment"] as const;
+const PRE_CONTACT_TOOLS = [...LEGACY_FRONTDESK_TOOLS, ...LIFECYCLE_TOOLS] as const;
+const CONTACT_TOOLS = ["list_contacts", "create_contact", "update_contact"] as const;
 const LifecycleToolsMigrationDoc = defineDoc<{ completed: boolean }>({
   kind: "officehum.frontdesk.lifecycle-tools-migration",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "current",
+  initial: () => ({ completed: false }),
+});
+const ContactToolsMigrationDoc = defineDoc<{ completed: boolean }>({
+  kind: "officehum.frontdesk.contact-tools-migration",
   version: 1,
   scope: "conversation",
   history: "latest",
@@ -257,6 +271,28 @@ function acquireLock(directory: string): { release(): void } {
   }
 }
 
+/** Read one existing session document while retaining the same exclusive state ownership as openSolo. */
+export async function readSoloDocument<T extends JsonObject>(
+  directory: string,
+  token: SessionDocToken<T>,
+): Promise<Readonly<T> | undefined> {
+  const lock = acquireLock(directory);
+  let session: Session | undefined;
+  try {
+    const harnessPath = join(directory, "harness");
+    if (!existsSync(harnessPath)) return undefined;
+    const storage = await openNodeJsonlStorage(harnessPath, BACKGROUND_CONTEXT, { fsync: true });
+    session = createSession(storage);
+    return await session.snapshot(token, BACKGROUND_CONTEXT);
+  } finally {
+    try {
+      await session?.close(BACKGROUND_CONTEXT);
+    } finally {
+      lock.release();
+    }
+  }
+}
+
 async function resultFor(
   root: Conversation,
   submissionId: SubmissionId,
@@ -305,6 +341,7 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
     await root.commit(async (transaction) => {
       const state = await transaction.doc(AgentDoc, root.id);
       const migration = await transaction.doc(LifecycleToolsMigrationDoc, root.id);
+      const contactMigration = await transaction.doc(ContactToolsMigrationDoc, root.id);
       const stored = state.tools;
       if (Array.isArray(stored)) {
         const selected = [...stored];
@@ -318,6 +355,16 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
             if (!roleRemovals.has(name)) selected.push(name);
           }
         }
+        const looksPreContacts =
+          existingHarness &&
+          !contactMigration.completed &&
+          CONTACT_TOOLS.every((name) => !selected.includes(name)) &&
+          (looksPreFeature || PRE_CONTACT_TOOLS.every((name) => selected.includes(name)));
+        if (looksPreContacts) {
+          for (const name of CONTACT_TOOLS) {
+            if (!roleRemovals.has(name)) selected.push(name);
+          }
+        }
         state.tools = selected.filter((name) => !roleRemovals.has(name));
       } else {
         const removed = new Set(stored?.remove ?? []);
@@ -325,6 +372,7 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
         if (removed.size > 0) state.tools = { remove: [...removed] };
       }
       migration.completed = true;
+      contactMigration.completed = true;
     }, BACKGROUND_CONTEXT);
     let closePromise: Promise<void> | undefined;
     const session: SoloSession = {

@@ -4,7 +4,7 @@ import { awaitWithContext, BACKGROUND_CONTEXT } from "@earendil-works/chord/cont
 import { createModels } from "@earendil-works/pi-ai/models";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import type { ModelRef } from "@earendil-works/pi-durable";
-import frontdesk from "@officehum/frontdesk";
+import frontdesk, { ContactsDoc } from "@officehum/frontdesk";
 import {
   type CalendarClient,
   createGoogleCalendar,
@@ -22,6 +22,7 @@ import {
   openSolo,
   PI_DURABLE_VERSION,
   readConnectorIdentity,
+  readSoloDocument,
   type SoloResult,
   type SoloSession,
 } from "@officehum/office";
@@ -66,6 +67,7 @@ const USAGE = `Usage:
   officehum start --message TEXT --request-id ID [--state DIR] [--model ID] [--approval allow|deny] [--calendar local|google]
   officehum resume [--state DIR] [--approval allow|deny] [--calendar local|google]
   officehum bookings [--state DIR] [--calendar local|google]
+  officehum contacts [--state DIR]
   officehum --version`;
 
 function parse(args: string[]): Parsed {
@@ -84,7 +86,9 @@ function parse(args: string[]): Parsed {
         ? ["--state", "--approval", "--calendar"]
         : command === "bookings"
           ? ["--state", "--calendar"]
-          : [],
+          : command === "contacts"
+            ? ["--state"]
+            : [],
   );
   for (let index = 0; index < rest.length; index += 2) {
     const option = rest[index];
@@ -411,8 +415,21 @@ export async function runCli(
       return 0;
     }
     const parsed = parse(args);
-    if (!new Set(["demo", "start", "resume", "bookings"]).has(parsed.command)) {
+    if (!new Set(["demo", "start", "resume", "bookings", "contacts"]).has(parsed.command)) {
       throw new UsageError(`Unknown command: ${parsed.command}\n${USAGE}`);
+    }
+    if (parsed.command === "contacts") {
+      const state = await readSoloDocument(parsed.state, ContactsDoc);
+      const contacts = [...(state?.contacts ?? [])].sort(
+        (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+      );
+      if (contacts.length === 0) io.output("No contacts.");
+      else {
+        for (const { id, revision, name, email, phone } of contacts) {
+          io.output(JSON.stringify({ id, revision, name, email, phone }));
+        }
+      }
+      return 0;
     }
     if (parsed.command === "bookings") {
       const { calendar } = openCalendar(parsed, dependencies);
