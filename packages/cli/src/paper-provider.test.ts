@@ -215,17 +215,94 @@ describe("Paper Instruments Ultramarine provider", () => {
     expect(body?.reasoning_effort).toBe(expected);
   });
 
+  it("rejects a DONE sentinel that reaches EOF without a line terminator", async () => {
+    const models = createModels();
+    models.setProvider(paperProvider());
+    const fakeFetch: typeof fetch = async () =>
+      sseResponse([
+        event({
+          choices: [{ index: 0, delta: { content: "complete-looking" }, finish_reason: null }],
+        }),
+        event({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }),
+        "data: [DONE]",
+      ]);
+    const { answer, events } = await streamResult(models, fakeFetch);
+    expect(answer.stopReason).toBe("error");
+    expect(events).not.toContain("done");
+  });
+
   it("fails a finished response whose SSE stream omits the complete DONE sentinel", async () => {
     const models = createModels();
     models.setProvider(paperProvider());
     const fakeFetch: typeof fetch = async () =>
       sseResponse([
-        event({ choices: [{ index: 0, delta: { content: "partial" }, finish_reason: null }] }),
-        event({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }),
+        event({
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call-1",
+                    type: "function",
+                    function: { name: "check_schedule", arguments: '{"date":"2030-01-15"}' },
+                  },
+                ],
+              },
+              finish_reason: null,
+            },
+          ],
+        }),
+        event({ choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }),
       ]);
     const { answer, events } = await streamResult(models, fakeFetch);
     expect(answer.stopReason).toBe("error");
     expect(events).not.toContain("done");
+
+    const toolExecutions = { count: 0 };
+    const tool = defineTool({
+      name: "check_schedule",
+      description: "Check a schedule for one date.",
+      parameters: Type.Object({ date: Type.String() }),
+      replay: "safe",
+      execute: async () => {
+        toolExecutions.count += 1;
+        return { content: [{ type: "text", text: "checked" }] };
+      },
+    });
+    const extension = defineExtension({ name: "paper-missing-done-test", tools: [tool] });
+    const registry = createRegistry();
+    registry.install(extension);
+    const storage = new MemoryStorage();
+    const previousKey = process.env.PAPERINSTRUMENTS_API_KEY;
+    process.env.PAPERINSTRUMENTS_API_KEY = "test-only-placeholder";
+    vi.stubGlobal("fetch", fakeFetch);
+    let harness: Awaited<ReturnType<typeof Harness.open>> | undefined;
+    try {
+      harness = await Harness.open(
+        storage,
+        { models, registry, settings: { retry: { enabled: false } } },
+        BACKGROUND_CONTEXT,
+      );
+      const root = await harness.root(BACKGROUND_CONTEXT, {
+        agent: { model: PAPER_MODEL_REF, thinkingLevel: "max", extensions: [extension] },
+      });
+      const submission = await root.submit(
+        { type: "input", content: "Check my schedule for 2030-01-15." },
+        BACKGROUND_CONTEXT,
+      );
+      expect(await submission.wait(BACKGROUND_CONTEXT)).toMatchObject({
+        status: "unanswered",
+        reason: "model_error",
+      });
+      expect(toolExecutions.count).toBe(0);
+    } finally {
+      await harness?.close(BACKGROUND_CONTEXT);
+      if (previousKey === undefined) delete process.env.PAPERINSTRUMENTS_API_KEY;
+      else process.env.PAPERINSTRUMENTS_API_KEY = previousKey;
+      await storage.close(BACKGROUND_CONTEXT);
+    }
   });
 
   it("keeps partial tool JSON non-executable when the provider ends at the token limit", async () => {

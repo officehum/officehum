@@ -77,9 +77,6 @@ function guardedPaperFetch(fetchImpl: typeof fetch): typeof fetch {
           const { done, value } =
             reader === undefined ? { done: true, value: undefined } : await reader.read();
           if (done) {
-            line += decoder.decode();
-            if (line.endsWith("\r")) line = line.slice(0, -1);
-            if (line === "data: [DONE]") sawDone = true;
             if (!sawDone) {
               controller.error(new Error("Paper stream ended before data: [DONE]"));
               return;
