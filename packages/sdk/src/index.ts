@@ -92,6 +92,7 @@ export {
 } from "./files.js";
 export { formatIssue, type Issue, type Validation } from "./issues.js";
 export { localFileStore } from "./local-files.js";
+export { localVersionedFileStore } from "./local-versioned-files.js";
 export {
   type AcceptDeclaration,
   type AgentManifest,
