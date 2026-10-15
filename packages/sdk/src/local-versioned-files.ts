@@ -6,6 +6,8 @@ import {
   type CreateVersionInput,
   type FileOperationReceipt,
   FileStoreError,
+  type PublishReceipt,
+  type PublishVersionInput,
   type PutVersionInput,
   type VersionCommitReceipt,
   type VersionedFileRef,
@@ -13,12 +15,17 @@ import {
 } from "./files.js";
 import { localFileStore } from "./local-files.js";
 import { mutateState, readState, type VersionedState } from "./local-versioned-state.js";
-import { intentHash, snapshotCreate, snapshotVersion } from "./versioned-file-validation.js";
+import {
+  intentHash,
+  snapshotCreate,
+  snapshotPublish,
+  snapshotVersion,
+} from "./versioned-file-validation.js";
 
 const own = <T>(record: Record<string, T>, key: string): T | undefined =>
   Object.hasOwn(record, key) ? record[key] : undefined;
 
-export function localVersionedFileStore(dir: string): Omit<VersionedFileStore, "publish"> {
+export function localVersionedFileStore(dir: string): VersionedFileStore {
   const root = resolve(dir);
   const blobs = localFileStore(join(root, "blobs"));
 
@@ -61,10 +68,7 @@ export function localVersionedFileStore(dir: string): Omit<VersionedFileStore, "
     return verified(ref);
   }
 
-  async function commitCreate(
-    input: CreateVersionInput,
-    legacy: boolean,
-  ): Promise<VersionCommitReceipt> {
+  async function commitCreate(input: CreateVersionInput): Promise<VersionCommitReceipt> {
     const canonicalHash = intentHash({
       kind: "create",
       bytesSha256: hash(input.bytes),
@@ -92,8 +96,8 @@ export function localVersionedFileStore(dir: string): Omit<VersionedFileStore, "
         ...blob,
         versionId: blob.id,
         sourceVersionId: null,
-        operationId: legacy ? null : input.operationId,
-        context: legacy ? null : structuredClone(input.context),
+        operationId: input.operationId,
+        context: structuredClone(input.context),
       };
       state.files[output.id] = {
         initial: output.versionId,
@@ -178,6 +182,42 @@ export function localVersionedFileStore(dir: string): Omit<VersionedFileStore, "
     });
   }
 
+  async function publish(input: PublishVersionInput): Promise<PublishReceipt> {
+    const request = snapshotPublish(input);
+    const operationKey = digest(request.operationId);
+    const canonicalHash = intentHash({ kind: "publish", ...request });
+    return mutateState(root, async (state) => {
+      const prior = own(state.operations, operationKey);
+      if (prior) {
+        if (prior.kind !== "publish" || prior.intentSha256 !== canonicalHash) throw collision();
+        await validateReceipt(prior);
+        return structuredClone(prior);
+      }
+      const file = own(state.files, request.fileId);
+      const proposed = own(state.versions, request.versionId);
+      if (!file || !proposed || proposed.id !== request.fileId)
+        throw notFound("File version not found");
+      if (file.published !== request.expectedPublishedVersionId)
+        throw new FileStoreError("VERSION_CONFLICT", "Published version changed");
+
+      const verifiedProposed = (await verified(proposed)).ref;
+      const previous = file.published === null ? null : own(state.versions, file.published);
+      if (file.published !== null && !previous) throw integrity("Published version is missing");
+      if (previous) await verified(previous);
+      const receipt: PublishReceipt = {
+        kind: "publish",
+        operationId: request.operationId,
+        intentSha256: canonicalHash,
+        approvalId: request.approvalId,
+        previous: previous ? structuredClone(previous) : null,
+        published: verifiedProposed,
+      };
+      file.published = proposed.versionId;
+      state.operations[operationKey] = receipt;
+      return structuredClone(receipt);
+    });
+  }
+
   return {
     async put(input) {
       const bytes = Uint8Array.from(input.bytes);
@@ -202,10 +242,13 @@ export function localVersionedFileStore(dir: string): Omit<VersionedFileStore, "
       return structuredClone(output);
     },
     async create(input) {
-      return commitCreate(snapshotCreate(input), false);
+      return commitCreate(snapshotCreate(input));
     },
     async putVersion(input) {
       return edit(snapshotVersion(input));
+    },
+    async publish(input) {
+      return publish(input);
     },
     async get(id) {
       assertId(id);

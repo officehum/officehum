@@ -249,3 +249,181 @@ it("keeps base put as an initial version after later edits", async () => {
   expect((await store.get(first.id))?.ref).toEqual(first);
   expect(await store.info(first.id)).toEqual(first);
 });
+
+it("publishes conditionally and replays without rewinding a newer pointer", async () => {
+  const { dir, store } = await setup();
+  const first = await store.create(input("create:1", "one"));
+  const initial = {
+    operationId: "publish:1",
+    fileId: first.output.id,
+    expectedPublishedVersionId: null,
+    versionId: first.output.versionId,
+    approvalId: "approval:1",
+  };
+  const firstPublish = await store.publish(initial);
+  const second = await store.putVersion({
+    ...input("edit:1", "two"),
+    fileId: first.output.id,
+    sourceVersionId: first.output.versionId,
+  });
+  expect(await store.getPublished(first.output.id)).toEqual(first.output);
+  const secondPublish = await store.publish({
+    operationId: "publish:2",
+    fileId: first.output.id,
+    expectedPublishedVersionId: first.output.versionId,
+    versionId: second.output.versionId,
+    approvalId: "approval:2",
+  });
+  const reopened = localVersionedFileStore(dir);
+  expect(await reopened.publish(initial)).toEqual(firstPublish);
+  expect(await reopened.getPublished(first.output.id)).toEqual(second.output);
+  expect(await reopened.lookupOperation("publish:2")).toEqual(secondPublish);
+  await expect(reopened.publish({ ...initial, operationId: "publish:3" })).rejects.toMatchObject({
+    code: "VERSION_CONFLICT",
+  });
+  await expect(
+    reopened.publish({ ...initial, approvalId: "approval:changed" }),
+  ).rejects.toMatchObject({
+    code: "OPERATION_COLLISION",
+  });
+  expect(await reopened.lookupOperation("publish:3")).toBeUndefined();
+});
+
+it("rejects missing approval, foreign versions and cross-kind publish operations", async () => {
+  const { store } = await setup();
+  const first = await store.create(input("create:1", "one"));
+  const other = await store.create(input("create:2", "other"));
+  const request = {
+    operationId: "publish:1",
+    fileId: first.output.id,
+    expectedPublishedVersionId: null,
+    versionId: first.output.versionId,
+    approvalId: "approval:1",
+  };
+  await expect(store.publish({ ...request, approvalId: "" })).rejects.toMatchObject({
+    code: "INVALID_INPUT",
+  });
+  await expect(
+    store.publish({ ...request, versionId: other.output.versionId }),
+  ).rejects.toMatchObject({
+    code: "NOT_FOUND",
+  });
+  await expect(store.publish({ ...request, operationId: "create:1" })).rejects.toMatchObject({
+    code: "OPERATION_COLLISION",
+  });
+  expect(await store.getPublished(first.output.id)).toBeUndefined();
+});
+
+it("serializes competing publication and duplicate publish submissions", async () => {
+  const { dir, store } = await setup();
+  const first = await store.create(input("create:1", "one"));
+  const peer = localVersionedFileStore(dir);
+  const requests = ["publish:1", "publish:2"].map((operationId) => ({
+    operationId,
+    fileId: first.output.id,
+    expectedPublishedVersionId: null,
+    versionId: first.output.versionId,
+    approvalId: `${operationId}:approval`,
+  }));
+  const race = await Promise.allSettled(requests.map((request) => store.publish(request)));
+  expect(race.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+  expect(
+    race
+      .filter((result) => result.status === "rejected")
+      .map((result) => (result as PromiseRejectedResult).reason.code),
+  ).toEqual(["VERSION_CONFLICT"]);
+  const winner = race.find((result) => result.status === "fulfilled");
+  if (winner?.status !== "fulfilled") throw new Error("Expected a publish winner");
+  expect(await peer.getPublished(first.output.id)).toEqual(winner.value.published);
+
+  const firstRequest = requests[0];
+  if (!firstRequest) throw new Error("Expected a publish request");
+  const duplicates = await Promise.all([
+    peer.publish({
+      ...firstRequest,
+      operationId: "publish:duplicate",
+      approvalId: "approval:duplicate",
+      expectedPublishedVersionId: winner.value.published.versionId,
+    }),
+    store.publish({
+      ...firstRequest,
+      operationId: "publish:duplicate",
+      approvalId: "approval:duplicate",
+      expectedPublishedVersionId: winner.value.published.versionId,
+    }),
+  ]);
+  expect(duplicates[0]).toEqual(duplicates[1]);
+});
+
+it("binds file, expected published version and proposed version to publish replay", async () => {
+  const { store } = await setup();
+  const first = await store.create(input("create:1", "one"));
+  const other = await store.create(input("create:2", "two"));
+  const request = {
+    operationId: "publish:1",
+    fileId: first.output.id,
+    expectedPublishedVersionId: null,
+    versionId: first.output.versionId,
+    approvalId: "approval:1",
+  };
+  const receipt = await store.publish(request);
+  const changes = [
+    { fileId: other.output.id },
+    { fileId: "file_00000000000000000000000000" },
+    { expectedPublishedVersionId: other.output.versionId },
+    { expectedPublishedVersionId: "file_00000000000000000000000000" },
+    { versionId: other.output.versionId },
+    { versionId: "file_00000000000000000000000000" },
+  ];
+  for (const change of changes) {
+    await expect(store.publish({ ...request, ...change })).rejects.toMatchObject({
+      code: "OPERATION_COLLISION",
+    });
+  }
+  expect(await store.publish(request)).toEqual(receipt);
+});
+
+it("replays edits with reordered context and worker library keys", async () => {
+  const { store } = await setup();
+  const first = await store.create(input("create:1", "one"));
+  const edit = {
+    ...input("edit:1", "two"),
+    fileId: first.output.id,
+    sourceVersionId: first.output.versionId,
+    context: {
+      taskId: context.taskId,
+      policyVersion: context.policyVersion,
+      worker: { image: context.worker.image, libraries: { alpha: "1", beta: "2" } },
+      argumentsSha256: context.argumentsSha256,
+    },
+  };
+  const receipt = await store.putVersion(edit);
+  expect(
+    await store.putVersion({
+      ...edit,
+      context: {
+        argumentsSha256: context.argumentsSha256,
+        worker: { libraries: { beta: "2", alpha: "1" }, image: context.worker.image },
+        policyVersion: context.policyVersion,
+        taskId: context.taskId,
+      },
+    }),
+  ).toEqual(receipt);
+});
+
+it("keeps the same file's initial get and info stable after a base put edit", async () => {
+  const { store } = await setup();
+  const first = await store.put({
+    bytes: new TextEncoder().encode("base"),
+    name: "note.txt",
+    mimeType: "text/plain",
+    metadata: input("x", "x").metadata,
+  });
+  await store.putVersion({
+    ...input("edit:1", "edited"),
+    fileId: first.id,
+    sourceVersionId: first.versionId,
+  });
+  expect((await store.get(first.id))?.ref).toEqual(first);
+  expect(await store.info(first.id)).toEqual(first);
+});
