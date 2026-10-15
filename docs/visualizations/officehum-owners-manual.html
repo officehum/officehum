@@ -289,7 +289,7 @@
       <li><a href="#safety"><span>08</span>Safety and approvals</a></li>
       <li><a href="#operate"><span>09</span>Operating it today</a></li>
       <li><a href="#status"><span>10</span>Status and roadmap</a></li>
-      <li><a href="#gaps"><span>11</span>Gaps to resolve</a></li>
+      <li><a href="#gaps"><span>11</span>Gaps and their fixes</a></li>
       <li><a href="#glossary"><span>12</span>Glossary and sources</a></li>
     </ol>
     <label class="toggle" for="todayOnly">
@@ -308,7 +308,7 @@
       <dl class="plate">
         <div><dt>Source checked</dt><dd><code>main</code> @ d08fc9f</dd></div>
         <div><dt>Pi Durable</dt><dd>1.0.2, pinned</dd></div>
-        <div><dt>Linear project</dt><dd>officehum · 187 issues</dd></div>
+        <div><dt>Linear project</dt><dd>officehum · 196 issues</dd></div>
         <div><dt>Roles built</dt><dd>1 of 3 in M1</dd></div>
       </dl>
       <div class="keyline">
@@ -364,16 +364,18 @@
               Office Hum is the layer on top that hosts, coordinates and configures them (workboard,
               relay, overlays, Studio, approvals, hosting). A role never depends on Office Hum.</p>
             <ul>
-              <li><b>Market wording disagrees.</b> The README says “medium-sized businesses”, the Linear
-                project says “small businesses”, and RASF-3199 and RASF-3205 say “mid-market”.</li>
+              <li><b>Market wording disagreed.</b> The README said “medium-sized businesses”, the Linear
+                project “small businesses”, and RASF-3199 and RASF-3205 “mid-market”. Linear now says
+                medium-sized companies everywhere (updated 15 Oct).</li>
               <li><b>One role exists.</b> Front Desk is built. Bookkeeper (called the reference role) and
-                Office Manager are in the backlog. No Sales role is planned anywhere.</li>
+                Office Manager are in the backlog. Sales was not planned; it is now an epic (RASF-3295)
+                under a new catalog of free roles for every department (RASF-3293).</li>
             </ul>
           </div>
         </article>
 
         <article class="verdict">
-          <div class="stamp s-part">Split<small>one yes, two no</small></div>
+          <div class="stamp s-part">Split<small>one built, two not yet</small></div>
           <div>
             <div class="claim">Claim 3</div>
             <h3>Agents use Ultramarine 1, Office Hum offers a model marketplace, and the Paper Office libraries are implemented as agent tools.</h3>
@@ -384,20 +386,21 @@
                   A saved conversation keeps its original model, and a Paper failure never silently falls
                   back to another provider. The provider is registered by the CLI host, so a bare Pi
                   Durable user gets the model choice from the manifest but must register the provider
-                  themselves.</p></div>
-              <div><div class="stamp s-no">Not planned</div>
-                <p><b>No model marketplace is in the Office Hum plan.</b> The CLI accepts only
-                  <code>paper</code> or <code>openai</code>. Linear has bring-your-own-key (RASF-3175), a
-                  per-agent model picker in Studio (RASF-3150) and model choice in overlays (RASF-3094).
-                  The marketplace issues in Linear belong to other projects. The plumbing exists:
-                  pi-ai 1.0.2 already ships 44 provider adapters.</p></div>
+                  themselves until it moves into its own package (RASF-3297, M1).</p></div>
+              <div><div class="stamp s-part">Now planned</div>
+                <p><b>A model marketplace was not in the Office Hum plan</b> when this was checked. It is
+                  now epic RASF-3296 (M4): a provider catalog with acceptance tests (RASF-3298) and a
+                  Studio marketplace screen (RASF-3299), building on bring-your-own-key (RASF-3175). Today
+                  the CLI still accepts only <code>paper</code> or <code>openai</code>, though pi-ai 1.0.2
+                  already ships 44 provider adapters.</p></div>
               <div><div class="stamp s-no">Not built</div>
                 <p><b>The Paper Office tools are designed, not implemented.</b> The design is approved
                   (14 Oct) and the versioned file store it depends on is merged (PRs #15, #16). The tool
                   pack, the document service, the restricted Python worker and the Word, PowerPoint and
                   Excel adapters do not exist yet. <code>paper-docx</code>, <code>paper-pptx</code> and
                   <code>paper-xlsx</code> are not installed anywhere on this machine. Their tickets
-                  (RASF-3283 to 3286) have no milestone.</p></div>
+                  (RASF-3283 to 3286, plus the new Word and Excel adapters RASF-3300 and RASF-3301) are
+                  now in M3.</p></div>
             </div>
           </div>
         </article>
@@ -428,7 +431,7 @@
             <tr><td>Google Calendar client</td><td><code>packages/google-calendar</code></td><td>Portable REST client and fake for tests</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Workboard, relay, office extension</td><td>none yet</td><td>The team runtime that lets roles hand work to each other</td><td><span class="chip planned">M2</span></td></tr>
             <tr class="planned"><td>Bookkeeper, Office Manager</td><td>none yet</td><td>The other two starter roles</td><td><span class="chip planned">M1</span></td></tr>
-            <tr class="planned"><td>Paper Office tool pack and worker</td><td>none yet</td><td>Word, PowerPoint and Excel tools for every role</td><td><span class="chip planned">No milestone</span></td></tr>
+            <tr class="planned"><td>Paper Office tool pack and worker</td><td>none yet</td><td>Word, PowerPoint and Excel tools for every role</td><td><span class="chip planned">M3</span></td></tr>
             <tr class="planned"><td>Studio, Inbox, hosted servers</td><td>none yet</td><td>Web interface, approvals inbox, one server per business</td><td><span class="chip planned">M4</span></td></tr>
           </tbody>
         </table></div>
@@ -475,7 +478,7 @@
           <g><rect x="20" y="300" width="146" height="78" rx="6" class="bx"/><text x="93" y="322" text-anchor="middle" class="tb">Front Desk</text><text x="93" y="341" text-anchor="middle" class="tl c-ok">BUILT</text><text x="93" y="362" text-anchor="middle" class="tm">booking.request</text></g>
           <g class="planned"><rect x="178" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="251" y="322" text-anchor="middle" class="tb">Bookkeeper</text><text x="251" y="341" text-anchor="middle" class="tl c-part">PLANNED M1</text><text x="251" y="362" text-anchor="middle" class="tm">invoice.create</text></g>
           <g class="planned"><rect x="336" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="409" y="322" text-anchor="middle" class="tb">Office Manager</text><text x="409" y="341" text-anchor="middle" class="tl c-part">PLANNED M1</text><text x="409" y="362" text-anchor="middle" class="tm">triage · digest</text></g>
-          <g class="planned"><rect x="494" y="300" width="146" height="78" rx="6" class="bx dot"/><text x="567" y="322" text-anchor="middle" class="tb">Sales</text><text x="567" y="341" text-anchor="middle" class="tl c-no">NOT PLANNED</text><text x="567" y="362" text-anchor="middle" class="tm">your role here</text></g>
+          <g class="planned"><rect x="494" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="567" y="322" text-anchor="middle" class="tb">Sales</text><text x="567" y="341" text-anchor="middle" class="tl c-part">PLANNED</text><text x="567" y="362" text-anchor="middle" class="tm">lead.qualify</text></g>
 
           <path d="M330 378V404" class="ln" marker-end="url(#ah1)"/>
           <text x="342" y="396" class="tm">defineRole() returns plain Pi Durable extensions</text>
@@ -646,13 +649,14 @@
             <tr class="planned"><td>Bookkeeper</td><td><code>invoice.create</code>, <code>invoice.question</code></td><td><code>large_invoice</code> (over $5,000 by default), <code>new_recipient</code>, <code>final_notice</code></td><td><span class="chip planned">M1 backlog</span></td></tr>
             <tr class="planned"><td>Office Manager</td><td><code>triage</code>, <code>digest.request</code></td><td>No tools of its own; the office's front door for unrouted work</td><td><span class="chip planned">M1 backlog</span></td></tr>
             <tr class="planned"><td>Configurator</td><td>Plain-language configuration requests</td><td>Every overlay change shown as a diff for approval</td><td><span class="chip planned">M4 backlog</span></td></tr>
-            <tr class="planned"><td>Sales</td><td>Example: <code>lead.qualify</code>, <code>quote.request</code></td><td>Would be derived from an interview by the Role Factory</td><td><span class="chip none">Not planned</span></td></tr>
+            <tr class="planned"><td>Sales</td><td><code>lead.qualify</code>, <code>quote.request</code></td><td><code>discount_over_limit</code>, <code>large_quote</code>, <code>first_contact</code> (draft brief)</td><td><span class="chip planned">Epic RASF-3295</span></td></tr>
           </tbody>
         </table></div>
-        <p>Further roles are meant to come from the Role Factory (RASF-3096): an interview produces a
+        <p>The roster is meant to grow into a free catalog covering every department of a company
+          (RASF-3293), with the owner choosing departments, roles and order in RASF-3294. Most roles are
+          meant to come from the Role Factory (RASF-3096): an interview produces a
           <code>ROLE_SPEC.md</code>, which a generator turns into a role package of exactly this shape.
-          A Sales role would be built that way or written by hand, then validated by the same SDK
-          checks.</p>
+          Every catalog role passes the same SDK checks and its evals in a bare Pi Durable harness.</p>
       </div>
     </section>
 
@@ -689,15 +693,16 @@
             <tr class="planned"><td>Bring your own key</td><td><span class="chip planned">M4</span></td><td>RASF-3175: providers pi-ai supports that Office Hum lists</td></tr>
             <tr class="planned"><td>Per-agent model picker</td><td><span class="chip planned">M4</span></td><td>Studio Agents screen, RASF-3150</td></tr>
             <tr class="planned"><td>Model tiers and cheaper sub-agent models</td><td><span class="chip planned">M2</span></td><td><code>contextPlan</code>, RASF-3232 and RASF-3235</td></tr>
-            <tr class="planned"><td>Model marketplace</td><td><span class="chip none">Not planned</span></td><td>No Office Hum issue exists</td></tr>
+            <tr class="planned"><td>Portable Paper provider package</td><td><span class="chip planned">M1</span></td><td>RASF-3297: register Ultramarine in any Pi Durable install</td></tr>
+            <tr class="planned"><td>Model marketplace</td><td><span class="chip planned">M4</span></td><td>Epic RASF-3296: provider catalog RASF-3298, Studio screen RASF-3299</td></tr>
           </tbody>
         </table></div>
-        <div class="note"><span class="label">Note</span>The marketplace you described needs three things
-          the plan lacks: a provider catalog (which pi-ai providers and models Office Hum lists and
-          tests), provider registration that lives in a portable package rather than in the CLI, and a
-          billing decision on bundled usage versus bring-your-own-key (RASF-3184, RASF-3175). Since
-          pi-ai already supports 44 providers, most of the work is catalog, testing and billing rather
-          than adapters.</div>
+        <div class="note"><span class="label">Note</span>The marketplace epic covers the three missing
+          pieces: a tested catalog of the pi-ai providers and models Office Hum lists, provider
+          registration in a portable package rather than in the CLI, and a Studio screen to connect keys
+          and pick a model per agent. One decision stays open: bundled usage versus bring-your-own-key
+          billing (RASF-3184). Since pi-ai already supports 44 providers, most of the work is the
+          catalog, testing and billing rather than new adapters.</div>
       </div>
     </section>
 
@@ -746,9 +751,8 @@
         <p>Numbers in a document or deck must trace back to spreadsheet or engine results, never to model
           arithmetic. Paper Rubric may score layout and clarity, but it cannot approve publication.</p>
         <p>Delivery order: provider (done), file foundation (SDK done; office store and worker not
-          started), the three format adapters, then review and publish. Only PowerPoint has its own
-          adapter ticket (RASF-3284); Word and Excel are folded into broader reading, generation and data
-          tickets.</p>
+          started), the three format adapters, then review and publish. Each format has its own
+          adapter ticket in M3: Word (RASF-3300), PowerPoint (RASF-3284) and Excel (RASF-3301).</p>
       </div>
     </section>
 
@@ -782,8 +786,8 @@
             <text x="56" y="184" class="tm">hands off</text><text x="132" y="184" class="tm" style="fill: var(--ink)">invoice.question</text>
             <text x="132" y="200" class="tm" style="fill: var(--ink)">lead.qualify (example)</text></g>
           <!-- Sales -->
-          <g class="planned"><rect x="660" y="96" width="260" height="110" rx="6" class="bx dot"/>
-            <text x="676" y="120" class="tb">Sales</text><text x="904" y="120" text-anchor="end" class="tl c-no">EXAMPLE</text>
+          <g class="planned"><rect x="660" y="96" width="260" height="110" rx="6" class="bx dash"/>
+            <text x="676" y="120" class="tb">Sales</text><text x="904" y="120" text-anchor="end" class="tl c-part">PLANNED</text>
             <text x="676" y="144" class="tm">accepts</text><text x="752" y="144" class="tm" style="fill: var(--ink)">lead.qualify</text>
             <text x="752" y="162" class="tm" style="fill: var(--ink)">quote.request</text>
             <text x="676" y="184" class="tm">hands off</text><text x="752" y="184" class="tm" style="fill: var(--ink)">invoice.create</text>
@@ -827,7 +831,7 @@
           <!-- People -->
           <g><rect x="360" y="380" width="240" height="70" rx="6" class="bx"/><text x="480" y="406" text-anchor="middle" class="t">Owner and staff</text><text x="480" y="426" text-anchor="middle" class="ts">approve in the Inbox (CLI today)</text><text x="480" y="442" text-anchor="middle" class="ts">receive escalations</text></g>
           <path d="M480 320V376" class="ln" marker-end="url(#ah2)"/>
-          <text x="40" y="474" class="tm">All four roles are conversations in one Pi Durable harness per office. Ticket types for Sales are illustrative.</text>
+          <text x="40" y="474" class="tm">All four roles are conversations in one Pi Durable harness per office. Sales ticket types come from its draft brief.</text>
         </svg>
         </div>
         <figcaption><b>Figure 7.1</b> The office as a hub. Each role knows its colleagues from a short
@@ -854,7 +858,7 @@
       <h3>Worked example: a prospect becomes an invoice</h3>
       <p class="col">A prospect emails asking for a meeting on Tuesday and for onboarding pricing. Four
         agents and the owner handle it. Steps 5 to 12 depend on M2 and on roles that are not built yet;
-        the Sales ticket types are illustrative.</p>
+        the Sales ticket types come from its draft brief (RASF-3295).</p>
 
       <figure class="figure wide">
         <div class="scroll">
@@ -864,7 +868,7 @@
           <g>
             <rect x="12" y="16" width="136" height="44" rx="6" class="bx"/><text x="80" y="43" text-anchor="middle" class="t">Customer</text>
             <rect x="172" y="16" width="136" height="44" rx="6" class="bx"/><text x="240" y="43" text-anchor="middle" class="t">Front Desk</text>
-            <rect x="332" y="16" width="136" height="44" rx="6" class="bx dot planned"/><text x="400" y="43" text-anchor="middle" class="t">Sales</text>
+            <rect x="332" y="16" width="136" height="44" rx="6" class="bx dash planned"/><text x="400" y="43" text-anchor="middle" class="t">Sales</text>
             <rect x="492" y="16" width="136" height="44" rx="6" class="bx-o dash planned"/><text x="560" y="43" text-anchor="middle" class="t">Board + relay</text>
             <rect x="652" y="16" width="136" height="44" rx="6" class="bx dash planned"/><text x="720" y="43" text-anchor="middle" class="t">Bookkeeper</text>
             <rect x="812" y="16" width="136" height="44" rx="6" class="bx"/><text x="880" y="43" text-anchor="middle" class="t">Owner</text>
@@ -1010,12 +1014,12 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
         <div class="axis"><div></div><div><span>0</span><span>25</span><span>50</span><span>75</span><span>100%</span></div><div></div></div>
 
         <h3>Issues</h3>
-        <div class="stack" role="img" aria-label="187 issues: 12 done, 6 in progress, 169 backlog">
-          <div class="d" style="width:6.4%">12</div>
-          <div class="i" style="width:3.2%">6</div>
-          <div class="b" style="width:90.4%">169 backlog</div>
+        <div class="stack" role="img" aria-label="196 issues: 12 done, 6 in progress, 178 backlog">
+          <div class="d" style="width:6.1%">12</div>
+          <div class="i" style="width:3.1%">6</div>
+          <div class="b" style="width:90.8%">178 backlog</div>
         </div>
-        <div class="legend"><span><i style="background: var(--ok)"></i>Done 12</span><span><i style="background: var(--part)"></i>In progress 6</span><span><i style="background: var(--muted)"></i>Backlog 169</span></div>
+        <div class="legend"><span><i style="background: var(--ok)"></i>Done 12</span><span><i style="background: var(--part)"></i>In progress 6</span><span><i style="background: var(--muted)"></i>Backlog 178</span></div>
 
         <h3>What shipped</h3>
         <div class="tablewrap"><table>
@@ -1043,34 +1047,37 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
 
     <!-- 11 -->
     <section class="chapter" id="gaps">
-      <div class="chapter-head"><div class="num">11</div><h2>Gaps to resolve</h2>
-        <div class="eyebrow">Where your intent, the docs, the code and Linear disagree</div></div>
+      <div class="chapter-head"><div class="num">11</div><h2>Gaps and their fixes</h2>
+        <div class="eyebrow">Where your intent, the docs, the code and Linear disagreed, and what was done on 15 October</div></div>
       <ol class="gaps col">
-        <li><b>Target market is stated three ways.</b>README: medium-sized. Linear project: small
-          businesses. RASF-3199 and 3205: mid-market.<span class="fix">Pick one phrase and update the
-          README, the Linear project description and the package description.</span></li>
-        <li><b>No model marketplace in the plan.</b>Only Paper and OpenAI are wired; the provider is
-          registered inside the CLI.<span class="fix">Add an epic for a provider catalog, a portable
-          provider package, and the usage-billing decision.</span></li>
-        <li><b>No Sales role.</b>The Linear project lists scheduler and marketer; the issues plan Office
-          Manager instead.<span class="fix">Decide the starter roster and file role epics, or route new
-          roles through the Role Factory.</span></li>
-        <li><b>Paper Office tickets have no milestone.</b>RASF-3283 to 3286 float while their parent
-          RASF-3199 sits in M3. Word and Excel have no dedicated adapter tickets.<span class="fix">Assign
-          milestones and add Word and Excel adapter issues alongside RASF-3284.</span></li>
-        <li><b>Reference role order flipped.</b>Bookkeeper is called the reference role built first, but
-          Front Desk was built and Bookkeeper has not started.<span class="fix">Update RASF-3070 and
-          <code>agents/README.md</code>, which lists Bookkeeper and Office Manager folders that do not
-          exist.</span></li>
-        <li><b>Exit tests are not gating.</b>The M0 exit test is unmet while M4 email work is in
-          progress.<span class="fix">Either relax the rule in the project description or finish
-          RASF-3120 to 3123 first.</span></li>
-        <li><b>Stale documents.</b>The Paper handoff says implementation has not started; it has. The
-          agent-package design still shows an Anthropic model in examples. RASF-3189 names
-          <code>ANTHROPIC_API_KEY</code>.<span class="fix">Refresh these three references.</span></li>
-        <li><b>Reporting stops at PR #13.</b>PRs #14 to #16 have no Linear status update, and no
-          milestone has a date.<span class="fix">Post a status update covering the Paper and file store
-          work.</span></li>
+        <li><b>Target market was stated three ways. <span class="chip built">Fixed in Linear</span></b>README: medium-sized.
+          Linear project: small businesses. RASF-3199 and 3205: mid-market.<span class="fix">The project
+          description, RASF-3199 and RASF-3205 now say medium-sized companies.</span></li>
+        <li><b>No model marketplace in the plan. <span class="chip planned">Filed</span></b>Only Paper and OpenAI
+          are wired; the provider is registered inside the CLI.<span class="fix">Epic RASF-3296 with
+          RASF-3297 (portable provider, M1), RASF-3298 (catalog and tests) and RASF-3299 (Studio
+          screen). Billing stays with RASF-3184.</span></li>
+        <li><b>No Sales role, no department plan. <span class="chip planned">Filed</span></b>The Linear project
+          listed scheduler and marketer; the issues planned Office Manager instead.<span class="fix">Epic
+          RASF-3293 (catalog of free roles for every department), RASF-3294 (you choose the department
+          role map) and RASF-3295 (Sales agent).</span></li>
+        <li><b>Paper Office tickets had no milestone. <span class="chip built">Fixed in Linear</span></b>RASF-3283
+          to 3286 floated while their parent sat in M3, and Word and Excel had no adapter tickets.<span class="fix">All
+          moved to M3; Word (RASF-3300) and Excel (RASF-3301) adapters added.</span></li>
+        <li><b>Reference role order flipped. <span class="chip planned">Partly fixed</span></b>Bookkeeper was called
+          the reference role built first, but Front Desk was built and Bookkeeper has not started.<span class="fix">RASF-3070
+          is corrected. <code>agents/README.md</code> still lists Bookkeeper and Office Manager folders
+          that do not exist.</span></li>
+        <li><b>Exit tests were not gating. <span class="chip built">Fixed in Linear</span></b>The M0 exit test is
+          unmet while M4 email work is in progress.<span class="fix">The project rule now reads: later work
+          may start early, but a milestone closes only when its exit test passes.</span></li>
+        <li><b>Stale documents. <span class="chip planned">Partly fixed</span></b>RASF-3189 named
+          <code>ANTHROPIC_API_KEY</code>; it now names the Paper key.<span class="fix">Still open in the repo:
+          the Paper handoff says implementation has not started, and the agent-package design shows an
+          Anthropic model in its examples.</span></li>
+        <li><b>Reporting stopped at PR #13. <span class="chip built">Fixed in Linear</span></b>PRs #14 to #16 had
+          no status update.<span class="fix">A project update now covers them and today's plan changes.
+          Milestones still have no dates.</span></li>
       </ol>
     </section>
 
@@ -1100,7 +1107,7 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
         <li><code>packages/office/src/solo.ts</code>, <code>packages/cli/src/paper-provider.ts</code>, <code>packages/cli/src/cli.ts</code></li>
         <li><code>node_modules/@earendil-works/pi-durable</code> 1.0.2 README and type exports</li>
         <li>Codex repository guide <code>docs/visualizations/officehum-built.html</code></li>
-        <li>Linear project officehum (P-RASF-8): 187 issues, 6 milestones, 7 status updates</li>
+        <li>Linear project officehum (P-RASF-8): 196 issues, 6 milestones, 8 status updates</li>
       </ul>
       <footer>Office Hum Owner's Manual · edition of 15 October 2026 · reflects <code>main</code> at d08fc9f.
         Built items were checked in source; planned items reflect design documents and Linear, not running code.</footer>
