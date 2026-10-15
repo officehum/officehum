@@ -325,7 +325,12 @@ it("serializes competing publication and duplicate publish submissions", async (
     versionId: first.output.versionId,
     approvalId: `${operationId}:approval`,
   }));
-  const race = await Promise.allSettled(requests.map((request) => store.publish(request)));
+  const [firstRaceRequest, secondRaceRequest] = requests;
+  if (!firstRaceRequest || !secondRaceRequest) throw new Error("Expected two publish requests");
+  const race = await Promise.allSettled([
+    store.publish(firstRaceRequest),
+    peer.publish(secondRaceRequest),
+  ]);
   expect(race.filter((result) => result.status === "fulfilled")).toHaveLength(1);
   expect(
     race
