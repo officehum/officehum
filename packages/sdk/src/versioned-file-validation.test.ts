@@ -142,6 +142,21 @@ it("snapshots version and publish inputs with explicit allowlisted fields", () =
   expect(snapshotPublish(validPublish())).toEqual(validPublish());
 });
 
+it("preserves own __proto__ worker library keys in canonical intent", () => {
+  const libraryContext = (version: string) => ({
+    ...context,
+    worker: {
+      ...context.worker,
+      libraries: Object.fromEntries([["__proto__", version]]),
+    },
+  });
+  const first = snapshotCreate(validCreate({ context: libraryContext("v1") }));
+  const second = snapshotCreate(validCreate({ context: libraryContext("v2") }));
+
+  expect(Object.hasOwn(first.context.worker.libraries, "__proto__")).toBe(true);
+  expect(intentHash(first.context)).not.toBe(intentHash(second.context));
+});
+
 it("normalizes absent and undefined optional metadata fields identically", () => {
   const absent = snapshotCreate(validCreate({ metadata }));
   const explicitUndefined = snapshotCreate(

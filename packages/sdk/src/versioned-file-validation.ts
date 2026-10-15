@@ -136,12 +136,11 @@ function snapshotContext(value: VersionContext): VersionContext {
   assertPlainObject(value.worker.libraries);
   const libraryEntries = Object.entries(value.worker.libraries);
   if (libraryEntries.length > 32) throw invalid("Too many worker libraries");
-  const libraries: Record<string, string> = {};
   for (const [key, libraryVersion] of libraryEntries) {
     assertOperationString(key);
     assertOperationString(libraryVersion);
-    libraries[key] = libraryVersion;
   }
+  const libraries = Object.fromEntries(libraryEntries) as Record<string, string>;
   return {
     taskId: value.taskId,
     policyVersion: value.policyVersion,
