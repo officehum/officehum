@@ -26,7 +26,7 @@
 2. The Paper request has a `system` message and supported reasoning effort, and provider failures do not settle work as successful; Task 1 inspects actual `streamSimple` requests and Harness results.
 3. A stream with `finish_reason` but no `data: [DONE]` fails; a `length` finish with partial tool arguments executes no tool; Task 1 tests these as distinct cases.
 4. A missing Paper key or invalid provider/model pair fails before a new Harness root or submission is persisted; Task 2 checks state and injection calls.
-5. Cached input and reasoning usage is counted once, and an interrupted Paper request remains resumable with the same configuration; Task 1 tests usage and a Harness reopen.
+5. Cached input and reasoning usage is counted once. After an explicit abort, the active submission settles `unanswered`/`aborted`, and the same conversation reopens with Paper/max for a new submission; Task 1 checks both. Crash/replay acceptance remains in RASF-3286.
 
 ## File Structure and Responsibilities
 
@@ -85,7 +85,7 @@ Use `prompt_tokens: 10`, `prompt_tokens_details.cached_tokens: 3`, `completion_t
 
 - [ ] **Step 2: Write failing stream-failure tests.** Supply (a) a valid `finish_reason: "tool_calls"` without `[DONE]`, (b) partial JSON arguments with `finish_reason: "length"` and `[DONE]`, (c) an HTTP/provider error, and (d) abort during SSE. For (a), (c), and (d), assert terminal `stopReason` is `error` or `aborted` and there is no `done` event. For (b), assert terminal `stopReason` is `length`, never `toolUse`; a partial call in `content` alone is not an executable call. Keep (a) separate from missing `finish_reason`: `pi-ai` 1.0.2 checks the latter but not `[DONE]`.
 
-- [ ] **Step 3: Write a failing bare Harness integration test in `paper-provider.test.ts`.** Register the actual `paperProvider()` in `createModels()`, install a minimal `defineTool` named `check_schedule`, and open Pi Durable `Harness` on `MemoryStorage`. Temporarily set `PAPERINSTRUMENTS_API_KEY` to a test-only placeholder and `vi.stubGlobal('fetch', fakeFetch)`; restore both in `finally`. Feed fake HTTP SSE: response one requests that tool, response two finishes the answer. Assert one tool execution and a settled answer. Feed `finish_reason: "length"` with partial tool JSON in another run and assert zero tool executions. In a recovery scenario, abort after a partial tool delta, close and reopen the Harness on the same storage with the same provider/model, then resume. Assert no tool ran before recovery, the root still reports `paper/ultramarine-1-flash` and `thinkingLevel: 'max'`, and one tool runs after a complete replayed response. This test stays in the CLI package so the portable role never imports the host provider.
+- [ ] **Step 3: Write a failing bare Harness integration test in `paper-provider.test.ts`.** Register the actual `paperProvider()` in `createModels()`, install a minimal `defineTool` named `check_schedule`, and open Pi Durable `Harness` on `MemoryStorage`. Temporarily set `PAPERINSTRUMENTS_API_KEY` to a test-only placeholder and `vi.stubGlobal('fetch', fakeFetch)`; restore both in `finally`. Feed fake HTTP SSE: response one requests that tool, response two finishes the answer. Assert one tool execution and a settled answer. Feed `finish_reason: "length"` with partial tool JSON in another run and assert zero tool executions. In an explicit-abort scenario, call `root.abort(BACKGROUND_CONTEXT)` after a partial tool delta; assert the original submission settles `{ status: 'unanswered', reason: 'aborted' }` and the tool has not run. Close and reopen the Harness on the same storage, assert the same conversation still reports `paper/ultramarine-1-flash` and `thinkingLevel: 'max'`, then submit a **new** input and assert it completes with one tool execution. Do not replay the explicitly aborted submission. Crash/replay of an unfinished operation is a distinct RASF-3286 acceptance gate. This test stays in the CLI package so the portable role never imports the host provider.
 
 - [ ] **Step 4: Run the targeted tests to verify red.**
 
@@ -155,7 +155,7 @@ npx vitest run packages/cli/src/paper-provider.test.ts
 npm run typecheck -w @officehum/cli
 ```
 
-Expected: both pass, including fake HTTP and Harness recovery. Inspect captured requests and terminal stop reasons; metadata-only success is insufficient.
+Expected: both pass, including fake HTTP and Harness reopen after explicit abort. Inspect captured requests and terminal stop reasons; metadata-only success is insufficient.
 
 - [ ] **Step 7: Commit Task 1.**
 
@@ -242,4 +242,4 @@ git commit -m "feat: default new Office Hum roots to Ultramarine"
 
 ## Completion and Next Slice
 
-The provider slice is complete when both commits are reviewed, fake transport and bare Harness cover tool execution, usage, abort, `[DONE]` truncation, and reopen, `npm run check` passes, and pre-change OpenAI roots resume on OpenAI with saved thinking. A live smoke test requires an operator-supplied Paper key and funded account; it does not replace local acceptance. The next plan covers immutable FileStore operations and the document worker, followed by format adapters and review/publish.
+The provider slice is complete when both commits are reviewed, fake transport and bare Harness cover tool execution, usage, `[DONE]` truncation, explicit abort settling unanswered without tool execution, and a new submission on the same reopened Paper/max conversation; `npm run check` passes; and pre-change OpenAI roots resume on OpenAI with saved thinking. Crash/replay of unfinished work remains an acceptance gate in RASF-3286. A live smoke test requires an operator-supplied Paper key and funded account; it does not replace local acceptance. The next plan covers immutable FileStore operations and the document worker, followed by format adapters and review/publish.
