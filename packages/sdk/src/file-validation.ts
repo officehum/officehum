@@ -17,7 +17,7 @@ export function assertName(name: string): void {
     name.toLowerCase() === "meta.json" ||
     name.includes("/") ||
     name.includes("\\") ||
-    /[\u0000-\u001f\u007f-\u009f]/u.test(name) ||
+    /\p{Cc}/u.test(name) ||
     Buffer.byteLength(name, "utf8") > 255
   ) {
     throw new Error("Invalid file name");
@@ -35,7 +35,11 @@ export function assertMetadata(value: unknown): asserts value is FileMetadata {
   if (typeof value.source !== "string" || !SOURCE_VALUES.has(value.source)) {
     throw new Error("Invalid file metadata source");
   }
-  if (value.provenance !== undefined && value.provenance !== "internal" && value.provenance !== "external") {
+  if (
+    value.provenance !== undefined &&
+    value.provenance !== "internal" &&
+    value.provenance !== "external"
+  ) {
     throw new Error("Invalid file provenance");
   }
   if (value.source === "external" && value.provenance === "internal") {
@@ -53,7 +57,8 @@ export function assertMetadata(value: unknown): asserts value is FileMetadata {
   }
   if (
     value.derivedFrom !== undefined &&
-    (!Array.isArray(value.derivedFrom) || value.derivedFrom.some((id) => typeof id !== "string" || !FILE_ID.test(id)))
+    (!Array.isArray(value.derivedFrom) ||
+      value.derivedFrom.some((id) => typeof id !== "string" || !FILE_ID.test(id)))
   ) {
     throw new Error("Invalid derived file IDs");
   }
@@ -67,7 +72,8 @@ export function assertRef(value: unknown, expectedId: string): asserts value is 
   if (typeof value.mimeType !== "string" || value.mimeType.trim().length === 0) {
     throw new Error("Invalid file MIME type");
   }
-  if (!Number.isSafeInteger(value.size) || (value.size as number) < 0) throw new Error("Invalid file size");
+  if (!Number.isSafeInteger(value.size) || (value.size as number) < 0)
+    throw new Error("Invalid file size");
   if (typeof value.sha256 !== "string" || !/^[0-9a-f]{64}$/u.test(value.sha256)) {
     throw new Error("Invalid file hash");
   }
@@ -76,17 +82,25 @@ export function assertRef(value: unknown, expectedId: string): asserts value is 
   }
   assertMetadata(value.metadata);
   const allowed = new Set(["id", "name", "mimeType", "size", "sha256", "createdAt", "metadata"]);
-  if (Object.keys(value).some((key) => !allowed.has(key))) throw new Error("Unknown file reference field");
+  if (Object.keys(value).some((key) => !allowed.has(key)))
+    throw new Error("Unknown file reference field");
 }
 
 export function assertSignature(bytes: Uint8Array, mimeType: string): void {
   const signatures: Array<{ mime: string; matches: (data: Uint8Array) => boolean }> = [
-    { mime: "image/png", matches: (data) => startsWith(data, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) },
+    {
+      mime: "image/png",
+      matches: (data) => startsWith(data, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    },
     { mime: "image/jpeg", matches: (data) => startsWith(data, [0xff, 0xd8, 0xff]) },
-    { mime: "image/gif", matches: (data) => startsWith(data, ascii("GIF87a")) || startsWith(data, ascii("GIF89a")) },
+    {
+      mime: "image/gif",
+      matches: (data) => startsWith(data, ascii("GIF87a")) || startsWith(data, ascii("GIF89a")),
+    },
     {
       mime: "image/webp",
-      matches: (data) => startsWith(data, ascii("RIFF")) && startsWith(data.subarray(8), ascii("WEBP")),
+      matches: (data) =>
+        startsWith(data, ascii("RIFF")) && startsWith(data.subarray(8), ascii("WEBP")),
     },
     { mime: "application/pdf", matches: (data) => startsWith(data, ascii("%PDF-")) },
   ];

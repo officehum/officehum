@@ -53,13 +53,19 @@ it("snapshots name and MIME before the first await", async () => {
 
   expect(ref.name).toBe("note.txt");
   expect(ref.mimeType).toBe("text/plain");
-  expect(await store.get(ref.id)).toMatchObject({ ref: { name: "note.txt", mimeType: "text/plain" } });
-  await expect(import("node:fs/promises").then(({ access }) => access(join(dir, "escaped.txt")))).rejects.toThrow();
+  expect(await store.get(ref.id)).toMatchObject({
+    ref: { name: "note.txt", mimeType: "text/plain" },
+  });
+  await expect(
+    import("node:fs/promises").then(({ access }) => access(join(dir, "escaped.txt"))),
+  ).rejects.toThrow();
 });
 
 it.each(["../x", "x/y", "x\\y", "", ".", "..", "meta.json"])("rejects name %j", async (name) => {
   const { store } = await setup();
-  await expect(store.put({ bytes: new Uint8Array(), name, mimeType: "text/plain", metadata })).rejects.toThrow();
+  await expect(
+    store.put({ bytes: new Uint8Array(), name, mimeType: "text/plain", metadata }),
+  ).rejects.toThrow();
 });
 
 it.each(["../escape", "file_../../x", "file_bad"])("rejects id %j", async (id) => {
@@ -130,7 +136,12 @@ it("ignores abandoned staging after reopen", async () => {
 it("snapshots caller metadata", async () => {
   const { store } = await setup();
   const mutable = { ...metadata };
-  const ref = await store.put({ bytes: new Uint8Array(), name: "x.txt", mimeType: "text/plain", metadata: mutable });
+  const ref = await store.put({
+    bytes: new Uint8Array(),
+    name: "x.txt",
+    mimeType: "text/plain",
+    metadata: mutable,
+  });
   mutable.createdBy = "changed";
   expect((await store.info(ref.id))?.metadata.createdBy).toBe("role:test");
 });
@@ -144,9 +155,15 @@ it.each([
 ] as const)("checks signature for %s", async (mimeType, prefix) => {
   const { store } = await setup();
   const bytes = Uint8Array.from(prefix);
-  await expect(store.put({ bytes, name: "payload", mimeType, metadata })).resolves.toMatchObject({ mimeType });
-  await expect(store.put({ bytes, name: "payload", mimeType: "text/plain", metadata })).rejects.toThrow();
-  await expect(store.put({ bytes: bytes.slice(0, 1), name: "payload", mimeType, metadata })).rejects.toThrow();
+  await expect(store.put({ bytes, name: "payload", mimeType, metadata })).resolves.toMatchObject({
+    mimeType,
+  });
+  await expect(
+    store.put({ bytes, name: "payload", mimeType: "text/plain", metadata }),
+  ).rejects.toThrow();
+  await expect(
+    store.put({ bytes: bytes.slice(0, 1), name: "payload", mimeType, metadata }),
+  ).rejects.toThrow();
 });
 
 it("keeps concurrent writes distinct", async () => {
@@ -158,7 +175,9 @@ it("keeps concurrent writes distinct", async () => {
 
 it.each(["x".repeat(256), "a\u0000b"])("refuses oversized or control names", async (name) => {
   const { store } = await setup();
-  await expect(store.put({ bytes: new Uint8Array(), name, mimeType: "text/plain", metadata })).rejects.toThrow();
+  await expect(
+    store.put({ bytes: new Uint8Array(), name, mimeType: "text/plain", metadata }),
+  ).rejects.toThrow();
 });
 
 it("refuses external provenance relabeling", async () => {
