@@ -12,6 +12,7 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
+import { AgentDoc } from "@earendil-works/pi-durable";
 import frontdesk from "@officehum/frontdesk";
 import {
   createDemoModels,
@@ -75,8 +76,76 @@ async function createLiveState(directory: string, modelId = "gpt-6-sol"): Promis
     models,
     model: { provider: "openai", modelId },
   });
+  await solo.root.configure({ thinkingLevel: "off" }, BACKGROUND_CONTEXT);
   await solo.close();
   calendar.close();
+}
+
+async function createPaperState(directory: string): Promise<void> {
+  const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+  const role = frontdesk({ calendar });
+  const faux = fauxProvider({ provider: "paper", models: [{ id: "ultramarine-1-flash" }] });
+  const models = createModels();
+  models.setProvider(faux.provider);
+  const solo = await openSolo({
+    directory,
+    role,
+    models,
+    model: { provider: "paper", modelId: "ultramarine-1-flash" },
+  });
+  await solo.root.configure({ thinkingLevel: "max" }, BACKGROUND_CONTEXT);
+  await solo.close();
+  calendar.close();
+}
+
+async function createResendLiveState(directory: string, modelId: string): Promise<void> {
+  const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+  const faux = fauxProvider({ provider: "openai", models: [{ id: modelId }] });
+  const models = createModels();
+  models.setProvider(faux.provider);
+  const solo = await openSolo({
+    directory,
+    role: frontdesk({ calendar }),
+    models,
+    model: { provider: "openai", modelId },
+    messengerIdentity: {
+      version: 1,
+      backend: "resend",
+      accountId: "account_test",
+      fromEmail: "desk@example.test",
+      subject: "Front Desk",
+    },
+  });
+  await solo.root.configure({ thinkingLevel: "off" }, BACKGROUND_CONTEXT);
+  await solo.close();
+  calendar.close();
+}
+
+function configureResendEnvironment() {
+  const names = [
+    "RESEND_ACCOUNT_ID",
+    "RESEND_FROM_EMAIL",
+    "RESEND_SUBJECT",
+    "RESEND_API_KEY",
+    "RESEND_INBOUND_EMAIL",
+    "RESEND_WEBHOOK_SECRET",
+  ] as const;
+  const prior = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  Object.assign(process.env, {
+    RESEND_ACCOUNT_ID: "account_test",
+    RESEND_FROM_EMAIL: "desk@example.test",
+    RESEND_SUBJECT: "Front Desk",
+    RESEND_API_KEY: "synthetic",
+    RESEND_INBOUND_EMAIL: "desk@example.test",
+    RESEND_WEBHOOK_SECRET: `whsec_${Buffer.from("task-two-secret").toString("base64")}`,
+  });
+  return () => {
+    for (const name of names) {
+      const value = prior[name];
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  };
 }
 
 async function createPendingDemo(directory: string): Promise<string> {
@@ -147,6 +216,304 @@ async function waitUntil(predicate: () => boolean): Promise<void> {
 }
 
 describe("runCli", () => {
+  it("defaults fresh live starts to the Paper model", async () => {
+    const directory = state();
+    const faux = fauxProvider({ provider: "paper", models: [{ id: "ultramarine-1-flash" }] });
+    faux.setResponses([fauxAssistantMessage("No action requested.")]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const selectedRefs: { provider: string; modelId: string }[] = [];
+    const capture = io();
+    expect(
+      await runCli(
+        ["start", "--state", directory, "--message", "Say hello", "--request-id", "paper-default"],
+        capture.io,
+        {
+          createLiveModels: (ref) => {
+            selectedRefs.push(ref);
+            return { models, model: ref };
+          },
+        },
+      ),
+    ).toBe(0);
+    expect(selectedRefs).toEqual([{ provider: "paper", modelId: "ultramarine-1-flash" }]);
+    expect(capture.output.join("\n")).toContain("Mode: live Paper (ultramarine-1-flash)");
+  });
+
+  it("selects OpenAI models as a provider/model pair regardless of option order", async () => {
+    for (const [options, expectedModel] of [
+      [["--provider", "openai"], "gpt-6-sol"],
+      [["--provider", "openai", "--model", "gpt-6.1-sol"], "gpt-6.1-sol"],
+      [["--model", "gpt-6.1-sol", "--provider", "openai"], "gpt-6.1-sol"],
+    ]) {
+      const directory = state();
+      const faux = fauxProvider({
+        provider: "openai",
+        models: [{ id: "gpt-6-sol" }, { id: "gpt-6.1-sol" }],
+      });
+      faux.setResponses([fauxAssistantMessage("No action requested.")]);
+      const models = createModels();
+      models.setProvider(faux.provider);
+      const selectedRefs: { provider: string; modelId: string }[] = [];
+      expect(
+        await runCli(
+          [
+            "start",
+            "--state",
+            directory,
+            "--message",
+            "Say hello",
+            "--request-id",
+            "openai-pair",
+            ...options,
+          ],
+          io().io,
+          {
+            createLiveModels: (ref) => {
+              selectedRefs.push(ref);
+              return { models, model: ref };
+            },
+          },
+        ),
+      ).toBe(0);
+      expect(selectedRefs).toEqual([{ provider: "openai", modelId: expectedModel }]);
+    }
+  });
+
+  it("defaults a fresh listen to the Paper model pair", async () => {
+    const directory = state();
+    const restore = configureResendEnvironment();
+    const faux = fauxProvider({ provider: "paper", models: [{ id: "ultramarine-1-flash" }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const selectedRefs: { provider: string; modelId: string }[] = [];
+    try {
+      await runCli(["listen", "--state", directory, "--messenger", "resend"], io().io, {
+        createLiveModels: (ref) => {
+          selectedRefs.push(ref);
+          void interruptCli();
+          return { models, model: ref };
+        },
+      });
+      expect(selectedRefs).toEqual([{ provider: "paper", modelId: "ultramarine-1-flash" }]);
+    } finally {
+      await interruptCli();
+      restore();
+    }
+  });
+
+  it("uses a saved OpenAI thinking level for a matching listen state", async () => {
+    const directory = state();
+    await createResendLiveState(directory, "gpt-6.1-sol");
+    const restore = configureResendEnvironment();
+    const faux = fauxProvider({ provider: "openai", models: [{ id: "gpt-6.1-sol" }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+    let selectedThinking: unknown;
+    const selectedRefs: { provider: string; modelId: string }[] = [];
+    try {
+      const result = await runCli(
+        ["listen", "--provider", "openai", "--model", "gpt-6.1-sol", "--state", directory],
+        io().io,
+        {
+          createLiveModels: (ref) => {
+            selectedRefs.push(ref);
+            return { models, model: ref };
+          },
+          createInboundSession: ({ customerAgent }) => {
+            selectedThinking = customerAgent.thinkingLevel;
+            void interruptCli();
+            return { tick: async () => {}, reconcile: async () => {}, close: async () => {} };
+          },
+        },
+      );
+      expect(result).toBe(1);
+      expect(selectedRefs).toEqual([{ provider: "openai", modelId: "gpt-6.1-sol" }]);
+      expect(selectedThinking).toBe("off");
+    } finally {
+      await interruptCli();
+      restore();
+    }
+  });
+
+  it("rejects a same-provider listen model mismatch before opening an inbound session", async () => {
+    const directory = state();
+    await createResendLiveState(directory, "gpt-6.1-sol");
+    const restore = configureResendEnvironment();
+    const faux = fauxProvider({
+      provider: "openai",
+      models: [{ id: "gpt-6-sol" }, { id: "gpt-6.1-sol" }],
+    });
+    const models = createModels();
+    models.setProvider(faux.provider);
+    let sessionOpened = false;
+    try {
+      const capture = io();
+      expect(
+        await runCli(["listen", "--provider", "openai", "--state", directory], capture.io, {
+          createLiveModels: (ref) => ({ models, model: ref }),
+          createInboundSession: () => {
+            sessionOpened = true;
+            return { tick: async () => {}, reconcile: async () => {}, close: async () => {} };
+          },
+        }),
+      ).toBe(1);
+      expect(capture.errors.join("\n")).toMatch(
+        /already uses live OpenAI.*requested openai\/gpt-6-sol/,
+      );
+      expect(sessionOpened).toBe(false);
+      expect(capture.output.join("\n")).not.toContain("Inbound listener:");
+    } finally {
+      await interruptCli();
+      restore();
+    }
+  });
+
+  it("fails a Paper start without credentials before creating a Harness root", async () => {
+    const directory = state();
+    const prior = process.env.PAPERINSTRUMENTS_API_KEY;
+    delete process.env.PAPERINSTRUMENTS_API_KEY;
+    try {
+      const capture = io();
+      expect(
+        await runCli(
+          ["start", "--state", directory, "--message", "Say hello", "--request-id", "paper-no-key"],
+          capture.io,
+        ),
+      ).toBe(1);
+      expect(capture.errors.join("\n")).toContain("PAPERINSTRUMENTS_API_KEY");
+      expect(existsSync(join(directory, "harness"))).toBe(false);
+    } finally {
+      if (prior === undefined) delete process.env.PAPERINSTRUMENTS_API_KEY;
+      else process.env.PAPERINSTRUMENTS_API_KEY = prior;
+    }
+  });
+
+  it.each([
+    ["unknown provider", ["--provider", "anthropic"], /--provider must be paper or openai/],
+    [
+      "unsupported Paper model",
+      ["--provider", "paper", "--model", "gpt-6-sol"],
+      /Unknown paper model/,
+    ],
+    ["empty model id", ["--provider", "openai", "--model", ""], /Unknown openai model/],
+    [
+      "unknown OpenAI model",
+      ["--provider", "openai", "--model", "unknown-model"],
+      /Unknown openai model/,
+    ],
+  ] as const)("rejects %s before submitting input", async (_name, selection, message) => {
+    const directory = state();
+    const faux = fauxProvider({ provider: "openai", models: [{ id: "gpt-6-sol" }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const capture = io();
+    expect(
+      await runCli(
+        [
+          "start",
+          "--state",
+          directory,
+          "--message",
+          "Say hello",
+          "--request-id",
+          "invalid-model",
+          ...selection,
+        ],
+        capture.io,
+        {
+          createLiveModels: (ref) => ({ models, model: ref }),
+        },
+      ),
+    ).toBeGreaterThan(0);
+    expect(capture.errors.join("\n")).toMatch(message);
+    expect(existsSync(join(directory, "harness"))).toBe(false);
+  });
+
+  it("rejects an injected runtime that does not match the selected model", async () => {
+    const directory = state();
+    const faux = fauxProvider({ provider: "openai", models: [{ id: "gpt-6-sol" }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const capture = io();
+    expect(
+      await runCli(
+        [
+          "start",
+          "--state",
+          directory,
+          "--message",
+          "Say hello",
+          "--request-id",
+          "injected-mismatch",
+        ],
+        capture.io,
+        {
+          createLiveModels: () => ({ models, model: { provider: "openai", modelId: "gpt-6-sol" } }),
+        },
+      ),
+    ).toBe(1);
+    expect(capture.errors.join("\n")).toContain("Injected live model does not match");
+    expect(existsSync(join(directory, "harness"))).toBe(false);
+  });
+
+  it("rejects a start whose selected pair differs from the saved pair before admitting input", async () => {
+    const directory = state();
+    await createLiveState(directory, "gpt-6-sol");
+    const before = await entryCount(directory);
+    const faux = fauxProvider({ provider: "paper", models: [{ id: "ultramarine-1-flash" }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const capture = io();
+    expect(
+      await runCli(
+        ["start", "--state", directory, "--message", "Say hello", "--request-id", "pair-mismatch"],
+        capture.io,
+        {
+          createLiveModels: (ref) => ({ models, model: ref }),
+        },
+      ),
+    ).toBe(1);
+    expect(capture.errors.join("\n")).toMatch(
+      /already uses live OpenAI.*requested paper\/ultramarine-1-flash/,
+    );
+    expect(await entryCount(directory)).toBe(before);
+  });
+
+  it("rejects a same-provider start model mismatch before admitting input", async () => {
+    const directory = state();
+    await createLiveState(directory, "gpt-6.1-sol");
+    const before = await entryCount(directory);
+    const faux = fauxProvider({
+      provider: "openai",
+      models: [{ id: "gpt-6-sol" }, { id: "gpt-6.1-sol" }],
+    });
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const capture = io();
+    expect(
+      await runCli(
+        [
+          "start",
+          "--provider",
+          "openai",
+          "--state",
+          directory,
+          "--message",
+          "Say hello",
+          "--request-id",
+          "same-provider-mismatch",
+        ],
+        capture.io,
+        { createLiveModels: (ref) => ({ models, model: ref }) },
+      ),
+    ).toBe(1);
+    expect(capture.errors.join("\n")).toMatch(
+      /already uses live OpenAI.*requested openai\/gpt-6-sol/,
+    );
+    expect(await entryCount(directory)).toBe(before);
+  });
+
   it("keeps console as the default even when Resend environment values exist", async () => {
     const directory = state();
     const prior = {
@@ -169,6 +536,8 @@ describe("runCli", () => {
         await runCli(
           [
             "start",
+            "--provider",
+            "openai",
             "--state",
             directory,
             "--message",
@@ -206,6 +575,8 @@ describe("runCli", () => {
       await runCli(
         [
           "start",
+          "--provider",
+          "openai",
           "--state",
           directory,
           "--messenger",
@@ -240,6 +611,8 @@ describe("runCli", () => {
         await runCli(
           [
             "start",
+            "--provider",
+            "openai",
             "--state",
             directory,
             "--messenger",
@@ -378,6 +751,8 @@ describe("runCli", () => {
         await runCli(
           [
             "start",
+            "--provider",
+            "openai",
             "--state",
             directory,
             "--messenger",
@@ -703,7 +1078,17 @@ describe("runCli", () => {
     try {
       const listening = io();
       const running = runCli(
-        ["listen", "--state", directory, "--messenger", "resend", "--port", String(port)],
+        [
+          "listen",
+          "--provider",
+          "openai",
+          "--state",
+          directory,
+          "--messenger",
+          "resend",
+          "--port",
+          String(port),
+        ],
         listening.io,
         dependencies,
       );
@@ -880,7 +1265,17 @@ describe("runCli", () => {
     try {
       const capture = io();
       const running = runCli(
-        ["listen", "--state", directory, "--messenger", "resend", "--port", "8787"],
+        [
+          "listen",
+          "--provider",
+          "openai",
+          "--state",
+          directory,
+          "--messenger",
+          "resend",
+          "--port",
+          "8787",
+        ],
         capture.io,
         {
           createLiveModels: () => ({ models, model: { provider: "openai", modelId: "gpt-6-sol" } }),
@@ -1055,6 +1450,8 @@ describe("runCli", () => {
       await runCli(
         [
           "start",
+          "--provider",
+          "openai",
           "--state",
           directory,
           "--message",
@@ -1085,6 +1482,8 @@ describe("runCli", () => {
       await runCli(
         [
           "start",
+          "--provider",
+          "openai",
           "--state",
           directory,
           "--message",
@@ -1145,6 +1544,8 @@ describe("runCli", () => {
     process.env.GOOGLE_CALENDAR_ID = "calendar@example.test";
     const args = [
       "start",
+      "--provider",
+      "openai",
       "--state",
       directory,
       "--calendar",
@@ -1339,6 +1740,8 @@ describe("runCli", () => {
         await runCli(
           [
             "start",
+            "--provider",
+            "openai",
             "--state",
             directory,
             "--message",
@@ -1397,6 +1800,8 @@ describe("runCli", () => {
         await runCli(
           [
             "start",
+            "--provider",
+            "openai",
             "--state",
             directory,
             "--message",
@@ -1427,9 +1832,152 @@ describe("runCli", () => {
     const previous = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = "test-only-placeholder";
     try {
+      const faux = fauxProvider({ provider: "openai", models: [{ id: "gpt-6.1-sol" }] });
+      const models = createModels();
+      models.setProvider(faux.provider);
+      const selectedRefs: { provider: string; modelId: string }[] = [];
       const resumed = io();
-      expect(await runCli(["resume", "--state", directory], resumed.io)).toBe(0);
+      expect(
+        await runCli(["resume", "--state", directory], resumed.io, {
+          createLiveModels: (ref) => {
+            selectedRefs.push(ref);
+            return { models, model: ref };
+          },
+        }),
+      ).toBe(0);
+      expect(selectedRefs).toEqual([{ provider: "openai", modelId: "gpt-6.1-sol" }]);
       expect(resumed.output.join("\n")).toContain("Mode: live OpenAI (gpt-6.1-sol)");
+      const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+      const reopened = await openSolo({
+        directory,
+        role: frontdesk({ calendar }),
+        ...createDemoModels(),
+      });
+      expect((await reopened.root.agent(BACKGROUND_CONTEXT)).thinkingLevel).toBe("off");
+      await reopened.close();
+      calendar.close();
+    } finally {
+      if (previous === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previous;
+    }
+  });
+
+  it("resumes a saved Paper root with its saved pair and thinking level", async () => {
+    const directory = state();
+    await createPaperState(directory);
+    const previous = process.env.PAPERINSTRUMENTS_API_KEY;
+    process.env.PAPERINSTRUMENTS_API_KEY = "test-only-placeholder";
+    const faux = fauxProvider({ provider: "paper", models: [{ id: "ultramarine-1-flash" }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const selectedRefs: { provider: string; modelId: string }[] = [];
+    try {
+      const resumed = io();
+      expect(
+        await runCli(["resume", "--state", directory], resumed.io, {
+          createLiveModels: (ref) => {
+            selectedRefs.push(ref);
+            return { models, model: ref };
+          },
+        }),
+      ).toBe(0);
+      expect(selectedRefs).toEqual([{ provider: "paper", modelId: "ultramarine-1-flash" }]);
+      expect(resumed.output.join("\n")).toContain("Mode: live Paper (ultramarine-1-flash)");
+      const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+      const reopened = await openSolo({
+        directory,
+        role: frontdesk({ calendar }),
+        ...createDemoModels(),
+      });
+      expect((await reopened.root.agent(BACKGROUND_CONTEXT)).thinkingLevel).toBe("max");
+      await reopened.close();
+      calendar.close();
+    } finally {
+      if (previous === undefined) delete process.env.PAPERINSTRUMENTS_API_KEY;
+      else process.env.PAPERINSTRUMENTS_API_KEY = previous;
+    }
+  });
+
+  it("resumes inbound OpenAI work with the saved gpt-6.1-sol pair and off thinking", async () => {
+    const directory = state();
+    await createResendLiveState(directory, "gpt-6.1-sol");
+    const identity = {
+      version: 1 as const,
+      backend: "resend" as const,
+      accountId: "account_test",
+      fromEmail: "desk@example.test",
+      subject: "Front Desk",
+    };
+    const inbox = openResendInbox(join(directory, "inbound.sqlite"), {
+      authority: {
+        version: 1,
+        messengerId: messengerIdentityString(identity),
+        accountId: identity.accountId,
+        fromEmail: identity.fromEmail,
+        inboundEmail: "desk@example.test",
+      },
+      getApiKey: async () => "synthetic",
+      getWebhookSecrets: async () => [`whsec_${Buffer.from("task-two-secret").toString("base64")}`],
+    });
+    await inbox.close();
+    const restore = configureResendEnvironment();
+    const faux = fauxProvider({ provider: "openai", models: [{ id: "gpt-6.1-sol" }] });
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const selectedRefs: { provider: string; modelId: string }[] = [];
+    let selectedThinking: unknown;
+    try {
+      const capture = io();
+      expect(
+        await runCli(["resume", "--state", directory, "--messenger", "resend"], capture.io, {
+          createLiveModels: (ref) => {
+            selectedRefs.push(ref);
+            return { models, model: ref };
+          },
+          createInboundSession: ({ customerAgent }) => {
+            selectedThinking = customerAgent.thinkingLevel;
+            return { tick: async () => {}, reconcile: async () => {}, close: async () => {} };
+          },
+        }),
+      ).toBe(0);
+      expect(selectedRefs).toEqual([{ provider: "openai", modelId: "gpt-6.1-sol" }]);
+      expect(selectedThinking).toBe("off");
+      expect(capture.output.join("\n")).toContain("Mode: live OpenAI (gpt-6.1-sol)");
+    } finally {
+      restore();
+    }
+  });
+
+  it("fails visibly when resume finds a saved root without a model", async () => {
+    const directory = state();
+    await createLiveState(directory, "gpt-6.1-sol");
+    const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
+    const reopened = await openSolo({
+      directory,
+      role: frontdesk({ calendar }),
+      ...createDemoModels(),
+    });
+    await reopened.root.commit(async (transaction) => {
+      const agent = await transaction.doc(AgentDoc, reopened.root.id);
+      agent.model = undefined;
+    }, BACKGROUND_CONTEXT);
+    await reopened.close();
+    calendar.close();
+    const previous = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "test-only-placeholder";
+    let modelFactoryCalled = false;
+    try {
+      const capture = io();
+      expect(
+        await runCli(["resume", "--state", directory], capture.io, {
+          createLiveModels: () => {
+            modelFactoryCalled = true;
+            throw new Error("resume must not guess a replacement model");
+          },
+        }),
+      ).toBe(1);
+      expect(capture.errors.join("\n")).toContain("persisted Front Desk root has no model");
+      expect(modelFactoryCalled).toBe(false);
     } finally {
       if (previous === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = previous;

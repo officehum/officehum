@@ -26,18 +26,27 @@ The demo always requests `2030-01-15` for `Demo Guest`, labels its inference as 
 the fixed request ID needed to make command retries idempotent. Omit `--approval` to use the demo's
 documented automatic `allow`, or pass `--approval deny` to exercise a declined booking.
 
-Live mode uses the installed OpenAI model catalog and reads its credential only from the process
-environment. It uses the local calendar unless `--calendar google` is selected:
+Live mode defaults to Paper's `ultramarine-1-flash` model with maximum thinking. Set
+`PAPERINSTRUMENTS_API_KEY` in the process environment. Use `--provider openai` to select OpenAI;
+that provider defaults to `gpt-6-sol`, and `--model ID` selects a different model within the chosen
+provider. Live credentials are read only from the process environment. The credential-free `demo`
+command remains available without either model key. Live mode uses the local calendar unless
+`--calendar google` is selected:
 
 ```sh
-export OPENAI_API_KEY="..."
+export PAPERINSTRUMENTS_API_KEY="..."
 node packages/cli/dist/index.js start \
   --state .officehum/frontdesk-live \
   --message "Book Demo Guest on 2030-01-15" \
   --request-id booking-1 \
-  --model gpt-6-sol
+  --model ultramarine-1-flash
 node packages/cli/dist/index.js resume --state .officehum/frontdesk-live
 ```
+
+To use OpenAI, set `OPENAI_API_KEY` in the environment and pass `--provider openai` to `start` or
+`listen`; `--model` can be supplied before or after `--provider`. A saved conversation resumes with
+its stored provider, model, and thinking level. `start` and `listen` reject a provider or model that
+does not match the state directory.
 
 Use `bookings` to discover the exact managed booking ID before requesting a change. Rescheduling
 and cancellation remain ordinary durable `start` submissions; there are no direct mutation CLI
