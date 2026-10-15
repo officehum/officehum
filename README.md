@@ -10,6 +10,9 @@ Each specialized role inside a department, such as accounts payable in finance, 
 The [visual system guide](docs/visualizations/officehum-built.html) is a standalone HTML map of the
 repository, its current and planned interfaces, and the distinct roles of Office Hum, Pi Durable,
 and Paper Instruments. Download or open the file locally to use its interactive workflow view.
+The [owner's manual](docs/visualizations/officehum-owners-manual.html) explains the boundaries
+between Office Hum, Pi Durable, role packages, and Paper Instruments, how several roles are designed
+to work together, and what is built versus planned.
 
 ## Front Desk quick start
 

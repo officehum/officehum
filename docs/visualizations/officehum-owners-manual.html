@@ -1,0 +1,1137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Office Hum Owner's Manual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=JetBrains+Mono:wght@400;600&family=Public+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<style>
+  /* Layout: an equipment-manual page. Sticky section index on the left, one reading column,
+     diagrams break out wider. Color encodes ownership: teal = Office Hum, blue = Pi Durable,
+     violet = Paper Instruments. Border encodes status: solid = built, dashed = planned,
+     dotted = not planned yet. */
+  :root {
+    --bg: #f2f5f5;
+    --surface: #ffffff;
+    --surface-2: #e8eef0;
+    --ink: #13262e;
+    --muted: #4c6169;
+    --rule: #c2cfd3;
+    --office: #07736d;
+    --office-soft: #d4ebe8;
+    --pi: #2c55a3;
+    --pi-soft: #dce5f7;
+    --paper: #6a4db0;
+    --paper-soft: #ebe3f8;
+    --ok: #26703f;
+    --ok-soft: #d9eedf;
+    --part: #8a5a00;
+    --part-soft: #f6e8c8;
+    --no: #a33a2a;
+    --no-soft: #f7e0da;
+    --code-bg: #12252c;
+    --code-ink: #dcebe8;
+    --display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --body: "Public Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1b20;
+      --surface: #15262d;
+      --surface-2: #1d323a;
+      --ink: #e6f0ee;
+      --muted: #a3b8bd;
+      --rule: #3a535b;
+      --office: #62cdc1;
+      --office-soft: #1c4342;
+      --pi: #96b3fa;
+      --pi-soft: #233860;
+      --paper: #c1aaff;
+      --paper-soft: #3a3057;
+      --ok: #7fd49b;
+      --ok-soft: #1d3d29;
+      --part: #f0c46a;
+      --part-soft: #4a3a17;
+      --no: #f29a86;
+      --no-soft: #4d2a23;
+      --code-bg: #091519;
+      --code-ink: #dcebe8;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1b20;
+    --surface: #15262d;
+    --surface-2: #1d323a;
+    --ink: #e6f0ee;
+    --muted: #a3b8bd;
+    --rule: #3a535b;
+    --office: #62cdc1;
+    --office-soft: #1c4342;
+    --pi: #96b3fa;
+    --pi-soft: #233860;
+    --paper: #c1aaff;
+    --paper-soft: #3a3057;
+    --ok: #7fd49b;
+    --ok-soft: #1d3d29;
+    --part: #f0c46a;
+    --part-soft: #4a3a17;
+    --no: #f29a86;
+    --no-soft: #4d2a23;
+    --code-bg: #091519;
+    --code-ink: #dcebe8;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 var(--body); }
+  a { color: var(--pi); text-underline-offset: 3px; }
+  :focus-visible { outline: 3px solid var(--office); outline-offset: 3px; }
+  code, .mono { font-family: var(--mono); font-size: .86em; }
+  p code, li code, td code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  h1, h2, h3 { font-family: var(--display); font-stretch: 88%; line-height: 1.12; text-wrap: balance; margin: 0; }
+  h2 { font-size: clamp(1.7rem, 3.4vw, 2.3rem); font-weight: 760; }
+  h3 { font-size: 1.22rem; font-weight: 700; margin-top: 2.2rem; }
+  p { margin: .9rem 0; }
+  .eyebrow { font: 600 .74rem/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+
+  .shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 48px; max-width: 1280px; margin: 0 auto; padding-inline: 24px; }
+  .index { position: sticky; top: env(safe-area-inset-top, 0px); align-self: start; max-height: 100vh; overflow-y: auto; padding-block: 28px; }
+  .index ol { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 2px; }
+  .index a { display: grid; grid-template-columns: 2.4em 1fr; color: var(--ink); text-decoration: none; padding: 5px 8px; border-radius: 6px; font-size: .9rem; }
+  .index a span { font-family: var(--mono); font-size: .78rem; color: var(--muted); padding-top: 2px; }
+  .index a:hover { background: var(--surface-2); }
+  .toggle { margin-top: 20px; display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); font-size: .84rem; line-height: 1.4; cursor: pointer; }
+  .toggle input { margin-top: 2px; accent-color: var(--office); }
+  main { min-width: 0; padding-block: 28px 80px; }
+  .col { max-width: 760px; }
+
+  .cover { border: 2px solid var(--ink); background: var(--surface); padding: clamp(22px, 4vw, 44px); position: relative; }
+  .cover h1 { font-size: clamp(2.5rem, 7vw, 4.6rem); font-weight: 800; font-stretch: 78%; letter-spacing: -.01em; margin-top: 10px; }
+  .cover .lede { font-size: 1.12rem; max-width: 640px; color: var(--ink); }
+  .plate { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-top: 1px solid var(--rule); margin-top: 24px; }
+  .plate div { padding: 12px 14px 4px 0; }
+  .plate dt { font: 600 .7rem var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .plate dd { margin: 4px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .keyline { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 20px; font-size: .84rem; color: var(--muted); }
+  .keyline span { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 26px; height: 14px; border-radius: 3px; border: 2px solid var(--ink); display: inline-block; }
+  .sw.o { background: var(--office-soft); border-color: var(--office); }
+  .sw.p { background: var(--pi-soft); border-color: var(--pi); }
+  .sw.v { background: var(--paper-soft); border-color: var(--paper); }
+  .sw.built { background: var(--surface); border-style: solid; border-color: var(--muted); }
+  .sw.planned { background: var(--surface); border-style: dashed; border-color: var(--muted); }
+  .sw.none { background: var(--surface); border-style: dotted; border-color: var(--muted); }
+
+  section.chapter { padding-top: 64px; scroll-margin-top: 12px; }
+  .chapter-head { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; align-items: baseline; border-bottom: 2px solid var(--ink); padding-bottom: 10px; margin-bottom: 18px; }
+  .chapter-head .num { font: 800 2.3rem/1 var(--display); font-stretch: 70%; color: var(--muted); }
+  .chapter-head .eyebrow { grid-column: 2; }
+
+  .verdicts { display: grid; gap: 14px; }
+  .verdict { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 18px; border: 1px solid var(--rule); background: var(--surface); padding: 18px; border-radius: 8px; }
+  .verdict h3 { margin: 0 0 6px; font-size: 1.12rem; }
+  .verdict p { margin: .4rem 0; font-size: .95rem; }
+  .verdict ul { margin: .4rem 0 0; padding-left: 1.1rem; font-size: .92rem; }
+  .verdict .claim { font-size: .74rem; font-family: var(--mono); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+  .stamp { align-self: start; text-align: center; border: 2px solid currentColor; border-radius: 6px; padding: 8px 6px; font: 800 .95rem/1.15 var(--display); font-stretch: 80%; letter-spacing: .04em; text-transform: uppercase; }
+  .stamp small { display: block; font: 600 .66rem var(--mono); letter-spacing: .08em; margin-top: 4px; }
+  .s-ok { color: var(--ok); background: var(--ok-soft); }
+  .s-part { color: var(--part); background: var(--part-soft); }
+  .s-no { color: var(--no); background: var(--no-soft); }
+  .subverdicts { display: grid; gap: 10px; margin-top: 10px; }
+  .subverdicts > div { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 12px; align-items: start; border-top: 1px solid var(--rule); padding-top: 10px; }
+  .subverdicts .stamp { font-size: .8rem; padding: 5px 4px; }
+
+  .figure { margin: 26px 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; }
+  .figure .scroll { overflow-x: auto; }
+  .figure svg { display: block; width: 100%; height: auto; }
+  .figure.wide svg { min-width: 760px; }
+  figcaption { font-size: .86rem; color: var(--muted); margin-top: 10px; max-width: 760px; }
+  figcaption b { color: var(--ink); }
+
+  /* SVG vocabulary */
+  .bx { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; }
+  .bx-o { fill: var(--office-soft); stroke: var(--office); stroke-width: 1.5; }
+  .bx-p { fill: var(--pi-soft); stroke: var(--pi); stroke-width: 1.5; }
+  .bx-v { fill: var(--paper-soft); stroke: var(--paper); stroke-width: 1.5; }
+  .bx-plain { fill: var(--surface); stroke: var(--rule); stroke-width: 1; }
+  .dash { stroke-dasharray: 6 4; }
+  .dot { stroke-dasharray: 2 4; stroke-linecap: round; }
+  .t { fill: var(--ink); font: 600 13px var(--body); }
+  .tb { fill: var(--ink); font: 700 14px var(--body); }
+  .ts { fill: var(--muted); font: 12px var(--body); }
+  .tm { fill: var(--muted); font: 11px var(--mono); }
+  .tl { font: 600 11px var(--mono); letter-spacing: .08em; }
+  .c-o { fill: var(--office); }
+  .c-p { fill: var(--pi); }
+  .c-v { fill: var(--paper); }
+  .c-ok { fill: var(--ok); }
+  .c-part { fill: var(--part); }
+  .c-no { fill: var(--no); }
+  .c-mut { fill: var(--muted); }
+  .ln { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  .ln-no { stroke: var(--no); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+  .life { stroke: var(--rule); stroke-width: 1.5; stroke-dasharray: 4 5; }
+  .ah { fill: var(--muted); }
+  .halo { paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; }
+
+  .today-only .planned { opacity: .22; transition: opacity .2s; }
+  .planned { transition: opacity .2s; }
+
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  .tablewrap { overflow-x: auto; margin: 18px 0; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font: 600 .72rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { font-weight: 600; }
+  .chip { display: inline-block; font: 600 .68rem/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 1px 7px; border-radius: 4px; white-space: nowrap; border: 1px solid currentColor; }
+  .chip.built { color: var(--ok); background: var(--ok-soft); }
+  .chip.planned { color: var(--part); background: var(--part-soft); border-style: dashed; }
+  .chip.none { color: var(--no); background: var(--no-soft); border-style: dotted; }
+  .chip.o { color: var(--office); background: var(--office-soft); }
+  .chip.p { color: var(--pi); background: var(--pi-soft); }
+  .chip.v { color: var(--paper); background: var(--paper-soft); }
+
+  .note { border-left: 4px solid var(--pi); background: var(--surface); padding: 12px 16px; margin: 20px 0; border-radius: 0 6px 6px 0; font-size: .95rem; }
+  .note.caution { border-left-color: var(--part); }
+  .note.warning { border-left-color: var(--no); }
+  .note .label { font: 700 .74rem var(--mono); letter-spacing: .12em; text-transform: uppercase; display: block; margin-bottom: 4px; color: var(--pi); }
+  .note.caution .label { color: var(--part); }
+  .note.warning .label { color: var(--no); }
+
+  .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 20px 0; }
+  .owner { background: var(--surface); border: 1px solid var(--rule); border-top: 5px solid var(--muted); border-radius: 6px; padding: 14px 16px; font-size: .92rem; }
+  .owner h4 { margin: 0 0 4px; font: 760 1.15rem var(--display); font-stretch: 88%; }
+  .owner ul { margin: 8px 0 0; padding-left: 1.05rem; }
+  .owner.o { border-top-color: var(--office); }
+  .owner.p { border-top-color: var(--pi); }
+  .owner.v { border-top-color: var(--paper); }
+  .owner .never { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--rule); color: var(--muted); }
+
+  .tree { background: var(--code-bg); color: var(--code-ink); border-radius: 8px; padding: 16px 18px; font: .84rem/1.65 var(--mono); overflow-x: auto; white-space: pre; margin: 18px 0; }
+  .tree .k { color: #8fd9cf; }
+  .tree .c { color: #8aa2a8; }
+  pre.cmd { background: var(--code-bg); color: var(--code-ink); border-radius: 8px; padding: 14px 16px; font: .82rem/1.6 var(--mono); overflow-x: auto; margin: 14px 0; }
+
+  .flow { list-style: none; counter-reset: step; padding: 0; margin: 20px 0; display: grid; gap: 0; }
+  .flow li { counter-increment: step; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; position: relative; padding-bottom: 16px; }
+  .flow li::before { content: counter(step); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font: 700 .85rem var(--mono); background: var(--surface); border: 2px solid var(--paper); color: var(--paper); z-index: 1; }
+  .flow li::after { content: ""; position: absolute; left: 15px; top: 32px; bottom: 0; width: 2px; background: var(--rule); }
+  .flow li:last-child::after { display: none; }
+  .flow b { display: block; }
+  .flow span { color: var(--muted); font-size: .93rem; }
+  .flow .fork { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+  .flow .fork div { border: 1px solid var(--rule); background: var(--surface); border-radius: 6px; padding: 8px 10px; font-size: .88rem; color: var(--ink); }
+
+  .bars { display: grid; gap: 10px; margin: 18px 0 6px; }
+  .bar { display: grid; grid-template-columns: 190px minmax(0, 1fr) 48px; gap: 12px; align-items: center; font-size: .9rem; }
+  .bar .track { position: relative; height: 16px; background: var(--surface-2); border-radius: 3px;
+    background-image: linear-gradient(to right, var(--rule) 1px, transparent 1px); background-size: 25% 100%; }
+  .bar .fill { position: absolute; inset: 0 auto 0 0; background: var(--office); border-radius: 3px; min-width: 2px; }
+  .bar .val { font: 600 .85rem var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .axis { display: grid; grid-template-columns: 190px minmax(0, 1fr) 48px; gap: 12px; font: .7rem var(--mono); color: var(--muted); }
+  .axis div:nth-child(2) { display: flex; justify-content: space-between; }
+  .stack { display: flex; height: 26px; border-radius: 4px; overflow: hidden; margin: 14px 0 8px; border: 1px solid var(--rule); }
+  .stack div { display: grid; place-items: center; font: 600 .74rem var(--mono); color: var(--surface); white-space: nowrap; overflow: hidden; }
+  .stack .d { background: var(--ok); }
+  .stack .i { background: var(--part); }
+  .stack .b { background: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .84rem; color: var(--muted); }
+  .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+  .gaps { counter-reset: gap; list-style: none; padding: 0; display: grid; gap: 12px; }
+  .gaps li { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 16px; font-size: .94rem; }
+  .gaps li b { display: block; }
+  .gaps .fix { color: var(--muted); display: block; margin-top: 4px; }
+
+  dl.glossary { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 18px; font-size: .93rem; }
+  dl.glossary dt { font-weight: 700; }
+  dl.glossary dd { margin: 0; color: var(--ink); }
+  footer { margin-top: 64px; padding-top: 18px; border-top: 2px solid var(--ink); font-size: .84rem; color: var(--muted); }
+
+  @media (max-width: 980px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 0; padding-inline: 16px; }
+    .index { position: static; max-height: none; padding-block: 16px 0; }
+    .index ol { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+    .three { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 620px) {
+    .verdict { grid-template-columns: minmax(0, 1fr); }
+    .verdict .stamp { justify-self: start; }
+    .subverdicts > div { grid-template-columns: minmax(0, 1fr); }
+    .subverdicts .stamp { justify-self: start; }
+    .bar, .axis { grid-template-columns: 110px minmax(0, 1fr) 40px; }
+    dl.glossary { grid-template-columns: minmax(0, 1fr); }
+    dl.glossary dd { margin-bottom: 8px; }
+    .flow .fork { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="index" aria-label="Sections">
+    <div class="eyebrow">Office Hum · Owner's Manual</div>
+    <ol>
+      <li><a href="#verdicts"><span>00</span>Your three claims, checked</a></li>
+      <li><a href="#what"><span>01</span>What Office Hum is</a></li>
+      <li><a href="#stack"><span>02</span>The stack and its boundaries</a></li>
+      <li><a href="#harness"><span>03</span>Pi Durable, the harness</a></li>
+      <li><a href="#roles"><span>04</span>Roles</a></li>
+      <li><a href="#models"><span>05</span>Models</a></li>
+      <li><a href="#documents"><span>06</span>Paper Office documents</a></li>
+      <li><a href="#team"><span>07</span>Running a team of agents</a></li>
+      <li><a href="#safety"><span>08</span>Safety and approvals</a></li>
+      <li><a href="#operate"><span>09</span>Operating it today</a></li>
+      <li><a href="#status"><span>10</span>Status and roadmap</a></li>
+      <li><a href="#gaps"><span>11</span>Gaps and their fixes</a></li>
+      <li><a href="#glossary"><span>12</span>Glossary and sources</a></li>
+    </ol>
+    <label class="toggle" for="todayOnly">
+      <input type="checkbox" id="todayOnly">
+      <span>Fade everything that is not built yet, so only what runs today stands out.</span>
+    </label>
+  </aside>
+
+  <main>
+    <div class="cover">
+      <div class="eyebrow">Owner's Manual · Edition of 15 October 2026</div>
+      <h1>Office Hum</h1>
+      <p class="lede">How the office fits together: the Pi Durable harness that runs every agent, the
+        role packages that do the work, the Paper Instruments model and document libraries they use,
+        and the Office Hum layer that hosts, coordinates and configures them.</p>
+      <dl class="plate">
+        <div><dt>Source checked</dt><dd><code>main</code> @ d08fc9f</dd></div>
+        <div><dt>Pi Durable</dt><dd>1.0.2, pinned</dd></div>
+        <div><dt>Linear project</dt><dd>officehum · 196 issues</dd></div>
+        <div><dt>Roles built</dt><dd>1 of 3 in M1</dd></div>
+      </dl>
+      <div class="keyline">
+        <span><i class="sw o"></i>Office Hum</span>
+        <span><i class="sw p"></i>Pi Durable</span>
+        <span><i class="sw v"></i>Paper Instruments</span>
+        <span><i class="sw built"></i>Built on main</span>
+        <span><i class="sw planned"></i>Planned</span>
+        <span><i class="sw none"></i>Not planned yet</span>
+      </div>
+    </div>
+
+    <!-- 00 -->
+    <section class="chapter" id="verdicts">
+      <div class="chapter-head"><div class="num">00</div><h2>Your three claims, checked</h2>
+        <div class="eyebrow">Checked against code on main, design docs, every worktree and the Linear project</div></div>
+      <div class="col">
+        <p>Each claim was tested against what the repository actually does, what the accepted designs
+          say, and what Linear plans. A claim can be true in the design and still unbuilt, so each
+          verdict says which.</p>
+      </div>
+      <div class="verdicts">
+        <article class="verdict">
+          <div class="stamp s-ok">Confirmed<small>built and designed</small></div>
+          <div>
+            <div class="claim">Claim 1</div>
+            <h3>Pi Durable is the underlying agent harness.</h3>
+            <p>True in code and in every plan. The working Front Desk opens a Pi Durable
+              <code>Harness</code> over JSONL storage (<code>packages/office/src/solo.ts</code>).
+              Pi Durable 1.0.2 is pinned exactly and is a peer dependency of every role. The Paper design
+              states it “remains the only agent harness and the authority for conversation state, task
+              checkpoints, approvals, and recovery.” Linear plans one Pi Durable harness per office
+              (RASF-3101, RASF-3104).</p>
+            <ul>
+              <li>Pi Durable is marked experimental upstream, so every runtime call is meant to go
+                through one adapter in <code>@officehum/office</code>. That adapter epic (RASF-3065) is
+                still in progress; today only solo mode exists.</li>
+              <li>Office Hum adds what Pi Durable lacks: approval gates (built as Pi Durable hooks), and
+                the planned workboard and relay. Pi Durable itself has no multi-agent board.</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="verdict">
+          <div class="stamp s-part">Partly true<small>needs one correction</small></div>
+          <div>
+            <div class="claim">Claim 2</div>
+            <h3>Office Hum is the collection of Pi Durable roles, built as operational roles for medium-sized companies.</h3>
+            <p><b>The roles part is right.</b> Every role is a portable Pi Durable agent: an MIT package
+              that must pass its evals in a bare Pi Durable harness with no Office Hum code loaded.
+              Third-party roles fit as long as they follow the same package contract.</p>
+            <p><b>The definition is too narrow.</b> In the accepted design the roles are the free part.
+              Office Hum is the layer on top that hosts, coordinates and configures them (workboard,
+              relay, overlays, Studio, approvals, hosting). A role never depends on Office Hum.</p>
+            <ul>
+              <li><b>Market wording disagreed.</b> The README said “medium-sized businesses”, the Linear
+                project “small businesses”, and RASF-3199 and RASF-3205 “mid-market”. Linear now says
+                medium-sized companies everywhere (updated 15 Oct).</li>
+              <li><b>One role exists.</b> Front Desk is built. Bookkeeper (called the reference role) and
+                Office Manager are in the backlog. Sales was not planned; it is now an epic (RASF-3295)
+                under a new catalog of free roles for every department (RASF-3293).</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="verdict">
+          <div class="stamp s-part">Split<small>one built, two not yet</small></div>
+          <div>
+            <div class="claim">Claim 3</div>
+            <h3>Agents use Ultramarine 1, Office Hum offers a model marketplace, and the Paper Office libraries are implemented as agent tools.</h3>
+            <div class="subverdicts">
+              <div><div class="stamp s-ok">Built</div>
+                <p><b>Ultramarine 1 Flash is the default.</b> Merged in PR #14 (RASF-3282, Done). New Front
+                  Desk conversations start on <code>paper/ultramarine-1-flash</code> at maximum thinking.
+                  A saved conversation keeps its original model, and a Paper failure never silently falls
+                  back to another provider. The provider is registered by the CLI host, so a bare Pi
+                  Durable user gets the model choice from the manifest but must register the provider
+                  themselves until it moves into its own package (RASF-3297, M1).</p></div>
+              <div><div class="stamp s-part">Now planned</div>
+                <p><b>A model marketplace was not in the Office Hum plan</b> when this was checked. It is
+                  now epic RASF-3296 (M4): a provider catalog with acceptance tests (RASF-3298) and a
+                  Studio marketplace screen (RASF-3299), building on bring-your-own-key (RASF-3175). Today
+                  the CLI still accepts only <code>paper</code> or <code>openai</code>, though pi-ai 1.0.2
+                  already ships 44 provider adapters.</p></div>
+              <div><div class="stamp s-no">Not built</div>
+                <p><b>The Paper Office tools are designed, not implemented.</b> The design is approved
+                  (14 Oct) and the versioned file store it depends on is merged (PRs #15, #16). The tool
+                  pack, the document service, the restricted Python worker and the Word, PowerPoint and
+                  Excel adapters do not exist yet. <code>paper-docx</code>, <code>paper-pptx</code> and
+                  <code>paper-xlsx</code> are not installed anywhere on this machine. Their tickets
+                  (RASF-3283 to 3286, plus the new Word and Excel adapters RASF-3300 and RASF-3301) are
+                  now in M3.</p></div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 01 -->
+    <section class="chapter" id="what">
+      <div class="chapter-head"><div class="num">01</div><h2>What Office Hum is</h2>
+        <div class="eyebrow">The product in one paragraph</div></div>
+      <div class="col">
+        <p>Office Hum is an open-source multi-agent office. Each job in a department, such as the front
+          desk, bookkeeping or office management, is its own AI agent with its own instructions, tools,
+          skills, approval rules and test suite. Every agent runs on Pi Durable, which keeps a durable
+          record of each conversation and tool call so work survives a crash. Office Hum hosts these
+          agents, lets them hand work to one another through a shared workboard, asks people for
+          approval before anything risky, and lets each business adjust the agents in plain language
+          without editing their code. The hosted version at officehum.com runs one office per business
+          on its own small server.</p>
+        <h3>What comes in the box</h3>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Part</th><th>Path</th><th>What it does</th><th>State</th></tr></thead>
+          <tbody>
+            <tr><td>Front Desk role</td><td><code>agents/frontdesk</code></td><td>Contacts, messages, bookings, reschedules, cancellations and approved email replies</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>SDK</td><td><code>packages/sdk</code></td><td>Role manifest, <code>defineRole</code>, overlays, approval gate, engines, evals, versioned file store</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Office host</td><td><code>packages/office</code></td><td>Solo runtime on Pi Durable, calendar, console and Resend messaging, signed inbound email, single-owner lock</td><td><span class="chip built">Solo only</span></td></tr>
+            <tr><td>CLI</td><td><code>packages/cli</code></td><td>The operator's controls, plus the Paper Ultramarine provider</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Google Calendar client</td><td><code>packages/google-calendar</code></td><td>Portable REST client and fake for tests</td><td><span class="chip built">Built</span></td></tr>
+            <tr class="planned"><td>Workboard, relay, office extension</td><td>none yet</td><td>The team runtime that lets roles hand work to each other</td><td><span class="chip planned">M2</span></td></tr>
+            <tr class="planned"><td>Bookkeeper, Office Manager</td><td>none yet</td><td>The other two starter roles</td><td><span class="chip planned">M1</span></td></tr>
+            <tr class="planned"><td>Paper Office tool pack and worker</td><td>none yet</td><td>Word, PowerPoint and Excel tools for every role</td><td><span class="chip planned">M3</span></td></tr>
+            <tr class="planned"><td>Studio, Inbox, hosted servers</td><td>none yet</td><td>Web interface, approvals inbox, one server per business</td><td><span class="chip planned">M4</span></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- 02 -->
+    <section class="chapter" id="stack">
+      <div class="chapter-head"><div class="num">02</div><h2>The stack and its boundaries</h2>
+        <div class="eyebrow">Who owns what, and what crosses each line</div></div>
+      <div class="col">
+        <p>Four layers stack on top of one another, and Paper Instruments plugs in at two separate
+          points: as a model provider under Pi Durable, and as document libraries inside a sandboxed
+          worker. Paper never runs its own agent loop.</p>
+      </div>
+
+      <figure class="figure wide">
+        <div class="scroll">
+        <svg viewBox="0 0 960 590" role="img" aria-labelledby="stackTitle">
+          <title id="stackTitle">Office Hum stack: channels, Office Hum host, role packages, Pi Durable, model providers, and the Paper Office document path</title>
+          <defs><marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
+
+          <!-- Row 1: channels -->
+          <g><rect x="20" y="16" width="146" height="50" rx="6" class="bx"/><text x="93" y="37" text-anchor="middle" class="t">Operator CLI</text><text x="93" y="55" text-anchor="middle" class="ts">built</text></g>
+          <g><rect x="178" y="16" width="146" height="50" rx="6" class="bx"/><text x="251" y="37" text-anchor="middle" class="t">Customer email</text><text x="251" y="55" text-anchor="middle" class="ts">Resend, built</text></g>
+          <g class="planned"><rect x="336" y="16" width="146" height="50" rx="6" class="bx dash"/><text x="409" y="37" text-anchor="middle" class="t">Studio · Inbox</text><text x="409" y="55" text-anchor="middle" class="ts">planned, M4</text></g>
+          <g class="planned"><rect x="494" y="16" width="146" height="50" rx="6" class="bx dash"/><text x="567" y="37" text-anchor="middle" class="t">Teams · Slack · SMS</text><text x="567" y="55" text-anchor="middle" class="ts">planned, M4–M5</text></g>
+          <path d="M330 66V100" class="ln" marker-end="url(#ah1)"/>
+
+          <!-- Row 2: Office Hum -->
+          <rect x="20" y="104" width="620" height="152" rx="8" class="bx-o"/>
+          <text x="36" y="126" class="tl c-o">OFFICE HUM<tspan class="ts" dx="8">host · coordination · configuration</tspan></text>
+          <g class="planned"><rect x="36" y="138" width="140" height="48" rx="5" class="bx dash"/><text x="106" y="158" text-anchor="middle" class="t">Workboard</text><text x="106" y="176" text-anchor="middle" class="ts">tickets · events</text></g>
+          <g class="planned"><rect x="186" y="138" width="140" height="48" rx="5" class="bx dash"/><text x="256" y="158" text-anchor="middle" class="t">Relay</text><text x="256" y="176" text-anchor="middle" class="ts">exactly-once delivery</text></g>
+          <g class="planned"><rect x="336" y="138" width="140" height="48" rx="5" class="bx dash"/><text x="406" y="158" text-anchor="middle" class="t">Office extension</text><text x="406" y="176" text-anchor="middle" class="ts">dispatch · hooks</text></g>
+          <g><rect x="486" y="138" width="140" height="48" rx="5" class="bx"/><text x="556" y="158" text-anchor="middle" class="t">Approver</text><text x="556" y="176" text-anchor="middle" class="ts">CLI prompt today</text></g>
+          <g><rect x="36" y="196" width="290" height="48" rx="5" class="bx"/><text x="181" y="216" text-anchor="middle" class="t">Host adapters</text><text x="181" y="234" text-anchor="middle" class="ts">calendar · contacts · email · state lock</text></g>
+          <g><rect x="336" y="196" width="290" height="48" rx="5" class="bx"/><text x="481" y="216" text-anchor="middle" class="t">Overlays and configuration</text><text x="481" y="234" text-anchor="middle" class="ts">SDK resolver built · Studio planned</text></g>
+
+          <path d="M330 256V296" class="ln" marker-end="url(#ah1)"/>
+          <text x="342" y="280" class="tm">configures roles but never edits them</text>
+
+          <!-- Row 3: roles -->
+          <g><rect x="20" y="300" width="146" height="78" rx="6" class="bx"/><text x="93" y="322" text-anchor="middle" class="tb">Front Desk</text><text x="93" y="341" text-anchor="middle" class="tl c-ok">BUILT</text><text x="93" y="362" text-anchor="middle" class="tm">booking.request</text></g>
+          <g class="planned"><rect x="178" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="251" y="322" text-anchor="middle" class="tb">Bookkeeper</text><text x="251" y="341" text-anchor="middle" class="tl c-part">PLANNED M1</text><text x="251" y="362" text-anchor="middle" class="tm">invoice.create</text></g>
+          <g class="planned"><rect x="336" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="409" y="322" text-anchor="middle" class="tb">Office Manager</text><text x="409" y="341" text-anchor="middle" class="tl c-part">PLANNED M1</text><text x="409" y="362" text-anchor="middle" class="tm">triage · digest</text></g>
+          <g class="planned"><rect x="494" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="567" y="322" text-anchor="middle" class="tb">Sales</text><text x="567" y="341" text-anchor="middle" class="tl c-part">PLANNED</text><text x="567" y="362" text-anchor="middle" class="tm">lead.qualify</text></g>
+
+          <path d="M330 378V404" class="ln" marker-end="url(#ah1)"/>
+          <text x="342" y="396" class="tm">defineRole() returns plain Pi Durable extensions</text>
+
+          <!-- Row 4: Pi Durable -->
+          <rect x="20" y="408" width="620" height="74" rx="8" class="bx-p"/>
+          <text x="36" y="432" class="tl c-p">PI DURABLE 1.0.2<tspan class="ts" dx="8">the only agent loop</tspan></text>
+          <text x="36" y="454" class="ts">harness · conversations · model and tool tasks · hooks · checkpoints · resume after a crash</text>
+          <text x="36" y="472" class="ts">Approval gates are Office Hum hooks that run inside it, before each tool call.</text>
+
+          <path d="M246 482V508" class="ln" marker-end="url(#ah1)"/>
+          <text x="258" y="500" class="tm">ModelRef { provider, modelId, thinkingLevel } via pi-ai</text>
+
+          <!-- Row 5: providers -->
+          <g><rect x="20" y="512" width="220" height="56" rx="6" class="bx-v"/><text x="130" y="535" text-anchor="middle" class="t">Paper · Ultramarine 1 Flash</text><text x="130" y="554" text-anchor="middle" class="ts">default for new conversations</text></g>
+          <g><rect x="252" y="512" width="180" height="56" rx="6" class="bx"/><text x="342" y="535" text-anchor="middle" class="t">OpenAI · gpt-6-sol</text><text x="342" y="554" text-anchor="middle" class="ts">explicit override</text></g>
+          <g class="planned"><rect x="444" y="512" width="196" height="56" rx="6" class="bx dot"/><text x="542" y="535" text-anchor="middle" class="t">43 other pi-ai providers</text><text x="542" y="554" text-anchor="middle" class="ts">in the library, not wired</text></g>
+
+          <!-- Column B: Paper -->
+          <g><rect x="670" y="16" width="270" height="50" rx="6" class="bx-v"/><text x="805" y="37" text-anchor="middle" class="t">Paper Instruments</text><text x="805" y="55" text-anchor="middle" class="ts">a supplier of model and libraries</text></g>
+          <text x="670" y="126" class="tl c-mut">DOCUMENT PATH · DESIGNED</text>
+          <g class="planned"><rect x="670" y="138" width="270" height="50" rx="6" class="bx dash"/><text x="805" y="159" text-anchor="middle" class="t">Paper Office tool pack</text><text x="805" y="177" text-anchor="middle" class="ts">typed tools + run_document_python</text></g>
+          <g class="planned"><rect x="670" y="208" width="270" height="50" rx="6" class="bx-o dash"/><text x="805" y="229" text-anchor="middle" class="t">DocumentService</text><text x="805" y="247" text-anchor="middle" class="ts">leases · ledger · validation · review</text></g>
+          <g><rect x="670" y="278" width="270" height="50" rx="6" class="bx-o"/><text x="805" y="299" text-anchor="middle" class="t">Versioned FileStore</text><text x="805" y="317" text-anchor="middle" class="ts">immutable versions · receipts · built</text></g>
+          <g class="planned"><rect x="670" y="348" width="270" height="50" rx="6" class="bx dash"/><text x="805" y="369" text-anchor="middle" class="t">Restricted Python worker</text><text x="805" y="387" text-anchor="middle" class="ts">no network · no credentials</text></g>
+          <g class="planned"><rect x="670" y="418" width="270" height="50" rx="6" class="bx-v dash"/><text x="805" y="439" text-anchor="middle" class="t">paper-docx · pptx · xlsx</text><text x="805" y="457" text-anchor="middle" class="ts">pinned 0.2.x · not installed yet</text></g>
+          <path d="M805 188V204" class="ln" marker-end="url(#ah1)"/>
+          <path d="M805 258V274" class="ln" marker-end="url(#ah1)"/>
+          <path d="M940 233H952V373H944" class="ln" marker-end="url(#ah1)"/>
+          <path d="M805 398V414" class="ln" marker-end="url(#ah1)"/>
+          <path d="M640 339C656 339 652 163 666 163" class="ln dash" marker-end="url(#ah1)"/>
+
+          <!-- Legend -->
+          <rect x="670" y="500" width="34" height="14" rx="3" class="bx"/><text x="714" y="512" class="ts">Built on main</text>
+          <rect x="670" y="524" width="34" height="14" rx="3" class="bx dash"/><text x="714" y="536" class="ts">Planned in design or Linear</text>
+          <rect x="670" y="548" width="34" height="14" rx="3" class="bx dot"/><text x="714" y="560" class="ts">Not planned yet</text>
+        </svg>
+        </div>
+        <figcaption><b>Figure 2.1</b> The stack. Read it top to bottom: people reach Office Hum, Office Hum
+          installs role packages, roles run inside Pi Durable, and Pi Durable calls a model through pi-ai.
+          The right column is the planned document path, where Paper's libraries run in a sandbox that
+          the Office Hum host controls.</figcaption>
+      </figure>
+
+      <h3>Who owns what</h3>
+      <div class="three">
+        <div class="owner o">
+          <span class="chip o">Host and product</span>
+          <h4>Office Hum</h4>
+          <ul>
+            <li>Picks which roles run and injects their connectors (calendar, email, accounting)</li>
+            <li>Supplies the approver: who may say yes, and through which screen</li>
+            <li>Coordinates roles: workboard, relay, hand-offs by ticket type</li>
+            <li>Keeps each business's overlays and runs Studio and the configurator</li>
+            <li>Owns files: storage, leases, review and publication</li>
+          </ul>
+          <div class="never">Never edits a role package. Never runs its own agent loop.</div>
+        </div>
+        <div class="owner p">
+          <span class="chip p">Execution authority</span>
+          <h4>Pi Durable</h4>
+          <ul>
+            <li>Runs the agent loop: model turn, tool calls, next turn</li>
+            <li>Commits every entry and tool result before showing it</li>
+            <li>Stores approval decisions and checkpoints in task memos</li>
+            <li>Resumes interrupted work without repeating finished steps</li>
+            <li>Holds each conversation's pinned model and tools</li>
+          </ul>
+          <div class="never">Knows nothing about tickets, roles, businesses or Office files.</div>
+        </div>
+        <div class="owner v">
+          <span class="chip v">Supplier</span>
+          <h4>Paper Instruments</h4>
+          <ul>
+            <li>Ultramarine 1 Flash answers model requests through pi-ai</li>
+            <li>paper-docx, paper-pptx and paper-xlsx edit Office files inside the worker</li>
+            <li>Paper Rubric may add optional quality notes on documents</li>
+          </ul>
+          <div class="never">Never holds conversation state, credentials or approval power. Feather, Paper's own office agent, is a reference only, not a second harness.</div>
+        </div>
+      </div>
+
+      <h3>What crosses each boundary</h3>
+      <p class="col">Each line in Figure 2.1 is a contract. Knowing what passes across it tells you where a
+        bug or a policy belongs.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Boundary</th><th>What crosses it</th><th>What never crosses it</th></tr></thead>
+        <tbody>
+          <tr><td>Office Hum → role</td><td>App clients (calendar, messenger), an approver, overlay folders, the model choice for new conversations</td><td>Edits to the package. Extra tools: overlays can only switch tools off.</td></tr>
+          <tr><td>Role → Pi Durable</td><td>Extensions, tools with a declared replay class, prompt sections, the approval hook, agent settings</td><td>The <code>officehum.json</code> manifest. Pi Durable ignores it; Office Hum reads it for routing, Studio and the Inbox.</td></tr>
+          <tr><td>Pi Durable → model</td><td>A <code>ModelRef</code>, the prompt and the tool schemas, through a pi-ai provider</td><td>Silent fallback to another provider. A failed call is surfaced and the work stays resumable.</td></tr>
+          <tr><td>Role → document service</td><td>File references, a task-scoped lease, typed operation arguments, an operation ID</td><td>Server paths, shell commands, credentials, or permission widened by prompt or document text</td></tr>
+          <tr><td>Document service → Paper worker</td><td>Read-only leased versions, one writable staging folder, bounded CPU, memory and time</td><td>Network, home folder, host credentials, agent state</td></tr>
+          <tr><td>Role → role</td><td>Tickets of a declared type, through the workboard and relay</td><td>Direct calls to another role's tools</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 03 -->
+    <section class="chapter" id="harness">
+      <div class="chapter-head"><div class="num">03</div><h2>Pi Durable, the harness</h2>
+        <div class="eyebrow">The engine every agent runs on</div></div>
+      <div class="col">
+        <p>Pi Durable (<code>@earendil-works/pi-durable</code>) is a durable agent harness from Earendil,
+          built on the Pi model library <code>pi-ai</code>. Its one promise: nothing is shown before it is
+          stored. Conversations, model turns, tool calls and custom state are written to storage in atomic
+          commits. If the process dies mid-turn, reopening storage picks up the work where it stopped.</p>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Pi Durable term</th><th>Meaning</th><th>How Office Hum uses it</th></tr></thead>
+          <tbody>
+            <tr><td>Harness</td><td>One open store plus the machinery that runs agents on it</td><td>Solo mode: one per state folder. Planned: one per office, hosting every role.</td></tr>
+            <tr><td>Conversation</td><td>A transcript of immutable entries; can be forked or owned by a task</td><td>Each role session is a conversation. Inbound email gets its own.</td></tr>
+            <tr><td>Agent</td><td>Model, thinking level, extensions, tools and instructions, stored per conversation</td><td>A role's <code>agent</code> settings. The model is pinned when the conversation is created.</td></tr>
+            <tr><td>Extension</td><td>A named bundle of tools, prompt sections, hooks and tasks</td><td><code>defineRole</code> turns a role package into extensions.</td></tr>
+            <tr><td>Task</td><td>A durable state machine that checkpoints every step</td><td>Every tool call is a task, so an approval decision survives a restart.</td></tr>
+            <tr><td>Hook</td><td>Code that runs before or after a tool, request or compaction</td><td>The approval gate is a <code>beforeTool</code> hook. Context and memory hooks are designed.</td></tr>
+            <tr><td>Submission + requestId</td><td>Input admitted durably, deduplicated by request ID</td><td>The CLI's <code>--request-id</code>; the planned relay uses the event ID.</td></tr>
+            <tr><td>Task-owned conversation</td><td>A child conversation owned by a task: a subagent</td><td>Designed for narrow helper sub-agents inside one role (RASF-3235).</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note caution"><span class="label">Caution</span>Pi Durable's API is experimental and
+          can change between releases. Office Hum pins one exact version (1.0.2), lets Dependabot propose
+          upgrades, and routes runtime calls through one adapter. The upgrade to 1.1.x is its own ticket
+          (RASF-3237).</div>
+      </div>
+    </section>
+
+    <!-- 04 -->
+    <section class="chapter" id="roles">
+      <div class="chapter-head"><div class="num">04</div><h2>Roles</h2>
+        <div class="eyebrow">A role is a portable Pi Durable agent</div></div>
+      <div class="col">
+        <p>A role is an npm package, free under the MIT license, that installs into any Pi Durable 1.0.x
+          harness with or without Office Hum. Most of it is plain files that Pi users already know. Its
+          code is a thin entry point that defines the tools and calls <code>defineRole</code>.</p>
+        <div class="tree"><span class="k">@officehum/bookkeeper/</span>
+  package.json        <span class="c"># Pi Durable and pi-ai as peer dependencies</span>
+  officehum.json      <span class="c"># manifest: tools, approvals, accepts, connectors, default model</span>
+  AGENTS.md           <span class="c"># who the role is and what it may not do (under 1,000 words)</span>
+  APPEND_SYSTEM.md    <span class="c"># hard rules appended to the end of the prompt</span>
+  skills/collections/SKILL.md   <span class="c"># loaded on demand with read_skill</span>
+  src/index.ts        <span class="c"># tools, approval conditions, defineRole(...)</span>
+  evals/              <span class="c"># scenarios that must pass in a bare Pi Durable harness</span></div>
+
+        <h3>Four layers keep a role honest</h3>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Layer</th><th>Lives in</th><th>Job</th></tr></thead>
+          <tbody>
+            <tr><td>Context</td><td><code>AGENTS.md</code>, <code>APPEND_SYSTEM.md</code></td><td>Informs. Who the role is. No amounts or thresholds.</td></tr>
+            <tr><td>Knowledge</td><td>Skills and their reference files</td><td>Informs. Loaded only when needed.</td></tr>
+            <tr><td>Wisdom</td><td>Replay class, approval rules, overlay limits</td><td>Controls, in code. A prompt edit cannot switch it off.</td></tr>
+            <tr><td>Workflow</td><td><code>accepts</code> with completion evidence</td><td>Controls. A ticket is done only when its evidence checks out.</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>Overlays: one business's changes</h3>
+        <p>An overlay is a folder with the same layout as the package. It adds to <code>AGENTS.md</code>,
+          adds or edits skills, picks the model and switches skills and tools on or off. It can switch a
+          tool off but never add one; new tools arrive only in a package release. Office Hum keeps one
+          overlay per agent per business with version history, so upgrading a role never overwrites the
+          business's settings.</p>
+
+        <h3>The roster</h3>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Role</th><th>Accepts</th><th>Approval gates</th><th>State</th></tr></thead>
+          <tbody>
+            <tr><td>Front Desk</td><td><code>booking.request</code> (plus <code>customer.reply</code> planned)</td><td>Contact create and update, first contact, booking, reschedule, cancel</td><td><span class="chip built">Built</span></td></tr>
+            <tr class="planned"><td>Bookkeeper</td><td><code>invoice.create</code>, <code>invoice.question</code></td><td><code>large_invoice</code> (over $5,000 by default), <code>new_recipient</code>, <code>final_notice</code></td><td><span class="chip planned">M1 backlog</span></td></tr>
+            <tr class="planned"><td>Office Manager</td><td><code>triage</code>, <code>digest.request</code></td><td>No tools of its own; the office's front door for unrouted work</td><td><span class="chip planned">M1 backlog</span></td></tr>
+            <tr class="planned"><td>Configurator</td><td>Plain-language configuration requests</td><td>Every overlay change shown as a diff for approval</td><td><span class="chip planned">M4 backlog</span></td></tr>
+            <tr class="planned"><td>Sales</td><td><code>lead.qualify</code>, <code>quote.request</code></td><td><code>discount_over_limit</code>, <code>large_quote</code>, <code>first_contact</code> (draft brief)</td><td><span class="chip planned">Epic RASF-3295</span></td></tr>
+          </tbody>
+        </table></div>
+        <p>The roster is meant to grow into a free catalog covering every department of a company
+          (RASF-3293), with the owner choosing departments, roles and order in RASF-3294. Most roles are
+          meant to come from the Role Factory (RASF-3096): an interview produces a
+          <code>ROLE_SPEC.md</code>, which a generator turns into a role package of exactly this shape.
+          Every catalog role passes the same SDK checks and its evals in a bare Pi Durable harness.</p>
+      </div>
+    </section>
+
+    <!-- 05 -->
+    <section class="chapter" id="models">
+      <div class="chapter-head"><div class="num">05</div><h2>Models</h2>
+        <div class="eyebrow">Ultramarine by default, other providers by choice</div></div>
+      <div class="col">
+        <p>Office Hum registers Paper's Ultramarine 1 Flash as a custom pi-ai provider named
+          <code>paper</code>. It talks to Paper's OpenAI-compatible endpoint, maps thinking levels to
+          Paper's <code>low</code>, <code>high</code> and <code>max</code>, and sends system messages
+          instead of developer messages, which Paper rejects. A guard turns a stream that ends without
+          its closing marker into an error, so a cut-off answer is never taken as complete.</p>
+
+        <h3>How a conversation gets its model</h3>
+        <ol class="flow" style="--paper: var(--pi)">
+          <li><div><b>Role default</b><span>The manifest's <code>defaultModel</code>. Front Desk:
+            <code>paper / ultramarine-1-flash / max</code>.</span></div></li>
+          <li><div><b>Business overlay</b><span><code>settings.json</code> can set
+            <code>defaultProvider</code>, <code>defaultModel</code> and <code>defaultThinkingLevel</code>.
+            Studio's model picker will edit this (planned).</span></div></li>
+          <li><div><b>Operator override</b><span>Today the CLI's <code>--provider paper|openai</code> and
+            <code>--model</code>.</span></div></li>
+          <li><div><b>Pinned at creation</b><span>The choice is stored in the conversation. Resuming
+            later always uses the same provider and model, even if the default has changed.</span></div></li>
+        </ol>
+
+        <h3>Provider availability</h3>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Option</th><th>State</th><th>Where</th></tr></thead>
+          <tbody>
+            <tr><td>Paper · Ultramarine 1 Flash</td><td><span class="chip built">Default</span></td><td><code>packages/cli/src/paper-provider.ts</code>, RASF-3282</td></tr>
+            <tr><td>OpenAI · gpt-6-sol</td><td><span class="chip built">Override</span></td><td>CLI <code>--provider openai</code></td></tr>
+            <tr class="planned"><td>Bring your own key</td><td><span class="chip planned">M4</span></td><td>RASF-3175: providers pi-ai supports that Office Hum lists</td></tr>
+            <tr class="planned"><td>Per-agent model picker</td><td><span class="chip planned">M4</span></td><td>Studio Agents screen, RASF-3150</td></tr>
+            <tr class="planned"><td>Model tiers and cheaper sub-agent models</td><td><span class="chip planned">M2</span></td><td><code>contextPlan</code>, RASF-3232 and RASF-3235</td></tr>
+            <tr class="planned"><td>Portable Paper provider package</td><td><span class="chip planned">M1</span></td><td>RASF-3297: register Ultramarine in any Pi Durable install</td></tr>
+            <tr class="planned"><td>Model marketplace</td><td><span class="chip planned">M4</span></td><td>Epic RASF-3296: provider catalog RASF-3298, Studio screen RASF-3299</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note"><span class="label">Note</span>The marketplace epic covers the three missing
+          pieces: a tested catalog of the pi-ai providers and models Office Hum lists, provider
+          registration in a portable package rather than in the CLI, and a Studio screen to connect keys
+          and pick a model per agent. One decision stays open: bundled usage versus bring-your-own-key
+          billing (RASF-3184). Since pi-ai already supports 44 providers, most of the work is the
+          catalog, testing and billing rather than new adapters.</div>
+      </div>
+    </section>
+
+    <!-- 06 -->
+    <section class="chapter" id="documents">
+      <div class="chapter-head"><div class="num">06</div><h2>Paper Office documents</h2>
+        <div class="eyebrow">Approved design · file store built · tools not built</div></div>
+      <div class="col">
+        <p>The design gives every role two ways to work on Word, PowerPoint and Excel files: small typed
+          tools (<code>inspect_document</code>, <code>read_document</code>, <code>edit_document</code>,
+          <code>create_document</code>, <code>preview_document</code>, <code>compare_document</code>,
+          <code>publish_document</code>) and, when a task grants it, <code>run_document_python</code>, a
+          sandboxed Python workspace with the three pinned Paper libraries. Both ship as a portable tool
+          pack. Office Hum supplies the document service behind it; a bare Pi Durable user can supply
+          their own.</p>
+        <div class="note warning"><span class="label">Not yet available</span>None of the tools below
+          exist on main. What exists is the versioned file store they will write to:
+          immutable versions, operation receipts and replay, stale-edit conflicts, and a publish pointer
+          that only moves if nobody changed the file first.</div>
+
+        <h3>The life of a document edit</h3>
+        <ol class="flow">
+          <li><div><b>Lease</b><span>The host admits the task, pins every input file to an exact version
+            and hash, and grants a lease: which files, which formats, how long, how much compute. Prompt
+            text, skills and document contents cannot widen it.</span></div></li>
+          <li><div><b>Operation ID</b><span>Each edit gets a stable ID derived from the Pi Durable task
+            and tool call. Reusing it with different intent fails.</span></div></li>
+          <li><div><b>Ledger check</b><span>If that operation already committed, the same receipt is
+            returned. No edit runs twice after a crash.</span></div></li>
+          <li><div><b>Worker runs in staging</b><span>The Python worker opens only leased versions and
+            writes only to staging. No network, credentials or home folder.</span></div></li>
+          <li><div><b>Validate</b><span>The output is reopened with the pinned library and checked:
+            Word structure and redlines, PowerPoint slide renders, Excel formulas and changed cells.
+            Macros, external links and zip bombs are rejected.</span></div></li>
+          <li><div><b>Commit</b><span>An immutable version and its receipt are stored, then reported back
+            to Pi Durable.</span>
+            <div class="fork">
+              <div><b>New file</b>Saved as a draft automatically.</div>
+              <div><b>Existing business file</b>Becomes a proposal. A person reviews the exact source,
+                proposal, diff and preview.</div>
+            </div></div></li>
+          <li><div><b>Publish</b><span>On approval, the published pointer moves only if the source is
+            still current. If someone changed the file meanwhile, it conflicts and needs a fresh
+            review.</span></div></li>
+        </ol>
+        <p>Numbers in a document or deck must trace back to spreadsheet or engine results, never to model
+          arithmetic. Paper Rubric may score layout and clarity, but it cannot approve publication.</p>
+        <p>Delivery order: provider (done), file foundation (SDK done; office store and worker not
+          started), the three format adapters, then review and publish. Each format has its own
+          adapter ticket in M3: Word (RASF-3300), PowerPoint (RASF-3284) and Excel (RASF-3301).</p>
+      </div>
+    </section>
+
+    <!-- 07 -->
+    <section class="chapter" id="team">
+      <div class="chapter-head"><div class="num">07</div><h2>Running a team of agents</h2>
+        <div class="eyebrow">Front Desk, Sales, Bookkeeper and Office Manager in one office · designed for M2, not built</div></div>
+      <div class="col">
+        <p>In a running office, one runtime process hosts one Pi Durable harness and every role in it, all
+          in one SQLite file. Roles never call each other. They post <b>tickets</b> of a declared type to
+          a shared <b>workboard</b>, and a <b>relay</b> delivers each ticket exactly once to the role whose
+          manifest <code>accepts</code> that type. Work nobody accepts goes to the Office Manager's triage,
+          then to a person.</p>
+      </div>
+
+      <figure class="figure wide planned-fig">
+        <div class="scroll">
+        <svg viewBox="0 0 960 490" role="img" aria-labelledby="hubTitle">
+          <title id="hubTitle">Four roles connected only through the workboard and relay, with people approving in the Inbox</title>
+          <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
+
+          <g><rect x="360" y="16" width="240" height="56" rx="6" class="bx"/><text x="480" y="39" text-anchor="middle" class="t">Customers and channels</text><text x="480" y="58" text-anchor="middle" class="ts">email today · SMS and web chat later</text></g>
+          <path d="M360 52C330 60 316 76 300 96" class="ln" marker-end="url(#ah2)"/>
+          <path d="M600 52C630 60 644 76 660 96" class="ln dash" marker-end="url(#ah2)"/>
+
+          <!-- Front Desk -->
+          <g><rect x="40" y="96" width="260" height="110" rx="6" class="bx"/>
+            <text x="56" y="120" class="tb">Front Desk</text><text x="284" y="120" text-anchor="end" class="tl c-ok">BUILT SOLO</text>
+            <text x="56" y="144" class="tm">accepts</text><text x="132" y="144" class="tm" style="fill: var(--ink)">booking.request</text>
+            <text x="132" y="162" class="tm" style="fill: var(--ink)">customer.reply</text>
+            <text x="56" y="184" class="tm">hands off</text><text x="132" y="184" class="tm" style="fill: var(--ink)">invoice.question</text>
+            <text x="132" y="200" class="tm" style="fill: var(--ink)">lead.qualify (example)</text></g>
+          <!-- Sales -->
+          <g class="planned"><rect x="660" y="96" width="260" height="110" rx="6" class="bx dash"/>
+            <text x="676" y="120" class="tb">Sales</text><text x="904" y="120" text-anchor="end" class="tl c-part">PLANNED</text>
+            <text x="676" y="144" class="tm">accepts</text><text x="752" y="144" class="tm" style="fill: var(--ink)">lead.qualify</text>
+            <text x="752" y="162" class="tm" style="fill: var(--ink)">quote.request</text>
+            <text x="676" y="184" class="tm">hands off</text><text x="752" y="184" class="tm" style="fill: var(--ink)">invoice.create</text>
+            <text x="752" y="200" class="tm" style="fill: var(--ink)">booking.request</text></g>
+          <!-- Office Manager -->
+          <g class="planned"><rect x="40" y="320" width="260" height="110" rx="6" class="bx dash"/>
+            <text x="56" y="344" class="tb">Office Manager</text><text x="284" y="344" text-anchor="end" class="tl c-part">PLANNED</text>
+            <text x="56" y="368" class="tm">accepts</text><text x="132" y="368" class="tm" style="fill: var(--ink)">triage</text>
+            <text x="132" y="386" class="tm" style="fill: var(--ink)">digest.request</text>
+            <text x="56" y="410" class="ts">Catches tickets no role accepts</text></g>
+          <!-- Bookkeeper -->
+          <g class="planned"><rect x="660" y="320" width="260" height="110" rx="6" class="bx dash"/>
+            <text x="676" y="344" class="tb">Bookkeeper</text><text x="904" y="344" text-anchor="end" class="tl c-part">PLANNED</text>
+            <text x="676" y="368" class="tm">accepts</text><text x="752" y="368" class="tm" style="fill: var(--ink)">invoice.create</text>
+            <text x="752" y="386" class="tm" style="fill: var(--ink)">invoice.question</text>
+            <text x="676" y="410" class="ts">QuickBooks Online · never moves money</text></g>
+
+          <!-- Hub -->
+          <g class="planned"><rect x="360" y="206" width="240" height="114" rx="8" class="bx-o dash"/>
+            <text x="480" y="230" text-anchor="middle" class="tl c-o">WORKBOARD + RELAY</text>
+            <text x="480" y="252" text-anchor="middle" class="ts">tickets with append-only events</text>
+            <text x="480" y="270" text-anchor="middle" class="ts">routes by ticket type</text>
+            <text x="480" y="288" text-anchor="middle" class="ts">delivers each event once</text>
+            <text x="480" y="306" text-anchor="middle" class="ts">after 4 hops, asks a person</text></g>
+
+          <path d="M300 186L356 232" class="ln" marker-start="url(#ah2)" marker-end="url(#ah2)"/>
+          <path d="M660 186L604 232" class="ln" marker-start="url(#ah2)" marker-end="url(#ah2)"/>
+          <path d="M300 340L356 296" class="ln" marker-start="url(#ah2)" marker-end="url(#ah2)"/>
+          <path d="M660 340L604 296" class="ln" marker-start="url(#ah2)" marker-end="url(#ah2)"/>
+          <text x="236" y="252" class="tm halo">agent_dispatch</text>
+          <text x="614" y="252" class="tm halo">agent_inbox</text>
+          <text x="228" y="304" class="tm halo">triage</text>
+          <text x="614" y="304" class="tm halo">agent_reply</text>
+
+          <!-- Forbidden direct line -->
+          <path d="M300 146H660" class="ln-no"/>
+          <circle cx="480" cy="146" r="12" fill="var(--surface)" stroke="var(--no)" stroke-width="1.5"/>
+          <path d="M474 140L486 152M486 140L474 152" stroke="var(--no)" stroke-width="2"/>
+          <text x="480" y="180" text-anchor="middle" class="tm halo" style="fill: var(--no)">no direct calls between roles</text>
+
+          <!-- People -->
+          <g><rect x="360" y="380" width="240" height="70" rx="6" class="bx"/><text x="480" y="406" text-anchor="middle" class="t">Owner and staff</text><text x="480" y="426" text-anchor="middle" class="ts">approve in the Inbox (CLI today)</text><text x="480" y="442" text-anchor="middle" class="ts">receive escalations</text></g>
+          <path d="M480 320V376" class="ln" marker-end="url(#ah2)"/>
+          <text x="40" y="474" class="tm">All four roles are conversations in one Pi Durable harness per office. Sales ticket types come from its draft brief.</text>
+        </svg>
+        </div>
+        <figcaption><b>Figure 7.1</b> The office as a hub. Each role knows its colleagues from a short
+          <code>team</code> section and can look up an agent card (what it accepts, what it never does), but
+          it hands work over only by ticket type, through host tools. Nothing lets one agent run another
+          agent's tools.</figcaption>
+      </figure>
+
+      <h3>The rules that make it safe</h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Rule</th><th>Why it matters</th><th>Ticket</th></tr></thead>
+        <tbody>
+          <tr><td>Dispatch by type, never by name</td><td>You can replace or add a role without rewiring the others</td><td>RASF-3109</td></tr>
+          <tr><td>Exactly-once delivery</td><td>The relay uses the event ID as the Pi Durable request ID, so a crash cannot deliver a ticket twice</td><td>RASF-3067</td></tr>
+          <tr><td>Provenance and budget are inherited</td><td>A child ticket carries where the work came from (customer email is <i>external</i>) and what budget remains</td><td>RASF-3066, 3142</td></tr>
+          <tr><td>Hop limit</td><td>After four hand-offs a ticket goes to a person, so agents cannot loop</td><td>RASF-3066</td></tr>
+          <tr><td>Evidence to close</td><td>A ticket is done only when its declared evidence checks out, such as an invoice ID in QuickBooks</td><td>RASF-3230</td></tr>
+          <tr><td>Install-time check</td><td>The office warns when a role hands off a ticket type nobody accepts</td><td>RASF-3236</td></tr>
+          <tr><td>Shared memory and files</td><td>Facts are shared office-wide; a file one agent makes is handed to another by ID</td><td>RASF-3222, 3193</td></tr>
+          <tr><td>Askers' permissions</td><td>An agent answering a staff member acts with that person's approval limits, not its own</td><td>RASF-3089</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Worked example: a prospect becomes an invoice</h3>
+      <p class="col">A prospect emails asking for a meeting on Tuesday and for onboarding pricing. Four
+        agents and the owner handle it. Steps 5 to 12 depend on M2 and on roles that are not built yet;
+        the Sales ticket types come from its draft brief (RASF-3295).</p>
+
+      <figure class="figure wide">
+        <div class="scroll">
+        <svg viewBox="0 0 960 712" role="img" aria-labelledby="seqTitle">
+          <title id="seqTitle">Sequence: customer email to Front Desk, owner approval, hand-off to Sales, proposal draft, invoice hand-off to Bookkeeper, owner approval, completion</title>
+          <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
+          <g>
+            <rect x="12" y="16" width="136" height="44" rx="6" class="bx"/><text x="80" y="43" text-anchor="middle" class="t">Customer</text>
+            <rect x="172" y="16" width="136" height="44" rx="6" class="bx"/><text x="240" y="43" text-anchor="middle" class="t">Front Desk</text>
+            <rect x="332" y="16" width="136" height="44" rx="6" class="bx dash planned"/><text x="400" y="43" text-anchor="middle" class="t">Sales</text>
+            <rect x="492" y="16" width="136" height="44" rx="6" class="bx-o dash planned"/><text x="560" y="43" text-anchor="middle" class="t">Board + relay</text>
+            <rect x="652" y="16" width="136" height="44" rx="6" class="bx dash planned"/><text x="720" y="43" text-anchor="middle" class="t">Bookkeeper</text>
+            <rect x="812" y="16" width="136" height="44" rx="6" class="bx"/><text x="880" y="43" text-anchor="middle" class="t">Owner</text>
+          </g>
+          <path d="M80 60V700M240 60V700M400 60V700M560 60V700M720 60V700M880 60V700" class="life"/>
+
+          <path d="M80 100H236" class="ln" marker-end="url(#ah3)"/><text x="160" y="92" text-anchor="middle" class="ts halo">1 Asks for a meeting</text>
+          <path d="M240 152H876" class="ln" marker-end="url(#ah3)"/><text x="560" y="144" text-anchor="middle" class="ts halo">2 Approve Tue 10:00 booking and the reply?</text>
+          <path d="M880 204H244" class="ln" marker-end="url(#ah3)"/><text x="560" y="196" text-anchor="middle" class="ts halo">3 Allow</text>
+          <path d="M240 256H84" class="ln" marker-end="url(#ah3)"/><text x="160" y="248" text-anchor="middle" class="ts halo">4 Confirms Tuesday</text>
+          <g class="planned">
+            <path d="M240 308H556" class="ln" marker-end="url(#ah3)"/><text x="400" y="300" text-anchor="middle" class="ts halo">5 dispatch lead.qualify</text>
+            <path d="M560 360H404" class="ln" marker-end="url(#ah3)"/><text x="480" y="352" text-anchor="middle" class="ts halo">6 Delivered once</text>
+            <rect x="330" y="384" width="216" height="44" rx="5" class="bx-v dash"/><text x="438" y="403" text-anchor="middle" class="ts" style="fill: var(--ink)">7 Drafts proposal.pptx</text><text x="438" y="420" text-anchor="middle" class="tm">new file, saved as draft</text>
+            <path d="M400 464H556" class="ln" marker-end="url(#ah3)"/><text x="480" y="456" text-anchor="middle" class="ts halo">8 invoice.create $6,000</text>
+            <path d="M560 516H716" class="ln" marker-end="url(#ah3)"/><text x="640" y="508" text-anchor="middle" class="ts halo">9 Delivered once</text>
+            <path d="M720 568H876" class="ln" marker-end="url(#ah3)"/><text x="800" y="560" text-anchor="middle" class="ts halo">10 large_invoice?</text>
+            <path d="M880 620H724" class="ln" marker-end="url(#ah3)"/><text x="800" y="612" text-anchor="middle" class="ts halo">11 Allow</text>
+            <path d="M720 672H564" class="ln" marker-end="url(#ah3)"/><text x="640" y="664" text-anchor="middle" class="ts halo">12 Done, invoice ID</text>
+          </g>
+        </svg>
+        </div>
+        <figcaption><b>Figure 7.2</b> Steps 1 to 4 work today in solo mode: inbound email, approval and
+          an approved reply. Step 7 needs the Paper Office pack. Steps 5, 6, 8, 9 and 12 need the
+          workboard and relay. Steps 10 and 11 need the Bookkeeper.</figcaption>
+      </figure>
+
+      <ol class="flow" style="--paper: var(--office)">
+        <li><div><b>Email arrives at Front Desk</b><span>A signed Resend webhook creates an inbound receipt
+          and a conversation. In that conversation the Front Desk may only check the schedule and reply.
+          The email text is outside content: it can never grant an approval.</span></div></li>
+        <li><div><b>Owner approves the booking and the exact reply</b><span>Both are gated. Without an
+          answer nothing is written or sent.</span></div></li>
+        <li><div><b>Front Desk hands the sales question off</b><span>It does not answer pricing itself.
+          It dispatches a ticket of type <code>lead.qualify</code>, tagged with external provenance, to
+          the board.</span></div></li>
+        <li><div><b>Relay delivers it to Sales once</b><span>Sales accepts the type. If no role accepted
+          it, the Office Manager would triage it.</span></div></li>
+        <li><div><b>Sales drafts a proposal deck</b><span>Its task gets a file lease. The new deck is
+          stored as a draft. Before it reaches the customer, a person reviews it, and the first message
+          to a new address needs approval.</span></div></li>
+        <li><div><b>Sales hands off the deposit invoice</b><span><code>invoice.create</code> goes to the
+          Bookkeeper. It carries the original provenance and the remaining budget.</span></div></li>
+        <li><div><b>Bookkeeper asks for approval</b><span>$6,000 exceeds the <code>large_invoice</code>
+          limit, so the owner decides in the Inbox. QuickBooks totals the invoice; the agent does no
+          arithmetic.</span></div></li>
+        <li><div><b>Ticket closes on evidence</b><span>The board closes the ticket only when the invoice ID
+          checks out, then Sales gets the reply.</span></div></li>
+      </ol>
+      <p class="col">If the process crashes anywhere in this chain, Pi Durable resumes each conversation
+        from its last commit, the relay does not redeliver tickets already delivered, and the approval
+        decisions already made stay made. The M2 exit test is exactly this: a Front Desk to Bookkeeper
+        <code>invoice.create</code> hand-off that survives a crash with nothing lost or duplicated.</p>
+    </section>
+
+    <!-- 08 -->
+    <section class="chapter" id="safety">
+      <div class="chapter-head"><div class="num">08</div><h2>Safety and approvals</h2>
+        <div class="eyebrow">Guardrails live in code, not in prompts</div></div>
+      <div class="col">
+        <div class="tablewrap"><table>
+          <thead><tr><th>Guardrail</th><th>How it is enforced</th><th>State</th></tr></thead>
+          <tbody>
+            <tr><td>Gated tools wait for a person</td><td><code>approvalGate()</code>, a Pi Durable <code>beforeTool</code> hook. With no approver supplied, gated actions are refused.</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Decisions survive restarts</td><td>Stored as task memos; a declined call stays declined after recovery</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Customer text cannot approve</td><td>Inbound email conversations only get schedule and reply tools</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Receipts, not words</td><td>A write is complete only when its tool returns a receipt</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>One owner per state folder</td><td>A SQLite lock rejects a second live process</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>No shell or file-writing tools</td><td>Package validation rejects them; the Paper workspace is the one sandboxed exception</td><td><span class="chip built">Built</span></td></tr>
+            <tr class="planned"><td>Protected memory</td><td>Bank details, approval limits and permissions can be set only by a person</td><td><span class="chip planned">M3</span></td></tr>
+            <tr class="planned"><td>Budgets, hop limits, provenance</td><td>Enforced by the board</td><td><span class="chip planned">M2–M3</span></td></tr>
+            <tr class="planned"><td>Kill switch and escalation</td><td>Stop an agent or route stale approvals upward</td><td><span class="chip planned">M3</span></td></tr>
+          </tbody>
+        </table></div>
+        <div class="note warning"><span class="label">Warning</span>The versioned file store records an
+          approval ID when it publishes, but it does not verify that approval. Until the document service
+          exists, do not treat a publish call on its own as proof that a person reviewed the file.</div>
+      </div>
+    </section>
+
+    <!-- 09 -->
+    <section class="chapter" id="operate">
+      <div class="chapter-head"><div class="num">09</div><h2>Operating it today</h2>
+        <div class="eyebrow">The Front Desk, solo, on your machine</div></div>
+      <div class="col">
+        <p>The credential-free demo runs a synthetic model and leaves a resumable state folder. Requires
+          Node 22.19 or later.</p>
+<pre class="cmd">npm install
+npm run build
+node packages/cli/dist/index.js demo --state .officehum/frontdesk-demo --approval allow
+node packages/cli/dist/index.js bookings --state .officehum/frontdesk-demo
+node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
+        <p>Live mode uses Ultramarine by default. Put <code>PAPERINSTRUMENTS_API_KEY</code> in the process
+          environment from your secret store, then run <code>start</code> with a message and a request ID.
+          Add <code>--provider openai</code> to use OpenAI instead.</p>
+<pre class="cmd">node packages/cli/dist/index.js start \
+  --state .officehum/frontdesk-live \
+  --message "Book Demo Guest on 2030-01-15" \
+  --request-id booking-1</pre>
+
+        <h3>Commands</h3>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>demo</code></td><td>Runs the synthetic booking with no keys</td></tr>
+            <tr><td><code>start</code></td><td>Submits a durable request; asks for <code>allow</code> or <code>deny</code> on gated actions</td></tr>
+            <tr><td><code>resume</code></td><td>Continues interrupted work from storage</td></tr>
+            <tr><td><code>bookings</code>, <code>contacts</code></td><td>Read-only lists; no model is loaded</td></tr>
+            <tr><td><code>listen</code></td><td>Local webhook listener for inbound Resend email on 127.0.0.1</td></tr>
+            <tr><td><code>inbox</code></td><td>Inbound receipts without sender, subject or body</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>What is in a state folder</h3>
+        <div class="tree"><span class="k">.officehum/frontdesk/</span>
+  harness/           <span class="c"># Pi Durable JSONL: conversations, tasks, approvals</span>
+  calendar.sqlite    <span class="c"># bookings, approvals, operation journal</span>
+  messages.sqlite    <span class="c"># console outbox (never contacts a customer)</span>
+  email.sqlite       <span class="c"># Resend operations and accepted receipts</span>
+  inbound.sqlite     <span class="c"># signed inbound receipts and reply approvals</span>
+  messenger.json     <span class="c"># the transport this folder is bound to, forever</span>
+  ownership.sqlite   <span class="c"># one live process at a time</span></div>
+        <div class="note caution"><span class="label">Caution</span>Back up the whole folder together.
+          Keep <code>email.sqlite</code>, <code>messenger.json</code>, <code>inbound.sqlite</code> and
+          <code>harness/</code> side by side; recovery depends on all of them.</div>
+      </div>
+    </section>
+
+    <!-- 10 -->
+    <section class="chapter" id="status">
+      <div class="chapter-head"><div class="num">10</div><h2>Status and roadmap</h2>
+        <div class="eyebrow">Linear project officehum, read 15 October 2026</div></div>
+      <div class="col">
+        <h3 style="margin-top: 0">Milestone progress</h3>
+        <div class="bars" role="img" aria-label="Milestone progress: M0 28%, M1 34%, M2 0%, M3 3%, M4 1%, M5 0%">
+          <div class="bar"><span>M0 · Foundations</span><div class="track"><div class="fill" style="width:28%"></div></div><span class="val">28%</span></div>
+          <div class="bar"><span>M1 · First agents</span><div class="track"><div class="fill" style="width:34%"></div></div><span class="val">34%</span></div>
+          <div class="bar"><span>M2 · Office runtime</span><div class="track"><div class="fill" style="width:0%"></div></div><span class="val">0%</span></div>
+          <div class="bar"><span>M3 · Workflows, approvals</span><div class="track"><div class="fill" style="width:3%"></div></div><span class="val">3%</span></div>
+          <div class="bar"><span>M4 · Hosted alpha</span><div class="track"><div class="fill" style="width:1%"></div></div><span class="val">1%</span></div>
+          <div class="bar"><span>M5 · Pilot and launch</span><div class="track"><div class="fill" style="width:0%"></div></div><span class="val">0%</span></div>
+        </div>
+        <div class="axis"><div></div><div><span>0</span><span>25</span><span>50</span><span>75</span><span>100%</span></div><div></div></div>
+
+        <h3>Issues</h3>
+        <div class="stack" role="img" aria-label="196 issues: 12 done, 6 in progress, 178 backlog">
+          <div class="d" style="width:6.1%">12</div>
+          <div class="i" style="width:3.1%">6</div>
+          <div class="b" style="width:90.8%">178 backlog</div>
+        </div>
+        <div class="legend"><span><i style="background: var(--ok)"></i>Done 12</span><span><i style="background: var(--part)"></i>In progress 6</span><span><i style="background: var(--muted)"></i>Backlog 178</span></div>
+
+        <h3>What shipped</h3>
+        <div class="tablewrap"><table>
+          <thead><tr><th>PR</th><th>Issue</th><th>What</th></tr></thead>
+          <tbody>
+            <tr><td>#7</td><td>RASF-3250</td><td>Front Desk solo booking on a durable local calendar</td></tr>
+            <tr><td>#8</td><td>RASF-3125</td><td>Google Calendar client</td></tr>
+            <tr><td>#9</td><td>RASF-3253</td><td>Reschedule and cancel, with verified migration</td></tr>
+            <tr><td>#10</td><td>RASF-3255</td><td>Contacts</td></tr>
+            <tr><td>#11</td><td>RASF-3257</td><td>Messaging with first-contact approval</td></tr>
+            <tr><td>#12</td><td>RASF-3261</td><td>Outbound email through Resend</td></tr>
+            <tr><td>#13</td><td>RASF-3264</td><td>Inbound email and threaded replies</td></tr>
+            <tr><td>#14</td><td>RASF-3282</td><td>Ultramarine provider and default model</td></tr>
+            <tr><td>#15, #16</td><td>RASF-3192</td><td>Immutable and versioned file store</td></tr>
+          </tbody>
+        </table></div>
+        <p>No package has been published, nothing is deployed, and no live customer message has been
+          sent. The v1 success test is one design partner running Front Desk and Bookkeeper on a hosted
+          instance for 30 days with no lost or duplicated work.</p>
+        <p>Worktrees: every branch and worktree, including Codex's <code>paper-provider-rasf-3282</code>
+          checkout, is fully merged into main. That Codex worktree was created at the handoff commit and
+          never used; the provider was built on another branch and merged as PR #14.</p>
+      </div>
+    </section>
+
+    <!-- 11 -->
+    <section class="chapter" id="gaps">
+      <div class="chapter-head"><div class="num">11</div><h2>Gaps and their fixes</h2>
+        <div class="eyebrow">Where your intent, the docs, the code and Linear disagreed, and what was done on 15 October</div></div>
+      <ol class="gaps col">
+        <li><b>Target market was stated three ways. <span class="chip built">Fixed in Linear</span></b>README: medium-sized.
+          Linear project: small businesses. RASF-3199 and 3205: mid-market.<span class="fix">The project
+          description, RASF-3199 and RASF-3205 now say medium-sized companies.</span></li>
+        <li><b>No model marketplace in the plan. <span class="chip planned">Filed</span></b>Only Paper and OpenAI
+          are wired; the provider is registered inside the CLI.<span class="fix">Epic RASF-3296 with
+          RASF-3297 (portable provider, M1), RASF-3298 (catalog and tests) and RASF-3299 (Studio
+          screen). Billing stays with RASF-3184.</span></li>
+        <li><b>No Sales role, no department plan. <span class="chip planned">Filed</span></b>The Linear project
+          listed scheduler and marketer; the issues planned Office Manager instead.<span class="fix">Epic
+          RASF-3293 (catalog of free roles for every department), RASF-3294 (you choose the department
+          role map) and RASF-3295 (Sales agent).</span></li>
+        <li><b>Paper Office tickets had no milestone. <span class="chip built">Fixed in Linear</span></b>RASF-3283
+          to 3286 floated while their parent sat in M3, and Word and Excel had no adapter tickets.<span class="fix">All
+          moved to M3; Word (RASF-3300) and Excel (RASF-3301) adapters added.</span></li>
+        <li><b>Reference role order flipped. <span class="chip planned">Partly fixed</span></b>Bookkeeper was called
+          the reference role built first, but Front Desk was built and Bookkeeper has not started.<span class="fix">RASF-3070
+          is corrected. <code>agents/README.md</code> still lists Bookkeeper and Office Manager folders
+          that do not exist.</span></li>
+        <li><b>Exit tests were not gating. <span class="chip built">Fixed in Linear</span></b>The M0 exit test is
+          unmet while M4 email work is in progress.<span class="fix">The project rule now reads: later work
+          may start early, but a milestone closes only when its exit test passes.</span></li>
+        <li><b>Stale documents. <span class="chip planned">Partly fixed</span></b>RASF-3189 named
+          <code>ANTHROPIC_API_KEY</code>; it now names the Paper key.<span class="fix">Still open in the repo:
+          the Paper handoff says implementation has not started, and the agent-package design shows an
+          Anthropic model in its examples.</span></li>
+        <li><b>Reporting stopped at PR #13. <span class="chip built">Fixed in Linear</span></b>PRs #14 to #16 had
+          no status update.<span class="fix">A project update now covers them and today's plan changes.
+          Milestones still have no dates.</span></li>
+      </ol>
+    </section>
+
+    <!-- 12 -->
+    <section class="chapter" id="glossary">
+      <div class="chapter-head"><div class="num">12</div><h2>Glossary and sources</h2>
+        <div class="eyebrow">Terms as this manual uses them</div></div>
+      <dl class="glossary col">
+        <dt>Role</dt><dd>One job (Front Desk, Bookkeeper) packaged as a portable Pi Durable agent.</dd>
+        <dt>Overlay</dt><dd>A business's folder of changes layered on a role without editing it.</dd>
+        <dt>Manifest</dt><dd><code>officehum.json</code>: a role's tools, approvals, accepted ticket types and default model.</dd>
+        <dt>Ticket type</dt><dd>A named kind of work, such as <code>invoice.create</code>, used to route hand-offs.</dd>
+        <dt>Workboard</dt><dd>The shared table of tickets and their append-only events.</dd>
+        <dt>Relay</dt><dd>The service that delivers each ticket event to the accepting role exactly once.</dd>
+        <dt>Approver</dt><dd>The host-supplied function that asks a person to allow or deny a gated action.</dd>
+        <dt>Harness</dt><dd>Pi Durable's runtime over one storage: conversations, tasks and recovery.</dd>
+        <dt>Provider</dt><dd>A pi-ai adapter for one model vendor, such as <code>paper</code> or <code>openai</code>.</dd>
+        <dt>FileRef</dt><dd>An immutable reference to one exact file version and its hash.</dd>
+        <dt>Lease</dt><dd>A task-scoped grant of which files a document operation may read and write.</dd>
+        <dt>Receipt</dt><dd>The stored proof that an operation ran, with its inputs, outputs and hashes.</dd>
+      </dl>
+      <h3>Sources</h3>
+      <ul class="col">
+        <li><code>README.md</code>, <code>agents/README.md</code>, <code>agents/frontdesk/officehum.json</code></li>
+        <li><code>docs/design/agent-package.md</code> and <code>docs/design/file-store.md</code></li>
+        <li><code>docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md</code></li>
+        <li><code>packages/office/src/solo.ts</code>, <code>packages/cli/src/paper-provider.ts</code>, <code>packages/cli/src/cli.ts</code></li>
+        <li><code>node_modules/@earendil-works/pi-durable</code> 1.0.2 README and type exports</li>
+        <li>Codex repository guide <code>docs/visualizations/officehum-built.html</code></li>
+        <li>Linear project officehum (P-RASF-8): 196 issues, 6 milestones, 8 status updates</li>
+      </ul>
+      <footer>Office Hum Owner's Manual · edition of 15 October 2026 · reflects <code>main</code> at d08fc9f.
+        Built items were checked in source; planned items reflect design documents and Linear, not running code.</footer>
+    </section>
+  </main>
+</div>
+<script>
+  (() => {
+    const box = document.getElementById("todayOnly");
+    const key = "officehum-manual-today-only";
+    const apply = (on) => document.body.classList.toggle("today-only", on);
+    try {
+      if (localStorage.getItem(key) === "1") {
+        box.checked = true;
+        apply(true);
+      }
+    } catch {}
+    box.addEventListener("change", () => {
+      apply(box.checked);
+      try {
+        localStorage.setItem(key, box.checked ? "1" : "0");
+      } catch {}
+    });
+  })();
+</script>
+</body>
+</html>
