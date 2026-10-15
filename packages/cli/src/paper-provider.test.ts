@@ -305,7 +305,7 @@ describe("Paper Instruments Ultramarine provider", () => {
     }
   });
 
-  it("replays an interrupted tool response from the same MemoryStorage on recovery", async () => {
+  it("aborts a partial tool response without execution and resumes after Harness recovery", async () => {
     const models = createModels();
     models.setProvider(paperProvider());
     const toolCalls = { count: 0 };
@@ -332,9 +332,12 @@ describe("Paper Instruments Ultramarine provider", () => {
     const partialReached = new Promise<void>((resolve) => { reachedPartial = resolve; });
     const stopPartial = new Promise<void>((resolve) => { releasePartial = resolve; });
     let calls = 0;
-    vi.stubGlobal("fetch", async () => {
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal("fetch", async (_input, init) => {
       calls += 1;
       if (calls === 1) {
+        requestSignal = init?.signal ?? undefined;
+        requestSignal?.addEventListener("abort", releasePartial, { once: true });
         return new Response(new ReadableStream<Uint8Array>({
           async start(controller) {
             controller.enqueue(encoder.encode(event({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call-recover", type: "function", function: { name: "check_schedule", arguments: '{"date":"2030-' } }] }, finish_reason: null }]})));
@@ -356,11 +359,12 @@ describe("Paper Instruments Ultramarine provider", () => {
       const submission = await root.submit({ type: "input", content: "Check my schedule for 2030-01-15." }, BACKGROUND_CONTEXT);
       await partialReached;
       expect(toolCalls.count).toBe(0);
-      const closing = harness.close(BACKGROUND_CONTEXT);
-      releasePartial();
-      await closing;
+      await root.abort(BACKGROUND_CONTEXT);
+      expect(requestSignal?.aborted).toBe(true);
+      expect(await submission.wait(BACKGROUND_CONTEXT)).toMatchObject({ status: "unanswered", reason: "aborted" });
+      expect(toolCalls.count).toBe(0);
+      await harness.close(BACKGROUND_CONTEXT);
       harness = undefined;
-      await submission.wait(BACKGROUND_CONTEXT).catch(() => undefined);
 
       harness = await Harness.open(storage, { models, registry }, BACKGROUND_CONTEXT);
       harness.resume();
@@ -368,7 +372,8 @@ describe("Paper Instruments Ultramarine provider", () => {
       const agent = await recovered.agent(BACKGROUND_CONTEXT);
       expect(agent.model).toEqual({ provider: "paper", modelId: "ultramarine-1-flash" });
       expect(agent.thinkingLevel).toBe("max");
-      await recovered.waitForIdle(BACKGROUND_CONTEXT);
+      const recoveredSubmission = await recovered.submit({ type: "input", content: "Check my schedule for 2030-01-15." }, BACKGROUND_CONTEXT);
+      expect((await recoveredSubmission.wait(BACKGROUND_CONTEXT)).status).toBe("done");
       expect(toolCalls.count).toBe(1);
     } finally {
       releasePartial();
