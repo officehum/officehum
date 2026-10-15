@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import {
   assertId,
   assertMetadata,
+  assertMimeType,
   assertName,
   assertRef,
   assertSignature,
@@ -25,11 +26,9 @@ export function localFileStore(dir: string): FileStore {
       const bytes = Uint8Array.from(input.bytes);
       const metadata = structuredClone(input.metadata);
       assertName(name);
+      assertMimeType(mimeType);
       assertMetadata(metadata);
       assertSignature(bytes, mimeType);
-      if (typeof mimeType !== "string" || mimeType.trim().length === 0) {
-        throw new Error("Invalid file MIME type");
-      }
 
       await mkdir(root, { recursive: true, mode: 0o700 });
       const staging = await mkdtemp(join(root, ".staging-"));

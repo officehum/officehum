@@ -82,9 +82,12 @@ it("rejects invalid sizes", () => {
   expect(() => fileResult([{ ...ref, size: Number.MAX_SAFE_INTEGER + 1 }])).toThrow();
 });
 
-it.each(["x".repeat(256), "image/png\u0000evil"])("rejects unsafe MIME types %j", (mimeType) => {
-  expect(() => fileResult([{ ...ref, mimeType }])).toThrow();
-});
+it.each(["x".repeat(256), "image/png\u0000evil", "not-a-mime", " text/plain "])(
+  "rejects unsafe MIME types %j",
+  (mimeType) => {
+    expect(() => fileResult([{ ...ref, mimeType }])).toThrow();
+  },
+);
 
 const previewSignatures = [
   ["JPEG", "image/jpeg", [0xff, 0xd8, 0xff]],

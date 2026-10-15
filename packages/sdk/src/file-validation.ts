@@ -1,6 +1,7 @@
 import type { FileMetadata, FileRef } from "./files.js";
 
 const FILE_ID = /^file_[0-9A-HJKMNP-TV-Z]{26}$/;
+const MIME_TYPE = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+\/[A-Za-z0-9!#$%&'*+.^_`|~-]+$/u;
 const SOURCE_VALUES = new Set(["generated", "uploaded", "external", "derived"]);
 const METADATA_KEYS = new Set(["createdBy", "source", "aiGenerated", "derivedFrom", "provenance"]);
 
@@ -21,6 +22,16 @@ export function assertName(name: string): void {
     Buffer.byteLength(name, "utf8") > 255
   ) {
     throw new Error("Invalid file name");
+  }
+}
+
+export function assertMimeType(value: unknown): asserts value is string {
+  if (
+    typeof value !== "string" ||
+    Buffer.byteLength(value, "utf8") > 255 ||
+    !MIME_TYPE.test(value)
+  ) {
+    throw new Error("Invalid file MIME type");
   }
 }
 
@@ -55,12 +66,17 @@ export function assertMetadata(value: unknown): asserts value is FileMetadata {
       throw new Error("Invalid AI generation metadata");
     }
   }
-  if (
-    value.derivedFrom !== undefined &&
-    (!Array.isArray(value.derivedFrom) ||
-      value.derivedFrom.some((id) => typeof id !== "string" || !FILE_ID.test(id)))
-  ) {
-    throw new Error("Invalid derived file IDs");
+  if (value.derivedFrom !== undefined) {
+    if (!Array.isArray(value.derivedFrom)) throw new Error("Invalid derived file IDs");
+    for (let index = 0; index < value.derivedFrom.length; index += 1) {
+      if (
+        !Object.hasOwn(value.derivedFrom, index) ||
+        typeof value.derivedFrom[index] !== "string" ||
+        !FILE_ID.test(value.derivedFrom[index])
+      ) {
+        throw new Error("Invalid derived file IDs");
+      }
+    }
   }
 }
 
@@ -69,9 +85,7 @@ export function assertRef(value: unknown, expectedId: string): asserts value is 
   if (!isRecord(value)) throw new Error("Invalid file reference");
   if (value.id !== expectedId) throw new Error("File reference ID mismatch");
   assertName(value.name as string);
-  if (typeof value.mimeType !== "string" || value.mimeType.trim().length === 0) {
-    throw new Error("Invalid file MIME type");
-  }
+  assertMimeType(value.mimeType);
   if (!Number.isSafeInteger(value.size) || (value.size as number) < 0)
     throw new Error("Invalid file size");
   if (typeof value.sha256 !== "string" || !/^[0-9a-f]{64}$/u.test(value.sha256)) {

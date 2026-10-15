@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -144,6 +144,40 @@ it("snapshots caller metadata", async () => {
   });
   mutable.createdBy = "changed";
   expect((await store.info(ref.id))?.metadata.createdBy).toBe("role:test");
+});
+
+it("rejects sparse derivedFrom metadata before installing a completed file", async () => {
+  const { dir, store } = await setup();
+  const derivedFrom = new Array<string>(1);
+
+  await expect(
+    store.put({
+      bytes: new Uint8Array(),
+      name: "derived.txt",
+      mimeType: "text/plain",
+      metadata: { ...metadata, source: "derived", derivedFrom },
+    }),
+  ).rejects.toThrow();
+  expect(await readdir(dir)).toEqual([]);
+});
+
+it.each(["text/plain\u0000evil", "x".repeat(256)])(
+  "rejects invalid MIME type %j before persistence",
+  async (mimeType) => {
+    const { dir, store } = await setup();
+    await expect(
+      store.put({ bytes: new Uint8Array(), name: "mime.txt", mimeType, metadata }),
+    ).rejects.toThrow();
+    expect(await readdir(dir)).toEqual([]);
+  },
+);
+
+it("returns a FileRef from put that fileResult accepts", async () => {
+  const { store } = await setup();
+  const ref = await putText(store);
+  const { fileResult } = await import("./files.js");
+
+  expect(fileResult([ref]).details.files).toEqual([ref.id]);
 });
 
 it.each([
