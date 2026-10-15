@@ -81,3 +81,38 @@ it("rejects unsafe names", () => {
 it("rejects invalid sizes", () => {
   expect(() => fileResult([{ ...ref, size: Number.MAX_SAFE_INTEGER + 1 }])).toThrow();
 });
+
+it.each(["x".repeat(256), "image/png\u0000evil"])("rejects unsafe MIME types %j", (mimeType) => {
+  expect(() => fileResult([{ ...ref, mimeType }])).toThrow();
+});
+
+const previewSignatures = [
+  ["JPEG", "image/jpeg", [0xff, 0xd8, 0xff]],
+  ["GIF87a", "image/gif", Array.from(new TextEncoder().encode("GIF87a"))],
+  ["GIF89a", "image/gif", Array.from(new TextEncoder().encode("GIF89a"))],
+  [
+    "WebP",
+    "image/webp",
+    [...new TextEncoder().encode("RIFF"), 0, 0, 0, 0, ...new TextEncoder().encode("WEBP")],
+  ],
+] as const;
+
+it.each(previewSignatures)("accepts a correctly signed %s preview", (_label, mimeType, prefix) => {
+  const result = fileResult([ref], { preview: { bytes: Uint8Array.from(prefix), mimeType } });
+  expect(result.content[1]).toMatchObject({ type: "image", mimeType });
+});
+
+it.each([
+  ["PNG", "image/png", [137, 80, 78, 71, 13, 10, 26]],
+  ["JPEG", "image/jpeg", [0xff, 0xd8]],
+  ["GIF", "image/gif", [71, 73, 70, 56, 55]],
+  [
+    "WebP",
+    "image/webp",
+    [...new TextEncoder().encode("RIFF"), 0, 0, 0, 0, ...new TextEncoder().encode("WEB")],
+  ],
+] as const)("rejects a truncated %s signature", (_label, mimeType, prefix) => {
+  expect(() =>
+    fileResult([ref], { preview: { bytes: Uint8Array.from(prefix), mimeType } }),
+  ).toThrow();
+});

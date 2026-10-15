@@ -28,6 +28,15 @@
 
 Biome reports one existing deprecation notice for `biome.json`'s `recommended` field; it does not fail lint.
 
+## Review round 1 follow-up
+
+- Added bounded MIME validation for each file ref and inline preview: MIME must be a nonempty string, at most 255 UTF-8 bytes, and contain no Unicode control characters.
+- Added positive preview coverage for JPEG, GIF87a, GIF89a, and WebP, and rejection coverage for truncated PNG/JPEG/GIF/WebP signatures.
+- RED: `npx vitest run packages/sdk/src/files.test.ts` failed on the two unsafe MIME cases because `fileResult` accepted both the 256-byte value and the control character.
+- GREEN: focused suite passed: 21 tests.
+- `npm run check` passed with loopback permission: lint, build, typecheck, and 389 tests across 33 files. `git diff --check` passed.
+- Review found no other changes needed in this round.
+
 ## Example result
 
 ```json

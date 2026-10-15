@@ -40,6 +40,7 @@ export function fileResult(
   for (const ref of refs) {
     assertId(ref.id);
     assertName(ref.name);
+    assertSafeMimeType(ref.mimeType);
     if (!Number.isSafeInteger(ref.size) || ref.size < 0) throw new Error("Invalid file size");
   }
 
@@ -52,6 +53,7 @@ export function fileResult(
     if (!(bytes instanceof Uint8Array) || bytes.byteLength > MAX_INLINE_IMAGE_BYTES) {
       throw new Error("Invalid or oversized image preview");
     }
+    assertSafeMimeType(mimeType);
     if (!new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]).has(mimeType)) {
       throw new Error("Unsupported image preview MIME type");
     }
@@ -59,4 +61,15 @@ export function fileResult(
     content.push({ type: "image", data: Buffer.from(bytes).toString("base64"), mimeType });
   }
   return { content, details: { files: refs.map((ref) => ref.id) } };
+}
+
+function assertSafeMimeType(mimeType: unknown): asserts mimeType is string {
+  if (
+    typeof mimeType !== "string" ||
+    mimeType.trim().length === 0 ||
+    Buffer.byteLength(mimeType, "utf8") > 255 ||
+    /\p{Cc}/u.test(mimeType)
+  ) {
+    throw new Error("Invalid file MIME type");
+  }
 }
