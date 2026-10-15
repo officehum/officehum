@@ -73,7 +73,15 @@ export {
   SuiteSchema,
   validateSuite,
 } from "./evals/suite.js";
+export {
+  type FileMetadata,
+  type FileRef,
+  type FileStore,
+  fileResult,
+  MAX_INLINE_IMAGE_BYTES,
+} from "./files.js";
 export { formatIssue, type Issue, type Validation } from "./issues.js";
+export { localFileStore } from "./local-files.js";
 export {
   type AcceptDeclaration,
   type AgentManifest,
