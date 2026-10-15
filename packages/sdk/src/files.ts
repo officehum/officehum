@@ -30,6 +30,96 @@ export interface FileStore {
   info(id: string): Promise<FileRef | undefined>;
 }
 
+export interface VersionContext {
+  readonly taskId: string;
+  readonly policyVersion: string;
+  readonly worker: {
+    readonly image: string;
+    readonly libraries: Readonly<Record<string, string>>;
+  };
+  readonly argumentsSha256: string;
+}
+
+export interface VersionedFileRef extends FileRef {
+  readonly versionId: string;
+  readonly sourceVersionId: string | null;
+  readonly operationId: string | null;
+  readonly context: VersionContext | null;
+}
+
+export interface CreateVersionInput {
+  readonly operationId: string;
+  readonly bytes: Uint8Array;
+  readonly name: string;
+  readonly mimeType: string;
+  readonly metadata: FileMetadata;
+  readonly context: VersionContext;
+}
+
+export interface PutVersionInput extends CreateVersionInput {
+  readonly fileId: string;
+  readonly sourceVersionId: string;
+}
+
+export interface PublishVersionInput {
+  readonly operationId: string;
+  readonly fileId: string;
+  readonly expectedPublishedVersionId: string | null;
+  readonly versionId: string;
+  readonly approvalId: string;
+}
+
+export interface VersionCommitReceipt {
+  readonly kind: "create" | "version";
+  readonly operationId: string;
+  readonly intentSha256: string;
+  readonly source: VersionedFileRef | null;
+  readonly output: VersionedFileRef;
+}
+
+export interface PublishReceipt {
+  readonly kind: "publish";
+  readonly operationId: string;
+  readonly intentSha256: string;
+  readonly approvalId: string;
+  readonly previous: VersionedFileRef | null;
+  readonly published: VersionedFileRef;
+}
+
+export type FileOperationReceipt = VersionCommitReceipt | PublishReceipt;
+
+export class FileStoreError extends Error {
+  constructor(
+    readonly code:
+      | "INVALID_INPUT"
+      | "NOT_FOUND"
+      | "VERSION_CONFLICT"
+      | "OPERATION_COLLISION"
+      | "INTEGRITY"
+      | "BUSY",
+    message: string,
+  ) {
+    super(message);
+    this.name = "FileStoreError";
+  }
+}
+
+export interface VersionedFileStore extends FileStore {
+  put(input: Parameters<FileStore["put"]>[0]): Promise<VersionedFileRef>;
+  get(id: string): Promise<{ ref: VersionedFileRef; bytes: Uint8Array } | undefined>;
+  info(id: string): Promise<VersionedFileRef | undefined>;
+  create(input: CreateVersionInput): Promise<VersionCommitReceipt>;
+  putVersion(input: PutVersionInput): Promise<VersionCommitReceipt>;
+  getVersion(
+    fileId: string,
+    versionId: string,
+  ): Promise<{ ref: VersionedFileRef; bytes: Uint8Array } | undefined>;
+  getHead(fileId: string): Promise<VersionedFileRef | undefined>;
+  getPublished(fileId: string): Promise<VersionedFileRef | undefined>;
+  lookupOperation(operationId: string): Promise<FileOperationReceipt | undefined>;
+  publish(input: PublishVersionInput): Promise<PublishReceipt>;
+}
+
 export const MAX_INLINE_IMAGE_BYTES = 100_000;
 
 export function fileResult(
