@@ -2,6 +2,13 @@
 
 Date: 2026-10-14. Repository: `officehum`. Session branch: `codex/paper-instruments-design`. Product implementation has not started.
 
+> **Status update, 2026-10-15.** This handoff is historical. Implementation has started and the
+> branch has merged: the Ultramarine provider and default model (PR #14, RASF-3282), the immutable
+> file store (PR #15) and the versioned file store (PR #16, RASF-3192) are on `main`. Linear now also
+> has the Paper Word and Excel adapters (RASF-3300, RASF-3301) beside PowerPoint (RASF-3284), with
+> RASF-3283 to RASF-3286 in M3, and a model marketplace epic (RASF-3296 to RASF-3299). For the current
+> state, see `docs/visualizations/officehum-owners-manual.html`.
+
 ## User intent and approved design
 
 The user wants Paper Instruments woven into Office Hum across Word, PowerPoint, and Excel, while Office Hum remains built on Pi Durable. They approved the written architecture in `docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md` with these choices:

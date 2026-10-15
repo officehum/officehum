@@ -183,8 +183,8 @@ An overlay's `settings.json` uses Pi's setting names and its `+name` / `-name` e
 
 ```json
 {
-  "defaultProvider": "anthropic",
-  "defaultModel": "claude-opus-5-5",
+  "defaultProvider": "paper",
+  "defaultModel": "ultramarine-1-flash",
   "defaultThinkingLevel": "high",
   "skills": ["+vip-customers", "-collections"],
   "tools": ["-send_reminder"]
@@ -197,6 +197,9 @@ Rules:
 - Overlay skills hold **instructions and reference files only** (`.md`, `.txt`, `.csv`, `.json`), never
   scripts. Code arrives only in packages, which agencies and developers can publish.
 - A replaced skill keeps its on/off state; a new skill starts on.
+- Roles default to Paper's Ultramarine 1 Flash. An overlay can choose another provider's model the
+  same way; Office Hum surfaces offer the models in its tested catalog (RASF-3298). A model change
+  applies to new conversations; a saved conversation keeps the model it started with.
 - Prompt text and skills update **live**: `role.reload()` re-reads the files and the agent sees the
   change on its next request. A changed model, or skills and tools switched on or off, apply when the
   host next configures the conversation with `role.agent`. A broken edit is reported and the last
@@ -400,7 +403,7 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
   "name": "Bookkeeper",
   "department": "finance",
   "role": "Invoices completed jobs, chases overdue payments, answers billing questions",
-  "defaultModel": { "provider": "anthropic", "modelId": "claude-sonnet-5-5" },
+  "defaultModel": { "provider": "paper", "modelId": "ultramarine-1-flash", "thinkingLevel": "max" },
   "tools": [
     { "name": "read_invoices", "replay": "safe" },
     { "name": "create_invoice", "replay": "unsafe" },
