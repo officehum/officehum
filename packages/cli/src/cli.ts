@@ -86,6 +86,9 @@ export interface CliDependencies {
     readonly models: ReturnType<typeof createModels>;
     readonly model: ModelRef;
   };
+  readonly createInboundSession?: (
+    options: Parameters<typeof openInboundSession>[0],
+  ) => InboundSession;
   readonly openResendMessenger?: (path: string, options: ResendMessengerOptions) => ResendMessenger;
 }
 
@@ -918,7 +921,8 @@ async function runListen(
       },
     });
     await ensureRunning();
-    const savedModel = (await solo.root.agent(BACKGROUND_CONTEXT)).model;
+    const savedAgent = await solo.root.agent(BACKGROUND_CONTEXT);
+    const savedModel = savedAgent.model;
     if (savedModel?.provider !== parsed.provider || savedModel.modelId !== parsed.model) {
       throw new Error(
         `State ${parsed.state} already uses ${savedModel === undefined ? "an unknown model" : modelLabel(savedModel)}; requested ${parsed.provider}/${parsed.model}.`,
@@ -926,12 +930,15 @@ async function runListen(
     }
     attachedHarness = solo.harness;
     if (hosted === undefined) throw new Error("Inbound role resources were not created.");
-    session = openInboundSession({
+    session = (dependencies.createInboundSession ?? openInboundSession)({
       solo,
       inbox: hosted.inbox,
       customerAgent: {
         ...hosted.role.agent,
         model: runtime.model,
+        ...(savedAgent.thinkingLevel === undefined
+          ? {}
+          : { thinkingLevel: savedAgent.thinkingLevel }),
         tools: customerTools(hosted.role),
       },
     });
@@ -1038,7 +1045,7 @@ async function runInboundResume(
       io.output(`Mode: ${modelLabel(runtime.model)}`);
     }
     active.attach();
-    session = openInboundSession({
+    session = (dependencies.createInboundSession ?? openInboundSession)({
       solo: active.solo,
       inbox: active.hosted.inbox,
       customerAgent: {
