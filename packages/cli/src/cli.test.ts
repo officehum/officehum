@@ -7,12 +7,12 @@ import { DatabaseSync } from "node:sqlite";
 import { PassThrough } from "node:stream";
 import { awaitWithContext, BACKGROUND_CONTEXT, withCancel } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { AgentDoc } from "@earendil-works/pi-durable";
 import {
   fauxAssistantMessage,
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
+import { AgentDoc } from "@earendil-works/pi-durable";
 import frontdesk from "@officehum/frontdesk";
 import {
   createDemoModels,
@@ -358,7 +358,9 @@ describe("runCli", () => {
           },
         }),
       ).toBe(1);
-      expect(capture.errors.join("\n")).toMatch(/already uses live OpenAI.*requested openai\/gpt-6-sol/);
+      expect(capture.errors.join("\n")).toMatch(
+        /already uses live OpenAI.*requested openai\/gpt-6-sol/,
+      );
       expect(sessionOpened).toBe(false);
       expect(capture.output.join("\n")).not.toContain("Inbound listener:");
     } finally {
@@ -506,7 +508,9 @@ describe("runCli", () => {
         { createLiveModels: (ref) => ({ models, model: ref }) },
       ),
     ).toBe(1);
-    expect(capture.errors.join("\n")).toMatch(/already uses live OpenAI.*requested openai\/gpt-6-sol/);
+    expect(capture.errors.join("\n")).toMatch(
+      /already uses live OpenAI.*requested openai\/gpt-6-sol/,
+    );
     expect(await entryCount(directory)).toBe(before);
   });
 
@@ -1913,9 +1917,7 @@ describe("runCli", () => {
         inboundEmail: "desk@example.test",
       },
       getApiKey: async () => "synthetic",
-      getWebhookSecrets: async () => [
-        `whsec_${Buffer.from("task-two-secret").toString("base64")}`,
-      ],
+      getWebhookSecrets: async () => [`whsec_${Buffer.from("task-two-secret").toString("base64")}`],
     });
     await inbox.close();
     const restore = configureResendEnvironment();
