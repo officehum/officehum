@@ -1,86 +1,117 @@
 # Ultramarine provider and new-root default Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Execute Task 1, review and commit it, then execute Task 2 on that commit.
 
-**Goal:** Make Ultramarine 1 Flash the default model for new Office Hum role conversations while old conversations resume with their exact provider/model.
+**Goal:** Make Ultramarine 1 Flash the default for new Office Hum role conversations while saved conversations resume with their exact provider, model, and thinking level.
 
-**Architecture:** Register Paper as a custom `pi-ai` Chat Completions provider in the host, and keep the provider/model pair intact through CLI start, listen, and resume. Role manifests set the new-root default and max thinking level. Transport, selection, and recovery tests use fake streams and local state; no live Paper request is part of implementation acceptance.
+**Architecture:** Register a guarded Paper Chat Completions provider in the CLI host. Keep provider/model identity paired through start, listen, and both resume paths. The Front Desk manifest supplies the new-root thinking default. Verify the actual `pi-ai` transport and a bare Pi Durable Harness with fake HTTP streams.
 
-**Tech Stack:** Node >=22.19.0; TypeScript 7; Pi Durable and `pi-ai` 1.0.2 currently pinned; Vitest; `createProvider`, `envApiKeyAuth`, `openAICompletionsApi`.
+**Tech Stack:** Node >=22.19.0; TypeScript 7; Pi Durable and `pi-ai` 1.0.2; Vitest.
 
-**Spec:** `docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md`. This plan covers its provider delivery gate only. FileStore, Python worker, Office adapters, and publication are separate plans and Linear issues.
+**Spec:** `docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md`. This plan covers its provider gate. FileStore, Python worker, Office adapters, and publication have separate plans and issues.
 
 ## Global Constraints
 
-- Paper provider ID is `paper`; model ID is `ultramarine-1-flash`; base URL is `https://api.paperinstruments.com/v1`; key env name is `PAPERINSTRUMENTS_API_KEY`.
-- Send `system`, never `developer`; use only `low`, `high`, or `max` reasoning effort, default `max`; disabled thinking is unsupported. Paper's [Chat Completions contract](https://docs.paperinstruments.com/docs/ultramarine/chat-completions) is the transport reference.
-- Model prices as published on 2026-10-14 are $0.15/M input, $0.03/M cached input, and $0.50/M output tokens ([Paper pricing](https://www.paperinstruments.com/ultramarine)). Record them in model metadata and verify again before implementation; do not use zero-cost metadata. Use a conservative 131,072-token local context cap until the serving limit is confirmed; maximum completion is 32,768 tokens.
-- The host owns credentials. Do not pass a key to a role tool, document worker, log, test fixture, or committed file.
-- Existing Pi Durable roots retain the stored provider/model and thinking setting. Never silently fall back to OpenAI when Paper fails. Explicit OpenAI selection remains available for a new root.
-- Keep the Pi Durable 1.1 upgrade in RASF-3237 as a separate change; this plan must pass on the current 1.0.2 pins and be rechecked after upgrade.
+- Provider ID `paper`; model ID `ultramarine-1-flash`; base URL `https://api.paperinstruments.com/v1`; key name `PAPERINSTRUMENTS_API_KEY`.
+- Send `system`, never `developer`. Send only `low`, `high`, or `max` reasoning effort; default `max`. Disabled thinking is unsupported. Use Paper's [Chat Completions contract](https://docs.paperinstruments.com/docs/ultramarine/chat-completions) as the wire reference.
+- Published prices as of 2026-10-14 are $0.15/M input, $0.03/M cached input, and $0.50/M output ([Paper pricing](https://www.paperinstruments.com/ultramarine)). Recheck before coding. Use $0.15/M for the required `cacheWrite` field until a distinct rate is published. Use a conservative 131,072-token local context cap until the serving limit is confirmed, and 32,768 maximum completion tokens.
+- Advertise text input in this slice. A later image-input contract test must establish support before the model metadata advertises images.
+- Credentials stay in the host. Never pass a real key to a role, worker, log, fixture, or committed file; fake tests use an in-memory placeholder.
+- Saved Pi Durable roots retain provider, model, and thinking level. A failed Paper call never switches to OpenAI. Explicit OpenAI selection remains available for a new root.
+- Leave the Pi Durable 1.1 upgrade in RASF-3237 separate; rerun these tests after that upgrade.
 
 ## Review Focus
 
-1. Existing OpenAI state resumed after the default changes must use OpenAI and its stored model; add a reopen test in Task 2.
-2. Paper's rejected `developer` role or unsupported effort must never leave a pending task in an apparently successful state; inspect serialized request and error in Task 1.
-3. A stream ending after a partial function argument or without `[DONE]` must not execute a tool; add a truncated-stream test in Task 1.
-4. Missing Paper credentials must fail before opening a new live conversation; add a CLI test in Task 2.
-5. Cached, reasoning, and output usage must be accounted once on a complete stream, and interruption must retain resumable work; add a usage/abort test in Task 1 and a resume test in Task 2.
-
----
+1. Pre-change OpenAI state with thinking `off` resumes on OpenAI with its saved model, in both normal and inbound routes; Task 2 seeds and checks both.
+2. The Paper request has a `system` message and supported reasoning effort, and provider failures do not settle work as successful; Task 1 inspects actual `streamSimple` requests and Harness results.
+3. A stream with `finish_reason` but no `data: [DONE]` fails; a `length` finish with partial tool arguments executes no tool; Task 1 tests these as distinct cases.
+4. A missing Paper key or invalid provider/model pair fails before a new Harness root or submission is persisted; Task 2 checks state and injection calls.
+5. Cached input and reasoning usage is counted once, and an interrupted Paper request remains resumable with the same configuration; Task 1 tests usage and a Harness reopen.
 
 ## File Structure and Responsibilities
 
 | Path | Responsibility |
 | --- | --- |
-| `packages/cli/src/paper-provider.ts` | Paper model declaration, auth, and OpenAI-compatible stream adapter settings; no CLI parsing or role imports |
-| `packages/cli/src/paper-provider.test.ts` | Fake-fetch request/stream contract, reasoning, tools, usage, truncation, and abort tests |
-| `packages/cli/src/cli.ts` | Parse explicit provider/model for new roots; register provider; recover saved provider/model on both resume paths |
-| `packages/cli/src/cli.test.ts` | New default, explicit override, missing key, and old-state resume tests |
-| `agents/frontdesk/officehum.json` | New-root default `paper/ultramarine-1-flash` with `thinkingLevel: max` |
-| `agents/frontdesk/src/index.test.ts` | Manifest default and bare-harness compatibility without Paper credentials |
-| `README.md` | Model selection, key name, demo behavior, and resume semantics |
+| `packages/cli/src/paper-provider.ts` | Paper model, host auth, guarded SSE fetch, and Chat Completions adapter |
+| `packages/cli/src/paper-provider.test.ts` | Fake HTTP wire contract and real bare Harness stream/reopen tests |
+| `packages/cli/package.json`, `package-lock.json` | Direct test-only Pi Durable dependency for the bare Harness test |
+| `packages/cli/src/cli.ts` | Paired selection, registration, saved-state matching, and both resume routes |
+| `packages/cli/src/cli.test.ts` | Defaults, overrides, old states, invalid pairs, missing key, and state reuse |
+| `agents/frontdesk/officehum.json` | New-root Paper model and `thinkingLevel: max` |
+| `agents/frontdesk/src/index.test.ts` | Manifest default and portable bare-Harness behavior with fake models |
+| `README.md` | Key name, model selection, demo behavior, and resume semantics |
+
+## Task interface preflight
+
+| Boundary | Exact contract | Review gate |
+| --- | --- | --- |
+| Task 1 internal | Export `PAPER_MODEL_REF` and `paperProvider(): Provider<'openai-completions'>`. Wrap both `ProviderStreams.stream` and `streamSimple` with the same guarded fetch. No CLI or role imports. | Actual `models.streamSimple` fake HTTP assertions and a bare Harness using this provider pass. Missing `[DONE]` after a valid finish reason is an error. |
+| Task 2 internal | `CliDependencies.createLiveModels(ref: ModelRef)` receives the complete pair. `liveModels(ref, dependencies)` validates before injection and returns a runtime whose `model` and registered model match `ref`. Start/listen use paired selection; both resumes use saved `agent.model`. | Default, override, old-state, inbound, thinking, invalid-pair, and state-mismatch assertions pass. |
+| Task 1 → Task 2 | Task 2 imports only `paperProvider()` and `PAPER_MODEL_REF`. The latter is `ModelRef`-compatible: `{ provider: 'paper', modelId: 'ultramarine-1-flash' }`. Task 2 registers this provider and looks up that pair. | Task 2 typechecks against committed Task 1; no duplicate Paper metadata or host provider dependency in the role. |
 
 ### Task 1: Register Paper as a tested `pi-ai` provider
 
-**Files:** Create `packages/cli/src/paper-provider.ts` and `packages/cli/src/paper-provider.test.ts`.
+**Files:** Create `packages/cli/src/paper-provider.ts` and `packages/cli/src/paper-provider.test.ts`; add `@earendil-works/pi-durable: 1.0.2` as a dev dependency in `packages/cli/package.json` and `package-lock.json` for the bare Harness test.
 
-**Interfaces:** Consumes `createProvider`, `envApiKeyAuth`, `openAICompletionsApi`, and `Model<'openai-completions'>` from installed `pi-ai`. Produces `paperProvider(): Provider<'openai-completions'>` and `PAPER_MODEL_REF = { provider: 'paper', modelId: 'ultramarine-1-flash' } as const`. `cli.ts` registers this provider in its `Models` collection.
+**Interfaces:** Import `createProvider`, `envApiKeyAuth`, `Model`, `Provider`, and `ProviderStreams` from `@earendil-works/pi-ai`; import `openAICompletionsApi` from `@earendil-works/pi-ai/api/openai-completions.lazy`. Export `paperProvider(): Provider<'openai-completions'>` and `PAPER_MODEL_REF` as above. Preserve a caller-supplied `fetch` so tests can use fake HTTP without inspecting environment credentials.
 
-- [ ] **Step 1: Write the failing provider metadata and wire tests.** Use a fake fetch that captures URL, Authorization presence, JSON body, and SSE response. Pass a test-only `apiKey` through `models.complete` so tests never inspect environment credentials. The core assertions are:
+- [ ] **Step 1: Write failing metadata and wire tests.** Register `paperProvider()` in `createModels()`. Call `models.streamSimple(model, context, { reasoning: 'max', apiKey: 'test-only-placeholder', fetch })`: Pi Durable uses `streamSimple`, which maps `reasoning` to `reasoning_effort`. The fake fetch captures URL, Authorization presence, and JSON. Its SSE has a tool-call delta, `finish_reason: "tool_calls"`, a usage chunk, and `data: [DONE]`. Assert:
 
 ```ts
-const models = createModels();
-models.setProvider(paperProvider());
-const model = models.getModel('paper', 'ultramarine-1-flash');
 expect(model).toMatchObject({
-  api: 'openai-completions',
+  api: 'openai-completions', provider: 'paper',
   baseUrl: 'https://api.paperinstruments.com/v1',
-  reasoning: true,
-  maxTokens: 32_768,
-  cost: { input: 0.15, output: 0.50, cacheRead: 0.03 },
-  compat: { supportsDeveloperRole: false },
+  reasoning: true, input: ['text'], maxTokens: 32_768,
+  cost: { input: 0.15, output: 0.50, cacheRead: 0.03, cacheWrite: 0.15 },
+  compat: { supportsDeveloperRole: false, supportsReasoningEffort: true },
 });
-expect(model?.thinkingLevelMap).toMatchObject({
+expect(model?.thinkingLevelMap).toEqual({
   off: null, minimal: null, low: 'low', medium: null,
   high: 'high', xhigh: null, max: 'max',
 });
-// Complete one fake stream with a system prompt and max effort; assert the
-// POST path, system role, no developer role, reasoning_effort: 'max', one
-// complete tool call, and final usage including cached/reasoning tokens.
+expect(requestUrl.pathname).toBe('/v1/chat/completions');
+expect(requestBody.messages[0].role).toBe('system');
+expect(requestBody.messages.some((message: { role: string }) => message.role === 'developer')).toBe(false);
+expect(requestBody.reasoning_effort).toBe('max');
+expect(requestBody.stream_options).toEqual({ include_usage: true });
+expect(answer.stopReason).toBe('toolUse');
+expect(answer.content).toContainEqual(expect.objectContaining({
+  type: 'toolCall', name: 'check_schedule', arguments: { date: '2030-01-15' },
+}));
+expect(answer.usage).toMatchObject({ input: 7, cacheRead: 3, output: 5, reasoning: 2, totalTokens: 15 });
 ```
 
-Add fake SSE cases for an incomplete JSON tool call ending in `finish_reason: "length"`, a stream without `[DONE]`, an API error event, and an aborted request. Assert none yields an executable complete tool call. Keep fake key values test-only and out of snapshots/logs.
+Use `prompt_tokens: 10`, `prompt_tokens_details.cached_tokens: 3`, `completion_tokens: 5`, and `completion_tokens_details.reasoning_tokens: 2`; assert cost is calculated from these normalized values, with reasoning included in output. Assert `low` and `high` request payloads and `getSupportedThinkingLevels(model)` equals `['low', 'high', 'max']`. Assert `max_completion_tokens` is present, `max_tokens` and `store` are absent, and the tool is serialized as `type: 'function'` with `name`, `description`, and JSON Schema `parameters`. These are supported by Paper's published Chat Completions contract.
 
-- [ ] **Step 2: Run the targeted test to verify red.**
+- [ ] **Step 2: Write failing stream-failure tests.** Supply (a) a valid `finish_reason: "tool_calls"` without `[DONE]`, (b) partial JSON arguments with `finish_reason: "length"` and `[DONE]`, (c) an HTTP/provider error, and (d) abort during SSE. For (a), (c), and (d), assert terminal `stopReason` is `error` or `aborted` and there is no `done` event. For (b), assert terminal `stopReason` is `length`, never `toolUse`; a partial call in `content` alone is not an executable call. Keep (a) separate from missing `finish_reason`: `pi-ai` 1.0.2 checks the latter but not `[DONE]`.
+
+- [ ] **Step 3: Write a failing bare Harness integration test in `paper-provider.test.ts`.** Register the actual `paperProvider()` in `createModels()`, install a minimal `defineTool` named `check_schedule`, and open Pi Durable `Harness` on `MemoryStorage`. Temporarily set `PAPERINSTRUMENTS_API_KEY` to a test-only placeholder and `vi.stubGlobal('fetch', fakeFetch)`; restore both in `finally`. Feed fake HTTP SSE: response one requests that tool, response two finishes the answer. Assert one tool execution and a settled answer. Feed `finish_reason: "length"` with partial tool JSON in another run and assert zero tool executions. In a recovery scenario, abort after a partial tool delta, close and reopen the Harness on the same storage with the same provider/model, then resume. Assert no tool ran before recovery, the root still reports `paper/ultramarine-1-flash` and `thinkingLevel: 'max'`, and one tool runs after a complete replayed response. This test stays in the CLI package so the portable role never imports the host provider.
+
+- [ ] **Step 4: Run the targeted tests to verify red.**
 
 ```sh
 npx vitest run packages/cli/src/paper-provider.test.ts
 ```
 
-Expected: provider import or asserted behavior fails because the module does not exist.
+Expected: the provider import and missing-`[DONE]` assertion fail before implementation.
 
-- [ ] **Step 3: Implement the smallest provider factory.** Use the installed API types and add only compatibility flags justified by the fake-fetch contract. The model declaration is:
+- [ ] **Step 5: Implement the model, provider, and sentinel guard.** Use the model declaration below. `paperChatApi()` wraps the installed `openAICompletionsApi()` `stream` and `streamSimple`; each call replaces `options.fetch` with a fetch that delegates to `options.fetch ?? globalThis.fetch`. For a successful `text/event-stream` response, wrap `response.body` in a `ReadableStream` that forwards bytes immediately. Decode across byte boundaries, recognize only a complete SSE `data: [DONE]` line, and error the stream at upstream EOF if none appeared. Propagate upstream errors and cancel the upstream reader if the consumer cancels. Pass non-SSE error responses through untouched. `pi-ai` 1.0.2 accepts a valid `finish_reason` even without `[DONE]`, so the guard must affect the transport, not just a post-hoc result assertion.
+
+```ts
+function paperChatApi(): ProviderStreams {
+  const base = openAICompletionsApi();
+  const withGuard = <T extends { fetch?: typeof fetch }>(options: T | undefined): T => ({
+    ...options,
+    fetch: guardedPaperFetch(options?.fetch ?? globalThis.fetch),
+  }) as T;
+  return {
+    stream: (model, context, options) => base.stream(model, context, withGuard(options)),
+    streamSimple: (model, context, options) => base.streamSimple(model, context, withGuard(options)),
+  };
+}
+```
+
+`guardedPaperFetch` must implement the response-body check described above for both paths. Keep its byte stream live: buffering the entire response would break tool-call streaming and abort behavior.
 
 ```ts
 export const PAPER_MODEL_REF = {
@@ -88,96 +119,96 @@ export const PAPER_MODEL_REF = {
 } as const;
 
 const model: Model<'openai-completions'> = {
-  id: PAPER_MODEL_REF.modelId,
-  name: 'Ultramarine 1 Flash',
-  provider: PAPER_MODEL_REF.provider,
-  api: 'openai-completions',
+  id: PAPER_MODEL_REF.modelId, name: 'Ultramarine 1 Flash',
+  provider: PAPER_MODEL_REF.provider, api: 'openai-completions',
   baseUrl: 'https://api.paperinstruments.com/v1',
-  reasoning: true,
-  input: ['text', 'image'],
+  reasoning: true, input: ['text'],
   cost: { input: 0.15, output: 0.50, cacheRead: 0.03, cacheWrite: 0.15 },
-  contextWindow: 131_072,
-  maxTokens: 32_768,
+  contextWindow: 131_072, maxTokens: 32_768,
   thinkingLevelMap: {
     off: null, minimal: null, low: 'low', medium: null,
     high: 'high', xhigh: null, max: 'max',
   },
-  compat: { supportsDeveloperRole: false, supportsReasoningEffort: true },
+  compat: {
+    supportsDeveloperRole: false, supportsReasoningEffort: true,
+    supportsUsageInStreaming: true, supportsFinishReason: true,
+    supportsStore: false, maxTokensField: 'max_completion_tokens',
+  },
 };
 
-export function paperProvider() {
+export function paperProvider(): Provider<'openai-completions'> {
   return createProvider({
     id: 'paper', name: 'Paper Instruments',
     baseUrl: 'https://api.paperinstruments.com/v1',
     auth: { apiKey: envApiKeyAuth('Paper Instruments API key', ['PAPERINSTRUMENTS_API_KEY']) },
-    models: [model],
-    api: openAICompletionsApi(),
+    models: [model], api: paperChatApi(),
   });
 }
 ```
 
-If the installed API serializes an unsupported field, adjust its `compat` or a narrow provider-stream wrapper and pin the behavior in the test; do not patch `node_modules` or skip the contract. Do not add `x-session-id` until a stable Pi Durable conversation ID is available in this adapter; the provider supports it, but caching is optional.
+Make `paperChatApi` return `ProviderStreams`; do not import a non-exported `pi-ai` internal path or patch `node_modules`. Paper's published contract allows `max_completion_tokens` and `stream_options: { include_usage: true }`, and rejects `store`; assert those choices on the fake wire. Do not add `x-session-id`: Pi Durable supplies a session ID, but the Paper affinity-header contract has not been verified.
 
-- [ ] **Step 4: Run the provider tests and typecheck.**
+- [ ] **Step 6: Run tests and typecheck.**
 
 ```sh
 npx vitest run packages/cli/src/paper-provider.test.ts
 npm run typecheck -w @officehum/cli
 ```
 
-Expected: both pass. Inspect the captured request and usage assertions; a green metadata-only test is insufficient.
+Expected: both pass, including fake HTTP and Harness recovery. Inspect captured requests and terminal stop reasons; metadata-only success is insufficient.
 
-- [ ] **Step 5: Commit the provider and contract tests.**
+- [ ] **Step 7: Commit Task 1.**
 
 ```sh
-git add packages/cli/src/paper-provider.ts packages/cli/src/paper-provider.test.ts
-git commit -m "feat: register Ultramarine provider with stream contract tests"
+git add packages/cli/src/paper-provider.ts packages/cli/src/paper-provider.test.ts packages/cli/package.json package-lock.json
+git commit -m "feat: register guarded Ultramarine provider"
 ```
 
-### Task 2: Make new roots default to Paper and preserve saved model identity
+### Task 2: Default new roots to Paper and preserve saved model identity
 
 **Files:** Modify `packages/cli/src/cli.ts`, `packages/cli/src/cli.test.ts`, `agents/frontdesk/officehum.json`, `agents/frontdesk/src/index.test.ts`, and `README.md`.
 
-**Interfaces:** Consumes `paperProvider()` and `PAPER_MODEL_REF` from Task 1. Produces CLI `--provider paper|openai` on `start`/`listen`, paired `--model ID`, and `liveModels(ref: ModelRef, dependencies)` that selects a registered provider by `ref.provider` and model by `(ref.provider, ref.modelId)`. Both normal and inbound `resume` use the stored `agent.model` pair, never only `modelId`. The existing synthetic demo path is unchanged.
+**Interfaces:** Consume `paperProvider()` and `PAPER_MODEL_REF` from Task 1. Produce `--provider paper|openai` on `start` and `listen`, paired `--model ID`, and `liveModels(ref: ModelRef, dependencies)` that selects and validates the exact pair. Normal and inbound `resume` use saved `agent.model` and thinking level. Demo remains keyless.
 
-- [ ] **Step 1: Write failing CLI and role tests.** In `cli.test.ts`, assert fresh `start` and `listen` select `paper/ultramarine-1-flash` through an injected fake `createLiveModels`; explicit `--provider openai --model gpt-6-sol` selects OpenAI. Create pre-change OpenAI state with the existing `createLiveState()` fixture, then call `resume` and assert the injected factory receives `{provider:'openai', modelId:'gpt-6.1-sol'}`. Repeat through an inbound state fixture so both resume branches are covered. Without `PAPERINSTRUMENTS_API_KEY`, a fresh Paper start fails before a Harness root or submission is persisted. In `index.test.ts`, assert the role's resolved agent model and thinking level are Paper/max in a bare Harness using fake models.
+- [ ] **Step 1: Update existing fixtures and write failing CLI tests.** In `cli.test.ts`, add explicit `--provider openai` to existing tests whose fake `createLiveModels` returns OpenAI and whose purpose is unrelated to the new default. Change `createLiveState()` to seed an OpenAI root with `thinkingLevel: 'off'`, rather than inheriting the changed manifest's `max`: call `await solo.root.configure({ thinkingLevel: 'off' }, BACKGROUND_CONTEXT)` before closing the fixture. Do the same on a seeded inbound OpenAI root with saved `gpt-6.1-sol`. Assert fresh `start` and `listen` pass `{ provider: 'paper', modelId: 'ultramarine-1-flash' }` to the injected factory; `--provider openai` alone selects `gpt-6-sol`; `--provider openai --model gpt-6.1-sol` selects that pair in either option order. Assert both resumes pass the saved OpenAI pair to the factory, retain `off`, and show the OpenAI label. Seed a Paper root with `max` and assert Paper resume and label.
 
 ```ts
-expect(frontdesk({ calendar: fakeCalendar() }).agent).toMatchObject({
-  model: { provider: 'paper', modelId: 'ultramarine-1-flash' },
-  thinkingLevel: 'max',
-});
-// Resume spy receives the full saved ModelRef, not just 'gpt-6.1-sol'.
 expect(selectedRefs).toEqual([{ provider: 'openai', modelId: 'gpt-6.1-sol' }]);
+expect((await reopened.root.agent(BACKGROUND_CONTEXT)).thinkingLevel).toBe('off');
+expect(capture.output.join('\n')).toContain('Mode: live OpenAI (gpt-6.1-sol)');
 ```
 
-Preserve the existing regression asserting a live OpenAI state still reports `Mode: live OpenAI (gpt-6.1-sol)`; add a Paper label assertion. Test invalid provider/model pairs and failure with no silent fallback.
+Test a missing Paper key without injection: fresh `start` fails with no Harness root/submission persisted and no OpenAI fallback. Test `--provider paper --model gpt-6-sol`, an unknown provider, empty or unknown model IDs, and an injected runtime whose `model` differs from the requested pair; each fails before submission. On existing state, `start` and `listen` may proceed only when the requested pair matches the saved pair; provider or model mismatch fails before admitting input or inbound processing. `resume` with a saved agent missing `model` fails visibly rather than using the new default.
 
-- [ ] **Step 2: Run the targeted tests to verify red.**
+- [ ] **Step 2: Write failing role and bare-Harness tests in `index.test.ts`.** Assert `frontdesk({ calendar }).agent` resolves to Paper/max by value, without importing the CLI provider into the portable role. Register a fake `paper/ultramarine-1-flash` model in a bare Harness, create a root from that role, reopen it, and assert its persisted pair and `max`. Task 1's Harness test checks the real Paper transport.
+
+- [ ] **Step 3: Run targeted tests to verify red.**
 
 ```sh
 npx vitest run packages/cli/src/cli.test.ts agents/frontdesk/src/index.test.ts
 ```
 
-Expected: new default/selection assertions fail against the current OpenAI-only CLI and manifest.
+Expected: the new default, pair selection, and saved-state assertions fail against the current CLI and manifest.
 
-- [ ] **Step 3: Implement paired selection.** Change `Parsed` to carry `provider: 'paper'|'openai'` (default `paper`) and `model` (default `ultramarine-1-flash`). Permit `--provider` only for new live `start` and `listen`; `--model` remains paired to it. Change `CliDependencies.createLiveModels` to accept a `ModelRef`. `liveModels(ref, dependencies)` first uses the injected factory, otherwise checks the credential for `ref.provider`, registers the matching provider, obtains `models.getModel(ref.provider, ref.modelId)`, and returns that exact ref. Reject unknown combinations with a clear error. In every resume branch, pass `agent.model` unchanged and use the manifest default only if a genuinely new root has no persisted agent. Update `modelLabel` for Paper; retain the old OpenAI and demo labels. Put `{ "provider":"paper", "modelId":"ultramarine-1-flash", "thinkingLevel":"max" }` in `agents/frontdesk/officehum.json`.
+- [ ] **Step 4: Implement paired selection and saved-state policy.** Parse `--provider` only for `start` and `listen`; track whether `--model` was supplied, then resolve the model after all options so order cannot change it. Paper defaults to `ultramarine-1-flash`, OpenAI to `gpt-6-sol`; `resume` has no model-selection flags. New roots pass the selected pair to `openSolo` or `openInboundRuntime`. On existing roots, `start` and `listen` compare saved provider **and** model ID against the requested pair before admitting work. Both resume routes require saved `agent.model`, select that exact pair, and preserve the stored thinking level. Never fall back to `parsed.model` on resume. Keep demo/OpenAI labels and add `live Paper (ultramarine-1-flash)`.
 
-The selection must keep the pair together, including in the dependency seam used by tests:
+Validate the requested provider before injection, then verify the injected runtime's `model` and registered catalog entry. Production checks credentials and catalog after registration:
 
 ```ts
-type LiveProvider = 'paper' | 'openai';
-type LiveRef = ModelRef & { provider: LiveProvider };
-
-function selectedNewRootModel(parsed: Parsed): LiveRef {
-  return { provider: parsed.provider, modelId: parsed.model };
-}
-
 function liveModels(ref: ModelRef, dependencies: CliDependencies) {
-  const injected = dependencies.createLiveModels?.(ref);
-  if (injected !== undefined) return injected;
   if (ref.provider !== 'paper' && ref.provider !== 'openai') {
     throw new Error(`Unsupported live provider: ${ref.provider}`);
+  }
+  if (!ref.modelId.trim() || (ref.provider === 'paper' && ref.modelId !== PAPER_MODEL_REF.modelId)) {
+    throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
+  }
+  const injected = dependencies.createLiveModels?.(ref);
+  if (injected !== undefined) {
+    if (injected.model.provider !== ref.provider || injected.model.modelId !== ref.modelId ||
+        injected.models.getModel(ref.provider, ref.modelId) === undefined) {
+      throw new Error('Injected live model does not match the requested provider/model.');
+    }
+    return injected;
   }
   const keyName = ref.provider === 'paper' ? 'PAPERINSTRUMENTS_API_KEY' : 'OPENAI_API_KEY';
   if (!process.env[keyName]?.trim()) throw new Error(`Set ${keyName} before live start/resume.`);
@@ -190,11 +221,9 @@ function liveModels(ref: ModelRef, dependencies: CliDependencies) {
 }
 ```
 
-At parsing time, `--provider openai` with no `--model` resolves to the existing `gpt-6-sol` OpenAI default; `--provider paper` with no `--model` resolves to `ultramarine-1-flash`. Track whether `--model` was supplied so option order cannot change the selected ID. Saved roots ignore these new-root defaults.
+Set `agents/frontdesk/officehum.json` `defaultModel` to `{ "provider": "paper", "modelId": "ultramarine-1-flash", "thinkingLevel": "max" }`. Preserve SDK overlay behavior and role portability; do not put provider registration or credentials in `@officehum/frontdesk`. Update `README.md` with the Paper key, defaults, `--provider openai` override, keyless demo, and saved provider/model/thinking resume rule. Do not suggest project-file keys or real-account tests.
 
-`README.md` must show the Paper key name, `start`/`listen` default, an explicit OpenAI override, the keyless demo, and the rule that resume keeps the saved provider/model. It must not suggest placing a key in project files or using a real account during tests.
-
-- [ ] **Step 4: Run targeted and whole-repo verification.**
+- [ ] **Step 5: Run targeted and whole-repo checks.**
 
 ```sh
 npx vitest run packages/cli/src/paper-provider.test.ts packages/cli/src/cli.test.ts agents/frontdesk/src/index.test.ts
@@ -202,9 +231,9 @@ npm run check
 git diff --check
 ```
 
-Expected: all pass. If 1.0.2's adapter drops or alters provider identity on resume, fix that boundary with a focused regression test before declaring the task done. Do not claim a live Paper call was verified by fake streams.
+Expected: all pass. Inspect old-state and inbound assertions, bare Harness recovery, and missing-key state. Fake-stream success does not claim a live Paper call.
 
-- [ ] **Step 5: Commit the default and resume changes.**
+- [ ] **Step 6: Commit Task 2.**
 
 ```sh
 git add packages/cli/src/cli.ts packages/cli/src/cli.test.ts agents/frontdesk/officehum.json agents/frontdesk/src/index.test.ts README.md
@@ -213,4 +242,4 @@ git commit -m "feat: default new Office Hum roots to Ultramarine"
 
 ## Completion and Next Slice
 
-The provider slice is complete when both commits are reviewed, the fake transport covers streaming/tool/usage/abort behavior, `npm run check` passes, and a pre-change OpenAI root resumes on OpenAI. A real API smoke test may be performed only with an operator-supplied Paper key and a funded account; it is not a substitute for the local acceptance suite. The next implementation plan covers immutable FileStore operations and the document worker, followed by format adapters and review/publish.
+The provider slice is complete when both commits are reviewed, fake transport and bare Harness cover tool execution, usage, abort, `[DONE]` truncation, and reopen, `npm run check` passes, and pre-change OpenAI roots resume on OpenAI with saved thinking. A live smoke test requires an operator-supplied Paper key and funded account; it does not replace local acceptance. The next plan covers immutable FileStore operations and the document worker, followed by format adapters and review/publish.
