@@ -43,8 +43,11 @@ See [docs/design/agent-package.md](../docs/design/agent-package.md). For a minim
 
 First roles, in milestone M1:
 
-| Folder | Package | Department |
-| --- | --- | --- |
-| `bookkeeper` | `@officehum/bookkeeper` (reference agent) | Finance |
-| `frontdesk` | `@officehum/frontdesk` | Front office |
-| `office-manager` | `@officehum/office-manager` | Operations |
+| Folder | Package | Department | Status |
+| --- | --- | --- | --- |
+| `frontdesk` | `@officehum/frontdesk` | Front office | Built (solo) |
+| `bookkeeper` | `@officehum/bookkeeper` (reference agent for accounting) | Finance | Planned (RASF-3070) |
+| `office-manager` | `@officehum/office-manager` | Operations | Planned (RASF-3071) |
+
+Only `frontdesk/` exists today. The roster grows into a free catalog of roles for every department
+of a company (RASF-3293), starting with a Sales agent (RASF-3295).
