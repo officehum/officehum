@@ -74,14 +74,25 @@ export {
   validateSuite,
 } from "./evals/suite.js";
 export {
+  type CreateVersionInput,
   type FileMetadata,
+  type FileOperationReceipt,
   type FileRef,
   type FileStore,
+  FileStoreError,
   fileResult,
   MAX_INLINE_IMAGE_BYTES,
+  type PublishReceipt,
+  type PublishVersionInput,
+  type PutVersionInput,
+  type VersionCommitReceipt,
+  type VersionContext,
+  type VersionedFileRef,
+  type VersionedFileStore,
 } from "./files.js";
 export { formatIssue, type Issue, type Validation } from "./issues.js";
 export { localFileStore } from "./local-files.js";
+export { localVersionedFileStore } from "./local-versioned-files.js";
 export {
   type AcceptDeclaration,
   type AgentManifest,
@@ -140,3 +151,4 @@ export {
   type Skill,
   skillFolders,
 } from "./skills.js";
+export { intentHash } from "./versioned-file-validation.js";
