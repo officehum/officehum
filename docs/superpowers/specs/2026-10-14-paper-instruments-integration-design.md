@@ -1,6 +1,6 @@
 # Paper Instruments in Office Hum on Pi Durable
 
-Date: 2026-10-14. Status: design approved in conversation; implementation and Linear reconciliation pending. Applies to Word, PowerPoint, and Excel work performed by every Office Hum role.
+Date: 2026-10-14. Status: design approved in conversation; first implementation plan written and Linear issues reconciled; product implementation pending. Applies to Word, PowerPoint, and Excel work performed by every Office Hum role.
 
 ## Purpose and decisions
 
@@ -91,11 +91,11 @@ Cross-format work carries a lineage of input and output refs. Numeric claims in 
 
 This is one architecture, with independently deliverable tickets. It does not require adopting Feather as a second harness, exposing arbitrary shell/file tools, deploying model weights, or replacing the office's non-Office document and connector paths.
 
-## Linear reconciliation after spec review
+## Linear reconciliation
 
-Update the Office Hum project's existing issues rather than create parallel work. RASF-3199 remains the Tier 1 parent and should link this spec and the all-format acceptance criteria. RASF-3201 (document reading), RASF-3203 (document generation), and RASF-3204 (spreadsheet/data pack) need their Office format library choices changed from `mammoth`/`docx`/`exceljs` to Paper Office where applicable; keep their PDF, CSV, Typst, and DuckDB work as separate non-Paper concerns. RASF-3192/3193 need immutable version, operation lookup, workspace, and publish compare-and-swap requirements. RASF-3118 needs catalog/manifest support for typed tools and leased Python capability. RASF-3237 covers the Pi Durable/pi-ai upgrade prerequisite. RASF-3175 covers model-key handling.
+The Office Hum project's existing issues were amended rather than duplicated. RASF-3199 remains the Tier 1 parent and now carries the spec and all-format acceptance criteria. RASF-3201 (document reading), RASF-3203 (document generation), and RASF-3204 (spreadsheet/data pack) now use Paper Office for applicable Office formats while preserving their PDF, CSV, Typst, and DuckDB work. RASF-3192/3193 include immutable versions, operation lookup, workspace, and publish compare-and-swap. RASF-3118 covers catalog/manifest support for typed tools and leased Python capability. RASF-3237 keeps the Pi Durable/pi-ai upgrade separate, and RASF-3175 covers model-key handling.
 
-Create focused issues under RASF-3199 where current tickets do not cover the work: Ultramarine provider and model default; restricted Paper Python worker/workspace; PowerPoint adapter; review/preview/publish flow; all-format portability and recovery acceptance. Link dependencies so the provider and FileStore foundations precede end-to-end rollout. Preserve existing issue ownership/status and unrelated scope. Reconcile titles, descriptions, labels, and dependencies against the live board when updating it; this section records intent, not a claim that Linear already changed.
+Focused issues under RASF-3199 now cover the missing work: RASF-3282 (Ultramarine provider/default), RASF-3283 (restricted Paper Python worker/workspace), RASF-3284 (PowerPoint adapter), RASF-3285 (review/preview/publish), and RASF-3286 (all-format portability/recovery acceptance). The first detailed plan is `docs/superpowers/plans/2026-10-14-ultramarine-provider.md`. These issues link dependencies so the FileStore and worker foundations precede the format rollout and all-format acceptance. Existing issues retain their original project, status, and unrelated scope.
 
 ## Open implementation decisions
 
