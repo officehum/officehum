@@ -103,6 +103,7 @@ export async function mutateState<T>(
     const state = await readState(root);
     const result = await change(state);
     const checked = validateState(state);
+    const detachedResult = structuredClone(result);
     tempPath = join(root, `.manifest-${randomBytes(16).toString("hex")}.json`);
     const handle = await open(tempPath, "wx", 0o600);
     try {
@@ -113,7 +114,7 @@ export async function mutateState<T>(
     }
     await rename(tempPath, join(root, "manifest.json"));
     tempPath = undefined;
-    return structuredClone(result);
+    return detachedResult;
   } finally {
     if (tempPath)
       await unlink(tempPath).catch((error: unknown) => {

@@ -65,6 +65,15 @@ it("failed mutation preserves the prior snapshot and releases its lock", async (
   await expect(mutateState(dir, async () => "recovered")).resolves.toBe("recovered");
 });
 
+it("uncloneable results do not commit state and release the lock", async () => {
+  const dir = await setup();
+  await expect(mutateState(dir, async () => () => undefined)).rejects.toThrow();
+  await expect(readFile(join(dir, "manifest.json"), "utf8")).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  await expect(mutateState(dir, async () => "recovered")).resolves.toBe("recovered");
+});
+
 it("corrupt snapshots fail closed", async () => {
   const dir = await setup();
   await writeFile(join(dir, "manifest.json"), "{}");
