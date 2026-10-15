@@ -2,10 +2,14 @@
 
 Open-source multi-agent office for medium-sized businesses, built on [Pi Durable](https://earendil.com/posts/pi-durable/).
 
-Each specialized role inside a department, such as accounts payable in finance, a campaign manager in marketing, or a dispatcher in operations, is its own Pi Durable agent with its own instructions, tools, skills and eval suite. Agents run alone, or together on one machine where they share work through a durable workboard and a relay that delivers every hand-off exactly once.
+Each specialized role inside a department, such as accounts payable in finance, a campaign manager in marketing, or a dispatcher in operations, is its own Pi Durable agent with its own instructions, tools, skills and eval suite. The design lets agents run alone or together on one machine, sharing work through a durable workboard and relay.
 
 > Status: the local Front Desk solo workflow is available but unpublished. The shared workboard,
 > relay, and multi-role team runtime remain planned.
+
+The [visual system guide](docs/visualizations/officehum-built.html) is a standalone HTML map of the
+repository, its current and planned interfaces, and the distinct roles of Office Hum, Pi Durable,
+and Paper Instruments. Download or open the file locally to use its interactive workflow view.
 
 ## Front Desk quick start
 
