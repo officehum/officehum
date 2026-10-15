@@ -266,6 +266,20 @@ it("normalizes invalid inherited put input without exposing it", async () => {
   ).rejects.toMatchObject({ code: "INVALID_INPUT", message: "Invalid file input" });
 });
 
+it("snapshots inherited put name and MIME type before asynchronous work", async () => {
+  const { store } = await setup();
+  const mutable = {
+    bytes: new TextEncoder().encode("original"),
+    name: "original.txt",
+    mimeType: "text/plain",
+    metadata: { createdBy: "test", source: "generated" as const },
+  };
+  const pending = store.put(mutable);
+  mutable.name = "../replacement.txt";
+  mutable.mimeType = "invalid";
+  await expect(pending).resolves.toMatchObject({ name: "original.txt", mimeType: "text/plain" });
+});
+
 it("fails closed on malformed manifest references, operation keys and fields", async () => {
   const { dir, store } = await setup();
   const one = await store.create(input("create:1", "one"));

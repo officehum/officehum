@@ -243,20 +243,24 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
   return {
     async put(input) {
       let bytes: Uint8Array;
+      let name: string;
+      let mimeType: string;
       let metadata: typeof input.metadata;
       try {
         if (!(input.bytes instanceof Uint8Array)) throw new Error("Invalid bytes");
         bytes = Uint8Array.from(input.bytes);
+        name = input.name;
+        mimeType = input.mimeType;
         metadata = structuredClone(input.metadata);
-        assertName(input.name);
-        assertMimeType(input.mimeType);
+        assertName(name);
+        assertMimeType(mimeType);
         assertMetadata(metadata);
-        assertSignature(bytes, input.mimeType);
+        assertSignature(bytes, mimeType);
       } catch {
         throw new FileStoreError("INVALID_INPUT", "Invalid file input");
       }
       await assertBlobRoot();
-      const blob = await blobs.put({ bytes, name: input.name, mimeType: input.mimeType, metadata });
+      const blob = await blobs.put({ bytes, name, mimeType, metadata });
       const output: VersionedFileRef = {
         ...blob,
         versionId: blob.id,
