@@ -1,10 +1,20 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { localVersionedFileStore } from "./index.js";
 import { localFileStore } from "./local-files.js";
+import { intentHash } from "./versioned-file-validation.js";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -33,12 +43,40 @@ const input = (operationId: string, text: string) => ({
 it("commits initial draft, versions and receipts across reopening", async () => {
   const { dir, store } = await setup();
   const first = await store.create(input("create:1", "one"));
+  expect(first.intentSha256).toBe(
+    intentHash({
+      kind: "create",
+      fileId: null,
+      sourceVersionId: null,
+      sourceSha256: null,
+      name: "note.txt",
+      mimeType: "text/plain",
+      metadata: input("x", "x").metadata,
+      context,
+      contentSha256: createHash("sha256").update("one").digest("hex"),
+      size: 3,
+    }),
+  );
   const edit = {
     ...input("edit:1", "two"),
     fileId: first.output.id,
     sourceVersionId: first.output.versionId,
   };
   const receipt = await store.putVersion(edit);
+  expect(receipt.intentSha256).toBe(
+    intentHash({
+      kind: "version",
+      fileId: first.output.id,
+      sourceVersionId: first.output.versionId,
+      sourceSha256: first.output.sha256,
+      name: edit.name,
+      mimeType: edit.mimeType,
+      metadata: edit.metadata,
+      context: edit.context,
+      contentSha256: createHash("sha256").update("two").digest("hex"),
+      size: 3,
+    }),
+  );
   expect(receipt.output.id).toBe(first.output.id);
   expect(receipt.output.versionId).not.toBe(first.output.versionId);
   expect(receipt.output.sha256).toBe(createHash("sha256").update("two").digest("hex"));
@@ -190,6 +228,81 @@ it("fails closed on a symlinked manifest", async () => {
   await expect(two.store.lookupOperation("create:2")).rejects.toMatchObject({ code: "INTEGRITY" });
 });
 
+it("rejects a symlinked blob root before inherited put or reads", async () => {
+  const outside = await setup();
+  const inside = await setup();
+  await symlink(join(outside.dir, "blobs"), join(inside.dir, "blobs"));
+  await expect(
+    inside.store.put({
+      bytes: new TextEncoder().encode("outside"),
+      name: "note.txt",
+      mimeType: "text/plain",
+      metadata: { createdBy: "test", source: "generated" },
+    }),
+  ).rejects.toMatchObject({ code: "INTEGRITY" });
+  expect(await readdir(outside.dir)).not.toContain("blobs");
+  await expect(inside.store.getHead("file_00000000000000000000000000")).rejects.toMatchObject({
+    code: "INTEGRITY",
+  });
+});
+
+it("normalizes invalid inherited put input without exposing it", async () => {
+  const { store } = await setup();
+  await expect(
+    store.put({
+      bytes: new TextEncoder().encode("secret payload"),
+      name: "../secret.txt",
+      mimeType: "text/plain",
+      metadata: { createdBy: "test", source: "generated" },
+    }),
+  ).rejects.toMatchObject({ code: "INVALID_INPUT", message: "Invalid file input" });
+  await expect(
+    store.put({
+      bytes: new TextEncoder().encode("secret payload"),
+      name: "note.txt",
+      mimeType: "invalid",
+      metadata: { createdBy: "test", source: "generated" },
+    }),
+  ).rejects.toMatchObject({ code: "INVALID_INPUT", message: "Invalid file input" });
+});
+
+it("fails closed on malformed manifest references, operation keys and fields", async () => {
+  const { dir, store } = await setup();
+  const one = await store.create(input("create:1", "one"));
+  const two = await store.create(input("create:2", "two"));
+  const valid = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8")) as {
+    files: Record<string, { initial: string; head: string; published: string | null }>;
+    operations: Record<string, unknown>;
+  };
+  const existingOperationKey = Object.keys(valid.operations)[0];
+  if (!existingOperationKey) throw new Error("Expected operation receipt");
+  const cases = [
+    {
+      ...structuredClone(valid),
+      files: {
+        ...valid.files,
+        [one.output.id]: { ...valid.files[one.output.id], head: "file_00000000000000000000000000" },
+      },
+    },
+    {
+      ...structuredClone(valid),
+      files: {
+        ...valid.files,
+        [one.output.id]: { ...valid.files[one.output.id], head: two.output.versionId },
+      },
+    },
+    {
+      ...structuredClone(valid),
+      operations: { ...valid.operations, ["0".repeat(64)]: valid.operations[existingOperationKey] },
+    },
+    { ...structuredClone(valid), unexpected: true },
+  ];
+  for (const malformed of cases) {
+    await writeFile(join(dir, "manifest.json"), JSON.stringify(malformed));
+    await expect(store.getHead(one.output.id)).rejects.toMatchObject({ code: "INTEGRITY" });
+  }
+});
+
 it("fails closed on a symlinked committed blob payload", async () => {
   const one = await setup();
   const oneReceipt = await one.store.create(input("create:1", "one"));
@@ -261,6 +374,15 @@ it("publishes conditionally and replays without rewinding a newer pointer", asyn
     approvalId: "approval:1",
   };
   const firstPublish = await store.publish(initial);
+  expect(firstPublish.intentSha256).toBe(
+    intentHash({
+      kind: "publish",
+      fileId: initial.fileId,
+      expectedPublishedVersionId: null,
+      versionId: initial.versionId,
+      approvalId: initial.approvalId,
+    }),
+  );
   const second = await store.putVersion({
     ...input("edit:1", "two"),
     fileId: first.output.id,

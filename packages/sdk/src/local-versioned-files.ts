@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
+import { lstat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { assertId } from "./file-validation.js";
+import {
+  assertId,
+  assertMetadata,
+  assertMimeType,
+  assertName,
+  assertSignature,
+} from "./file-validation.js";
 import {
   type CreateVersionInput,
   type FileOperationReceipt,
@@ -33,6 +40,7 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
     ref: VersionedFileRef,
   ): Promise<{ ref: VersionedFileRef; bytes: Uint8Array }> {
     try {
+      await assertBlobRoot();
       const stored = await blobs.get(ref.versionId);
       if (!stored) throw integrity("Committed blob is missing");
       const projected = {
@@ -69,13 +77,18 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
   }
 
   async function commitCreate(input: CreateVersionInput): Promise<VersionCommitReceipt> {
+    await assertBlobRoot();
     const canonicalHash = intentHash({
       kind: "create",
-      bytesSha256: hash(input.bytes),
+      fileId: null,
+      sourceVersionId: null,
+      sourceSha256: null,
       name: input.name,
       mimeType: input.mimeType,
       metadata: input.metadata,
       context: input.context,
+      contentSha256: hash(input.bytes),
+      size: input.bytes.byteLength,
     });
     const operationKey = digest(input.operationId);
     return mutateState(root, async (state) => {
@@ -118,15 +131,17 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
   }
 
   async function edit(input: PutVersionInput): Promise<VersionCommitReceipt> {
+    await assertBlobRoot();
     const canonicalBase = {
       kind: "version",
-      bytesSha256: hash(input.bytes),
+      contentSha256: hash(input.bytes),
       name: input.name,
       mimeType: input.mimeType,
       metadata: input.metadata,
       context: input.context,
       fileId: input.fileId,
       sourceVersionId: input.sourceVersionId,
+      size: input.bytes.byteLength,
     };
     const operationKey = digest(input.operationId);
     return mutateState(root, async (state) => {
@@ -184,8 +199,15 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
 
   async function publish(input: PublishVersionInput): Promise<PublishReceipt> {
     const request = snapshotPublish(input);
+    await assertBlobRoot();
     const operationKey = digest(request.operationId);
-    const canonicalHash = intentHash({ kind: "publish", ...request });
+    const canonicalHash = intentHash({
+      kind: "publish",
+      fileId: request.fileId,
+      expectedPublishedVersionId: request.expectedPublishedVersionId,
+      versionId: request.versionId,
+      approvalId: request.approvalId,
+    });
     return mutateState(root, async (state) => {
       const prior = own(state.operations, operationKey);
       if (prior) {
@@ -220,8 +242,20 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
 
   return {
     async put(input) {
-      const bytes = Uint8Array.from(input.bytes);
-      const metadata = structuredClone(input.metadata);
+      let bytes: Uint8Array;
+      let metadata: typeof input.metadata;
+      try {
+        if (!(input.bytes instanceof Uint8Array)) throw new Error("Invalid bytes");
+        bytes = Uint8Array.from(input.bytes);
+        metadata = structuredClone(input.metadata);
+        assertName(input.name);
+        assertMimeType(input.mimeType);
+        assertMetadata(metadata);
+        assertSignature(bytes, input.mimeType);
+      } catch {
+        throw new FileStoreError("INVALID_INPUT", "Invalid file input");
+      }
+      await assertBlobRoot();
       const blob = await blobs.put({ bytes, name: input.name, mimeType: input.mimeType, metadata });
       const output: VersionedFileRef = {
         ...blob,
@@ -252,12 +286,14 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
     },
     async get(id) {
       assertId(id);
+      await assertBlobRoot();
       const state = await readState(root);
       const file = own(state.files, id);
       return file ? readVersion(state, id, file.initial) : undefined;
     },
     async info(id) {
       assertId(id);
+      await assertBlobRoot();
       const state = await readState(root);
       const file = own(state.files, id);
       return file ? (await readVersion(state, id, file.initial))?.ref : undefined;
@@ -265,28 +301,44 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
     async getVersion(fileId, versionId) {
       assertId(fileId);
       assertId(versionId);
+      await assertBlobRoot();
       return readVersion(await readState(root), fileId, versionId);
     },
     async getHead(fileId) {
       assertId(fileId);
+      await assertBlobRoot();
       const state = await readState(root);
       const file = own(state.files, fileId);
       return file ? (await readVersion(state, fileId, file.head))?.ref : undefined;
     },
     async getPublished(fileId) {
       assertId(fileId);
+      await assertBlobRoot();
       const state = await readState(root);
       const file = own(state.files, fileId);
       return file?.published ? (await readVersion(state, fileId, file.published))?.ref : undefined;
     },
     async lookupOperation(operationId) {
       assertOperationId(operationId);
+      await assertBlobRoot();
       const receipt = own((await readState(root)).operations, digest(operationId));
       if (!receipt) return undefined;
       await validateReceipt(receipt);
       return structuredClone(receipt);
     },
   };
+
+  async function assertBlobRoot(): Promise<void> {
+    try {
+      const stat = await lstat(join(root, "blobs"));
+      if (stat.isSymbolicLink() || !stat.isDirectory()) throw integrity("Invalid blob store root");
+    } catch (error) {
+      if (error instanceof FileStoreError) throw error;
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")
+        return;
+      throw integrity("Invalid blob store root");
+    }
+  }
 }
 
 function hash(bytes: Uint8Array): string {
