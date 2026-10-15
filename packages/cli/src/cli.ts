@@ -48,6 +48,7 @@ import {
   type SoloSession,
 } from "@officehum/office";
 import type { ApprovalDecision, ApprovalRequest, Approver, HookContext } from "@officehum/sdk";
+import { PAPER_MODEL_REF, paperProvider } from "./paper-provider.js";
 
 export interface CliIo {
   output(line: string): void;
@@ -72,6 +73,8 @@ type Parsed = {
   message?: string;
   requestId?: string;
   model: string;
+  provider: "paper" | "openai";
+  modelProvided: boolean;
   calendar?: "local" | "google";
   messenger?: "console" | "resend";
   port: number;
@@ -79,7 +82,7 @@ type Parsed = {
 
 export interface CliDependencies {
   readonly createGoogleCalendar?: (options: GoogleCalendarOptions) => CalendarClient;
-  readonly createLiveModels?: (modelId: string) => {
+  readonly createLiveModels?: (ref: ModelRef) => {
     readonly models: ReturnType<typeof createModels>;
     readonly model: ModelRef;
   };
@@ -88,9 +91,9 @@ export interface CliDependencies {
 
 const USAGE = `Usage:
   officehum demo [--state DIR] [--approval allow|deny] [--calendar local] [--messenger console]
-  officehum start --message TEXT --request-id ID [--state DIR] [--model ID] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
+  officehum start --message TEXT --request-id ID [--state DIR] [--provider paper|openai] [--model ID] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
   officehum resume [--state DIR] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
-  officehum listen [--state DIR] [--model ID] [--approval allow|deny] [--calendar local|google] --messenger resend [--port PORT]
+  officehum listen [--state DIR] [--provider paper|openai] [--model ID] [--approval allow|deny] [--calendar local|google] --messenger resend [--port PORT]
   officehum inbox [--state DIR]
   officehum bookings [--state DIR] [--calendar local|google]
   officehum contacts [--state DIR]
@@ -103,7 +106,9 @@ function parse(args: string[]): Parsed {
     command,
     state: ".officehum/frontdesk",
     approval: undefined,
-    model: "gpt-6-sol",
+    model: "",
+    modelProvided: false,
+    provider: "paper",
     port: 8787,
   };
   const allowed = new Set(
@@ -114,13 +119,22 @@ function parse(args: string[]): Parsed {
           "--message",
           "--request-id",
           "--model",
+          "--provider",
           "--calendar",
           "--messenger",
         ]
       : command === "demo" || command === "resume"
         ? ["--state", "--approval", "--calendar", "--messenger"]
         : command === "listen"
-          ? ["--state", "--approval", "--model", "--calendar", "--messenger", "--port"]
+          ? [
+              "--state",
+              "--approval",
+              "--model",
+              "--provider",
+              "--calendar",
+              "--messenger",
+              "--port",
+            ]
           : command === "bookings"
             ? ["--state", "--calendar"]
             : command === "contacts" || command === "inbox"
@@ -139,8 +153,15 @@ function parse(args: string[]): Parsed {
     if (option === "--state") parsed.state = value;
     else if (option === "--message") parsed.message = value;
     else if (option === "--request-id") parsed.requestId = value;
-    else if (option === "--model") parsed.model = value;
-    else if (option === "--port") {
+    else if (option === "--model") {
+      parsed.model = value;
+      parsed.modelProvided = true;
+    } else if (option === "--provider") {
+      if (value !== "paper" && value !== "openai") {
+        throw new UsageError("--provider must be paper or openai.");
+      }
+      parsed.provider = value;
+    } else if (option === "--port") {
       const port = Number(value);
       if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
         throw new UsageError("--port must be an integer from 1 through 65535.");
@@ -166,6 +187,11 @@ function parse(args: string[]): Parsed {
   if (command === "start") {
     if (parsed.message === undefined) throw new UsageError("start requires --message.");
     if (parsed.requestId === undefined) throw new UsageError("start requires --request-id.");
+  }
+  if (command === "start" || command === "listen") {
+    if (!parsed.modelProvided) {
+      parsed.model = parsed.provider === "paper" ? PAPER_MODEL_REF.modelId : "gpt-6-sol";
+    }
   }
   if (command === "demo" && parsed.calendar === "google") {
     throw new UsageError("The synthetic demo uses only the local calendar.");
@@ -499,17 +525,34 @@ function openCalendar(
   }
 }
 
-function liveModels(modelId: string, dependencies: CliDependencies) {
-  const injected = dependencies.createLiveModels?.(modelId);
-  if (injected !== undefined) return injected;
-  if (!process.env.OPENAI_API_KEY?.trim()) {
-    throw new Error("Set OPENAI_API_KEY in your shell before live start/resume.");
+function liveModels(ref: ModelRef, dependencies: CliDependencies) {
+  if (ref.provider !== "paper" && ref.provider !== "openai") {
+    throw new Error(`Unsupported live provider: ${ref.provider}`);
   }
+  if (
+    !ref.modelId.trim() ||
+    (ref.provider === "paper" && ref.modelId !== PAPER_MODEL_REF.modelId)
+  ) {
+    throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
+  }
+  const injected = dependencies.createLiveModels?.(ref);
+  if (injected !== undefined) {
+    if (injected.model.provider !== ref.provider || injected.model.modelId !== ref.modelId) {
+      throw new Error("Injected live model does not match the requested provider/model.");
+    }
+    if (injected.models.getModel(ref.provider, ref.modelId) === undefined) {
+      throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
+    }
+    return injected;
+  }
+  const keyName = ref.provider === "paper" ? "PAPERINSTRUMENTS_API_KEY" : "OPENAI_API_KEY";
+  if (!process.env[keyName]?.trim()) throw new Error(`Set ${keyName} before live start/resume.`);
   const models = createModels();
-  models.setProvider(openaiProvider());
-  const model = models.getModel("openai", modelId);
-  if (model === undefined) throw new Error(`Unknown OpenAI model: ${modelId}`);
-  return { models, model: { provider: "openai", modelId } };
+  models.setProvider(ref.provider === "paper" ? paperProvider() : openaiProvider());
+  if (models.getModel(ref.provider, ref.modelId) === undefined) {
+    throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
+  }
+  return { models, model: ref };
 }
 
 function printResult(result: SoloResult, io: CliIo): number {
@@ -536,6 +579,7 @@ function printInboundResult(result: SoloResult, io: CliIo): number {
 function modelLabel(model: ModelRef): string {
   if (model.provider === "officehum-demo") return `synthetic demo (${model.modelId})`;
   if (model.provider === "openai") return `live OpenAI (${model.modelId})`;
+  if (model.provider === "paper") return `live Paper (${model.modelId})`;
   return `${model.provider}/${model.modelId}`;
 }
 
@@ -582,7 +626,13 @@ async function openForRun(
       io,
       interrupt,
     );
-    const runtime = demo ? createDemoModels() : liveModels(parsed.model, dependencies);
+    const selectedRuntime = demo
+      ? createDemoModels()
+      : liveModels({ provider: parsed.provider, modelId: parsed.model }, dependencies);
+    const runtime =
+      !demo && parsed.provider === "paper"
+        ? { ...selectedRuntime, model: { ...selectedRuntime.model, thinkingLevel: "max" as const } }
+        : selectedRuntime;
     solo = await openSolo({
       directory: parsed.state,
       createRole: createRoleFactory(parsed, calendar, approve, messengerIdentity, dependencies),
@@ -593,11 +643,17 @@ async function openForRun(
     activeSession = solo;
     const actualModel = (await solo.root.agent(BACKGROUND_CONTEXT)).model;
     if (actualModel === undefined) throw new Error("The persisted Front Desk root has no model.");
-    const requestedProvider = demo ? "officehum-demo" : "openai";
-    if (actualModel.provider !== requestedProvider) {
-      const requested = demo ? "the synthetic demo" : "live OpenAI";
+    const requestedProvider = demo ? "officehum-demo" : parsed.provider;
+    const requestedModelId = demo ? actualModel.modelId : parsed.model;
+    if (actualModel.provider !== requestedProvider || actualModel.modelId !== requestedModelId) {
+      if (demo || actualModel.provider === "officehum-demo") {
+        const requested = demo ? "the synthetic demo" : `live ${parsed.provider}`;
+        throw new Error(
+          `State ${parsed.state} already uses ${modelLabel(actualModel)}; use a fresh --state directory for ${requested}.`,
+        );
+      }
       throw new Error(
-        `State ${parsed.state} already uses ${modelLabel(actualModel)}; use a fresh --state directory for ${requested}.`,
+        `State ${parsed.state} already uses ${modelLabel(actualModel)}; requested ${requestedProvider}/${requestedModelId}.`,
       );
     }
     if (closeRequested) await solo.close();
@@ -784,7 +840,14 @@ async function runListen(
   const replyDecision = cliReplyDecision(parsed.approval, io, interrupt);
   activeSession = { close };
   try {
-    const runtime = liveModels(parsed.model, dependencies);
+    const selectedRuntime = liveModels(
+      { provider: parsed.provider, modelId: parsed.model },
+      dependencies,
+    );
+    const runtime =
+      parsed.provider === "paper"
+        ? { ...selectedRuntime, model: { ...selectedRuntime.model, thinkingLevel: "max" as const } }
+        : selectedRuntime;
     await ensureRunning();
     solo = await openSolo({
       directory: parsed.state,
@@ -855,6 +918,12 @@ async function runListen(
       },
     });
     await ensureRunning();
+    const savedModel = (await solo.root.agent(BACKGROUND_CONTEXT)).model;
+    if (savedModel?.provider !== parsed.provider || savedModel.modelId !== parsed.model) {
+      throw new Error(
+        `State ${parsed.state} already uses ${savedModel === undefined ? "an unknown model" : modelLabel(savedModel)}; requested ${parsed.provider}/${parsed.model}.`,
+      );
+    }
     attachedHarness = solo.harness;
     if (hosted === undefined) throw new Error("Inbound role resources were not created.");
     session = openInboundSession({
@@ -952,7 +1021,8 @@ async function runInboundResume(
       await probe.solo.close();
       probe = undefined;
       await ensureRunning();
-      const runtime = liveModels(agent.model?.modelId ?? parsed.model, dependencies);
+      if (agent.model === undefined) throw new Error("The persisted Front Desk root has no model.");
+      const runtime = liveModels(agent.model, dependencies);
       await ensureRunning();
       active = await openInboundRuntime(
         parsed,
@@ -974,6 +1044,7 @@ async function runInboundResume(
       customerAgent: {
         ...active.hosted.role.agent,
         model: active.model,
+        ...(agent.thinkingLevel === undefined ? {} : { thinkingLevel: agent.thinkingLevel }),
         tools: customerTools(active.hosted.role),
       },
     });
@@ -1040,7 +1111,8 @@ async function runResume(
     } else {
       await probe.close();
       probe = undefined;
-      const runtime = liveModels(agent.model?.modelId ?? parsed.model, dependencies);
+      if (agent.model === undefined) throw new Error("The persisted Front Desk root has no model.");
+      const runtime = liveModels(agent.model, dependencies);
       active = await openSolo({
         directory: parsed.state,
         createRole: createRoleFactory(parsed, calendar, approve, messengerIdentity, dependencies),

@@ -9,6 +9,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import { AssistantEntry, createRegistry, Harness, MemoryStorage } from "@earendil-works/pi-durable";
+import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
 import { checkAgent, validatePackage } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { openLocalCalendar } from "../../../packages/office/src/local-calendar.js";
@@ -91,6 +92,47 @@ async function attemptLifecycle(
 }
 
 describe("frontdesk role", () => {
+  it("defaults the portable role to Paper with maximum thinking", () => {
+    const calendar = tempCalendar();
+    expect(frontdesk({ calendar }).agent).toMatchObject({
+      model: { provider: "paper", modelId: "ultramarine-1-flash" },
+      thinkingLevel: "max",
+    });
+    calendar.close();
+  });
+
+  it("persists the Paper model and thinking level through a bare Harness reopen", async () => {
+    const calendar = tempCalendar();
+    const role = frontdesk({ calendar });
+    const provider = fauxProvider({ provider: "paper", models: [{ id: "ultramarine-1-flash" }] });
+    const models = createModels();
+    models.setProvider(provider.provider);
+    const directory = mkdtempSync(join(tmpdir(), "officehum-frontdesk-harness-"));
+    temps.push(directory);
+    const registry = createRegistry();
+    for (const extension of role.extensions) registry.install(extension);
+    const storage = await openNodeJsonlStorage(join(directory, "harness"), BACKGROUND_CONTEXT);
+    const first = await Harness.open(storage, { models, registry }, BACKGROUND_CONTEXT);
+    const created = await first.root(BACKGROUND_CONTEXT, { agent: role.agent });
+    expect(await created.agent(BACKGROUND_CONTEXT)).toMatchObject({
+      model: { provider: "paper", modelId: "ultramarine-1-flash" },
+      thinkingLevel: "max",
+    });
+    await first.close(BACKGROUND_CONTEXT);
+    const reopenedStorage = await openNodeJsonlStorage(
+      join(directory, "harness"),
+      BACKGROUND_CONTEXT,
+    );
+    const reopened = await Harness.open(reopenedStorage, { models, registry }, BACKGROUND_CONTEXT);
+    const recovered = await reopened.root(BACKGROUND_CONTEXT, { agent: role.agent });
+    expect(await recovered.agent(BACKGROUND_CONTEXT)).toMatchObject({
+      model: { provider: "paper", modelId: "ultramarine-1-flash" },
+      thinkingLevel: "max",
+    });
+    await reopened.close(BACKGROUND_CONTEXT);
+    calendar.close();
+  });
+
   it("is a valid portable package and role", async () => {
     const packageDirectory = new URL("..", import.meta.url);
     expect((await validatePackage(packageDirectory.pathname)).ok).toBe(true);
