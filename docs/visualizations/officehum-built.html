@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="A visual guide to the Office Hum repository, its Pi Durable runtime, Paper Instruments integration, interfaces, and delivery status.">
+  <title>Office Hum — the system, the interfaces, the next layer</title>
+  <style>
+    :root {
+      --page: #f3f7f6;
+      --panel: #ffffff;
+      --panel-soft: #eaf2f0;
+      --ink: #17323b;
+      --muted: #51686e;
+      --line: #b7ccc9;
+      --office: #087f7c;
+      --office-soft: #d7edeb;
+      --pi: #315aab;
+      --pi-soft: #dfe8fa;
+      --paper: #6550a3;
+      --paper-soft: #ebe5f7;
+      --future: #65747b;
+      --future-soft: #e6ecee;
+      --warn: #a85030;
+      --warn-soft: #fae9df;
+      --code: #14313b;
+      --code-ink: #e6f3ee;
+      --shadow: 0 18px 55px rgba(20, 55, 61, .08);
+      --radius: 18px;
+      --sans: "Avenir Next", "Segoe UI", Arial, sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page: #102329;
+        --panel: #183039;
+        --panel-soft: #213b43;
+        --ink: #ecf5f2;
+        --muted: #aec5c7;
+        --line: #47636a;
+        --office: #6dd4c8;
+        --office-soft: #244f50;
+        --pi: #9ab9ff;
+        --pi-soft: #283e67;
+        --paper: #c3aeff;
+        --paper-soft: #40375d;
+        --future: #b1c3c8;
+        --future-soft: #30474e;
+        --warn: #f2aa83;
+        --warn-soft: #523a32;
+        --code: #091b20;
+        --code-ink: #e6f3ee;
+        --shadow: 0 18px 55px rgba(0, 0, 0, .2);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.55 var(--sans); }
+    a { color: inherit; text-underline-offset: 4px; }
+    a:hover { color: var(--office); }
+    button { font: inherit; }
+    :focus-visible { outline: 3px solid var(--office); outline-offset: 4px; }
+    .wrap { width: min(1220px, calc(100% - 44px)); margin-inline: auto; }
+    .topbar { border-bottom: 1px solid var(--line); background: var(--panel); }
+    .topbar-inner { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.05rem; text-decoration: none; white-space: nowrap; }
+    .brand-mark { width: 23px; height: 23px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px; transform: rotate(-8deg); }
+    .brand-mark i { display: block; background: var(--office); border-radius: 2px; }
+    .brand-mark i:nth-child(2) { opacity: .72; }
+    .brand-mark i:nth-child(3) { opacity: .46; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: .86rem; font-weight: 700; }
+    nav a { text-decoration: none; color: var(--muted); }
+    nav a:hover { color: var(--ink); }
+    .hero { position: relative; overflow: hidden; padding: clamp(64px, 9vw, 120px) 0 54px; border-bottom: 1px solid var(--line); }
+    .hero::after { content: ""; position: absolute; width: min(58vw, 640px); aspect-ratio: 1; border-radius: 50%; top: -43%; right: -12%; border: 72px solid var(--office-soft); opacity: .68; pointer-events: none; }
+    .hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(275px, .65fr); gap: clamp(28px, 5vw, 70px); align-items: end; }
+    .eyebrow { margin: 0 0 18px; color: var(--office); font: 800 .78rem/1.3 var(--mono); letter-spacing: .045em; }
+    h1 { font-size: clamp(3.35rem, 7.3vw, 7.7rem); line-height: .94; letter-spacing: -.07em; margin: 0; max-width: 860px; font-weight: 800; }
+    .hero-copy { margin: 28px 0 0; max-width: 710px; font-size: clamp(1.15rem, 1.9vw, 1.48rem); line-height: 1.38; }
+    .hero-aside { border-left: 5px solid var(--office); padding: 5px 0 5px 22px; background: var(--panel); }
+    .hero-aside strong { display: block; font-size: 1.04rem; }
+    .hero-aside p { color: var(--muted); margin: 8px 0 0; font-size: .92rem; }
+    .stamp-line { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 30px; }
+    .stamp { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; font: 700 .76rem/1.25 var(--mono); }
+    .stamp::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--office); }
+    .stamp.planned::before { background: var(--future); }
+    .section { padding: clamp(60px, 7vw, 96px) 0; border-bottom: 1px solid var(--line); }
+    .section-head { display: grid; grid-template-columns: minmax(230px, .76fr) minmax(0, 1.24fr); gap: clamp(22px, 5vw, 76px); margin-bottom: 30px; align-items: start; }
+    h2 { margin: 0; font-size: clamp(2rem, 3.7vw, 3.45rem); line-height: 1.05; letter-spacing: -.048em; }
+    .section-head p { margin: 4px 0 0; color: var(--muted); font-size: 1.07rem; max-width: 730px; }
+    h3 { line-height: 1.15; }
+    .legend { display: flex; flex-wrap: wrap; gap: 9px 18px; margin: 0 0 22px; color: var(--muted); font: 700 .78rem/1.2 var(--mono); }
+    .legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .legend i { width: 16px; border-top: 3px solid var(--office); }
+    .legend .future-line { border-top: 3px dashed var(--future); }
+    .system { border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); overflow: hidden; }
+    .system-top { display: flex; justify-content: space-between; gap: 15px; padding: 17px 22px; background: var(--panel-soft); border-bottom: 1px solid var(--line); font-weight: 800; }
+    .system-top small { color: var(--muted); font: 600 .78rem var(--mono); }
+    .system-grid { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(330px, 1.3fr) minmax(220px, .85fr); }
+    .system-col { padding: 26px; min-width: 0; border-right: 1px solid var(--line); }
+    .system-col:last-child { border-right: 0; }
+    .col-name { display: block; margin: 0 0 18px; color: var(--muted); font: 800 .75rem/1.2 var(--mono); }
+    .system-col h3 { font-size: 1.35rem; margin: 0 0 8px; }
+    .system-col > p { margin: 0 0 20px; color: var(--muted); font-size: .89rem; }
+    .layer { position: relative; padding: 17px 18px; border-left: 5px solid var(--office); background: var(--office-soft); margin-top: 12px; }
+    .layer.pi { border-color: var(--pi); background: var(--pi-soft); }
+    .layer.paper { border-color: var(--paper); background: var(--paper-soft); }
+    .layer.future { border-left-style: dashed; border-color: var(--future); background: var(--future-soft); }
+    .layer strong { display: block; font-size: .97rem; }
+    .layer p { margin: 5px 0 0; font-size: .82rem; line-height: 1.4; color: var(--muted); }
+    .state { display: inline-block; font: 800 .65rem/1.2 var(--mono); letter-spacing: .03em; padding: 4px 6px; border: 1px solid currentColor; white-space: nowrap; color: var(--office); }
+    .state.plan { color: var(--future); border-style: dashed; }
+    .layer .state { float: right; margin-left: 8px; }
+    .rail-note { padding: 17px 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: .88rem; }
+    .rail-note strong { color: var(--ink); }
+    .owner-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 22px; }
+    .owner { padding: 22px; background: var(--panel); border-top: 5px solid var(--office); min-height: 196px; }
+    .owner.pi { border-color: var(--pi); }
+    .owner.paper { border-color: var(--paper); }
+    .owner h3 { margin: 0 0 8px; font-size: 1.2rem; }
+    .owner p { margin: 0; color: var(--muted); font-size: .91rem; }
+    .owner b { display: block; margin-top: 18px; font-size: .8rem; }
+    .flow-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+    .flow-tools button { cursor: pointer; border: 1px solid var(--line); padding: 10px 14px; color: var(--ink); background: var(--panel); font-weight: 800; border-radius: 999px; }
+    .flow-tools button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--page); }
+    .flow-board { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
+    .flow-step { position: relative; padding: 17px 15px 19px; min-height: 198px; background: var(--panel); border-top: 5px solid var(--office); }
+    .flow-step.pi { border-color: var(--pi); }
+    .flow-step.paper { border-color: var(--paper); }
+    .flow-step.future { border-top-style: dashed; border-color: var(--future); background: var(--future-soft); }
+    .flow-step::after { content: "→"; position: absolute; top: 12px; right: -15px; z-index: 2; width: 21px; height: 26px; text-align: center; font-weight: 900; color: var(--ink); background: var(--page); }
+    .flow-step:last-child::after { display: none; }
+    .flow-step small { display: block; margin-bottom: 22px; color: var(--muted); font: 700 .69rem var(--mono); }
+    .flow-step strong { display: block; font-size: .97rem; line-height: 1.18; }
+    .flow-step p { margin: 9px 0 0; color: var(--muted); font-size: .79rem; line-height: 1.42; }
+    .flow-caption { margin: 18px 0 0; padding: 16px 18px; border-left: 4px solid var(--office); background: var(--panel); color: var(--muted); }
+    .flow-caption strong { color: var(--ink); }
+    .interface-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .interface { padding: 23px; border: 1px solid var(--line); background: var(--panel); }
+    .interface .state { margin-bottom: 22px; }
+    .interface h3 { margin: 0 0 8px; font-size: 1.22rem; }
+    .interface p { margin: 0; color: var(--muted); font-size: .9rem; }
+    .interface ul { padding-left: 19px; margin: 15px 0 0; color: var(--muted); font-size: .85rem; }
+    .interface li + li { margin-top: 6px; }
+    .status-table { width: 100%; border-collapse: collapse; background: var(--panel); border-top: 2px solid var(--ink); }
+    .status-table th, .status-table td { padding: 18px 18px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    .status-table th { color: var(--muted); font: 800 .73rem var(--mono); }
+    .status-table td:first-child { width: 23%; font-weight: 800; }
+    .status-table td:nth-child(2) { width: 18%; }
+    .status-table td:last-child { color: var(--muted); font-size: .88rem; }
+    .repo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+    .repo-item { padding: 16px 18px; background: var(--panel); border-left: 3px solid var(--office); }
+    .repo-item code { font: 800 .9rem var(--mono); }
+    .repo-item p { margin: 5px 0 0; color: var(--muted); font-size: .86rem; }
+    .repo-item.future { border-left-style: dashed; border-color: var(--future); }
+    .quickstart { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(250px, .85fr); gap: 22px; align-items: stretch; }
+    .code { background: var(--code); color: var(--code-ink); border-radius: var(--radius); overflow: auto; }
+    .code-head { border-bottom: 1px solid rgba(230,243,238,.22); padding: 11px 17px; color: #b8dbd3; font: 700 .75rem var(--mono); }
+    pre { margin: 0; padding: 23px; font: .86rem/1.8 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .quick-note { background: var(--panel); padding: 23px; border-top: 5px solid var(--office); }
+    .quick-note h3 { margin: 0 0 9px; }
+    .quick-note p { color: var(--muted); margin: 0 0 16px; font-size: .91rem; }
+    .source-row { display: flex; flex-wrap: wrap; gap: 10px; }
+    .source-row a { display: inline-block; text-decoration: none; padding: 8px 11px; background: var(--panel-soft); border: 1px solid var(--line); font-size: .79rem; font-weight: 700; }
+    .note { margin: 22px 0 0; padding: 19px 22px; background: var(--warn-soft); border-left: 5px solid var(--warn); color: var(--ink); }
+    .note strong { display: block; }
+    .note p { margin: 4px 0 0; color: var(--muted); font-size: .91rem; }
+    footer { padding: 35px 0 55px; color: var(--muted); font-size: .85rem; }
+    footer .wrap { display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); padding-top: 22px; }
+    @media (max-width: 1050px) {
+      .system-grid { grid-template-columns: 1fr 1fr; }
+      .system-col:first-child { grid-column: 1 / -1; border-bottom: 1px solid var(--line); }
+      .system-col:nth-child(2) { border-left: 0; }
+      .flow-board { grid-template-columns: repeat(3, 1fr); }
+      .flow-step:nth-child(3)::after { display: none; }
+    }
+    @media (max-width: 760px) {
+      .topbar-inner { align-items: flex-start; padding: 16px 0; flex-direction: column; }
+      .hero-grid, .section-head, .quickstart { grid-template-columns: 1fr; }
+      .hero-aside { max-width: 660px; }
+      .system-grid, .owner-grid, .interface-grid, .repo-grid { grid-template-columns: 1fr; }
+      .system-col { border-right: 0; border-bottom: 1px solid var(--line); }
+      .system-col:last-child { border-bottom: 0; }
+      .flow-board { grid-template-columns: repeat(2, 1fr); }
+      .flow-step:nth-child(3)::after { display: block; }
+      .flow-step:nth-child(even)::after { display: none; }
+      .table-scroll { overflow-x: auto; }
+      .status-table { min-width: 700px; }
+    }
+    @media (max-width: 480px) {
+      .wrap { width: min(100% - 26px, 1220px); }
+      .hero { padding-top: 55px; }
+      h1 { font-size: 3.1rem; }
+      .flow-board { grid-template-columns: 1fr; }
+      .flow-step { min-height: 0; }
+      .flow-step::after, .flow-step:nth-child(3)::after { display: none; }
+      footer .wrap { display: block; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="#top" aria-label="Office Hum, back to top"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span> Office Hum</a>
+      <nav aria-label="Page sections">
+        <a href="#system">System map</a><a href="#journeys">How work moves</a><a href="#interfaces">Interfaces</a><a href="#status">Built and planned</a><a href="#repo">Repository</a>
+      </nav>
+    </div>
+  </div>
+
+  <header id="top" class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">OPEN-SOURCE MULTI-AGENT OFFICE · REPOSITORY GUIDE</p>
+        <h1>An office made of durable roles.</h1>
+        <p class="hero-copy">Office Hum packages specialized agents that can run alone or, as the platform grows, work together for a business. Pi Durable runs the agents and remembers what happened. Office Hum supplies the roles, tools, services, policy, and operator interfaces. Paper Instruments supplies the default model and the planned Word, PowerPoint, and Excel document engine.</p>
+        <div class="stamp-line">
+          <span class="stamp">Local Front Desk runs now</span>
+          <span class="stamp">Paper model adapter merged</span>
+          <span class="stamp">Versioned SDK FileStore merged</span>
+          <span class="stamp planned">Paper Office tools and worker planned</span>
+        </div>
+      </div>
+      <aside class="hero-aside">
+        <strong>Source, not a live office rollout</strong>
+        <p>The current proof is a local Front Desk CLI. The shared workboard, relay, web surfaces, and Office document workflow are designed but not yet delivered. This page separates those states throughout.</p>
+        <p>Reviewed against merged PRs <a href="https://github.com/officehum/officehum/pull/14">#14</a>, <a href="https://github.com/officehum/officehum/pull/15">#15</a>, and <a href="https://github.com/officehum/officehum/pull/16">#16</a> on 2026-10-15.</p>
+      </aside>
+    </div>
+  </header>
+
+  <main>
+    <section id="system" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Who does what</h2>
+          <p>Three boundaries keep the system understandable. The model proposes work; Pi Durable controls the agent run and recovery; Office Hum decides which role, tool, file, connector, and review path is available.</p>
+        </div>
+        <div class="legend"><span><i></i> Built in this repository</span><span><i class="future-line"></i> Designed or planned</span></div>
+        <div class="system" role="img" aria-label="Office Hum interfaces and host surround portable Pi Durable roles. Pi Durable calls the Paper model provider and Office Hum tools. Future Paper Office tools use a restricted Paper Python worker and versioned FileStore through a host document service.">
+          <div class="system-top"><span>Platform layers</span><small>Human → interface → role → durable run → controlled effect</small></div>
+          <div class="system-grid">
+            <div class="system-col">
+              <span class="col-name">OPERATOR SIDE</span>
+              <h3>Office Hum surfaces</h3>
+              <p>People request work, inspect evidence, and make decisions through host-owned interfaces.</p>
+              <div class="layer"><span class="state">BUILT</span><strong>Local CLI</strong><p>Demo, start, resume, bookings, contacts, inbox, and explicit approval prompts.</p></div>
+              <div class="layer future"><span class="state plan">PLANNED</span><strong>Workboard + review inbox</strong><p>Team hand-offs, pending proposals, exact-version previews, approvals, and publication.</p></div>
+              <div class="layer future"><span class="state plan">PLANNED</span><strong>Studio + portal</strong><p>Configure role overlays and business workflows without changing role packages.</p></div>
+            </div>
+            <div class="system-col">
+              <span class="col-name">AGENT AND CONTROL SIDE</span>
+              <h3>One harness, portable roles</h3>
+              <p>Office Hum hosts and composes roles; each role remains installable in a bare Pi Durable harness.</p>
+              <div class="layer"><span class="state">BUILT</span><strong>Role package + SDK</strong><p><code>AGENTS.md</code>, skills, manifest, declared tools, evals, overlays, and host-injected clients. Front Desk is the working role.</p></div>
+              <div class="layer pi"><span class="state">BUILT</span><strong>Pi Durable</strong><p>Single agent loop; persisted conversations and tasks; tool settlement, approval records, replay, and recovery.</p></div>
+              <div class="layer"><span class="state">BUILT</span><strong>Office Hum host adapters</strong><p>Calendar, contacts, console/Resend messaging, signed inbound email, local state, and SDK file references.</p></div>
+              <div class="layer future"><span class="state plan">PLANNED</span><strong>DocumentService + Paper Office pack</strong><p>Task leases, typed document tools, bounded Python workspace, validation, previews, and host review policy.</p></div>
+            </div>
+            <div class="system-col">
+              <span class="col-name">MODEL, DOCUMENT AND DATA SIDE</span>
+              <h3>Paper is a provider and engine</h3>
+              <p>Paper Instruments is integrated at two distinct points; it is never a second agent harness.</p>
+              <div class="layer paper"><span class="state">BUILT</span><strong>Ultramarine 1 Flash</strong><p>Paper API through a <code>pi-ai</code> provider. Default for new live Front Desk roots; saved roots retain their pinned provider.</p></div>
+              <div class="layer paper future"><span class="state plan">PLANNED</span><strong>Paper Python forks</strong><p><code>paper-docx</code>, <code>paper-pptx</code>, and <code>paper-xlsx</code> inside a restricted, version-pinned worker.</p></div>
+              <div class="layer"><span class="state">BUILT</span><strong>Versioned FileStore SDK</strong><p>Immutable versions, operation receipts and replay, stale-edit conflicts, and conditional publish pointer.</p></div>
+              <div class="layer future"><span class="state plan">PLANNED</span><strong>Durable Office storage</strong><p>Production leases, reconciliation, backups, quotas, previews, and exact-version publication.</p></div>
+            </div>
+          </div>
+          <div class="rail-note"><strong>The authority split:</strong> Pi Durable owns conversation and approval/recovery state. FileStore owns bytes, versions, and receipts. Office Hum's future DocumentService joins them by stable operation IDs and policy checks; Paper's worker only executes bounded document operations.</div>
+        </div>
+        <div class="owner-grid">
+          <div class="owner"><h3>Office Hum</h3><p>Defines roles and tools, injects connectors, applies leases and business policy, coordinates teams, and presents approval and configuration interfaces.</p><b>Host and product layer</b></div>
+          <div class="owner pi"><h3>Pi Durable</h3><p>Runs the only agent loop. Its persisted root, tasks, tool results, approvals, and recovery make a request resumable after interruption.</p><b>Execution authority</b></div>
+          <div class="owner paper"><h3>Paper Instruments</h3><p>Ultramarine supplies model responses through <code>pi-ai</code>. Paper's Python forks are selected as the planned Office document libraries.</p><b>Model and document engine</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="journeys" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>How a request moves</h2>
+          <p>Switch between a working Front Desk request and the approved Office document design. The latter is a contract for the next implementation slices, not a claim that Word, PowerPoint, or Excel tools already run.</p>
+        </div>
+        <div class="flow-tools">
+          <button type="button" data-journey="frontdesk" aria-pressed="true">Front Desk · built</button>
+          <button type="button" data-journey="document" aria-pressed="false">Office document · planned</button>
+        </div>
+        <div class="flow-board" id="flow-board" aria-live="polite"></div>
+        <p class="flow-caption" id="flow-caption"></p>
+      </div>
+    </section>
+
+    <section id="interfaces" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>The interface is a set of surfaces</h2>
+          <p>Office Hum's platform interface spans the operator's command and review screens, each role's portable package, and the host service boundary. The local CLI is the implemented operator surface today.</p>
+        </div>
+        <div class="interface-grid">
+          <article class="interface"><span class="state">BUILT</span><h3>Operator CLI</h3><p>A person starts or resumes a durable request, reviews an approval prompt, lists bookings and contacts, and inspects metadata-only inbound email receipts.</p><ul><li>Credential-free synthetic demo</li><li>Paper live default; explicit OpenAI override</li><li>Local state directory and single-owner rule</li></ul></article>
+          <article class="interface"><span class="state plan">PLANNED</span><h3>Workboard and review</h3><p>The future team surface will show hand-offs, task evidence, document proposals, previews/diffs, exact-version approvals, and publication results.</p><ul><li>Review binds source and proposed hashes</li><li>Existing-file edits wait for a person</li><li>Publish uses a conditional pointer change</li></ul></article>
+          <article class="interface"><span class="state plan">PLANNED</span><h3>Studio and portal</h3><p>Businesses will tune roles through overlays and plain-language configuration while the installed role package remains portable and unchanged.</p><ul><li>Instructions, skills, tool switches, model choice</li><li>Vetted catalog and connector setup</li><li>Diff and approval before configuration applies</li></ul></article>
+          <article class="interface"><span class="state">BUILT</span><h3>Role package</h3><p>A role is a Pi Durable agent made of instructions, skills, manifest, tools, and evals. The SDK validates package boundaries and lets a bare harness install it.</p><ul><li>Front Desk is the working role</li><li>Overlay changes context without modifying package</li><li>Tool replay and approval behavior are explicit</li></ul></article>
+          <article class="interface"><span class="state">BUILT</span><h3>Host connectors</h3><p>Front Desk tools use injected calendar and Messenger interfaces. The host can select local SQLite or Google Calendar, console outbox or opt-in Resend.</p><ul><li>Signed inbound Resend intake</li><li>Exact contact and transport identity</li><li>Provider acceptance is not delivery proof</li></ul></article>
+          <article class="interface"><span class="state plan">PLANNED</span><h3>Document workspace</h3><p>Each role may receive typed Paper Office tools and restricted Python only when the task grants a file lease. The worker sees leased versions and staging output, not arbitrary host paths.</p><ul><li>Word, PowerPoint, Excel adapters</li><li>Deterministic validation before commit</li><li>Portable pack, host-supplied service</li></ul></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="status" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Built, designed, still to ship</h2>
+          <p>The current source is a proven local solo path and SDK foundation. The multi-role office and the Paper Office workflow are the next layers, each with its own acceptance gate.</p>
+        </div>
+        <div class="table-scroll">
+          <table class="status-table">
+            <thead><tr><th>Capability</th><th>State</th><th>What the source demonstrates or what remains</th></tr></thead>
+            <tbody>
+              <tr><td>Front Desk solo</td><td><span class="state">BUILT</span></td><td>Durable local CLI workflow; UTC scheduling; booking, reschedule, cancel, contacts, console messaging, approved replies, and resume.</td></tr>
+              <tr><td>External adapters</td><td><span class="state">BUILT</span></td><td>Google Calendar REST adapter and opt-in Resend outbound/inbound paths with conservative idempotency and signed intake. Live customer/provider rollout is not claimed.</td></tr>
+              <tr><td>Paper model</td><td><span class="state">BUILT</span></td><td>Ultramarine 1 Flash is the default for new live role roots via the Paper <code>pi-ai</code> provider. Existing saved OpenAI roots resume on OpenAI.</td></tr>
+              <tr><td>File foundation</td><td><span class="state">BUILT</span></td><td>Base attachments and portable versioned SDK store: immutable refs, canonical operation receipts, replay, stale-source conflict, and publish compare-and-swap. It does not verify a human approval.</td></tr>
+              <tr><td>Team coordination</td><td><span class="state plan">PLANNED</span></td><td>Shared workboard, relay, workflow engine, and multi-role runtime remain outside the working solo CLI.</td></tr>
+              <tr><td>Paper Office runtime</td><td><span class="state plan">PLANNED</span></td><td>DocumentService, task-scoped file leases, isolated Python worker, typed Word/PowerPoint/Excel tools, and full-format acceptance are pending.</td></tr>
+              <tr><td>Review and publish UI</td><td><span class="state plan">PLANNED</span></td><td>Version-tied previews/diffs, Pi Durable human review records, stale-approval refusal, and conditional publication need host integration.</td></tr>
+              <tr><td>Hosted interface</td><td><span class="state plan">PLANNED</span></td><td>Studio, portal, catalog, broader channel setup, and production operations are roadmap work, not current local source behavior.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note"><strong>Drafts and publication are different states.</strong><p>The versioned SDK can create drafts and move a published pointer, but only the future host service can verify that an existing business file's exact proposal was reviewed by a person. Do not treat the SDK method alone as an approval gate.</p></div>
+      </div>
+    </section>
+
+    <section id="repo" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Find the parts in the repository</h2>
+          <p>Packages define clean boundaries: portable roles and SDK contracts are usable without the Office Hum host; the host and CLI provide local execution, connectors, and the user-facing command surface.</p>
+        </div>
+        <div class="repo-grid">
+          <div class="repo-item"><code>agents/frontdesk/</code><p>Working portable role: instructions, manifest, skills, tools, and tests for the solo Front Desk.</p></div>
+          <div class="repo-item"><code>packages/sdk/</code><p>Role/package validation, approval helpers, file references, and the versioned FileStore contract and local implementation.</p></div>
+          <div class="repo-item"><code>packages/office/</code><p>Current solo host adapters: Pi Durable runtime, local calendar, messaging, Resend inbound/outbound, and ownership/state handling.</p></div>
+          <div class="repo-item"><code>packages/cli/</code><p>Commands, approvals, state selection, and the Paper/Ultramarine provider adapter.</p></div>
+          <div class="repo-item"><code>packages/google-calendar/</code><p>Portable Google Calendar REST client and test doubles behind the scheduling interface.</p></div>
+          <div class="repo-item future"><code>Paper Office pack + worker</code><p>Approved design, not yet a package here. It will inject <code>DocumentService</code> and invoke restricted Paper Python libraries through the host.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Try the proof that exists</h2>
+          <p>The synthetic demo needs no model or connector key. It exercises the current Front Desk path and leaves a resumable local state directory.</p>
+        </div>
+        <div class="quickstart">
+          <div class="code"><div class="code-head">Local Front Desk · credential-free</div><pre>npm install
+npm run build
+node packages/cli/dist/index.js demo \
+  --state .officehum/frontdesk-demo \
+  --approval allow
+node packages/cli/dist/index.js bookings \
+  --state .officehum/frontdesk-demo
+node packages/cli/dist/index.js resume \
+  --state .officehum/frontdesk-demo</pre></div>
+          <div class="quick-note"><h3>What this proves</h3><p>The demo runs a synthetic request, records decisions and effects, and can resume from durable state. Live mode uses Paper's model by default and requires a process-environment credential; it has not been shown here as a production deployment.</p><div class="source-row"><a href="https://github.com/officehum/officehum/blob/main/README.md">README</a><a href="https://github.com/officehum/officehum/blob/main/docs/design/agent-package.md">Role architecture</a><a href="https://github.com/officehum/officehum/blob/main/docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md">Paper Office design</a><a href="https://github.com/officehum/officehum/blob/main/docs/design/file-store.md">FileStore design</a></div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer><div class="wrap"><span>Office Hum repository guide · source state reviewed 2026-10-15</span><span>PR <a href="https://github.com/officehum/officehum/pull/14">#14</a> Paper provider · <a href="https://github.com/officehum/officehum/pull/15">#15</a> base FileStore · <a href="https://github.com/officehum/officehum/pull/16">#16</a> versioned FileStore</span></div></footer>
+
+  <script>
+    (() => {
+      const journeys = {
+        frontdesk: {
+          steps: [
+            ["Office Hum", "Person submits", "The local CLI admits a request and pins its state directory and request ID.", ""],
+            ["Pi Durable", "Durable role run", "The Front Desk role receives its declared tools. Ultramarine supplies live model responses.", "pi"],
+            ["Office Hum", "Tool and gate", "The role calls a calendar or messaging tool; approval applicability is recorded.", ""],
+            ["Pi Durable", "Human decision", "An operator allows or denies the exact gated effect. Interruption leaves the work resumable.", "pi"],
+            ["Office Hum", "Host effect", "A local/Google calendar or console/Resend messenger performs the bounded action.", ""],
+            ["Pi Durable", "Receipt and resume", "The tool result and host receipt settle the call; retry recovers the same result.", "pi"]
+          ],
+          caption: "Built path: the CLI and Front Desk can execute this local workflow today. Paper contributes the live model, while Pi Durable remains the harness and recovery authority."
+        },
+        document: {
+          steps: [
+            ["Office Hum", "Request a file change", "A role receives a file reference and a task-scoped lease, never an arbitrary server path.", "future"],
+            ["Pi Durable", "Durable tool call", "The role chooses a typed Paper Office tool or restricted document Python operation.", "pi future"],
+            ["Office Hum", "DocumentService", "The host binds operation ID, source version, worker, policy, and staged output.", "future"],
+            ["Paper", "Bounded worker", "Pinned paper-docx, paper-pptx, or paper-xlsx executes document work with no agent loop.", "paper future"],
+            ["Office Hum", "Validate and propose", "Reopen, inspect, preview, and commit an immutable draft or proposal to FileStore.", "future"],
+            ["Pi + host", "Review and publish", "A person reviews exact hashes; the host verifies approval and publishes conditionally.", "pi future"]
+          ],
+          caption: "Approved design, not running product code: the SDK version and replay primitives are merged, while leases, worker, format tools, previews, and host-verified publication remain to be built."
+        }
+      };
+      const board = document.getElementById("flow-board");
+      const caption = document.getElementById("flow-caption");
+      const buttons = [...document.querySelectorAll("[data-journey]")];
+      function render(which) {
+        const journey = journeys[which];
+        if (!journey || !board || !caption) return;
+        board.replaceChildren(...journey.steps.map(([owner, title, description, classes]) => {
+          const step = document.createElement("div");
+          step.className = `flow-step ${classes}`.trim();
+          const small = document.createElement("small");
+          small.textContent = owner;
+          const strong = document.createElement("strong");
+          strong.textContent = title;
+          const p = document.createElement("p");
+          p.textContent = description;
+          step.append(small, strong, p);
+          return step;
+        }));
+        caption.innerHTML = `<strong>${which === "frontdesk" ? "Working now." : "Next implementation."}</strong> ${journey.caption}`;
+        buttons.forEach(button => { button.setAttribute("aria-pressed", String(button.dataset.journey === which)); });
+      }
+      buttons.forEach(button => { button.addEventListener("click", () => render(button.dataset.journey)); });
+      render("frontdesk");
+    })();
+  </script>
+</body>
+</html>
