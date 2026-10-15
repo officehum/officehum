@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -38,6 +38,25 @@ it("persists immutable bytes across reopen", async () => {
   expect((await store.get(ref.id))?.bytes[0]).toBe(104);
 });
 
+it("snapshots name and MIME before the first await", async () => {
+  const { dir, store } = await setup();
+  const input = {
+    bytes: new TextEncoder().encode("hello"),
+    name: "note.txt",
+    mimeType: "text/plain",
+    metadata,
+  };
+  const pending = store.put(input);
+  input.name = "../escaped.txt";
+  input.mimeType = "image/png";
+  const ref = await pending;
+
+  expect(ref.name).toBe("note.txt");
+  expect(ref.mimeType).toBe("text/plain");
+  expect(await store.get(ref.id)).toMatchObject({ ref: { name: "note.txt", mimeType: "text/plain" } });
+  await expect(import("node:fs/promises").then(({ access }) => access(join(dir, "escaped.txt")))).rejects.toThrow();
+});
+
 it.each(["../x", "x/y", "x\\y", "", ".", "..", "meta.json"])("rejects name %j", async (name) => {
   const { store } = await setup();
   await expect(store.put({ bytes: new Uint8Array(), name, mimeType: "text/plain", metadata })).rejects.toThrow();
@@ -62,6 +81,32 @@ it("refuses corrupt metadata", async () => {
   const ref = await putText(store);
   await writeFile(join(dir, ref.id, "meta.json"), "{}");
   await expect(store.get(ref.id)).rejects.toThrow();
+});
+
+it("does not follow a metadata file symlink", async () => {
+  const { dir, store } = await setup();
+  const target = await setup();
+  const ref = await putText(store);
+  const targetMetadata = join(target.dir, "meta.json");
+  await writeFile(targetMetadata, JSON.stringify(ref));
+  await unlink(join(dir, ref.id, "meta.json"));
+  await symlink(targetMetadata, join(dir, ref.id, "meta.json"));
+
+  await expect(store.get(ref.id)).rejects.toThrow();
+  await expect(store.info(ref.id)).rejects.toThrow();
+});
+
+it("does not follow a payload file symlink", async () => {
+  const { dir, store } = await setup();
+  const target = await setup();
+  const ref = await putText(store);
+  const targetPayload = join(target.dir, "payload.txt");
+  await writeFile(targetPayload, "hello");
+  await unlink(join(dir, ref.id, ref.name));
+  await symlink(targetPayload, join(dir, ref.id, ref.name));
+
+  await expect(store.get(ref.id)).rejects.toThrow();
+  await expect(store.info(ref.id)).rejects.toThrow();
 });
 
 it("does not follow a version directory symlink", async () => {

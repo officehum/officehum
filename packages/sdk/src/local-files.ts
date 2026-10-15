@@ -13,20 +13,22 @@ export function localFileStore(dir: string): FileStore {
 
   return {
     async put(input) {
+      const name = input.name;
+      const mimeType = input.mimeType;
       const bytes = Uint8Array.from(input.bytes);
       const metadata = structuredClone(input.metadata);
-      assertName(input.name);
+      assertName(name);
       assertMetadata(metadata);
-      assertSignature(bytes, input.mimeType);
-      if (typeof input.mimeType !== "string" || input.mimeType.trim().length === 0) {
+      assertSignature(bytes, mimeType);
+      if (typeof mimeType !== "string" || mimeType.trim().length === 0) {
         throw new Error("Invalid file MIME type");
       }
 
       await mkdir(root, { recursive: true, mode: 0o700 });
       const staging = await mkdtemp(join(root, ".staging-"));
       try {
-        let ref = createRef(newId(), input.name, input.mimeType, bytes, metadata);
-        await writeFile(join(staging, input.name), bytes, { flag: "wx", mode: 0o600 });
+        let ref = createRef(newId(), name, mimeType, bytes, metadata);
+        await writeFile(join(staging, name), bytes, { flag: "wx", mode: 0o600 });
         await writeFile(join(staging, "meta.json"), JSON.stringify(ref), { flag: "wx", mode: 0o600 });
         for (;;) {
           if (await exists(join(root, ref.id))) {
@@ -67,7 +69,10 @@ async function readStored(root: string, id: string): Promise<{ ref: FileRef; byt
   }
   if (directory.isSymbolicLink() || !directory.isDirectory()) throw new Error("Invalid file directory");
 
-  const metadataHandle = await open(join(root, id, "meta.json"), constants.O_RDONLY | NOFOLLOW);
+  const metadataPath = join(root, id, "meta.json");
+  const metadataStat = await lstat(metadataPath);
+  if (metadataStat.isSymbolicLink() || !metadataStat.isFile()) throw new Error("Invalid file metadata entry");
+  const metadataHandle = await open(metadataPath, constants.O_RDONLY | NOFOLLOW);
   let ref: FileRef;
   try {
     const stat = await metadataHandle.stat();
@@ -85,7 +90,10 @@ async function readStored(root: string, id: string): Promise<{ ref: FileRef; byt
     await metadataHandle.close();
   }
 
-  const payloadHandle = await open(join(root, id, ref.name), constants.O_RDONLY | NOFOLLOW);
+  const payloadPath = join(root, id, ref.name);
+  const payloadStat = await lstat(payloadPath);
+  if (payloadStat.isSymbolicLink() || !payloadStat.isFile()) throw new Error("Invalid file payload");
+  const payloadHandle = await open(payloadPath, constants.O_RDONLY | NOFOLLOW);
   let bytes: Uint8Array;
   try {
     const stat = await payloadHandle.stat();
