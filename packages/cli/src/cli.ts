@@ -47,8 +47,8 @@ import {
   type SoloResult,
   type SoloSession,
 } from "@officehum/office";
+import { PAPER_MODEL_REF, paperProvider } from "@officehum/provider-paper";
 import type { ApprovalDecision, ApprovalRequest, Approver, HookContext } from "@officehum/sdk";
-import { PAPER_MODEL_REF, paperProvider } from "./paper-provider.js";
 
 export interface CliIo {
   output(line: string): void;

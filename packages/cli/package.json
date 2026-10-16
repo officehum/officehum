@@ -25,6 +25,7 @@
     "@officehum/frontdesk": "0.0.0",
     "@officehum/google-calendar": "0.0.0",
     "@officehum/office": "0.0.0",
+    "@officehum/provider-paper": "0.0.0",
     "@officehum/sdk": "0.0.0"
   },
   "devDependencies": {
