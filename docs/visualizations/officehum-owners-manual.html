@@ -427,7 +427,8 @@
             <tr><td>Front Desk role</td><td><code>agents/frontdesk</code></td><td>Contacts, messages, bookings, reschedules, cancellations and approved email replies</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>SDK</td><td><code>packages/sdk</code></td><td>Role manifest, <code>defineRole</code>, overlays, approval gate, engines, evals, versioned file store</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Office host</td><td><code>packages/office</code></td><td>Solo runtime on Pi Durable, calendar, console and Resend messaging, signed inbound email, single-owner lock</td><td><span class="chip built">Solo only</span></td></tr>
-            <tr><td>CLI</td><td><code>packages/cli</code></td><td>The operator's controls, plus the Paper Ultramarine provider</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>CLI</td><td><code>packages/cli</code></td><td>Commands, approvals and state selection for one office</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Paper provider</td><td><code>packages/provider-paper</code></td><td>Portable <code>pi-ai</code> provider for Ultramarine 1 Flash, so a role's default model resolves in a bare Pi Durable install</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Google Calendar client</td><td><code>packages/google-calendar</code></td><td>Portable REST client and fake for tests</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Workboard, relay, office extension</td><td>none yet</td><td>The team runtime that lets roles hand work to each other</td><td><span class="chip planned">M2</span></td></tr>
             <tr class="planned"><td>Bookkeeper, Office Manager</td><td>none yet</td><td>The other two starter roles</td><td><span class="chip planned">M1</span></td></tr>
@@ -688,7 +689,7 @@
         <div class="tablewrap"><table>
           <thead><tr><th>Option</th><th>State</th><th>Where</th></tr></thead>
           <tbody>
-            <tr><td>Paper · Ultramarine 1 Flash</td><td><span class="chip built">Default</span></td><td><code>packages/cli/src/paper-provider.ts</code>, RASF-3282</td></tr>
+            <tr><td>Paper · Ultramarine 1 Flash</td><td><span class="chip built">Default</span></td><td><code>packages/provider-paper</code>, RASF-3282 and RASF-3297</td></tr>
             <tr><td>OpenAI · gpt-6-sol</td><td><span class="chip built">Override</span></td><td>CLI <code>--provider openai</code></td></tr>
             <tr class="planned"><td>Bring your own key</td><td><span class="chip planned">M4</span></td><td>RASF-3175: providers pi-ai supports that Office Hum lists</td></tr>
             <tr class="planned"><td>Per-agent model picker</td><td><span class="chip planned">M4</span></td><td>Studio Agents screen, RASF-3150</td></tr>
@@ -1104,7 +1105,7 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
         <li><code>README.md</code>, <code>agents/README.md</code>, <code>agents/frontdesk/officehum.json</code></li>
         <li><code>docs/design/agent-package.md</code> and <code>docs/design/file-store.md</code></li>
         <li><code>docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md</code></li>
-        <li><code>packages/office/src/solo.ts</code>, <code>packages/cli/src/paper-provider.ts</code>, <code>packages/cli/src/cli.ts</code></li>
+        <li><code>packages/office/src/solo.ts</code>, <code>packages/provider-paper/src/paper-provider.ts</code>, <code>packages/cli/src/cli.ts</code></li>
         <li><code>node_modules/@earendil-works/pi-durable</code> 1.0.2 README and type exports</li>
         <li>Codex repository guide <code>docs/visualizations/officehum-built.html</code></li>
         <li>Linear project officehum (P-RASF-8): 196 issues, 6 milestones, 8 status updates</li>

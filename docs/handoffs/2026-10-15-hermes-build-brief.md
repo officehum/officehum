@@ -90,7 +90,7 @@ Then look at the code that exists: `agents/frontdesk/` (the one working role),
 | Front Desk role | Built: contacts, messages, bookings, reschedule, cancel, approved email replies |
 | SDK | Built: manifest, `defineRole`, overlays, approval gate (async conditions), engines, evals runner core, immutable and versioned file stores |
 | Host | Solo mode only: one role per process and state folder; calendar, console and Resend messaging, signed inbound email, single-owner lock |
-| Models | Paper `ultramarine-1-flash` default, OpenAI override; provider lives in `packages/cli` |
+| Models | Paper `ultramarine-1-flash` default, OpenAI override; provider lives in `packages/provider-paper` |
 | Pi Durable | 1.3.0, pinned exactly; role peers `1.3.x` |
 | Workboard, relay, office extension, gateway | Not built (M2) |
 | Bookkeeper, Office Manager, Sales | Not built (M1; Sales is an epic outside the milestones) |

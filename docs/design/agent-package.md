@@ -199,7 +199,9 @@ Rules:
 - A replaced skill keeps its on/off state; a new skill starts on.
 - Roles default to Paper's Ultramarine 1 Flash. An overlay can choose another provider's model the
   same way; Office Hum surfaces offer the models in its tested catalog (RASF-3298). A model change
-  applies to new conversations; a saved conversation keeps the model it started with.
+  applies to new conversations; a saved conversation keeps the model it started with. The Paper
+  provider itself ships as the portable `@officehum/provider-paper` package (RASF-3297), so a role's
+  default model resolves in a bare Pi Durable install.
 - Prompt text and skills update **live**: `role.reload()` re-reads the files and the agent sees the
   change on its next request. A changed model, or skills and tools switched on or off, apply when the
   host next configures the conversation with `role.agent`. A broken edit is reported and the last
