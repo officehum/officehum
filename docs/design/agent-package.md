@@ -6,7 +6,7 @@ Status: accepted (2026-10-07) · Issue: RASF-3064 · Applies to every package un
 
 Every Office Hum role (Front Desk, Bookkeeper, Office Manager, and every department role after them)
 is a **portable Pi Durable agent**: a free, MIT-licensed package, on npm and GitHub, that anyone can
-install into **any** Pi Durable 1.0.x harness, with or without Office Hum. Roles are part of Office
+install into **any** Pi Durable 1.3.x harness, with or without Office Hum. Roles are part of Office
 Hum's free offering.
 
 A role is mostly **files Pi users already know**: `AGENTS.md`, `APPEND_SYSTEM.md` and `skills/`, plus
@@ -28,7 +28,7 @@ Role packages — portable Pi Durable agents (MIT, on npm and GitHub)
   AGENTS.md · APPEND_SYSTEM.md · skills/ · officehum.json · tools · approval gate · evals
         │ run on
         ▼
-Pi Durable 1.0.x — any install
+Pi Durable 1.3.x — any install
 ```
 
 ## The portability boundary
@@ -37,7 +37,7 @@ Enforced by `validatePackage()` and `checkAgent()` in `@officehum/sdk`, and by e
 
 1. **Built on Pi Durable.** Tools, hooks and tasks use `defineTool`, `hook` and Pi Durable tasks
    directly. `defineRole` returns plain Pi Durable extensions and agent settings.
-2. **Pi Durable and pi-ai are peer dependencies** (range `1.0.x`), never `dependencies`, so a role
+2. **Pi Durable and pi-ai are peer dependencies** (range `1.3.x`), never `dependencies`, so a role
    uses the host's single copy.
 3. **No platform dependencies.** A role may not depend on `@officehum/office`, `@officehum/cli` or
    anything else that needs the Office. It may depend on `@officehum/sdk` (which depends only on
@@ -88,7 +88,7 @@ agent learns can change the wisdom layer.
 
 ```
 @officehum/bookkeeper/
-  package.json          peerDependencies: Pi Durable and pi-ai 1.0.x
+  package.json          peerDependencies: Pi Durable and pi-ai 1.3.x
   officehum.json        Office Hum metadata: tools, approvals, accepts, connectors, skills, evals
   AGENTS.md             the role: who it is, what it does, how it works, house style
   APPEND_SYSTEM.md      rules appended to the end of the system prompt (boundaries)

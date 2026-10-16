@@ -37,7 +37,7 @@ export default function sampleDesk(options: SampleDeskOptions): DefinedRole {
     execute: async (args) => {
       const slots = await options.calendar.freeSlots(args.date);
       const text = slots.length === 0 ? "No free slots" : `Free: ${slots.join(", ")}`;
-      return { content: [{ type: "text", text }] };
+      return { output: [{ type: "text", text }] };
     },
   });
 
@@ -51,7 +51,7 @@ export default function sampleDesk(options: SampleDeskOptions): DefinedRole {
     replay: "unsafe",
     execute: async (args) => {
       const booking = await options.calendar.book(args.start, args.customer);
-      return { content: [{ type: "text", text: `Booked ${booking.id} for ${args.start}` }] };
+      return { output: [{ type: "text", text: `Booked ${booking.id} for ${args.start}` }] };
     },
   });
 

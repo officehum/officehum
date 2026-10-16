@@ -464,7 +464,7 @@ describe("frontdesk role", () => {
       callId: "cancel",
     } as never);
     expect(canceledResult).toMatchObject({
-      content: [{ type: "text", text: `Canceled ${original.id}` }],
+      output: [{ type: "text", text: `Canceled ${original.id}` }],
       details: { id: original.id, status: "canceled", alreadyCanceled: false },
     });
     expect(calendar.operation("7:9:cancel")).toMatchObject({ kind: "cancel" });

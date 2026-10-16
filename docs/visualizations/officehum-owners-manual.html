@@ -307,7 +307,7 @@
         and the Office Hum layer that hosts, coordinates and configures them.</p>
       <dl class="plate">
         <div><dt>Source checked</dt><dd><code>main</code> @ d08fc9f</dd></div>
-        <div><dt>Pi Durable</dt><dd>1.0.2, pinned</dd></div>
+        <div><dt>Pi Durable</dt><dd>1.3.0, pinned</dd></div>
         <div><dt>Linear project</dt><dd>officehum · 196 issues</dd></div>
         <div><dt>Roles built</dt><dd>1 of 3 in M1</dd></div>
       </dl>
@@ -338,7 +338,7 @@
             <h3>Pi Durable is the underlying agent harness.</h3>
             <p>True in code and in every plan. The working Front Desk opens a Pi Durable
               <code>Harness</code> over JSONL storage (<code>packages/office/src/solo.ts</code>).
-              Pi Durable 1.0.2 is pinned exactly and is a peer dependency of every role. The Paper design
+              Pi Durable 1.3.0 is pinned exactly and is a peer dependency of every role. The Paper design
               states it “remains the only agent harness and the authority for conversation state, task
               checkpoints, approvals, and recovery.” Linear plans one Pi Durable harness per office
               (RASF-3101, RASF-3104).</p>
@@ -485,7 +485,7 @@
 
           <!-- Row 4: Pi Durable -->
           <rect x="20" y="408" width="620" height="74" rx="8" class="bx-p"/>
-          <text x="36" y="432" class="tl c-p">PI DURABLE 1.0.2<tspan class="ts" dx="8">the only agent loop</tspan></text>
+          <text x="36" y="432" class="tl c-p">PI DURABLE 1.3.0<tspan class="ts" dx="8">the only agent loop</tspan></text>
           <text x="36" y="454" class="ts">harness · conversations · model and tool tasks · hooks · checkpoints · resume after a crash</text>
           <text x="36" y="472" class="ts">Approval gates are Office Hum hooks that run inside it, before each tool call.</text>
 
@@ -600,7 +600,7 @@
           </tbody>
         </table></div>
         <div class="note caution"><span class="label">Caution</span>Pi Durable's API is experimental and
-          can change between releases. Office Hum pins one exact version (1.0.2), lets Dependabot propose
+          can change between releases. Office Hum pins one exact version (1.3.0), lets Dependabot propose
           upgrades, and routes runtime calls through one adapter. The upgrade to 1.1.x is its own ticket
           (RASF-3237).</div>
       </div>
@@ -611,7 +611,7 @@
       <div class="chapter-head"><div class="num">04</div><h2>Roles</h2>
         <div class="eyebrow">A role is a portable Pi Durable agent</div></div>
       <div class="col">
-        <p>A role is an npm package, free under the MIT license, that installs into any Pi Durable 1.0.x
+        <p>A role is an npm package, free under the MIT license, that installs into any Pi Durable 1.3.x
           harness with or without Office Hum. Most of it is plain files that Pi users already know. Its
           code is a thin entry point that defines the tools and calls <code>defineRole</code>.</p>
         <div class="tree"><span class="k">@officehum/bookkeeper/</span>

@@ -8,7 +8,7 @@
 export type { AgentManifest, Department } from "@officehum/sdk";
 
 /** Exact Pi Durable version this release is built and tested against. Bumped by the upgrade pipeline. */
-export const PI_DURABLE_VERSION = "1.0.2";
+export const PI_DURABLE_VERSION = "1.3.0";
 
 export {
   type CalendarOperation,

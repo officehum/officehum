@@ -65,7 +65,7 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
     execute: async (args) => {
       const slots = await options.calendar.freeSlots(args.date);
       return {
-        content: [
+        output: [
           {
             type: "text",
             text: slots.length === 0 ? "No free slots" : `Free: ${slots.join(", ")}`,
@@ -100,7 +100,7 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
       const booking = await options.calendar.book(args.start, pinned?.name ?? args.customer, key);
       if (pinned !== undefined) await linkBookingContact(pinned, booking.id, api, context);
       return {
-        content: [{ type: "text", text: `Booked ${booking.id} at ${booking.start}` }],
+        output: [{ type: "text", text: `Booked ${booking.id} at ${booking.start}` }],
         details: { ...booking },
       };
     },
@@ -116,7 +116,7 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
         (left, right) => left.start.localeCompare(right.start) || left.id.localeCompare(right.id),
       );
       return {
-        content: [
+        output: [
           {
             type: "text",
             text:
@@ -142,7 +142,7 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
       const key = `${api.conversationId}:${api.taskId}:${api.callId}`;
       const booking = await options.calendar.reschedule(args.id, args.start, key);
       return {
-        content: [{ type: "text", text: `Rescheduled ${booking.id} to ${booking.start}` }],
+        output: [{ type: "text", text: `Rescheduled ${booking.id} to ${booking.start}` }],
         details: { ...booking },
       };
     },
@@ -156,7 +156,7 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
       const key = `${api.conversationId}:${api.taskId}:${api.callId}`;
       const cancellation = await options.calendar.cancel(args.id, key);
       return {
-        content: [
+        output: [
           {
             type: "text",
             text: `${cancellation.alreadyCanceled ? "Already canceled" : "Canceled"} ${cancellation.id}`,

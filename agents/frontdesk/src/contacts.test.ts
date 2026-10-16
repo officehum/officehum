@@ -120,7 +120,7 @@ describe("Front Desk contacts", () => {
     );
     const historical = await create.execute(args, shared, BACKGROUND_CONTEXT);
     expect(historical).toMatchObject({
-      content: [{ type: "text", text: expect.stringMatching(/historical receipt/i) }],
+      output: [{ type: "text", text: expect.stringMatching(/historical receipt/i) }],
       details: { contact: { name: "Guest", revision: 1 }, replayed: true },
     });
     expect((await harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT))?.contacts[0]).toMatchObject({

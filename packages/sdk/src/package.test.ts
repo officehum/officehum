@@ -39,7 +39,7 @@ describe("validatePackage", () => {
     if (!result.ok) return;
     expect(result.value.name).toBe("@officehum/sample-desk");
     expect(result.value.version).toBe("0.1.0");
-    expect(result.value.piDurableRange).toBe("1.0.x");
+    expect(result.value.piDurableRange).toBe("1.3.x");
     expect(Object.keys(result.value.suites)).toEqual(["evals/booking.json"]);
   });
 
@@ -50,7 +50,7 @@ describe("validatePackage", () => {
     });
     expect(await messages(dir)).toEqual([
       "package.json › dependencies.@earendil-works/pi-durable: must be a peer dependency, so the role uses the host's copy of Pi Durable",
-      'package.json › peerDependencies: must include "@earendil-works/pi-durable", e.g. "1.0.x"',
+      'package.json › peerDependencies: must include "@earendil-works/pi-durable", e.g. "1.3.x"',
     ]);
   });
 

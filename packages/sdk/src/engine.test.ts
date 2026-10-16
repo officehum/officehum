@@ -33,8 +33,8 @@ const tool = (tools: readonly ToolRegistration[] | undefined, name: string) => {
   return found;
 };
 const api = (callId = "call-1") => ({ conversationId: "conversation-1", callId }) as never;
-const text = (result: { content?: readonly { type: string; text?: string }[] }) =>
-  result.content?.[0]?.text ?? "";
+const text = (result: { output?: readonly { type: string; text?: string }[] }) =>
+  result.output?.[0]?.text ?? "";
 
 describe("the engine contract, run against a real Python engine", () => {
   it("runs a subcommand and returns findings with ids", async () => {

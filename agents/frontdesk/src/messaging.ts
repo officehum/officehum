@@ -171,7 +171,7 @@ function result(record: MessageRecord, replayed: boolean) {
       ? "Recorded in console outbox; no customer delivery"
       : "Accepted by transport";
   return {
-    content: [
+    output: [
       {
         type: "text" as const,
         text: replayed ? `Historical receipt: ${copy}.` : `${copy}.`,

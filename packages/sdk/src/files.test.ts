@@ -20,7 +20,7 @@ const png = (size: number) => {
 it("returns references only", () => {
   expect(MAX_INLINE_IMAGE_BYTES).toBe(100_000);
   expect(fileResult([ref])).toEqual({
-    content: [
+    output: [
       {
         type: "text",
         text: JSON.stringify({
@@ -40,7 +40,7 @@ it("refuses too many refs", () => {
 
 it("accepts exactly the decoded preview limit", () => {
   const result = fileResult([ref], { preview: { bytes: png(100_000), mimeType: "image/png" } });
-  const image = result.content[1];
+  const image = result.output[1];
   expect(image?.type).toBe("image");
   if (image?.type !== "image") throw new Error("Expected image");
   expect(Buffer.from(image.data, "base64").length).toBe(100_000);
@@ -65,7 +65,7 @@ it("rejects bad preview bytes", () => {
 
 it("supports an empty result", () => {
   expect(fileResult([])).toEqual({
-    content: [{ type: "text", text: '{"files":[]}' }],
+    output: [{ type: "text", text: '{"files":[]}' }],
     details: { files: [] },
   });
 });
@@ -102,7 +102,7 @@ const previewSignatures = [
 
 it.each(previewSignatures)("accepts a correctly signed %s preview", (_label, mimeType, prefix) => {
   const result = fileResult([ref], { preview: { bytes: Uint8Array.from(prefix), mimeType } });
-  expect(result.content[1]).toMatchObject({ type: "image", mimeType });
+  expect(result.output[1]).toMatchObject({ type: "image", mimeType });
 });
 
 it.each([

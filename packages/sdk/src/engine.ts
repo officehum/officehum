@@ -248,7 +248,7 @@ function engineTool(tool: ToolDeclaration, engine: Engine): ToolRegistration {
         },
       );
       return {
-        content: [{ type: "text", text: formatEngineResult(result) }],
+        output: [{ type: "text", text: formatEngineResult(result) }],
         ...(result.ok ? {} : { isError: true }),
         details: { findings: result.findings.map((finding) => finding.id) },
       };

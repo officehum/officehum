@@ -155,16 +155,16 @@ export function defineRole(options: DefineRoleOptions): DefinedRole {
       if (skill === undefined) {
         return {
           isError: true,
-          content: [{ type: "text", text: `There is no skill called "${args.name}".` }],
+          output: [{ type: "text", text: `There is no skill called "${args.name}".` }],
         };
       }
-      if (args.file === undefined) return { content: [{ type: "text", text: skill.instructions }] };
+      if (args.file === undefined) return { output: [{ type: "text", text: skill.instructions }] };
       try {
-        return { content: [{ type: "text", text: readSkillFile(skill, args.file) }] };
+        return { output: [{ type: "text", text: readSkillFile(skill, args.file) }] };
       } catch {
         return {
           isError: true,
-          content: [{ type: "text", text: `The ${skill.name} skill has no file "${args.file}".` }],
+          output: [{ type: "text", text: `The ${skill.name} skill has no file "${args.file}".` }],
         };
       }
     },

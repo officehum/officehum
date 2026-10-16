@@ -125,7 +125,7 @@ export const MAX_INLINE_IMAGE_BYTES = 100_000;
 export function fileResult(
   refs: readonly FileRef[],
   options: { preview?: { bytes: Uint8Array; mimeType: string } } = {},
-): { content: Array<TextContent | ImageContent>; details: { files: string[] } } {
+): { output: Array<TextContent | ImageContent>; details: { files: string[] } } {
   if (!Array.isArray(refs) || refs.length > 100) throw new Error("Invalid file references");
   for (const ref of refs) {
     assertId(ref.id);
@@ -135,7 +135,7 @@ export function fileResult(
   }
 
   const files = refs.map(({ id, name, mimeType, size }) => ({ id, name, mimeType, size }));
-  const content: Array<TextContent | ImageContent> = [
+  const output: Array<TextContent | ImageContent> = [
     { type: "text", text: JSON.stringify({ files }) },
   ];
   if (options.preview) {
@@ -148,7 +148,7 @@ export function fileResult(
       throw new Error("Unsupported image preview MIME type");
     }
     assertSignature(bytes, mimeType);
-    content.push({ type: "image", data: Buffer.from(bytes).toString("base64"), mimeType });
+    output.push({ type: "image", data: Buffer.from(bytes).toString("base64"), mimeType });
   }
-  return { content, details: { files: refs.map((ref) => ref.id) } };
+  return { output, details: { files: refs.map((ref) => ref.id) } };
 }

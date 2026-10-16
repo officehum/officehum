@@ -2,7 +2,7 @@
 
 Each folder here is one Office Hum role, published free as `@officehum/<role>`.
 
-Every role is a **portable Pi Durable agent**: an MIT package that installs into any Pi Durable 1.0.x
+Every role is a **portable Pi Durable agent**: an MIT package that installs into any Pi Durable 1.3.x
 harness, with or without Office Hum. Office Hum composes, coordinates and configures roles; it never
 modifies them, and a role never depends on it.
 
@@ -32,7 +32,7 @@ additions, `APPEND_SYSTEM.md`, skills and `settings.json` (model; skills and too
 
 Rules, enforced by `@officehum/sdk` (`validatePackage`, `checkAgent`, `resolveRoleFiles`):
 
-- Pi Durable and pi-ai are peer dependencies (`1.0.x`); no dependency on `@officehum/office` or `@officehum/cli`.
+- Pi Durable and pi-ai are peer dependencies (`1.3.x`); no dependency on `@officehum/office` or `@officehum/cli`.
 - Every tool states `replay` explicitly and matches the manifest.
 - Gated actions are blocked unless the host supplies an approver.
 - Overlays can switch tools off but never add them; overlay skills hold instructions only.

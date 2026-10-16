@@ -2,7 +2,7 @@
  * @officehum/sdk — build portable Pi Durable role agents.
  *
  * A role is a Pi Durable extension. It ships Pi's familiar files (AGENTS.md, APPEND_SYSTEM.md,
- * skills/) with its tools, and installs into any Pi Durable 1.0.x harness, with or without Office
+ * skills/) with its tools, and installs into any Pi Durable 1.3.x harness, with or without Office
  * Hum. Overlay directories with the same layout customize it without touching the package. This SDK
  * adds what Pi Durable does not have: `defineRole` (role files, skills and overlays as Pi Durable
  * sections and tools), the approval gate, the `officehum.json` manifest, checks that keep a role

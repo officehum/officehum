@@ -266,7 +266,7 @@ npm install
 npm run check   # lint, build, typecheck, test
 ```
 
-Pi Durable is pinned to an exact version (`1.0.2`). Dependabot opens a pull request for each new upstream release, and it merges only when CI passes. Each Office Hum release ships one tested Pi Durable version, so installs never upgrade Pi Durable on their own. Pi Durable's API is experimental, so all calls into it go through the adapter in `@officehum/office`.
+Pi Durable is pinned to an exact version (`1.3.0`). Dependabot opens a pull request for each new upstream release, and it merges only when CI passes. Each Office Hum release ships one tested Pi Durable version, so installs never upgrade Pi Durable on their own. Pi Durable's API is experimental, so all calls into it go through the adapter in `@officehum/office`.
 
 ## License
 
