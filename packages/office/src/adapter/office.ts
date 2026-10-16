@@ -55,6 +55,13 @@ export type OpenOfficeOptions = {
   readonly settings?: HarnessSettings;
   /** Receives failures that do not fail the calling operation. Wired to `HarnessOptions.onReport`. */
   readonly onReport?: (error: unknown) => void;
+  /**
+   * Enable task scheduling on open. Default true, so work admitted before the last close continues.
+   * A caller that must see which submissions were left unsettled — the run command reacquiring work
+   * after a crash — opens with false and drives recovery itself; `submit` and `Submission.wait` enable
+   * scheduling anyway, so this only delays it.
+   */
+  readonly resume?: boolean;
 };
 
 export type OfficeConversationOptions = {
@@ -148,8 +155,8 @@ export async function openOffice(options: OpenOfficeOptions): Promise<Office> {
     },
     BACKGROUND_CONTEXT,
   );
-  // Always resume: work admitted before the last close continues, and this is idempotent.
-  harness.resume();
+  // Resume by default: work admitted before the last close continues, and this is idempotent.
+  if (options.resume !== false) harness.resume();
   let closing: Promise<void> | undefined;
   return {
     harness,

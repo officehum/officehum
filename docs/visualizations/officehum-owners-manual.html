@@ -970,10 +970,20 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
   --message "Book Demo Guest on 2030-01-15" \
   --request-id booking-1</pre>
 
+        <p>A role package can also be run on its own, without a state folder: <code>run</code> loads a
+          package directory, opens one office on a SQLite file, resumes anything a crash left unfinished,
+          and reads lines from the terminal. Each line becomes an idempotent submission; gated actions
+          wait for a <code>y</code>/<code>n</code> answer; <code>/reload</code> re-reads overlays and
+          <code>/commands</code> lists the package's operator views. Role packages are portable, so the
+          same command runs any of them.</p>
+<pre class="cmd">officehum run agents/frontdesk \
+  --model paper/ultramarine-1-flash</pre>
+
         <h3>Commands</h3>
         <div class="tablewrap"><table>
           <thead><tr><th>Command</th><th>What it does</th></tr></thead>
           <tbody>
+            <tr><td><code>run</code></td><td>Runs one role package in the terminal: chat, approve at the prompt, resume after a crash, reload overlays</td></tr>
             <tr><td><code>demo</code></td><td>Runs the synthetic booking with no keys</td></tr>
             <tr><td><code>start</code></td><td>Submits a durable request; asks for <code>allow</code> or <code>deny</code> on gated actions</td></tr>
             <tr><td><code>resume</code></td><td>Continues interrupted work from storage</td></tr>

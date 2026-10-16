@@ -29,25 +29,27 @@ function interruption(error: unknown): TerminalInterrupt | undefined {
 }
 
 export function createTerminalIo(options: TerminalIoOptions): CliIo {
+  const readLine = async (prompt: string): Promise<string | undefined> => {
+    if (!options.input.isTTY) return undefined;
+    const reader = (options.open ?? createInterface)({
+      input: options.input,
+      output: options.output,
+    });
+    try {
+      return await reader.question(prompt);
+    } catch (error) {
+      const kind = interruption(error);
+      if (kind === undefined) throw error;
+      options.onInterrupt(kind);
+      return undefined;
+    } finally {
+      reader.close();
+    }
+  };
   return {
     output: (line) => options.output.write(`${line}\n`),
     error: (line) => options.error.write(`${line}\n`),
-    readApproval: async (prompt) => {
-      if (!options.input.isTTY) return undefined;
-      const reader = (options.open ?? createInterface)({
-        input: options.input,
-        output: options.output,
-      });
-      try {
-        return await reader.question(prompt);
-      } catch (error) {
-        const kind = interruption(error);
-        if (kind === undefined) throw error;
-        options.onInterrupt(kind);
-        return undefined;
-      } finally {
-        reader.close();
-      }
-    },
+    readLine,
+    readApproval: readLine,
   };
 }

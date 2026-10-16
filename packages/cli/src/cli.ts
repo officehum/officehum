@@ -24,6 +24,7 @@ import {
   type InternalResendInbox,
   inboundAwareApprover,
   type LocalCalendar,
+  loadRole,
   type MessengerIdentity,
   messengerIdentityString,
   openConsoleMessenger,
@@ -32,6 +33,7 @@ import {
   openResendInbox,
   openResendListener,
   openResendMessenger,
+  openRoleRun,
   openSolo,
   PI_DURABLE_VERSION,
   parseMessengerIdentity,
@@ -49,14 +51,25 @@ import {
 } from "@officehum/office";
 import { PAPER_MODEL_REF, paperProvider } from "@officehum/provider-paper";
 import type { ApprovalDecision, ApprovalRequest, Approver, HookContext } from "@officehum/sdk";
+import {
+  parseModelRef,
+  parseRunArguments,
+  printRunResult,
+  readClientConfig,
+  runInteractive,
+  runModels,
+  terminalApprover,
+  terminalUser,
+} from "./run.js";
+import { UsageError } from "./usage-error.js";
 
 export interface CliIo {
   output(line: string): void;
   error(line: string): void;
   readApproval(prompt: string): Promise<string | undefined>;
+  /** Reads one terminal line, for the interactive `run` command. Absent means no line input. */
+  readLine?(prompt: string): Promise<string | undefined>;
 }
-
-class UsageError extends Error {}
 
 let activeSession: { close(): Promise<void> } | undefined;
 
@@ -86,6 +99,11 @@ export interface CliDependencies {
     readonly models: ReturnType<typeof createModels>;
     readonly model: ModelRef;
   };
+  /** Overrides the models `run` talks to; tests inject the scripted provider here. */
+  readonly createRunModels?: (ref: ModelRef) => {
+    readonly models: ReturnType<typeof createModels>;
+    readonly model: ModelRef;
+  };
   readonly createInboundSession?: (
     options: Parameters<typeof openInboundSession>[0],
   ) => InboundSession;
@@ -93,6 +111,7 @@ export interface CliDependencies {
 }
 
 const USAGE = `Usage:
+  officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE]
   officehum demo [--state DIR] [--approval allow|deny] [--calendar local] [--messenger console]
   officehum start --message TEXT --request-id ID [--state DIR] [--provider paper|openai] [--model ID] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
   officehum resume [--state DIR] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
@@ -1153,6 +1172,61 @@ async function runResume(
   }
 }
 
+/**
+ * `officehum run ROLE_DIR`: load one role package, open an office on its SQLite file, resume anything
+ * a previous run left unfinished, and chat with the role until end of input.
+ */
+async function runRun(
+  args: readonly string[],
+  io: CliIo,
+  dependencies: CliDependencies,
+): Promise<number> {
+  const parsed = parseRunArguments(args);
+  // A named model is resolved first, so a missing credential fails before any role code runs.
+  const requested = parsed.model === undefined ? undefined : parseModelRef(parsed.model);
+  const early = requested === undefined ? undefined : runModels(requested, dependencies);
+  const clients = parsed.clientFile === undefined ? {} : await readClientConfig(parsed.clientFile);
+  const role = await loadRole(parsed.roleDir, {
+    overlays: parsed.overlays,
+    approve: terminalApprover(io),
+    ...(parsed.dataDir === undefined ? {} : { dataDir: parsed.dataDir }),
+    ...(parsed.workDir === undefined ? {} : { workDir: parsed.workDir }),
+    clients,
+  });
+  const ref = requested ?? {
+    provider: role.manifest.defaultModel.provider,
+    modelId: role.manifest.defaultModel.modelId,
+  };
+  const runtime = early ?? runModels(ref, dependencies);
+  const database = parsed.database ?? join(".officehum", `${role.manifest.id}.sqlite`);
+  const session = await openRoleRun({
+    role,
+    database,
+    models: runtime.models,
+    model: runtime.model,
+  });
+  activeSession = session;
+  try {
+    io.output(`${role.manifest.name} (${role.manifest.id}) — ${role.manifest.role}`);
+    io.output(`Model: ${runtime.model.provider}/${runtime.model.modelId}`);
+    io.output(`Office: ${database}`);
+    io.output(`Approval: this terminal (y/n), as ${terminalUser()}`);
+    for (const command of role.manifest.commands ?? []) {
+      io.output(`Command /${command.name}: ${command.description}`);
+    }
+    const resumed = await session.resume();
+    for (const result of resumed) printRunResult(result, io);
+    if (resumed.length > 0) io.output(`Resumed ${resumed.length} unfinished submission(s).`);
+    return await runInteractive(session, io);
+  } finally {
+    try {
+      await session.close();
+    } finally {
+      if (activeSession === session) activeSession = undefined;
+    }
+  }
+}
+
 export async function runCli(
   args: string[],
   io: CliIo,
@@ -1163,6 +1237,7 @@ export async function runCli(
       io.output(`officehum 0.0.0 (Pi Durable ${PI_DURABLE_VERSION})`);
       return 0;
     }
+    if (args[0] === "run") return await runRun(args.slice(1), io, dependencies);
     const parsed = parse(args);
     if (
       !new Set(["demo", "start", "resume", "listen", "inbox", "bookings", "contacts"]).has(
