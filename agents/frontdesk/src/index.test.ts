@@ -400,6 +400,24 @@ describe("frontdesk role", () => {
     attempt.calendar.close();
   });
 
+  it("returns output, not content, so the SDK tool-result guard passes on Front Desk", async () => {
+    const calendar = tempCalendar();
+    await calendar.book("2030-01-15T09:00:00Z", "Guest", "seed");
+    const role = frontdesk({ calendar });
+    const tools = role.extensions.flatMap((extension) => extension.tools ?? []);
+    const list = tools.find((tool) => tool.name === "list_bookings");
+    if (list === undefined) throw new Error("missing list_bookings");
+    // `defineRole` wraps every tool; a result still using `content` would throw through the guard.
+    const result = await list.execute({}, {
+      conversationId: 1,
+      taskId: 1,
+      callId: "call",
+    } as never);
+    expect(result).not.toHaveProperty("content");
+    expect(result.output?.[0]).toMatchObject({ type: "text" });
+    calendar.close();
+  });
+
   it.each([
     ["reschedule_appointment", undefined],
     ["reschedule_appointment", async () => ({ approved: false })],

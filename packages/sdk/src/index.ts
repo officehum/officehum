@@ -151,4 +151,5 @@ export {
   type Skill,
   skillFolders,
 } from "./skills.js";
+export { guardToolResult, guardToolResultShape } from "./tool-result.js";
 export { intentHash } from "./versioned-file-validation.js";
