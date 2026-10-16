@@ -35,6 +35,7 @@ import { formatIssue, type Issue } from "./issues.js";
 import { validateManifest } from "./manifest.js";
 import { type ResolvedRole, resolveRoleFiles } from "./resources.js";
 import { readSkillFile } from "./skills.js";
+import { guardToolResult } from "./tool-result.js";
 
 /** The section keys a role's prompt renders under, in order. */
 export const ROLE_SECTION_KEYS = ["agents_md", "skills", "append_system"] as const;
@@ -177,7 +178,7 @@ export function defineRole(options: DefineRoleOptions): DefinedRole {
       section("skills", () => skillIndex(current)),
       section("append_system", () => current.appendSystem?.text),
     ],
-    tools: [...roleTools, readSkill],
+    tools: [...roleTools, readSkill].map(guardToolResult),
     hooks: [
       approvalGate({
         approvals: manifest.approvals,
@@ -191,7 +192,10 @@ export function defineRole(options: DefineRoleOptions): DefinedRole {
 
   // Skills that bring tools get their own extension, selected only while the skill is on.
   const skillExtensions = [...toolsBySkill].map(([skill, tools]) =>
-    defineExtension({ name: skillExtensionName(manifest.id, skill), tools }),
+    defineExtension({
+      name: skillExtensionName(manifest.id, skill),
+      tools: tools.map(guardToolResult),
+    }),
   );
 
   const agentSettings = (): RoleBundle["agent"] => {
