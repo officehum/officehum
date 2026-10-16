@@ -5,24 +5,20 @@
  * production: `requestId` idempotency, recovery of an interrupted run from a reopened SQLite file, the
  * `replay` classification of an interrupted tool, and per-bundle extension selection.
  *
- * In-memory storage except where a reopen is the point, and a faux provider throughout: no network, no
- * real model, no credential.
+ * In-memory storage except where a reopen is the point, and the scripted provider throughout: no
+ * network, no real model, no credential. Every assertion keeps its meaning; the scripted provider also
+ * lets a case read back the tools the model was offered.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { awaitWithContext, BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
-import { createModels } from "@earendil-works/pi-ai/models";
-import {
-  type FauxResponseFactory,
-  fauxAssistantMessage,
-  fauxProvider,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
+import type { ModelRef } from "@earendil-works/pi-durable";
 import { defineExtension, defineTool, hook, ToolTask } from "@earendil-works/pi-durable";
 import type { RoleBundle } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
+import { scriptedProvider } from "../testing/scripted-model.js";
 import { openOffice, ROOT_KEY } from "./index.js";
 
 const temps: string[] = [];
@@ -36,85 +32,61 @@ function sqliteFile(): string {
   return join(directory, "office.sqlite");
 }
 
-/** A faux provider whose responses count how many model calls the office actually made. */
-function countingModels(
-  name: string,
-  responses: readonly (() => ReturnType<FauxResponseFactory>)[],
-) {
-  const calls = { count: 0 };
-  const faux = fauxProvider({ provider: name, models: [{ id: "adapter-test" }] });
-  const factories: FauxResponseFactory[] = responses.map((response) => () => {
-    calls.count += 1;
-    return response();
-  });
-  faux.setResponses(factories);
-  const models = createModels();
-  models.setProvider(faux.provider);
-  return { models, model: { provider: name, modelId: "adapter-test" }, calls };
-}
-
-const plainText = () => fauxAssistantMessage("done");
-
-/** A bundle whose one tool records how often it ran, with its own extension name. */
+/** A bundle with one run-counting tool, its own extension name and the scripted model. */
 function toolBundle(
-  provider: string,
   extensionName: string,
   tools: ReturnType<typeof defineTool>[],
+  model: ModelRef,
   hooks: ReturnType<typeof hook>[] = [],
 ): RoleBundle {
   const extension = defineExtension({ name: extensionName, tools, hooks });
   return {
     extensions: [extension],
-    agent: { model: { provider, modelId: "adapter-test" }, extensions: [extension] },
+    agent: { model, extensions: [extension] },
   };
 }
 
-/** A provider that calls `toolName` once and then answers, scripted enough times to cover a restart. */
-function scriptedModels(provider: string, toolName: string) {
-  const scripted: FauxResponseFactory = (context) =>
-    context.messages.some((message) => message.role === "toolResult")
-      ? fauxAssistantMessage("finished")
-      : fauxAssistantMessage(fauxToolCall(toolName, {}), { stopReason: "toolUse" });
-  const faux = fauxProvider({ provider, models: [{ id: "adapter-test" }] });
-  faux.setResponses(Array.from({ length: 6 }, () => scripted));
-  const models = createModels();
-  models.setProvider(faux.provider);
-  return models;
+/** A script that calls `toolName` once and then answers, branched on the transcript so it never runs out. */
+function callThenAnswer(toolName: string) {
+  return (messages: readonly { role: string }[]) =>
+    messages.some((message) => message.role === "toolResult")
+      ? { text: "finished" }
+      : { toolCalls: [{ name: toolName }] };
 }
 
 describe("office adapter", () => {
   it("submits once per requestId, returns the original for a repeat, and calls the model once", async () => {
-    const { models, calls } = countingModels("adapter-idempotent", [plainText, plainText]);
-    const office = await openOffice({ storage: "memory", models });
-    const conversation = await office.conversation(ROOT_KEY, {
-      agent: { model: { provider: "adapter-idempotent", modelId: "adapter-test" } },
-    });
+    const scripted = scriptedProvider([{ text: "done" }, { text: "done" }, { text: "done" }]);
+    const office = await openOffice({ storage: "memory", models: scripted.models });
+    const conversation = await office.conversation(ROOT_KEY, { agent: { model: scripted.model } });
 
     const first = await office.submit(conversation, { input: "first", requestId: "same" });
     expect((await first.wait(BACKGROUND_CONTEXT)).status).toBe("done");
-    expect(calls.count).toBe(1);
+    expect(scripted.calls).toBe(1);
 
     // The same key on the same conversation is the original submission, and costs no second model call.
     const repeat = await office.submit(conversation, { input: "first", requestId: "same" });
     expect(repeat.id).toBe(first.id);
     expect((await repeat.wait(BACKGROUND_CONTEXT)).status).toBe("done");
-    expect(calls.count).toBe(1);
+    expect(scripted.calls).toBe(1);
 
     const second = await office.submit(conversation, { input: "second", requestId: "different" });
     expect(second.id).not.toBe(first.id);
     expect((await second.wait(BACKGROUND_CONTEXT)).status).toBe("done");
-    expect(calls.count).toBe(2);
+    expect(scripted.calls).toBe(2);
+
+    // One recorded request per model call, and no tools offered because the role declares none.
+    expect(scripted.requests).toHaveLength(2);
+    expect(scripted.requests.every((request) => request.tools.length === 0)).toBe(true);
 
     await office.close();
   });
 
   it("finds an unsettled submission after reopening the same SQLite file and resumes it", async () => {
     const file = sqliteFile();
-    const { models, calls } = countingModels("adapter-reopen", [plainText]);
-    const office = await openOffice({ storage: { sqlite: file }, models });
-    const conversation = await office.conversation(ROOT_KEY, {
-      agent: { model: { provider: "adapter-reopen", modelId: "adapter-test" } },
-    });
+    const scripted = scriptedProvider([{ text: "done" }]);
+    const office = await openOffice({ storage: { sqlite: file }, models: scripted.models });
+    const conversation = await office.conversation(ROOT_KEY, { agent: { model: scripted.model } });
     const submitted = await office.submit(conversation, {
       input: "survive me",
       requestId: "reopen",
@@ -123,12 +95,12 @@ describe("office adapter", () => {
     // Crash before the submission settles: the office is closed with the run not yet finished.
     await office.close();
 
-    const reopened = await openOffice({ storage: { sqlite: file }, models });
+    const reopened = await openOffice({ storage: { sqlite: file }, models: scripted.models });
     const found = await reopened.submission(submitted.id);
     expect(found).toBeDefined();
     expect((await found?.status(BACKGROUND_CONTEXT))?.requestId).toBe("reopen");
     expect((await found?.wait(BACKGROUND_CONTEXT))?.status).toBe("done");
-    expect(calls.count).toBe(1);
+    expect(scripted.calls).toBe(1);
     await reopened.close();
   });
 
@@ -137,7 +109,6 @@ describe("office adapter", () => {
 
     for (const kind of ["safe", "unsafe"] as const) {
       const file = sqliteFile();
-      const provider = `adapter-replay-${kind}`;
       let reached!: () => void;
       const paused = new Promise<void>((resolve) => {
         reached = resolve;
@@ -165,11 +136,12 @@ describe("office adapter", () => {
           return { output: [{ type: "text" as const, text: `${kind} ran` }] };
         },
       });
-      const bundle = toolBundle(provider, `replay-${kind}`, [tool], [pauseAfterTool]);
+      const scripted = scriptedProvider(callThenAnswer(`${kind}_tool`));
+      const bundle = toolBundle(`replay-${kind}`, [tool], scripted.model, [pauseAfterTool]);
 
       const office = await openOffice({
         storage: { sqlite: file },
-        models: scriptedModels(provider, `${kind}_tool`),
+        models: scripted.models,
       });
       office.install(bundle);
       const conversation = await office.conversation(ROOT_KEY, { agent: bundle.agent });
@@ -182,7 +154,7 @@ describe("office adapter", () => {
 
       const reopened = await openOffice({
         storage: { sqlite: file },
-        models: scriptedModels(provider, `${kind}_tool`),
+        models: scripted.models,
       });
       reopened.install(bundle);
       const found = await reopened.submission(submitted.id);
@@ -191,8 +163,9 @@ describe("office adapter", () => {
       await reopened.close();
 
       // A safe tool is retried after the crash; an unsafe one is not, and the model sees the
-      // interrupted result instead.
+      // interrupted result instead. Either way the run took two model calls: the call, then the answer.
       expect(runs[kind]).toBe(kind === "safe" ? 2 : 1);
+      expect(scripted.calls).toBe(2);
     }
   }, 30_000);
 
@@ -210,21 +183,18 @@ describe("office adapter", () => {
           return { output: [{ type: "text" as const, text: `${name} ran` }] };
         },
       });
-    const provider = "adapter-isolation";
-    const bundleA = toolBundle(provider, "isolation-a", [tool("a_only")]);
-    const bundleB = toolBundle(provider, "isolation-b", [tool("b_only")]);
-    const models = createModels();
-    const faux = fauxProvider({ provider, models: [{ id: "adapter-test" }] });
-    const scriptedFor =
-      (name: string): FauxResponseFactory =>
-      (context) =>
-        context.messages.some((message) => message.role === "toolResult")
-          ? fauxAssistantMessage("done")
-          : fauxAssistantMessage(fauxToolCall(name, {}), { stopReason: "toolUse" });
-    faux.setResponses([scriptedFor("a_only"), scriptedFor("b_only"), scriptedFor("b_only")]);
-    models.setProvider(faux.provider);
+    // Turn 3 asks for the other bundle's tool; it is not in this conversation's selection, so it must
+    // not run, and the model is only ever offered a_only.
+    const scripted = scriptedProvider([
+      { toolCalls: [{ name: "a_only" }] },
+      { text: "done" },
+      { toolCalls: [{ name: "b_only" }] },
+      { text: "done" },
+    ]);
+    const bundleA = toolBundle("isolation-a", [tool("a_only")], scripted.model);
+    const bundleB = toolBundle("isolation-b", [tool("b_only")], scripted.model);
 
-    const office = await openOffice({ storage: "memory", models });
+    const office = await openOffice({ storage: "memory", models: scripted.models });
     office.install(bundleA);
     office.install(bundleB);
     const conversation = await office.conversation(ROOT_KEY, { agent: bundleA.agent });
@@ -237,6 +207,13 @@ describe("office adapter", () => {
     const outside = await office.submit(conversation, { input: "use b", requestId: "b" });
     await outside.wait(BACKGROUND_CONTEXT);
     expect(runs.b).toBe(0);
+
+    // Every request this conversation made was offered only the selected bundle's tool.
+    expect(scripted.requests.length).toBeGreaterThan(0);
+    const offered = scripted.requests.map((request) => request.tools.map((entry) => entry.name));
+    expect(offered.every((names) => names.length === 1 && names[0] === "a_only")).toBe(true);
+    // The model did ask for b_only (turn 3); the harness only refused to run it.
+    expect(scripted.calls).toBeGreaterThanOrEqual(3);
 
     await office.close();
   }, 20_000);
