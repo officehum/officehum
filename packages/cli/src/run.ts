@@ -126,11 +126,12 @@ export function parseModelRef(spec: string): ModelRef {
 export function runModels(
   ref: ModelRef,
   dependencies: Pick<CliDependencies, "createRunModels">,
+  command = "run",
 ): { models: ReturnType<typeof createModels>; model: ModelRef } {
   const injected = dependencies.createRunModels?.(ref);
   if (injected !== undefined) {
     if (injected.model.provider !== ref.provider || injected.model.modelId !== ref.modelId) {
-      throw new Error("Injected run model does not match the requested provider/model.");
+      throw new Error(`Injected ${command} model does not match the requested provider/model.`);
     }
     if (injected.models.getModel(ref.provider, ref.modelId) === undefined) {
       throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
@@ -139,7 +140,7 @@ export function runModels(
   }
   if (ref.provider !== "paper" && ref.provider !== "openai") {
     throw new Error(
-      `The run command runs paper or openai models, not ${JSON.stringify(ref.provider)}. Pass --model paper/${PAPER_MODEL_REF.modelId} or openai/gpt-6-sol.`,
+      `The ${command} command runs paper or openai models, not ${JSON.stringify(ref.provider)}. Pass --model paper/${PAPER_MODEL_REF.modelId} or openai/gpt-6-sol.`,
     );
   }
   const keyName = ref.provider === "paper" ? "PAPERINSTRUMENTS_API_KEY" : "OPENAI_API_KEY";

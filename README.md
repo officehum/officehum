@@ -298,6 +298,45 @@ credential. Only `module` and an optional `export` are allowed per entry, and an
 }
 ```
 
+## Eval a role package
+
+`officehum eval ROLE_DIR` runs a role's eval suites and prints the SDK's report, exiting non-zero
+when a suite fails. It is the release gate and the portability check: the runner installs only the
+role's own extensions on a fresh in-memory Pi Durable harness, so a role that needs Office Hum fails
+here. Every tool the manifest declares is stubbed — with its real name, description and parameters,
+so the model is offered the tools a live run would offer while no real system is touched — `read_skill`
+runs for real, and an approval a scenario does not script stops the trial rather than being guessed.
+
+```sh
+officehum eval packages/sdk/fixtures/sample-stockroom \
+  --model scripted \
+  --script evals.smoke.json
+```
+
+Flags:
+
+| Flag | Meaning |
+| --- | --- |
+| `--model provider/model` | The model to run; `scripted` reads a script file so CI needs no key; default is the manifest's `defaultModel` |
+| `--tag TAG` | Run only the scenarios tagged `TAG` |
+| `--trials N` | Trials per scenario, overriding each scenario's own `trials` |
+| `--script FILE` | The script file `--model scripted` plays back |
+
+A script file is JSON mapping each scenario id to the turns the scripted model plays back, in order:
+
+```json
+{
+  "reports-cited-levels": [
+    { "toolCalls": [{ "name": "stock_levels", "args": { "sku": "BOLT-10" } }] },
+    { "text": "120 units, from stock:BOLT-10." }
+  ]
+}
+```
+
+Every selected scenario must have an entry, or the command refuses before any trial runs. A script
+that must branch on what a tool returned cannot be written as JSON; use `piDurableRunner` from
+`@officehum/office` in a test for that.
+
 ## Packages
 
 | Package | Path | What it is |

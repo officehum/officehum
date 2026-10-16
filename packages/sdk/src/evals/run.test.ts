@@ -152,6 +152,14 @@ describe("runEvals", () => {
     });
     expect(report.scenarios.map((s) => s.id)).toEqual(["smoke"]);
   });
+
+  it("overrides each scenario's own trial count when trials is given", async () => {
+    const normal = scenario({ id: "normal", trials: 5, expect: { reply: { contains: ["A12"] } } });
+    const runs = [...Array.from({ length: 2 }, () => trace({ reply: "A12" }))];
+    const report = await runEvals([suite(normal)], scriptedRunner({ normal: runs }), { trials: 2 });
+    expect(report.scenarios[0]?.trials).toHaveLength(2);
+    expect(report.passed).toBe(true);
+  });
 });
 
 describe("the sample role (RASF-3064 done-when)", () => {

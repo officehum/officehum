@@ -169,6 +169,38 @@ describe("office adapter", () => {
     }
   }, 30_000);
 
+  it("aborts a conversation's run and settles its submission unanswered", async () => {
+    let spins = 0;
+    let began!: () => void;
+    const spinning = new Promise<void>((resolve) => {
+      began = resolve;
+    });
+    const tool = defineTool({
+      name: "spin",
+      description: "A tool the run keeps calling so it never settles on its own.",
+      parameters: Type.Object({}),
+      replay: "safe",
+      execute: async () => {
+        spins += 1;
+        if (spins >= 3) began();
+        return { output: [{ type: "text" as const, text: "spun" }] };
+      },
+    });
+    const scripted = scriptedProvider(() => ({ toolCalls: [{ name: "spin" }] }));
+    const bundle = toolBundle("abort-run", [tool], scripted.model);
+
+    const office = await openOffice({ storage: "memory", models: scripted.models });
+    office.install(bundle);
+    const conversation = await office.conversation(ROOT_KEY, { agent: bundle.agent });
+    const submitted = await office.submit(conversation, { input: "spin", requestId: "spin" });
+
+    await spinning;
+    await office.abort(conversation);
+    // The aborted run settles `unanswered`; without the abort the infinite script would never settle.
+    expect((await submitted.wait(BACKGROUND_CONTEXT)).status).toBe("unanswered");
+    await office.close();
+  }, 20_000);
+
   it("selects only the installed bundle's extensions for a conversation", async () => {
     const runs = { a: 0, b: 0 };
     const tool = (name: string) =>
