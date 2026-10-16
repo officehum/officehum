@@ -175,7 +175,9 @@ The milestone exit tests come from Linear and are the gates.
 ### Wave 0: trial ticket
 
 - **RASF-3297** Portable Paper provider package (`@officehum/provider-paper`). Small, well specified,
-  touches the CLI, a new package and tests. It shows the owner how you work.
+  touches the CLI, a new package and tests. It shows the owner how you work. Linear carries this
+  ticket in milestone `M1 · First agents`: the waves here order the work, they are not milestones,
+  and there is no Wave 0 milestone.
 - **Gate:** stop after merging it and post a short note for the owner (what you did, how long it took,
   anything that surprised you). Continue only when the owner says so.
 
