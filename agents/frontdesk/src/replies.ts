@@ -204,7 +204,7 @@ function same(left: ReplyRecord, right: ReplyRecord): boolean {
 
 function toolResult(record: ReplyRecord, replayed: boolean) {
   return {
-    content: [
+    output: [
       {
         type: "text" as const,
         text: replayed ? "Historical receipt: Accepted by transport." : "Accepted by transport.",

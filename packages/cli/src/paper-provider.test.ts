@@ -268,7 +268,7 @@ describe("Paper Instruments Ultramarine provider", () => {
       replay: "safe",
       execute: async () => {
         toolExecutions.count += 1;
-        return { content: [{ type: "text", text: "checked" }] };
+        return { output: [{ type: "text", text: "checked" }] };
       },
     });
     const extension = defineExtension({ name: "paper-missing-done-test", tools: [tool] });
@@ -412,7 +412,7 @@ describe("Paper Instruments Ultramarine provider", () => {
       replay: "safe",
       execute: async ({ date }) => {
         toolCalls.count += 1;
-        return { content: [{ type: "text", text: `Schedule checked for ${date}.` }] };
+        return { output: [{ type: "text", text: `Schedule checked for ${date}.` }] };
       },
     });
     const extension = defineExtension({ name: "paper-test", tools: [tool] });
@@ -470,7 +470,7 @@ describe("Paper Instruments Ultramarine provider", () => {
       replay: "safe",
       execute: async () => {
         toolCalls.count += 1;
-        return { content: [{ type: "text", text: "checked" }] };
+        return { output: [{ type: "text", text: "checked" }] };
       },
     });
     const extension = defineExtension({ name: "paper-length-test", tools: [tool] });
@@ -552,7 +552,7 @@ describe("Paper Instruments Ultramarine provider", () => {
       replay: "safe",
       execute: async () => {
         toolCalls.count += 1;
-        return { content: [{ type: "text", text: "checked" }] };
+        return { output: [{ type: "text", text: "checked" }] };
       },
     });
     const extension = defineExtension({ name: "paper-recovery-test", tools: [tool] });

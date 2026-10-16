@@ -39,7 +39,7 @@ files you changed.
   `resume` and relay code live only there. Other packages may import Pi Durable types. Role packages
   author directly with `defineTool`, `hook` and `defineRole`.
 - **Roles are portable.** A role package never depends on `@officehum/office` or `@officehum/cli`.
-  Pi Durable and pi-ai are peer dependencies (`1.0.x`). Its evals must pass in a bare Pi Durable
+  Pi Durable and pi-ai are peer dependencies (`1.3.x`). Its evals must pass in a bare Pi Durable
   harness.
 - **Every tool states `replay: "safe"` or `"unsafe"`** in code and in `officehum.json`, and they match.
 - **Guardrails are code or manifest data, never prompt text only.** Approvals, budgets, limits and

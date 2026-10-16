@@ -20,14 +20,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@earendil-works/chord": "1.0.2",
-    "@earendil-works/pi-ai": "1.0.2",
+    "@earendil-works/chord": "1.3.0",
+    "@earendil-works/pi-ai": "1.3.0",
     "@officehum/frontdesk": "0.0.0",
     "@officehum/google-calendar": "0.0.0",
     "@officehum/office": "0.0.0",
     "@officehum/sdk": "0.0.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-durable": "1.0.2"
+    "@earendil-works/pi-durable": "1.3.0"
   }
 }

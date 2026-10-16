@@ -786,7 +786,7 @@ describe("runCli", () => {
   it("prints the version", async () => {
     const capture = io();
     expect(await runCli(["--version"], capture.io)).toBe(0);
-    expect(capture.output.join("\n")).toMatch(/officehum 0\.0\.0.*1\.0\.2/);
+    expect(capture.output.join("\n")).toMatch(/officehum 0\.0\.0.*1\.3\.0/);
   });
 
   it("rejects unknown commands and options", async () => {

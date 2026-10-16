@@ -18,7 +18,7 @@ const tool = (name: string, replay?: "safe" | "unsafe") =>
     description: name,
     parameters: Type.Object({}),
     ...(replay === undefined ? {} : { replay }),
-    execute: async () => ({ content: [{ type: "text", text: "ok" }] }),
+    execute: async () => ({ output: [{ type: "text", text: "ok" }] }),
   });
 
 const gate = () => approvalGate({ approvals: manifest.approvals });

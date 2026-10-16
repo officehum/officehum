@@ -31,7 +31,7 @@ async function callTool(
   const tool = tools?.find((candidate) => candidate.name === name);
   if (tool === undefined) throw new Error(`no tool ${name}`);
   const result = await tool.execute(args as never, {} as never, {} as never);
-  const [first] = result.content ?? [];
+  const [first] = result.output ?? [];
   return { isError: result.isError === true, text: first?.type === "text" ? first.text : "" };
 }
 

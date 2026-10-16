@@ -1,6 +1,6 @@
 /**
  * `validatePackage` reads a role package from disk and enforces the portability boundary: a role
- * must install into any Pi Durable 1.0.x harness, with or without Office Hum.
+ * must install into any Pi Durable 1.3.x harness, with or without Office Hum.
  */
 
 import { readdir, readFile } from "node:fs/promises";
@@ -148,7 +148,7 @@ function packageJsonIssues(pkg: PackageJson, issues: Issue[]): string {
 
   const range = pkg.peerDependencies?.[PI_DURABLE_PACKAGE];
   if (range === undefined) {
-    add("peerDependencies", `must include ${show(PI_DURABLE_PACKAGE)}, e.g. "1.0.x"`);
+    add("peerDependencies", `must include ${show(PI_DURABLE_PACKAGE)}, e.g. "1.3.x"`);
     return "";
   }
   if (semver.validRange(range) === null) {

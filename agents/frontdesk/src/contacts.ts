@@ -111,7 +111,7 @@ function displayContacts(contacts: readonly Contact[]): string {
 
 function receiptResult(receipt: ContactReceipt) {
   return {
-    content: [
+    output: [
       {
         type: "text" as const,
         text: receipt.replayed
@@ -193,7 +193,7 @@ export function contactTools(): ToolRegistration[] {
           (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
         );
       return {
-        content: [{ type: "text" as const, text: displayContacts(contacts) }],
+        output: [{ type: "text" as const, text: displayContacts(contacts) }],
         details: { contacts },
       };
     },
