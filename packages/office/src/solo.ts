@@ -8,19 +8,16 @@ import {
   AgentDoc,
   AssistantEntry,
   type Conversation,
-  createRegistry,
-  createSession,
   defineDoc,
-  Harness,
+  type Harness,
   type JsonObject,
   type ModelRef,
-  type Session,
   type SessionDocToken,
   type SettledSubmissionRecord,
   type SubmissionId,
 } from "@earendil-works/pi-durable";
-import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
 import type { RoleBundle } from "@officehum/sdk";
+import { type Office, openOffice, ROOT_KEY, readStoredDocument } from "./adapter/index.js";
 import { bindMessengerIdentity, type MessengerIdentity } from "./messenger-identity.js";
 
 export interface SoloResult {
@@ -315,19 +312,13 @@ export async function readSoloDocument<T extends JsonObject>(
   token: SessionDocToken<T>,
 ): Promise<Readonly<T> | undefined> {
   const lock = acquireLock(directory);
-  let session: Session | undefined;
   try {
     const harnessPath = join(directory, "harness");
+    // Absent state must stay absent: reading through the adapter must not create the directory.
     if (!existsSync(harnessPath)) return undefined;
-    const storage = await openNodeJsonlStorage(harnessPath, BACKGROUND_CONTEXT, { fsync: true });
-    session = createSession(storage);
-    return await session.snapshot(token, BACKGROUND_CONTEXT);
+    return await readStoredDocument({ jsonl: harnessPath }, token);
   } finally {
-    try {
-      await session?.close(BACKGROUND_CONTEXT);
-    } finally {
-      lock.release();
-    }
+    lock.release();
   }
 }
 
@@ -353,13 +344,13 @@ async function resultFor(
 
 export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
   const lock = acquireLock(options.directory);
-  let harness: Harness | undefined;
+  let office: Office | undefined;
   let hostedClose: HostedSoloRole["close"] | undefined;
   const shutdown = async (): Promise<void> => {
     const closures: Promise<void>[] = [];
-    if (harness !== undefined) {
+    if (office !== undefined) {
       try {
-        closures.push(harness.close(BACKGROUND_CONTEXT));
+        closures.push(office.close());
       } catch (error) {
         closures.push(Promise.reject(error));
       }
@@ -399,17 +390,15 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
             hostedClose = hosted.close;
             return hosted.role;
           })();
-    const registry = createRegistry();
-    for (const extension of role.extensions) registry.install(extension);
-    const storage = await openNodeJsonlStorage(
-      join(options.directory, "harness"),
-      BACKGROUND_CONTEXT,
-      { fsync: true },
-    );
-    harness = await Harness.open(storage, { models: options.models, registry }, BACKGROUND_CONTEXT);
+    const active = await openOffice({
+      storage: { jsonl: join(options.directory, "harness") },
+      models: options.models,
+    });
+    office = active;
+    active.install(role);
     const agent =
       options.model === undefined ? role.agent : { ...role.agent, model: options.model };
-    const root = await harness.root(BACKGROUND_CONTEXT, { agent });
+    const root = await active.conversation(ROOT_KEY, { agent });
     const roleTools = role.agent.tools;
     const roleRemovals = new Set(
       roleTools !== undefined && roleTools !== null && "remove" in roleTools
@@ -469,22 +458,20 @@ export async function openSolo(options: OpenSoloOptions): Promise<SoloSession> {
     }, BACKGROUND_CONTEXT);
     let closePromise: Promise<void> | undefined;
     const session: SoloSession = {
-      harness,
+      harness: active.harness,
       root,
       async submit(content, requestId) {
-        const submission = await root.submit(
-          { type: "input", content, requestId },
-          BACKGROUND_CONTEXT,
-        );
+        const submission = await active.submit(root, { input: content, requestId });
         const settlement = await submission.wait(BACKGROUND_CONTEXT);
         return resultFor(root, submission.id, settlement);
       },
       async resume() {
-        const pending = (await harness?.inspect(BACKGROUND_CONTEXT))?.submissions ?? [];
-        harness?.resume();
+        // `openOffice` already resumed scheduling on open; `openSubmissions` returns the queued and
+        // placed submissions that pass, in id order, matching the old `inspect()` scan.
+        const pending = await active.openSubmissions();
         const results: SoloResult[] = [];
-        for (const record of pending) {
-          const submission = await harness?.submission(record.id, BACKGROUND_CONTEXT);
+        for (const id of pending) {
+          const submission = await active.submission(id);
           if (submission === undefined) continue;
           const settlement = await submission.wait(BACKGROUND_CONTEXT);
           results.push(await resultFor(root, submission.id, settlement));
