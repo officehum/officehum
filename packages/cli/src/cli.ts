@@ -51,6 +51,7 @@ import {
 } from "@officehum/office";
 import { PAPER_MODEL_REF, paperProvider } from "@officehum/provider-paper";
 import type { ApprovalDecision, ApprovalRequest, Approver, HookContext } from "@officehum/sdk";
+import { runEvalCommand } from "./eval.js";
 import {
   parseModelRef,
   parseRunArguments,
@@ -112,6 +113,7 @@ export interface CliDependencies {
 
 const USAGE = `Usage:
   officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE]
+  officehum eval ROLE_DIR [--model provider/model] [--tag TAG] [--trials N] [--script FILE]
   officehum demo [--state DIR] [--approval allow|deny] [--calendar local] [--messenger console]
   officehum start --message TEXT --request-id ID [--state DIR] [--provider paper|openai] [--model ID] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
   officehum resume [--state DIR] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
@@ -1238,6 +1240,7 @@ export async function runCli(
       return 0;
     }
     if (args[0] === "run") return await runRun(args.slice(1), io, dependencies);
+    if (args[0] === "eval") return await runEvalCommand(args.slice(1), io, dependencies);
     const parsed = parse(args);
     if (
       !new Set(["demo", "start", "resume", "listen", "inbox", "bookings", "contacts"]).has(

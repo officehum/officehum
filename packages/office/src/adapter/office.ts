@@ -8,8 +8,8 @@
  *
  * The adapter adds no policy: no approvals, budgets, retries or routing. It wraps, in order:
  * `Harness.open` + `resume()`, `createRegistry`, `Harness.root`/`createConversation`/`conversation`,
- * `Conversation.submit`/`configure`, `Harness.submission`/`inspect`, `watchEvents`, `Session.snapshot`
- * and `Session.close`. Each method names what it wraps.
+ * `Conversation.submit`/`configure`/`abort`, `Harness.submission`/`inspect`, `watchEvents`,
+ * `Session.snapshot` and `Session.close`. Each method names what it wraps.
  */
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
@@ -112,6 +112,11 @@ export interface Office {
   submission(id: SubmissionId): Promise<Submission | undefined>;
   /** `Conversation.configure`. Used after an overlay reload changes model, tools or skills. */
   configure(conversation: Conversation, change: AgentChange): Promise<void>;
+  /**
+   * `Conversation.abort`: withdraw queued inputs, mark the ordinary scope's live tasks, and resolve
+   * once that scope is idle. The eval runner uses it to end a trial whose run must stop.
+   */
+  abort(conversation: Conversation): Promise<void>;
   /** `watchEvents`, mapped to Office Hum's four kinds. Iterate until done, then `return`. */
   watch(conversation: Conversation): AsyncIterable<OfficeEvent>;
   /** `Harness.inspect().submissions`: unsettled submissions, for a resume pass. */
@@ -199,6 +204,9 @@ export async function openOffice(options: OpenOfficeOptions): Promise<Office> {
     },
     async configure(conversation, change) {
       await conversation.configure(change, BACKGROUND_CONTEXT);
+    },
+    async abort(conversation) {
+      await conversation.abort(BACKGROUND_CONTEXT);
     },
     async openSubmissions() {
       const inspection = await harness.inspect(BACKGROUND_CONTEXT);

@@ -343,9 +343,11 @@
               checkpoints, approvals, and recovery.” Linear plans one Pi Durable harness per office
               (RASF-3101, RASF-3104).</p>
             <ul>
-              <li>Pi Durable is marked experimental upstream, so every runtime call is meant to go
-                through one adapter in <code>@officehum/office</code>. That adapter epic (RASF-3065) is
-                still in progress; today only solo mode exists.</li>
+              <li>Pi Durable is marked experimental upstream, so every runtime call goes
+                through one adapter in <code>@officehum/office</code>. That adapter epic (RASF-3065) has
+                landed its M0 foundation: solo mode (<code>officehum run</code>) and
+                <code>officehum eval</code>, which grades a role's evals on a bare harness. The
+                workboard, relay and office extension are still M2.</li>
               <li>Office Hum adds what Pi Durable lacks: approval gates (built as Pi Durable hooks), and
                 the planned workboard and relay. Pi Durable itself has no multi-agent board.</li>
             </ul>

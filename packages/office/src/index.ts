@@ -36,6 +36,12 @@ export {
 } from "./console-messenger.js";
 export { createDemoModels } from "./demo-model.js";
 export {
+  EVAL_EXTENSION_NAME,
+  type EvalModel,
+  type PiDurableRunnerOptions,
+  piDurableRunner,
+} from "./evals/pi-durable-runner.js";
+export {
   createGoogleCalendarHost,
   type DecisionStore,
   type GoogleCalendarHost,

@@ -60,6 +60,8 @@ export interface RunEvalsOptions {
   readonly threshold?: number;
   /** Run only scenarios with this tag, e.g. `smoke`. */
   readonly tag?: string;
+  /** Trials per scenario, overriding each scenario's own `trials`. Omitted: each scenario decides. */
+  readonly trials?: number;
 }
 
 /** Checks a scenario's expectations against one trace. Returns one line per failed check. */
@@ -145,7 +147,7 @@ export async function runEvals(
   const reports: ScenarioReport[] = [];
   for (const scenario of scenarios) {
     const trials: TrialReport[] = [];
-    for (let trial = 1; trial <= (scenario.trials ?? DEFAULT_TRIALS); trial++) {
+    for (let trial = 1; trial <= (options.trials ?? scenario.trials ?? DEFAULT_TRIALS); trial++) {
       let trace: Trace;
       try {
         trace = await runner.run(scenario, trial);
