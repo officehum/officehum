@@ -246,7 +246,7 @@
               <span class="col-name">OPERATOR SIDE</span>
               <h3>Office Hum surfaces</h3>
               <p>People request work, inspect evidence, and make decisions through host-owned interfaces.</p>
-              <div class="layer"><span class="state">BUILT</span><strong>Local CLI</strong><p>Demo, start, resume, bookings, contacts, inbox, and explicit approval prompts.</p></div>
+              <div class="layer"><span class="state">BUILT</span><strong>Local CLI</strong><p>Run one role package (<code>run</code>), plus demo, start, resume, bookings, contacts, inbox, and explicit approval prompts.</p></div>
               <div class="layer future"><span class="state plan">PLANNED</span><strong>Workboard + review inbox</strong><p>Team hand-offs, pending proposals, exact-version previews, approvals, and publication.</p></div>
               <div class="layer future"><span class="state plan">PLANNED</span><strong>Studio + portal</strong><p>Configure role overlays and business workflows without changing role packages.</p></div>
             </div>
@@ -301,7 +301,7 @@
           <p>Office Hum's platform interface spans the operator's command and review screens, each role's portable package, and the host service boundary. The local CLI is the implemented operator surface today.</p>
         </div>
         <div class="interface-grid">
-          <article class="interface"><span class="state">BUILT</span><h3>Operator CLI</h3><p>A person starts or resumes a durable request, reviews an approval prompt, lists bookings and contacts, and inspects metadata-only inbound email receipts.</p><ul><li>Credential-free synthetic demo</li><li>Paper live default; explicit OpenAI override</li><li>Local state directory and single-owner rule</li></ul></article>
+          <article class="interface"><span class="state">BUILT</span><h3>Operator CLI</h3><p>A person runs one role package, or starts and resumes a durable request, reviews an approval prompt, lists bookings and contacts, and inspects metadata-only inbound email receipts.</p><ul><li>Run a role package (<code>officehum run</code>) with terminal approvals</li><li>Credential-free synthetic demo</li><li>Paper live default; explicit OpenAI override</li></ul></article>
           <article class="interface"><span class="state plan">PLANNED</span><h3>Workboard and review</h3><p>The future team surface will show hand-offs, task evidence, document proposals, previews/diffs, exact-version approvals, and publication results.</p><ul><li>Review binds source and proposed hashes</li><li>Existing-file edits wait for a person</li><li>Publish uses a conditional pointer change</li></ul></article>
           <article class="interface"><span class="state plan">PLANNED</span><h3>Studio and portal</h3><p>Businesses will tune roles through overlays and plain-language configuration while the installed role package remains portable and unchanged.</p><ul><li>Instructions, skills, tool switches, model choice</li><li>Vetted catalog and connector setup</li><li>Diff and approval before configuration applies</li></ul></article>
           <article class="interface"><span class="state">BUILT</span><h3>Role package</h3><p>A role is a Pi Durable agent made of instructions, skills, manifest, tools, and evals. The SDK validates package boundaries and lets a bare harness install it.</p><ul><li>Front Desk is the working role</li><li>Overlay changes context without modifying package</li><li>Tool replay and approval behavior are explicit</li></ul></article>

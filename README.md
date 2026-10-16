@@ -249,6 +249,55 @@ provide a global duplicate guarantee once the provider's idempotency window has 
 the operating system releases the SQLite lock and the next owner reclaims a dead PID marker.
 Malformed markers are left in place for inspection.
 
+## Run one role package
+
+`officehum run ROLE_DIR` runs a single role package on its own: it loads the package from its
+directory, opens an office on one SQLite file, prints anything a previous run left unfinished, and
+then reads lines from the terminal. Each line becomes one durable submission, so re-running the same
+line is idempotent. Gated actions print their description and arguments and wait for a `y`/`n` answer;
+anything other than `y`/`yes` declines, and the decision is recorded with the OS user as `by`.
+
+```sh
+officehum run agents/frontdesk \
+  --model paper/ultramarine-1-flash \
+  --db .officehum/frontdesk.sqlite
+```
+
+Flags:
+
+| Flag | Meaning |
+| --- | --- |
+| `--overlay DIR` | An overlay directory, lowest first; repeatable |
+| `--db FILE` | The office SQLite file (default `./.officehum/<role-id>.sqlite`) |
+| `--data DIR` | The engine's `OFFICEHUM_DATA_DIR` |
+| `--work DIR` | The engine's `OFFICEHUM_WORK_DIR` |
+| `--model provider/model` | The model to run; default is the manifest's `defaultModel` |
+| `--clients FILE` | A JSON file naming the role's app clients |
+
+At the prompt, `/commands` lists the manifest's operator views, `/NAME` runs one (an engine view with
+no model involved), `/reload` re-reads the overlays and re-applies the role's settings, and `/help`,
+`/quit` and end of input are available too.
+
+Role loading refuses three things with every problem named at once: an invalid package, a Pi Durable
+peer range that excludes the version Office Hum runs (`validatePackage` plus an exact-range check), and
+a missing runtime program (`checkRuntimes`). The factory's bundle is then checked against the manifest
+(`checkAgent`) before anything runs.
+
+Role packages are portable, so a package ships compiled JavaScript. The SDK's fixture roles under
+`packages/sdk/fixtures/` are TypeScript sources used by tests; they load under the test runner, not the
+built CLI. Run them from a test, or build the SDK package you want to run from the terminal.
+
+The `--clients` file maps a client name to the module that exports its factory; the factory is called
+with no arguments and reads its own configuration from the environment, so the file can never hold a
+credential. Only `module` and an optional `export` are allowed per entry, and anything else is refused:
+
+```json
+{
+  "calendar": { "module": "./clients/calendar.mjs" },
+  "quickbooks": { "module": "@officehum/quickbooks", "export": "createQuickBooks" }
+}
+```
+
 ## Packages
 
 | Package | Path | What it is |

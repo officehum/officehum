@@ -74,9 +74,20 @@ export interface ApprovalGateOptions {
 
 const gates = new WeakSet<HookRegistration>();
 
+/**
+ * A registration built by `approvalGate()`, marked with a `Symbol.for` key as well as the `WeakSet`.
+ * The role loader (`loadRole` in `@officehum/office`) may hold a different copy of this SDK than the
+ * role package it just imported, so detection cannot rely on module identity alone; the well-known
+ * symbol makes the mark visible across copies.
+ */
+const APPROVAL_GATE = Symbol.for("officehum.approvalGate");
+
 /** Whether a hook was built by `approvalGate()`. `checkAgent` uses it to confirm a gated role really gates. */
 export function isApprovalGate(registration: HookRegistration): boolean {
-  return gates.has(registration);
+  return (
+    gates.has(registration) ||
+    (registration as unknown as Record<symbol, unknown>)[APPROVAL_GATE] === true
+  );
 }
 
 type StoredDecision = { approved: boolean; by: string | null; note: string | null };
@@ -192,6 +203,16 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
     },
   });
   gates.add(registration);
+  // Best effort: a frozen registration keeps the `WeakSet` mark and still works within one copy.
+  try {
+    Object.defineProperty(registration, APPROVAL_GATE, {
+      value: true,
+      enumerable: false,
+      configurable: true,
+    });
+  } catch {
+    // ignore: the WeakSet remains authoritative for this module copy
+  }
   return registration;
 }
 

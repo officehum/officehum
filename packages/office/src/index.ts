@@ -6,10 +6,6 @@
  */
 
 export type { AgentManifest, Department } from "@officehum/sdk";
-
-/** Exact Pi Durable version this release is built and tested against. Bumped by the upgrade pipeline. */
-export const PI_DURABLE_VERSION = "1.3.0";
-
 export {
   type Office,
   type OfficeConversationOptions,
@@ -22,7 +18,6 @@ export {
   ROOT_KEY,
   readStoredDocument,
 } from "./adapter/index.js";
-
 export {
   type CalendarOperation,
   type CalendarOperationKind,
@@ -112,6 +107,18 @@ export {
   type ResendReplyMessenger,
 } from "./resend-replies.js";
 export {
+  type LoadedRole,
+  type LoadRoleOptions,
+  loadRole,
+  RESERVED_ROLE_OPTIONS,
+} from "./roles/load-role.js";
+export {
+  openRoleRun,
+  type RoleRun,
+  type RoleRunOptions,
+  type RoleRunResult,
+} from "./roles/run-role.js";
+export {
   type ConnectorIdentity,
   type GoogleConnectorIdentity,
   type HostedSoloRole,
@@ -124,3 +131,4 @@ export {
   type SoloResult,
   type SoloSession,
 } from "./solo.js";
+export { PI_DURABLE_VERSION } from "./version.js";
