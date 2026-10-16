@@ -1,14 +1,27 @@
 /**
  * @officehum/office — the runtime that hosts many agents in one Pi Durable harness.
  *
- * M0 scaffold. The Pi Durable adapter lands in RASF-3065; the workboard,
- * relay and board tools land in M1 (RASF-3066, RASF-3067, RASF-3068).
+ * `./adapter/` is the only code here that calls Pi Durable's runtime API (RASF-3120). The workboard,
+ * relay and office extension land in M2 (RASF-3066, RASF-3067, RASF-3133), not M1.
  */
 
 export type { AgentManifest, Department } from "@officehum/sdk";
 
 /** Exact Pi Durable version this release is built and tested against. Bumped by the upgrade pipeline. */
 export const PI_DURABLE_VERSION = "1.3.0";
+
+export {
+  type Office,
+  type OfficeConversationOptions,
+  type OfficeEvent,
+  type OfficeStorage,
+  type OfficeSubmitOptions,
+  type OpenOfficeOptions,
+  openOffice,
+  ROOT_CONVERSATION_ID,
+  ROOT_KEY,
+  readStoredDocument,
+} from "./adapter/index.js";
 
 export {
   type CalendarOperation,
