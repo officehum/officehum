@@ -86,5 +86,22 @@
     }
   ],
   "skills": [],
+  "dispatches": [
+    {
+      "type": "invoice.create",
+      "when": "a stock adjustment is billed to the business"
+    }
+  ],
+  "mayNot": [
+    {
+      "action": "State a quantity it has not read from the engine",
+      "instead": "call stock_levels and cite the finding id it returns"
+    }
+  ],
+  "contextPlan": {
+    "promptBudgetTokens": 6000,
+    "maskAmounts": true,
+    "memorySubjects": ["vendor"]
+  },
   "evals": "evals"
 }

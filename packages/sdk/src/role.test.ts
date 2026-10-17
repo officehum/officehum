@@ -38,7 +38,7 @@ async function callTool(
 describe("defineRole", () => {
   it("builds the sample role from its files, and it matches its manifest", async () => {
     const role = sampleDesk({ calendar });
-    expect(checkAgent(role, sampleManifest as AgentManifest).issues).toEqual([]);
+    expect((await checkAgent(role, sampleManifest as AgentManifest)).issues).toEqual([]);
     const [extension] = role.extensions;
     const sections = await render(extension?.sections);
     expect(Object.keys(sections)).toEqual(["agents_md", "skills", "append_system"]);

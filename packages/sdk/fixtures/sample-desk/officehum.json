@@ -11,11 +11,13 @@
   "tools": [
     {
       "name": "check_schedule",
-      "replay": "safe"
+      "replay": "safe",
+      "description": "List the free appointment slots on a date."
     },
     {
       "name": "book_appointment",
-      "replay": "unsafe"
+      "replay": "unsafe",
+      "description": "Book an appointment the calendar shows as free."
     }
   ],
   "connectors": ["google-calendar"],
@@ -47,5 +49,29 @@
       "enabledByDefault": true
     }
   ],
+  "dispatches": [
+    {
+      "type": "invoice.create",
+      "when": "a customer asks to be billed for completed work"
+    }
+  ],
+  "mayNot": [
+    {
+      "action": "Book a slot the calendar does not show as free",
+      "instead": "offer only the slots check_schedule returns"
+    },
+    {
+      "action": "Answer a pricing or billing question",
+      "instead": "hand it off as invoice.create to the bookkeeper"
+    }
+  ],
+  "contextPlan": {
+    "promptBudgetTokens": 6000,
+    "retrieval": {
+      "sources": [{ "id": "house-style", "description": "The business's writing style guide" }]
+    },
+    "historyFilter": { "keepRecentRounds": 6, "keepCitedIds": true, "maxToolResultTokens": 400 },
+    "memorySubjects": ["customer", "vendor"]
+  },
   "evals": "evals"
 }
