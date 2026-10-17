@@ -43,6 +43,10 @@ Enforced by `validatePackage()` and `checkAgent()` in `@officehum/sdk`, and by e
    anything else that needs the Office. It may depend on `@officehum/sdk` (which depends only on
    Pi Durable, pi-ai, `typebox`, `semver` and `yaml`) and on portable app clients such as
    `@officehum/quickbooks`.
+   The SDK's own fixtures in `packages/sdk/fixtures/` are the deliberate exception: they import the
+   SDK's **source** by relative path, so the SDK's tests cover source rather than a build. That is
+   also why a built CLI cannot load them — see `packages/sdk/fixtures/README.md`, and import the
+   package specifier in a role you intend to run.
 4. **Safe without Office Hum.** Gated actions are blocked unless the host supplies an approver.
 5. **Guardrails live in code, not prompt text.** Approval gates, budgets and provenance are hooks.
    No edit to `AGENTS.md`, `APPEND_SYSTEM.md` or a skill can switch them off.
