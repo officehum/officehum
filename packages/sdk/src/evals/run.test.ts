@@ -179,7 +179,7 @@ describe("the sample role (RASF-3064 done-when)", () => {
     const role = sampleDesk({
       calendar: { freeSlots: async () => [], book: async () => ({ id: "A12" }) },
     });
-    expect(checkAgent(role, pkg.value.manifest).issues).toEqual([]);
+    expect((await checkAgent(role, pkg.value.manifest)).issues).toEqual([]);
 
     // A scripted runner stands in for a model until the Pi Durable runner lands in RASF-3065.
     const booked = trace({

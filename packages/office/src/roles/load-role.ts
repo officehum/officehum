@@ -179,7 +179,7 @@ export async function loadRole(dir: string, options: LoadRoleOptions = {}): Prom
   }
 
   const bundle = (factory as (value: Record<string, unknown>) => RoleBundle)(factoryOptions);
-  const agent = checkAgent(bundle, manifest);
+  const agent = await checkAgent(bundle, manifest);
   if (!agent.ok)
     throw issuesError(
       `The ${rolePackage.name} factory returned an inconsistent bundle`,

@@ -110,9 +110,9 @@ describe("checkRuntimes", () => {
 });
 
 describe("engine tools built from the manifest", () => {
-  it("builds each engine tool with its replay policy, parameters and guidelines", () => {
+  it("builds each engine tool with its replay policy, parameters and guidelines", async () => {
     const role = sampleStockroom({ engine: stubEngine({}) });
-    expect(checkAgent(role, manifest).issues).toEqual([]);
+    expect((await checkAgent(role, manifest)).issues).toEqual([]);
     const tools = role.extensions[0]?.tools;
     expect(tools?.map((candidate) => [candidate.name, candidate.replay])).toEqual([
       ["stock_levels", "safe"],

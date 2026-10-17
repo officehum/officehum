@@ -14,6 +14,7 @@
  */
 
 export {
+  type CheckAgentOptions,
   checkAgent,
   INSTRUCTIONS_SECTION_KEY,
   type RoleBundle,
@@ -33,6 +34,17 @@ export {
   isApprovalGate,
   type ToolArguments,
 } from "./approvals.js";
+export {
+  type AgentCard,
+  type AgentCardCapability,
+  type AgentCardOptions,
+  AgentCardSchema,
+  agentCard,
+  CAPABILITY_EFFECTS,
+  CARD_LINE_MAX,
+  formatCard,
+  formatCardLine,
+} from "./card.js";
 export {
   type CommandEngineOptions,
   checkRuntimes,
@@ -109,22 +121,32 @@ export {
   type Channel,
   type CommandDeclaration,
   type ConditionDeclaration,
+  type ContextPlanDeclaration,
+  DEFAULT_PROMPT_BUDGET_TOKENS,
   DEPARTMENTS,
   type Department,
+  type DispatchDeclaration,
   type DoneEvidence,
   type EngineDeclaration,
+  type HistoryFilterDeclaration,
   type LimitDeclaration,
   MANIFEST_FILE,
   MANIFEST_SCHEMA_VERSION,
   ManifestSchema,
+  type MayNotDeclaration,
+  MEMORY_SUBJECTS,
   type ModelDeclaration,
   type ParameterDeclaration,
   RESERVED_TOOL_NAMES,
+  type RetrievalSourceDeclaration,
   type RuntimeDeclaration,
   SDK_TOOL_NAMES,
   type SkillDeclaration,
+  SUBAGENT_MODELS,
+  type SubagentDeclaration,
   THINKING_LEVELS,
   type ToolDeclaration,
+  type ToolGroupDeclaration,
   validateManifest,
 } from "./manifest.js";
 export {

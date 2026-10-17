@@ -137,7 +137,7 @@ describe("frontdesk role", () => {
     const packageDirectory = new URL("..", import.meta.url);
     expect((await validatePackage(packageDirectory.pathname)).ok).toBe(true);
     const calendar = tempCalendar();
-    expect(checkAgent(frontdesk({ calendar }), manifest).ok).toBe(true);
+    expect((await checkAgent(frontdesk({ calendar }), manifest)).ok).toBe(true);
     const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
       dependencies: Record<string, string>;
     };

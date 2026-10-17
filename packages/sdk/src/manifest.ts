@@ -29,6 +29,25 @@ export const CHANNELS = ["email", "sms", "chat"] as const;
 /** Pi Durable thinking levels a manifest may recommend. */
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
+/** Models a sub-agent may run on: the office's small model, or the role's default one. */
+export const SUBAGENT_MODELS = ["small", "default"] as const;
+
+/**
+ * Subject kinds a role's memory may hold. A record's subject is one of these plus an id, e.g.
+ * `customer:acme` or `vendor:42`; see "Memory" in docs/design/agent-package.md.
+ */
+export const MEMORY_SUBJECTS = [
+  "business",
+  "customer",
+  "vendor",
+  "person",
+  "agent",
+  "topic",
+] as const;
+
+/** Tokens a role's stable prompt may use when its context plan sets no `promptBudgetTokens`. */
+export const DEFAULT_PROMPT_BUDGET_TOKENS = 4000;
+
 /** Tools the SDK gives every role built with `defineRole`; a manifest does not declare them. */
 export const SDK_TOOL_NAMES = ["read_skill"] as const;
 
@@ -227,6 +246,94 @@ const ModelDeclaration = Type.Object(
   { additionalProperties: false },
 );
 
+/** A ticket type this role hands to another role, and when it does. */
+const DispatchDeclaration = Type.Object(
+  { type: TicketType, when: Text(300) },
+  { additionalProperties: false },
+);
+
+/** Something the role never does, and what it does instead. Wisdom data, shown on its card. */
+const MayNotDeclaration = Type.Object(
+  { action: Text(200), instead: Text(300) },
+  { additionalProperties: false },
+);
+
+/** A business document the role needs searchable, instead of pasting it into the prompt. */
+const RetrievalSourceDeclaration = Type.Object(
+  { id: KebabId, description: Text(300) },
+  { additionalProperties: false },
+);
+
+/**
+ * A narrow worker the role may run: safe tools only, a small or default model, and the JSON Schema
+ * its result must match. See "Context engineering" in docs/design/agent-package.md.
+ */
+const SubagentDeclaration = Type.Object(
+  {
+    id: KebabId,
+    purpose: Text(300),
+    model: Type.Enum([...SUBAGENT_MODELS]),
+    tools: Type.Array(SnakeName, { minItems: 1 }),
+    skills: Type.Optional(Type.Array(KebabId, { minItems: 1 })),
+    output: Type.Object({}, { additionalProperties: true }),
+    maxParallel: Type.Optional(Type.Integer({ minimum: 1 })),
+  },
+  { additionalProperties: false },
+);
+
+/** What each request keeps from the transcript. */
+const HistoryFilterDeclaration = Type.Object(
+  {
+    keepRecentRounds: Type.Integer({ minimum: 0 }),
+    keepCitedIds: Type.Boolean(),
+    maxToolResultTokens: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+/** A set of tools offered only while the current ticket is one of `forTicketTypes`. */
+const ToolGroupDeclaration = Type.Object(
+  {
+    id: KebabId,
+    tools: Type.Array(SnakeName, { minItems: 1 }),
+    forTicketTypes: Type.Array(TicketType, { minItems: 1 }),
+  },
+  { additionalProperties: false },
+);
+
+/** How the role decides what each request sees: the context-engineering techniques it uses. */
+const ContextPlanDeclaration = Type.Object(
+  {
+    /** Tokens the role's stable prompt may use; default `DEFAULT_PROMPT_BUDGET_TOKENS`. */
+    promptBudgetTokens: Type.Optional(Type.Integer({ minimum: 1 })),
+    /** Business documents the role searches instead of pasting them in. */
+    retrieval: Type.Optional(
+      Type.Object(
+        { sources: Type.Array(RetrievalSourceDeclaration, { minItems: 1 }) },
+        { additionalProperties: false },
+      ),
+    ),
+    /** Narrow workers the role may run. */
+    subagents: Type.Optional(Type.Array(SubagentDeclaration, { minItems: 1 })),
+    /** What each request keeps from the transcript. */
+    historyFilter: Type.Optional(HistoryFilterDeclaration),
+    /** Mask sample amounts in skills and references. Default true when the role has an engine. */
+    maskAmounts: Type.Optional(Type.Boolean()),
+    /** Purposes that may run on the office's small model. */
+    modelTiers: Type.Optional(
+      Type.Object(
+        { small: Type.Array(Text(120), { minItems: 1 }) },
+        { additionalProperties: false },
+      ),
+    ),
+    /** Subject kinds the role should remember. */
+    memorySubjects: Type.Optional(Type.Array(Type.Enum([...MEMORY_SUBJECTS]), { minItems: 1 })),
+    /** Tool groups: only the group for the current ticket type is offered. */
+    toolGroups: Type.Optional(Type.Array(ToolGroupDeclaration, { minItems: 1 })),
+  },
+  { additionalProperties: false },
+);
+
 /** The `officehum.json` schema, version 1. */
 export const ManifestSchema = Type.Object(
   {
@@ -246,6 +353,12 @@ export const ManifestSchema = Type.Object(
     limits: Type.Optional(Type.Record(Type.String(), LimitDeclaration)),
     channels: Type.Array(Type.Enum([...CHANNELS])),
     accepts: Type.Array(AcceptDeclaration),
+    /** Ticket types this role hands to other roles, and when. */
+    dispatches: Type.Optional(Type.Array(DispatchDeclaration)),
+    /** What this role never does, and what it does instead. */
+    mayNot: Type.Optional(Type.Array(MayNotDeclaration)),
+    /** How the role decides what each request sees. */
+    contextPlan: Type.Optional(ContextPlanDeclaration),
     skills: Type.Array(SkillDeclaration),
     evals: Text(256),
   },
@@ -266,6 +379,13 @@ export type ConditionDeclaration = Static<typeof ConditionDeclaration>;
 export type RuntimeDeclaration = Static<typeof RuntimeDeclaration>;
 export type EngineDeclaration = Static<typeof EngineDeclaration>;
 export type CommandDeclaration = Static<typeof CommandDeclaration>;
+export type DispatchDeclaration = Static<typeof DispatchDeclaration>;
+export type MayNotDeclaration = Static<typeof MayNotDeclaration>;
+export type RetrievalSourceDeclaration = Static<typeof RetrievalSourceDeclaration>;
+export type SubagentDeclaration = Static<typeof SubagentDeclaration>;
+export type HistoryFilterDeclaration = Static<typeof HistoryFilterDeclaration>;
+export type ToolGroupDeclaration = Static<typeof ToolGroupDeclaration>;
+export type ContextPlanDeclaration = Static<typeof ContextPlanDeclaration>;
 
 /**
  * The limit a condition's value names, or `undefined` when the value is a literal. A named limit is
@@ -317,9 +437,39 @@ function crossFieldIssues(manifest: AgentManifest, source: string): Issue[] {
   duplicates(manifest.tools, (tool) => tool.name, "tools", "tool");
   duplicates(manifest.approvals, (approval) => approval.id, "approvals", "approval");
   duplicates(manifest.accepts, (accept) => accept.type, "accepts", "ticket type");
+  duplicates(manifest.dispatches ?? [], (dispatch) => dispatch.type, "dispatches", "ticket type");
   duplicates(manifest.skills, (skill) => skill.id, "skills", "skill");
   duplicates(manifest.connectors, (connector) => connector, "connectors", "connector");
   duplicates(manifest.channels, (channel) => channel, "channels", "channel");
+  duplicates(
+    manifest.contextPlan?.retrieval?.sources ?? [],
+    (source) => source.id,
+    "contextPlan.retrieval.sources",
+    "retrieval source",
+  );
+  duplicates(
+    manifest.contextPlan?.subagents ?? [],
+    (subagent) => subagent.id,
+    "contextPlan.subagents",
+    "sub-agent",
+  );
+  duplicates(
+    manifest.contextPlan?.toolGroups ?? [],
+    (group) => group.id,
+    "contextPlan.toolGroups",
+    "tool group",
+  );
+
+  // A role either accepts a ticket type or hands it off, never both.
+  const accepted = new Set(manifest.accepts.map((accept) => accept.type));
+  (manifest.dispatches ?? []).forEach((dispatch, index) => {
+    if (accepted.has(dispatch.type)) {
+      add(
+        `dispatches[${index}].type`,
+        `${show(dispatch.type)} is also a type this role accepts; a role accepts a type or hands it off, never both — remove the accept or the dispatch`,
+      );
+    }
+  });
 
   for (const name of Object.keys(manifest.limits ?? {})) {
     if (!SNAKE_NAME.test(name)) {

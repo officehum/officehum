@@ -452,6 +452,21 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
       "done": [{ "person": true }]
     }
   ],
+  "dispatches": [
+    { "type": "customer.contact", "when": "a customer needs a reply about an invoice" }
+  ],
+  "mayNot": [
+    { "action": "Issue a refund", "instead": "record a credit note and leave it for a person to approve" }
+  ],
+  "contextPlan": {
+    "promptBudgetTokens": 4000,
+    "retrieval": {
+      "sources": [{ "id": "ap-policy", "description": "The accounts-payable policy" }]
+    },
+    "historyFilter": { "keepRecentRounds": 8, "keepCitedIds": true, "maxToolResultTokens": 500 },
+    "maskAmounts": true,
+    "memorySubjects": ["customer", "vendor"]
+  },
   "skills": [{ "id": "collections", "enabledByDefault": true }],
   "evals": "evals"
 }
@@ -473,6 +488,9 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
 | `limits` | Named amounts the business sets, e.g. `large_invoice`: each has a `description` and a `default`. An approval compares against a limit with `{ "limit": "NAME" }` for `gt`, `gte`, `lt` or `lte`. An overlay changes a value, never removes it. |
 | `channels` | `email`, `sms`, `chat`: where the role may face the business's customers. |
 | `accepts[]` | Dotted ticket types (`invoice.create`) with a description shown to delegating agents, and `done`: the completion evidence for that type. Every entry must pass, and the host runs it, never the model: `{ "engine": ["subcommand", …], "args": {…} }` (the engine answers `ok` with at least one finding), `{ "tool": "NAME", "args": {…}, "expect": "found" }` (a declared **safe** tool whose result reports `found`), `{ "file": "NAME" }` (the result attaches a file), or `{ "person": true }`. Args may interpolate `{ticket.id}` and `{ticket.data.<path>}`, and nothing else. |
+| `dispatches[]` | Ticket types this role hands to other roles, and when: `type` (a dotted ticket type) and `when` (one line about the trigger). A type the role also `accepts` is an error: a role accepts a type or hands it off, never both. A card carries them, so an agent can choose whom to ask. |
+| `mayNot[]` | What the role never does, and what it does instead: `action` and `instead`. Wisdom data: it appears on the role's agent card, never as a tool. |
+| `contextPlan` | How the role decides what each request sees. Every part is optional. `promptBudgetTokens` (default 4,000) caps the stable prompt. `retrieval.sources[]` (`id`, `description`) are business documents the role searches instead of pasting them in. `subagents[]` are narrow workers: `id`, `purpose`, `model` (`"small"` or `"default"`), `tools` (declared **safe** tools of this role only), optional `skills` (declared skills), `output` (a JSON Schema) and optional `maxParallel`. `historyFilter` (`keepRecentRounds`, `keepCitedIds`, `maxToolResultTokens`). `maskAmounts` (default true when the role has an engine). `modelTiers.small[]` are purposes that may run on the office's small model. `memorySubjects[]` are subject kinds to remember (`business`, `customer`, `vendor`, `person`, `agent`, `topic`). `toolGroups[]` (`id`, `tools`, `forTicketTypes`) offer only the group for the current ticket type. |
 | `skills[]` | `id` (the folder under `skills/`) and `enabledByDefault`. The name and description come from `SKILL.md`, so they cannot drift. Every bundled skill folder must be listed. |
 | `evals` | Directory of eval files, relative to the package root. |
 
@@ -508,7 +526,15 @@ Each issue carries a **severity**: `error` unless it says `warning:`, and a warn
 - `validatePackage(dir)`: `package.json` against the portability boundary, `officehum.json`, the
   role's files, the four layers (strict for a package under `agents/` or one its `package.json`
   marks `"officehum": { "generated": true }`), and every eval file.
-- `checkAgent(bundle, manifest)`: the entry point's output, with no overlays, against the manifest.
+- `checkAgent(bundle, manifest, { strict })`: the entry point's output, with no overlays, against the
+  manifest. It also renders the role's stable prompt — its own sections, without any host extension's
+  — and estimates its size as characters ÷ 4; over `contextPlan.promptBudgetTokens` (default 4,000) is
+  a warning, or an error under `strict` (the `checkFourLayers` rule). A declared sub-agent's `tools`
+  must be the role's declared **safe** tools, and its `skills` must be declared skills.
+- `agentCard(manifest, resolvedRole, { status })`: the role's agent card, for other agents and hosts.
+  `formatCardLine(card)` gives a team line of at most 160 characters; `formatCard(card)` gives compact
+  Markdown for an `agent_card` tool. A card carries no secrets, overlay settings values, limit amounts
+  or the role's prompt text, and a tool an overlay switched off is absent.
 - `defineRole` validates the manifest and files itself and throws `RoleFilesError` on problems.
 
 ## Evals

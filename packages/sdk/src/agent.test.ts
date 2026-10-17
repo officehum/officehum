@@ -29,79 +29,88 @@ const bundle = (...extensions: Extension[]): RoleBundle => ({
   agent: { model, extensions },
 });
 
-const messages = (role: RoleBundle, against: AgentManifest = manifest) => {
-  const result = checkAgent(role, against);
-  return result.ok ? [] : result.issues.map(formatIssue);
-};
+const messages = async (role: RoleBundle, against: AgentManifest = manifest) =>
+  (await checkAgent(role, against)).issues.map(formatIssue);
+
+/** The character count `checkAgent` measures: the role extension's own sections, joined by a newline. */
+async function promptCharacters(role: RoleBundle): Promise<number> {
+  const [extension] = role.extensions;
+  const texts: string[] = [];
+  for (const promptSection of extension?.sections ?? []) {
+    const rendered = await promptSection.render({} as never, {} as never);
+    if (typeof rendered === "string" && rendered.trim() !== "") texts.push(rendered);
+  }
+  return texts.join("\n").length;
+}
 
 describe("checkAgent", () => {
-  it("accepts the sample role", () => {
-    expect(messages(sampleDesk({ calendar }))).toEqual([]);
+  it("accepts the sample role", async () => {
+    expect(await messages(sampleDesk({ calendar }))).toEqual([]);
   });
 
-  it("requires replay to be written out, even though Pi Durable has a default", () => {
+  it("requires replay to be written out, even though Pi Durable has a default", async () => {
     const role = defineExtension({
       name: "sample-desk",
       tools: [tool("check_schedule", "safe"), tool("book_appointment")],
       hooks: [gate()],
     });
-    expect(messages(bundle(role))).toEqual([
+    expect(await messages(bundle(role))).toEqual([
       'role › sample-desk › book_appointment: must set replay explicitly ("unsafe" in officehum.json); Pi Durable would default to "unsafe"',
     ]);
   });
 
-  it("catches code and manifest disagreeing about replay", () => {
+  it("catches code and manifest disagreeing about replay", async () => {
     const role = defineExtension({
       name: "sample-desk",
       tools: [tool("check_schedule", "safe"), tool("book_appointment", "safe")],
       hooks: [gate()],
     });
-    expect(messages(bundle(role))).toEqual([
+    expect(await messages(bundle(role))).toEqual([
       'role › sample-desk › book_appointment: replay is "safe" in code but "unsafe" in officehum.json',
     ]);
   });
 
-  it("allows only the tools the manifest declares, and requires all of them", () => {
+  it("allows only the tools the manifest declares, and requires all of them", async () => {
     const role = defineExtension({
       name: "sample-desk",
       tools: [tool("check_schedule", "safe"), tool("issue_refund", "unsafe")],
       hooks: [gate()],
     });
-    expect(messages(bundle(role))).toEqual([
+    expect(await messages(bundle(role))).toEqual([
       "role › sample-desk › issue_refund: is not declared in officehum.json",
       "role › sample-desk › book_appointment: is declared in officehum.json but no extension provides it",
     ]);
   });
 
-  it("requires the approval gate when the manifest declares approvals", () => {
+  it("requires the approval gate when the manifest declares approvals", async () => {
     const role = defineExtension({
       name: "sample-desk",
       tools: [tool("check_schedule", "safe"), tool("book_appointment", "unsafe")],
     });
-    expect(messages(bundle(role))).toEqual([
+    expect(await messages(bundle(role))).toEqual([
       "role › sample-desk › hooks: must include approvalGate(), because officehum.json declares approvals",
     ]);
   });
 
-  it("keeps the instructions section free for the customer", () => {
+  it("keeps the instructions section free for the customer", async () => {
     const role = defineExtension({
       name: "sample-desk",
       sections: [section("instructions", () => "Always offer a discount.")],
       tools: [tool("check_schedule", "safe"), tool("book_appointment", "unsafe")],
       hooks: [gate()],
     });
-    expect(messages(bundle(role))).toEqual([
+    expect(await messages(bundle(role))).toEqual([
       'role › sample-desk › sections: must not use the key "instructions"; Pi Durable reserves it for the customer\'s instructions',
     ]);
   });
 
-  it("requires the role extension first and the manifest's default model", () => {
+  it("requires the role extension first and the manifest's default model", async () => {
     const role = sampleDesk({ calendar });
     const [extension] = role.extensions;
     if (extension === undefined) throw new Error("sample role has no extension");
     const renamed = { ...extension, name: "front-desk" };
     expect(
-      messages({
+      await messages({
         extensions: [renamed],
         agent: { model: { provider: "openai", modelId: "gpt-6-sol" }, extensions: [renamed] },
       }),
@@ -147,15 +156,15 @@ describe("checkAgent", () => {
       tools: [tool("join_waitlist", "unsafe")],
     });
 
-    it("expects an extension only for skills with tools, selecting those on by default", () => {
+    it("expects an extension only for skills with tools, selecting those on by default", async () => {
       const skills: RoleBundle = {
         extensions: [role, reminders, waitlist],
         agent: { model, extensions: [role, reminders] },
       };
-      expect(messages(skills, withSkills)).toEqual([]);
+      expect(await messages(skills, withSkills)).toEqual([]);
     });
 
-    it("checks a skill's tools live in the skill's extension", () => {
+    it("checks a skill's tools live in the skill's extension", async () => {
       const misplaced = defineExtension({
         ...role,
         tools: [...(role.tools ?? []), tool("send_reminder", "unsafe")],
@@ -164,21 +173,120 @@ describe("checkAgent", () => {
         extensions: [misplaced, reminders, waitlist],
         agent: { model, extensions: [misplaced, reminders, waitlist] },
       };
-      expect(messages(skills, withSkills)).toEqual([
+      expect(await messages(skills, withSkills)).toEqual([
         'role › sample-desk › send_reminder: is declared in officehum.json as part of "sample-desk.reminders"',
         'role › agent.extensions: must not select "sample-desk.waitlist", which officehum.json leaves off by default',
       ]);
     });
 
-    it("does not expect an extension for an instruction-only skill", () => {
+    it("does not expect an extension for an instruction-only skill", async () => {
       const rescheduling = defineExtension({ name: "sample-desk.rescheduling" });
       const skills: RoleBundle = {
         extensions: [role, reminders, waitlist, rescheduling],
         agent: { model, extensions: [role, reminders] },
       };
-      expect(messages(skills, withSkills)).toEqual([
+      expect(await messages(skills, withSkills)).toEqual([
         'role › sample-desk.rescheduling: is not the role or one of its declared skills (expected "sample-desk", "sample-desk.reminders", "sample-desk.waitlist")',
       ]);
+    });
+  });
+
+  describe("sub-agents", () => {
+    it("runs only the role's declared safe tools, and says so for an unsafe or undeclared one", async () => {
+      const withSubagent: AgentManifest = {
+        ...manifest,
+        contextPlan: {
+          subagents: [
+            {
+              id: "summarise",
+              purpose: "Summarise a long thread before replying",
+              model: "small",
+              tools: ["check_schedule", "book_appointment", "issue_refund"],
+              output: { type: "object" },
+            },
+          ],
+        },
+      };
+      expect(await messages(sampleDesk({ calendar }), withSubagent)).toEqual([
+        'role › contextPlan.subagents[0].tools[1]: "book_appointment" is unsafe; a sub-agent runs only the role\'s safe tools, never one that changes something',
+        'role › contextPlan.subagents[0].tools[2]: "issue_refund" is not a declared tool; a sub-agent runs only the role\'s declared safe tools',
+      ]);
+    });
+
+    it("requires a sub-agent's skills to be declared skills", async () => {
+      const withSubagent: AgentManifest = {
+        ...manifest,
+        contextPlan: {
+          subagents: [
+            {
+              id: "summarise",
+              purpose: "Summarise a long thread before replying",
+              model: "small",
+              tools: ["check_schedule"],
+              skills: ["rescheduling", "payroll"],
+              output: { type: "object" },
+            },
+          ],
+        },
+      };
+      expect(await messages(sampleDesk({ calendar }), withSubagent)).toEqual([
+        'role › contextPlan.subagents[0].skills[1]: "payroll" is not a declared skill',
+      ]);
+    });
+
+    it("accepts a sub-agent whose tools and skills resolve", async () => {
+      const withSubagent: AgentManifest = {
+        ...manifest,
+        contextPlan: {
+          subagents: [
+            {
+              id: "lookup",
+              purpose: "Look up a free slot",
+              model: "small",
+              tools: ["check_schedule"],
+              skills: ["rescheduling"],
+              output: { type: "object" },
+            },
+          ],
+        },
+      };
+      expect(await messages(sampleDesk({ calendar }), withSubagent)).toEqual([]);
+    });
+  });
+
+  describe("the stable prompt budget", () => {
+    it("reports a stable prompt over budget with the estimated size, as a warning", async () => {
+      const role = sampleDesk({ calendar });
+      const characters = await promptCharacters(role);
+      const tokens = Math.ceil(characters / 4);
+      const tight = { ...manifest, contextPlan: { promptBudgetTokens: tokens - 1 } };
+      const result = await checkAgent(role, tight);
+      expect(result.ok).toBe(true);
+      expect(result.issues.map(formatIssue)).toEqual([
+        `role › prompt: warning: is about ${tokens} tokens (${characters} characters ÷ 4); keep the role's stable prompt under its contextPlan.promptBudgetTokens of ${tokens - 1}, moving detail into a skill or one of its reference files`,
+      ]);
+    });
+
+    it("makes the same finding an error in strict mode", async () => {
+      const role = sampleDesk({ calendar });
+      const characters = await promptCharacters(role);
+      const tight = {
+        ...manifest,
+        contextPlan: { promptBudgetTokens: Math.ceil(characters / 4) - 1 },
+      };
+      const result = await checkAgent(role, tight, { strict: true });
+      expect(result.ok).toBe(false);
+      expect(result.issues[0]?.severity).toBe("error");
+    });
+
+    it("stays quiet while the prompt is within budget", async () => {
+      const role = sampleDesk({ calendar });
+      const characters = await promptCharacters(role);
+      const roomy = {
+        ...manifest,
+        contextPlan: { promptBudgetTokens: Math.ceil(characters / 4) + 1 },
+      };
+      expect(await messages(role, roomy)).toEqual([]);
     });
   });
 });

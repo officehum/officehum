@@ -138,6 +138,76 @@ describe("validateManifest", () => {
     ]);
   });
 
+  it("refuses a dispatch whose type the role also accepts", () => {
+    const dispatches = [{ type: "booking.request", when: "a customer needs a booking" }];
+    expect(messages(withFields({ dispatches }))).toEqual([
+      'officehum.json › dispatches[0].type: "booking.request" is also a type this role accepts; a role accepts a type or hands it off, never both — remove the accept or the dispatch',
+    ]);
+  });
+
+  it("accepts a dispatch of a type the role does not accept", () => {
+    const dispatches = [{ type: "invoice.create", when: "a customer asks to be billed" }];
+    expect(messages(withFields({ dispatches }))).toEqual([]);
+  });
+
+  it("refuses a dispatch declared twice", () => {
+    const dispatches = [
+      { type: "invoice.create", when: "billing" },
+      { type: "invoice.create", when: "billing again" },
+    ];
+    expect(messages(withFields({ dispatches }))).toEqual([
+      'officehum.json › dispatches[1]: ticket type "invoice.create" is declared more than once',
+    ]);
+  });
+
+  it("accepts a well-formed context plan", () => {
+    const contextPlan = {
+      promptBudgetTokens: 4000,
+      retrieval: { sources: [{ id: "policy", description: "The policy manual" }] },
+      subagents: [
+        {
+          id: "summarise",
+          purpose: "Summarise a thread",
+          model: "small",
+          tools: ["check_schedule"],
+          output: { type: "object" },
+        },
+      ],
+      historyFilter: { keepRecentRounds: 6, keepCitedIds: true, maxToolResultTokens: 400 },
+      maskAmounts: true,
+      modelTiers: { small: ["summarising", "classifying"] },
+      memorySubjects: ["customer", "vendor"],
+      toolGroups: [
+        { id: "booking", tools: ["book_appointment"], forTicketTypes: ["booking.request"] },
+      ],
+    };
+    expect(messages(withFields({ contextPlan }))).toEqual([]);
+  });
+
+  it("rejects an unknown field in a context plan", () => {
+    const contextPlan = { promptBudgetTokens: 4000, mask: false };
+    expect(messages(withFields({ contextPlan }))).toEqual([
+      "officehum.json › contextPlan.mask: is not a known field",
+    ]);
+  });
+
+  it("requires a sub-agent's model to be small or default", () => {
+    const contextPlan = {
+      subagents: [
+        {
+          id: "summarise",
+          purpose: "Summarise a thread",
+          model: "tiny",
+          tools: ["check_schedule"],
+          output: { type: "object" },
+        },
+      ],
+    };
+    expect(messages(withFields({ contextPlan }))).toEqual([
+      'officehum.json › contextPlan.subagents[0].model: must be one of "small", "default" (got "tiny")',
+    ]);
+  });
+
   it("requires an unsafe tool to state exactly one approval decision", () => {
     const tools = [
       { name: "check_schedule", replay: "safe" },
