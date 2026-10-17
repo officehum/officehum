@@ -28,6 +28,31 @@ const messages = async (dir: string) => {
   return result.ok ? [] : result.issues.map(formatIssue);
 };
 
+const NO_MAY_NOT =
+  'has no "You may not" section; add a heading like "## You may not" saying what this role never does';
+const NO_DONE =
+  'is required for "booking.request": a ticket is done only when its evidence checks out — an engine check, a safe tool with expect "found", a file, or { "person": true }';
+
+/** The sample package in a directory of its own. */
+async function copyOf(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "officehum-sdk-"));
+  temps.push(dir);
+  await cp(sampleDir, dir, { recursive: true });
+  return dir;
+}
+
+/** Takes the sample's "You may not" heading and its completion evidence away. */
+async function loosen(dir: string): Promise<void> {
+  const agents = await readFile(join(dir, "AGENTS.md"), "utf8");
+  await writeFile(join(dir, "AGENTS.md"), agents.replace("## You may not", "## Notes"));
+  const json = JSON.parse(await readFile(join(dir, "officehum.json"), "utf8")) as Record<
+    string,
+    unknown
+  >;
+  for (const accept of json.accepts as { done?: unknown }[]) delete accept.done;
+  await writeFile(join(dir, "officehum.json"), JSON.stringify(json));
+}
+
 afterEach(async () => {
   await Promise.all(temps.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
@@ -99,6 +124,46 @@ describe("validatePackage", () => {
     expect(await messages(dir)).toEqual([
       "evals/booking.json › scenarios[0].input.text: is required",
       'evals/booking.json › scenarios[0].input.channel: must be one of "email", "sms", "chat" (got "fax")',
+    ]);
+  });
+
+  it("warns on a hand-written role but errors on one under agents/", async () => {
+    const outside = await copyOf();
+    await loosen(outside);
+    const loose = await validatePackage(outside);
+    expect(loose.ok).toBe(true);
+    expect(loose.issues.map(formatIssue)).toEqual([
+      `AGENTS.md: warning: ${NO_MAY_NOT}`,
+      `officehum.json › accepts[0].done: warning: ${NO_DONE}`,
+    ]);
+
+    const root = await mkdtemp(join(tmpdir(), "officehum-sdk-"));
+    temps.push(root);
+    const inside = join(root, "agents", "sample-desk");
+    await cp(sampleDir, inside, { recursive: true });
+    await loosen(inside);
+    const strict = await validatePackage(inside);
+    expect(strict.ok).toBe(false);
+    expect(strict.issues.map(formatIssue)).toEqual([
+      `AGENTS.md: ${NO_MAY_NOT}`,
+      `officehum.json › accepts[0].done: ${NO_DONE}`,
+    ]);
+  });
+
+  it("errors on a generated role wherever it sits", async () => {
+    const dir = await copyOf();
+    await loosen(dir);
+    const pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    pkg.officehum = { generated: true };
+    await writeFile(join(dir, "package.json"), JSON.stringify(pkg));
+    const result = await validatePackage(dir);
+    expect(result.ok).toBe(false);
+    expect(result.issues.map(formatIssue)).toEqual([
+      `AGENTS.md: ${NO_MAY_NOT}`,
+      `officehum.json › accepts[0].done: ${NO_DONE}`,
     ]);
   });
 

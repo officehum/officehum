@@ -64,7 +64,10 @@ describe("validateManifest", () => {
   });
 
   it("rejects tool names the Office provides", () => {
-    const tools = [...sample.tools, { name: "delegate", replay: "unsafe" }];
+    const tools = [
+      ...sample.tools,
+      { name: "delegate", replay: "unsafe", noApproval: "internal note; no outside effect" },
+    ];
     expect(messages(withFields({ tools }))).toEqual([
       'officehum.json › tools[2].name: "delegate" is provided by the Office; choose another name',
     ]);
@@ -80,14 +83,22 @@ describe("validateManifest", () => {
   });
 
   it("requires approvals and skills to refer to what the manifest declares", () => {
-    const approvals = [{ id: "issue_refund", tool: "issue_refund", description: "Refunds" }];
+    const approvals = [
+      ...sample.approvals,
+      { id: "issue_refund", tool: "issue_refund", description: "Refunds" },
+    ];
     const tools = [
       ...sample.tools,
-      { name: "send_reminder", replay: "unsafe", skill: "reminders" },
+      {
+        name: "send_reminder",
+        replay: "unsafe",
+        skill: "reminders",
+        noApproval: "internal note; no outside effect",
+      },
     ];
     expect(messages(withFields({ approvals, tools }))).toEqual([
       'officehum.json › tools[2].skill: "reminders" is not a declared skill',
-      'officehum.json › approvals[0].tool: "issue_refund" is not a declared tool',
+      'officehum.json › approvals[1].tool: "issue_refund" is not a declared tool',
     ]);
   });
 
@@ -124,6 +135,140 @@ describe("validateManifest", () => {
     const accepts = [{ type: "booking", description: "Book" }];
     expect(messages(withFields({ accepts }))).toEqual([
       'officehum.json › accepts[0].type: must be a dotted ticket type, like "invoice.create" (got "booking")',
+    ]);
+  });
+
+  it("requires an unsafe tool to state exactly one approval decision", () => {
+    const tools = [
+      { name: "check_schedule", replay: "safe" },
+      { name: "book_appointment", replay: "unsafe" },
+    ];
+    expect(messages(withFields({ tools, approvals: [] }))).toEqual([
+      'officehum.json › tools[1]: "book_appointment" is unsafe and states no approval decision; add an approval in approvals[], or a noApproval note saying why it needs none',
+    ]);
+  });
+
+  it("refuses an unsafe tool that states both an approval and noApproval", () => {
+    const tools = [
+      { name: "check_schedule", replay: "safe" },
+      {
+        name: "book_appointment",
+        replay: "unsafe",
+        noApproval: "internal note; no outside effect",
+      },
+    ];
+    expect(messages(withFields({ tools }))).toEqual([
+      'officehum.json › tools[1]: "book_appointment" is unsafe and states two approval decisions; keep an approval in approvals[], or noApproval, never both',
+    ]);
+  });
+
+  it("refuses noApproval on a safe tool", () => {
+    const tools = [
+      { name: "check_schedule", replay: "safe", noApproval: "internal note; no outside effect" },
+      { name: "book_appointment", replay: "unsafe" },
+    ];
+    expect(messages(withFields({ tools }))).toEqual([
+      'officehum.json › tools[0].noApproval: "check_schedule" is safe, so noApproval does not apply; remove it (noApproval explains an unsafe tool that needs no approval)',
+    ]);
+  });
+
+  it("keeps a noApproval note to 300 characters", () => {
+    const tools = [
+      { name: "check_schedule", replay: "safe" },
+      { name: "book_appointment", replay: "unsafe", noApproval: "x".repeat(301) },
+    ];
+    expect(messages(withFields({ tools }))).toEqual([
+      "officehum.json › tools[1].noApproval: must be at most 300 characters (got 301)",
+    ]);
+  });
+
+  it("refuses an empty noApproval note", () => {
+    const tools = [
+      { name: "check_schedule", replay: "safe" },
+      { name: "book_appointment", replay: "unsafe", noApproval: "" },
+    ];
+    expect(messages(withFields({ tools }))).toEqual([
+      "officehum.json › tools[1].noApproval: must not be empty",
+    ]);
+  });
+
+  it("accepts all four kinds of completion evidence", () => {
+    const accepts = [
+      {
+        type: "booking.request",
+        description: "Book",
+        done: [
+          { engine: ["levels"], args: { sku: "{ticket.data.sku}" } },
+          { tool: "check_schedule", args: { date: "{ticket.data.date.value}" }, expect: "found" },
+          { file: "confirmation" },
+          { person: true },
+        ],
+      },
+    ];
+    expect(messages(withFields({ accepts }))).toEqual([]);
+  });
+
+  it("requires completion evidence to name a safe tool of the role", () => {
+    const accepts = [
+      {
+        type: "booking.request",
+        description: "Book",
+        done: [{ tool: "book_appointment", args: {}, expect: "found" }],
+      },
+    ];
+    expect(messages(withFields({ accepts }))).toEqual([
+      'officehum.json › accepts[0].done[0].tool: "book_appointment" is unsafe; completion evidence runs a declared safe tool in the host, never the model',
+    ]);
+  });
+
+  it("requires completion evidence to name a declared tool", () => {
+    const accepts = [
+      {
+        type: "booking.request",
+        description: "Book",
+        done: [{ tool: "list_it", expect: "found" }],
+      },
+    ];
+    expect(messages(withFields({ accepts }))).toEqual([
+      'officehum.json › accepts[0].done[0].tool: "list_it" is not a declared tool; completion evidence names a safe tool of this role',
+    ]);
+  });
+
+  it("reports a placeholder that is not an interpolation", () => {
+    const accepts = [
+      {
+        type: "booking.request",
+        description: "Book",
+        done: [
+          {
+            engine: ["levels"],
+            args: {
+              sku: "{ticket.data}",
+              booking: "{ticket.id}",
+              date: "{ticket.data.date}",
+            },
+          },
+        ],
+      },
+    ];
+    expect(messages(withFields({ accepts }))).toEqual([
+      'officehum.json › accepts[0].done[0].args.sku: "{ticket.data}" is not an interpolation; the only two are {ticket.id} and {ticket.data.<path>}',
+    ]);
+  });
+
+  it("checks the shape of a completion evidence entry", () => {
+    const accepts = [{ type: "booking.request", description: "Book", done: "yes" }];
+    expect(messages(withFields({ accepts }))).toEqual([
+      'officehum.json › accepts[0].done: must be an array (got "yes")',
+    ]);
+  });
+
+  it("says which shapes a completion evidence entry may take", () => {
+    const accepts = [
+      { type: "booking.request", description: "Book", done: [{ tool: "check_schedule" }] },
+    ];
+    expect(messages(withFields({ accepts }))).toEqual([
+      'officehum.json › accepts[0].done[0]: must be one of: { "engine": ["subcommand", …], "args": { "flag": "{ticket.data.<path>}" } }, { "tool": "NAME", "args": {…}, "expect": "found" }, { "file": "NAME" }, or { "person": true } (got {"tool":"check_schedule"})',
     ]);
   });
 

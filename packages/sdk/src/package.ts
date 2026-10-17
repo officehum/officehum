@@ -4,10 +4,11 @@
  */
 
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import semver from "semver";
 import { type EvalSuite, validateSuite } from "./evals/suite.js";
 import { type Issue, show, type Validation } from "./issues.js";
+import { checkFourLayers } from "./layers.js";
 import { type AgentManifest, MANIFEST_FILE, validateManifest } from "./manifest.js";
 import { resolveRoleFiles } from "./resources.js";
 
@@ -37,6 +38,8 @@ type PackageJson = {
   version?: unknown;
   dependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
+  /** Office Hum's own metadata, e.g. the Role Factory's `{ "generated": true }`. */
+  officehum?: { generated?: unknown };
 };
 
 /** Whether a role's Pi Durable range includes a given Pi Durable version. */
@@ -65,6 +68,8 @@ export async function validatePackage(dir: string): Promise<Validation<RolePacka
   if (manifest !== undefined) {
     const files = resolveRoleFiles({ packageDir: dir, manifest });
     if (!files.ok) issues.push(...files.issues);
+    const strict = strictForPackage(dir, pkg as PackageJson | undefined);
+    issues.push(...checkFourLayers(dir, manifest, { strict }));
   }
 
   const suites: Record<string, EvalSuite> = {};
@@ -112,10 +117,23 @@ export async function validatePackage(dir: string): Promise<Validation<RolePacka
     }
   }
 
-  if (issues.length > 0 || manifest === undefined || pkg === undefined)
+  // Warnings (the four-layer check on a package that is neither ours nor generated) say what to fix
+  // without refusing the package; anything else does.
+  const errors = issues.filter((issue) => issue.severity !== "warning");
+  if (errors.length > 0 || manifest === undefined || pkg === undefined)
     return { ok: false, issues };
   const { name, version } = pkg as { name: string; version: string };
-  return { ok: true, value: { dir, name, version, piDurableRange, manifest, suites }, issues: [] };
+  return { ok: true, value: { dir, name, version, piDurableRange, manifest, suites }, issues };
+}
+
+/**
+ * Whether a package is one Office Hum judges strictly: it lives under `agents/`, or the Role Factory
+ * generated it — the generator records `"generated": true` in package.json's `officehum` field. A
+ * hand-written package installed elsewhere keeps its warnings.
+ */
+function strictForPackage(dir: string, pkg: PackageJson | undefined): boolean {
+  if (dir.split(sep).includes("agents")) return true;
+  return pkg?.officehum?.generated === true;
 }
 
 /** Checks package.json against the portability boundary; returns the Pi Durable range. */

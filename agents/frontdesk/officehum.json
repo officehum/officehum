@@ -51,7 +51,20 @@
     }
   ],
   "channels": ["chat"],
-  "accepts": [{ "type": "booking.request", "description": "Book an appointment for a customer" }],
+  "accepts": [
+    {
+      "type": "booking.request",
+      "description": "Book an appointment for a customer",
+      "done": [
+        {
+          "tool": "list_bookings",
+          "args": { "bookingId": "{ticket.data.bookingId}" },
+          "expect": "found"
+        },
+        { "person": true }
+      ]
+    }
+  ],
   "skills": [],
   "evals": "evals"
 }

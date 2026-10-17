@@ -30,7 +30,15 @@
   "accepts": [
     {
       "type": "booking.request",
-      "description": "Book an appointment for a customer"
+      "description": "Book an appointment for a customer",
+      "done": [
+        {
+          "tool": "check_schedule",
+          "args": { "date": "{ticket.data.date}" },
+          "expect": "found"
+        },
+        { "person": true }
+      ]
     }
   ],
   "skills": [
