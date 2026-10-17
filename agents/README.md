@@ -12,7 +12,7 @@ A role is mostly files Pi users already know:
 AGENTS.md            the role: who it is, what it does, how it works, house style
 APPEND_SYSTEM.md     rules appended to the end of the system prompt
 skills/<name>/       Agent Skills format: SKILL.md plus optional reference files
-officehum.json       tools (each safe or unsafe to rerun), approvals, connectors, accepts, skills, evals
+officehum.json       tools (each safe or unsafe to rerun), approvals, connectors, accepts with completion evidence, skills, evals
 src/index.ts         the tools, then defineRole(...)
 evals/               scenarios with expected outcomes
 ```
@@ -30,12 +30,26 @@ const root = await harness.root(context, { agent: role.agent });
 Customize a role without changing it with an **overlay**: a directory with your own `AGENTS.md`
 additions, `APPEND_SYSTEM.md`, skills and `settings.json` (model; skills and tools on or off).
 
-Rules, enforced by `@officehum/sdk` (`validatePackage`, `checkAgent`, `resolveRoleFiles`):
+Rules, enforced by `@officehum/sdk` (`validatePackage`, `checkAgent`, `checkFourLayers`,
+`resolveRoleFiles`):
 
 - Pi Durable and pi-ai are peer dependencies (`1.3.x`); no dependency on `@officehum/office` or `@officehum/cli`.
 - Every tool states `replay` explicitly and matches the manifest.
+- Every **unsafe** tool states exactly one approval decision: an approval in `approvals`, or a
+  `noApproval` note (at most 300 characters) saying why it needs none. Never both, never neither; a
+  safe tool states neither. The rule holds whichever way the role was written.
+- Every accepted ticket type declares `done` completion evidence, which the **host** runs, never the
+  model: an engine check that returns findings, a declared **safe** tool whose result reports
+  `found`, a file the result attaches, or `{ "person": true }`. All entries must pass.
+  `{ticket.id}` and `{ticket.data.<path>}` are the only interpolation.
 - Gated actions are blocked unless the host supplies an approver.
 - Overlays can switch tools off but never add them; overlay skills hold instructions only.
+- The four layers stay apart, checked by `checkFourLayers`: context under 1,000 words with a
+  "You may not" section and no amounts, percentages or thresholds; references only in
+  `skills/<id>/references/`; no `data/`, `work/` or `deliverables/` folder; no generic shell or file
+  tool; and completion evidence on every accepted type. Strict (every issue an error) for a role
+  under `agents/` and for generated roles; elsewhere context, knowledge and workflow issues are
+  warnings and wisdom issues stay errors.
 - The eval suite passes in a bare Pi Durable harness.
 
 See [docs/design/agent-package.md](../docs/design/agent-package.md). For a minimal working role, see

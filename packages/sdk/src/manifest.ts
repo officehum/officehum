@@ -91,6 +91,12 @@ const ToolDeclaration = Type.Object(
     parameters: Type.Optional(Type.Record(Type.String(), ParameterDeclaration)),
     /** Rules for using the tool, added to its description. */
     guidelines: Type.Optional(Type.Array(Text(300))),
+    /**
+     * Why this unsafe tool needs no approval, e.g. "internal note; no outside effect". An unsafe
+     * tool states exactly one of the two: an approval in `approvals`, or this note. A safe tool
+     * states neither.
+     */
+    noApproval: Type.Optional(Text(300)),
   },
   { additionalProperties: false },
 );
@@ -162,8 +168,47 @@ const CommandDeclaration = Type.Object(
   { additionalProperties: false },
 );
 
+/** Values a completion-evidence entry passes; a string may interpolate the ticket, see `doneIssues`. */
+const EvidenceArguments = Type.Record(
+  Type.String(),
+  Type.Union([Type.String(), Type.Number(), Type.Boolean()]),
+);
+
+/**
+ * One piece of completion evidence: something that must check out before a ticket is done. The host
+ * runs it, never the model. Every entry of an `accepts[]` entry's `done` must pass.
+ */
+const CompletionEvidence = Type.Union(
+  [
+    /** The role's engine answers `ok` with at least one finding. */
+    Type.Object(
+      { engine: EngineArgs, args: Type.Optional(EvidenceArguments) },
+      { additionalProperties: false },
+    ),
+    /** A declared safe tool, run by the host, whose result reports `details.found`. */
+    Type.Object(
+      { tool: SnakeName, args: Type.Optional(EvidenceArguments), expect: Type.Literal("found") },
+      { additionalProperties: false },
+    ),
+    /** A file the ticket's result attaches under this name. */
+    Type.Object({ file: Text(128) }, { additionalProperties: false }),
+    /** A person confirms the work. */
+    Type.Object({ person: Type.Literal(true) }, { additionalProperties: false }),
+  ],
+  {
+    "x-hint":
+      'must be one of: { "engine": ["subcommand", …], "args": { "flag": "{ticket.data.<path>}" } }, { "tool": "NAME", "args": {…}, "expect": "found" }, { "file": "NAME" }, or { "person": true }',
+  },
+);
+export type DoneEvidence = Static<typeof CompletionEvidence>;
+
 const AcceptDeclaration = Type.Object(
-  { type: TicketType, description: Text(200) },
+  {
+    type: TicketType,
+    description: Text(200),
+    /** Every entry must pass before a ticket of this type is done. */
+    done: Type.Optional(Type.Array(CompletionEvidence)),
+  },
   { additionalProperties: false },
 );
 
@@ -301,6 +346,7 @@ function crossFieldIssues(manifest: AgentManifest, source: string): Issue[] {
   });
 
   const tools = new Set(manifest.tools.map((tool) => tool.name));
+  decisionIssues(manifest, add);
   manifest.approvals.forEach((approval, index) => {
     if (!tools.has(approval.tool)) {
       add(
@@ -310,8 +356,83 @@ function crossFieldIssues(manifest: AgentManifest, source: string): Issue[] {
     }
   });
 
+  doneIssues(manifest, add);
   engineIssues(manifest, add);
   return issues;
+}
+
+/**
+ * The wisdom rule, for every role: an unsafe tool states exactly one approval decision — an approval
+ * in `approvals`, or a `noApproval` note saying why it needs none — and a safe tool states neither.
+ */
+function decisionIssues(manifest: AgentManifest, add: (path: string, message: string) => void) {
+  const approved = new Set(manifest.approvals.map((approval) => approval.tool));
+  manifest.tools.forEach((tool, index) => {
+    const at = `tools[${index}]`;
+    const approval = approved.has(tool.name);
+    const note = tool.noApproval !== undefined;
+    if (tool.replay === "unsafe" && approval && note) {
+      add(
+        at,
+        `${show(tool.name)} is unsafe and states two approval decisions; keep an approval in approvals[], or noApproval, never both`,
+      );
+      return;
+    }
+    if (tool.replay === "unsafe" && !approval && !note) {
+      add(
+        at,
+        `${show(tool.name)} is unsafe and states no approval decision; add an approval in approvals[], or a noApproval note saying why it needs none`,
+      );
+      return;
+    }
+    if (tool.replay === "safe" && note) {
+      add(
+        `${at}.noApproval`,
+        `${show(tool.name)} is safe, so noApproval does not apply; remove it (noApproval explains an unsafe tool that needs no approval)`,
+      );
+    }
+  });
+}
+
+/** `{ticket.id}` and `{ticket.data.<path>}` are the only interpolation a completion argument may use. */
+const INTERPOLATION =
+  /^\{ticket\.(?:id|data\.[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\}$/;
+
+/**
+ * Completion evidence must name a tool of this role that is safe — the host runs it, never the model
+ * — and interpolate only `{ticket.id}` and `{ticket.data.<path>}`.
+ */
+function doneIssues(manifest: AgentManifest, add: (path: string, message: string) => void) {
+  const tools = new Map(manifest.tools.map((tool) => [tool.name, tool]));
+  manifest.accepts.forEach((accept, index) => {
+    accept.done?.forEach((entry, doneIndex) => {
+      const at = `accepts[${index}].done[${doneIndex}]`;
+      if ("tool" in entry) {
+        const tool = tools.get(entry.tool);
+        if (tool === undefined)
+          add(
+            `${at}.tool`,
+            `${show(entry.tool)} is not a declared tool; completion evidence names a safe tool of this role`,
+          );
+        else if (tool.replay !== "safe")
+          add(
+            `${at}.tool`,
+            `${show(entry.tool)} is unsafe; completion evidence runs a declared safe tool in the host, never the model`,
+          );
+      }
+      if (!("args" in entry) || entry.args === undefined) return;
+      for (const [flag, value] of Object.entries(entry.args)) {
+        if (typeof value !== "string") continue;
+        for (const placeholder of value.match(/\{[^{}]*\}/g) ?? []) {
+          if (INTERPOLATION.test(placeholder)) continue;
+          add(
+            `${at}.args.${flag}`,
+            `${show(placeholder)} is not an interpolation; the only two are {ticket.id} and {ticket.data.<path>}`,
+          );
+        }
+      }
+    });
+  });
 }
 
 /**

@@ -75,7 +75,16 @@
     }
   ],
   "channels": ["chat"],
-  "accepts": [{ "type": "stock.adjust", "description": "Record a stock adjustment" }],
+  "accepts": [
+    {
+      "type": "stock.adjust",
+      "description": "Record a stock adjustment",
+      "done": [
+        { "engine": ["levels"], "args": { "sku": "{ticket.data.sku}" } },
+        { "file": "adjustment-record" }
+      ]
+    }
+  ],
   "skills": [],
   "evals": "evals"
 }

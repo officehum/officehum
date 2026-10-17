@@ -77,10 +77,10 @@ Each layer is files or manifest data, never generated code: `@officehum/sdk` enf
 Office Hum enforces workflow (the board checks completion evidence; hand-offs are host tools).
 
 `checkFourLayers()` checks a package, and `validatePackage()` runs it:
-- **Context:** the word budget, no thresholds in context files, and a "You may not" section
-- **Knowledge:** references only inside skills
-- **Wisdom:** approval decisions, and no generic shell or file-writing tools
-- **Workflow:** completion evidence for every ticket type
+- **Context:** the word budget, no amounts, percentages or thresholds in context files, and a "You may not" section
+- **Knowledge:** references only inside `skills/<id>/references/`, and no `data/`, `work/` or `deliverables/` folder
+- **Wisdom:** no generic shell or file tool in the role's list (every unsafe tool's approval decision is a manifest error, from `validateManifest`, so it holds for every role)
+- **Workflow:** `done` completion evidence for every accepted ticket type
 
 It is strict (every issue an error) for the free department roles and for Role Factory output.
 Elsewhere it gives warnings, except wisdom issues, which are always errors.
@@ -422,7 +422,7 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
   "tools": [
     { "name": "read_invoices", "replay": "safe" },
     { "name": "create_invoice", "replay": "unsafe" },
-    { "name": "send_reminder", "replay": "unsafe", "skill": "collections" }
+    { "name": "send_reminder", "replay": "unsafe", "skill": "collections", "noApproval": "an internal reminder to a known customer; nothing outside the business changes" }
   ],
   "connectors": ["quickbooks"],
   "limits": {
@@ -438,8 +438,19 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
   ],
   "channels": ["email"],
   "accepts": [
-    { "type": "invoice.create", "description": "Invoice a completed job" },
-    { "type": "invoice.question", "description": "Answer a billing question" }
+    {
+      "type": "invoice.create",
+      "description": "Invoice a completed job",
+      "done": [
+        { "engine": ["check"], "args": { "job": "{ticket.data.jobId}" } },
+        { "tool": "read_invoices", "args": { "job": "{ticket.data.jobId}" }, "expect": "found" }
+      ]
+    },
+    {
+      "type": "invoice.question",
+      "description": "Answer a billing question",
+      "done": [{ "person": true }]
+    }
   ],
   "skills": [{ "id": "collections", "enabledByDefault": true }],
   "evals": "evals"
@@ -455,13 +466,13 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
 | `defaultModel` | `provider` and `modelId`, optional `thinkingLevel`. Overlays can change it. |
 | `runtimes[]` | Programs the host must provide: `name` and a version range, e.g. `python3` `>=3.10`. |
 | `engine` | `command` run from the package root, e.g. `["python3", "engine/engine.py"]`. Its program must be a declared runtime. |
-| `tools[]` | `name` in `snake_case`, unique; `replay` required, `"safe"` or `"unsafe"`; optional `skill` puts the tool in that skill's extension. Engine tools add `engine` (the subcommand), `description`, `parameters` and `guidelines`. `read_skill` (the SDK's), `board_*`, `delegate` and `ask` (the Office's) are reserved. |
+| `tools[]` | `name` in `snake_case`, unique; `replay` required, `"safe"` or `"unsafe"`; optional `skill` puts the tool in that skill's extension; optional `noApproval` (at most 300 characters) says why an unsafe tool needs no approval, e.g. `"internal note; no outside effect"`. An unsafe tool states exactly one of the two — an approval in `approvals[]` or `noApproval`, never both, never neither — and a safe tool states neither. Engine tools add `engine` (the subcommand), `description`, `parameters` and `guidelines`. `read_skill` (the SDK's), `board_*`, `delegate` and `ask` (the Office's) are reserved. |
 | `commands[]` | Operator views: `name`, `description`, and the `engine` subcommand they run. |
 | `connectors` | Kebab-case ids of the apps the business must connect, e.g. `quickbooks`. |
 | `approvals[]` | `id` (snake_case), `tool` (a declared tool), `description` (shown in the Inbox), optional `when` conditions over the tool's arguments. A numeric comparison may take a named limit as its value, `{ "limit": "large_invoice" }`, instead of a number. Conditions too complex to declare go in the entry point's `when`, keyed by `id`. |
 | `limits` | Named amounts the business sets, e.g. `large_invoice`: each has a `description` and a `default`. An approval compares against a limit with `{ "limit": "NAME" }` for `gt`, `gte`, `lt` or `lte`. An overlay changes a value, never removes it. |
 | `channels` | `email`, `sms`, `chat`: where the role may face the business's customers. |
-| `accepts[]` | Dotted ticket types (`invoice.create`) with a description shown to delegating agents. |
+| `accepts[]` | Dotted ticket types (`invoice.create`) with a description shown to delegating agents, and `done`: the completion evidence for that type. Every entry must pass, and the host runs it, never the model: `{ "engine": ["subcommand", …], "args": {…} }` (the engine answers `ok` with at least one finding), `{ "tool": "NAME", "args": {…}, "expect": "found" }` (a declared **safe** tool whose result reports `found`), `{ "file": "NAME" }` (the result attaches a file), or `{ "person": true }`. Args may interpolate `{ticket.id}` and `{ticket.data.<path>}`, and nothing else. |
 | `skills[]` | `id` (the folder under `skills/`) and `enabledByDefault`. The name and description come from `SKILL.md`, so they cannot drift. Every bundled skill folder must be listed. |
 | `evals` | Directory of eval files, relative to the package root. |
 
@@ -480,13 +491,23 @@ overlay acme/settings.json › tools[0]: "issue_refund" is not a tool of this ro
 overlay acme/settings.json › limits.vat_rate: "vat_rate" is not a limit of this role; a limit is declared in officehum.json
 package.json › dependencies.@officehum/office: is not allowed; a role must run on any Pi Durable install without Office Hum
 role › bookkeeper › create_invoice: replay is "safe" in code but "unsafe" in officehum.json
+AGENTS.md: warning: is 1200 words; keep AGENTS.md under 1000 words and move the detail into a skill or one of its reference files
 ```
 
-- `validateManifest(json)`: the schema plus cross-field rules (duplicates, reserved names, references).
+Each issue carries a **severity**: `error` unless it says `warning:`, and a warning leaves the package valid — it is what the four-layer check reports on a role Office Hum does not own.
+
+- `validateManifest(json)`: the schema plus cross-field rules (duplicates, reserved names, references, the approval decision every unsafe tool states, and completion evidence).
 - `resolveRoleFiles({ packageDir, manifest, overlays })`: the role's files and every overlay. Office
   Hum validates a draft overlay with it before applying an edit.
+- `checkFourLayers(packageDir, manifest, { strict })`: the four layers, every issue tagged with its
+  layer. Context: the word budget, no numbers in `AGENTS.md` or `APPEND_SYSTEM.md`, a "You may not"
+  section. Knowledge: references only inside `skills/<id>/references/`, no host folders. Wisdom: no
+  generic shell or file-writing tool in the role's list. Workflow: `done` evidence on every accepted
+  ticket type. `strict` makes every issue an error; otherwise context, knowledge and workflow issues
+  are warnings and wisdom issues stay errors.
 - `validatePackage(dir)`: `package.json` against the portability boundary, `officehum.json`, the
-  role's files, and every eval file.
+  role's files, the four layers (strict for a package under `agents/` or one its `package.json`
+  marks `"officehum": { "generated": true }`), and every eval file.
 - `checkAgent(bundle, manifest)`: the entry point's output, with no overlays, against the manifest.
 - `defineRole` validates the manifest and files itself and throws `RoleFilesError` on problems.
 

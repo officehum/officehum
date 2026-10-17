@@ -90,7 +90,15 @@ export {
   type VersionedFileRef,
   type VersionedFileStore,
 } from "./files.js";
-export { formatIssue, type Issue, type Validation } from "./issues.js";
+export { FOUR_LAYERS, type FourLayer, formatIssue, type Issue, type Validation } from "./issues.js";
+export {
+  AGENTS_WORDS_MAX,
+  AGENTS_WORDS_WARN,
+  type CheckFourLayersOptions,
+  checkFourLayers,
+  GENERIC_TOOLS,
+  HOST_FOLDERS,
+} from "./layers.js";
 export { localFileStore } from "./local-files.js";
 export { localVersionedFileStore } from "./local-versioned-files.js";
 export {
@@ -103,6 +111,7 @@ export {
   type ConditionDeclaration,
   DEPARTMENTS,
   type Department,
+  type DoneEvidence,
   type EngineDeclaration,
   type LimitDeclaration,
   MANIFEST_FILE,
