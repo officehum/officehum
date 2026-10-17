@@ -1,12 +1,17 @@
 import { defineDoc, type HookApi, type ToolHooks } from "@earendil-works/pi-durable";
 import { describe, expect, it, vi } from "vitest";
+import sampleStockroom from "../fixtures/sample-stockroom/src/index.js";
 import {
   type ApprovalGateOptions,
   type Approver,
   approvalGate,
   conditionsHold,
   type HookContext,
+  isApprovalGate,
 } from "./approvals.js";
+import { stubEngine } from "./engine.js";
+import type { DefinedRole } from "./role.js";
+import { STOCKROOM_OVERLAY } from "./test-helpers.js";
 
 const approvals = [
   { id: "book_after_hours", tool: "book_appointment", description: "Bookings after 18:00" },
@@ -36,6 +41,14 @@ const call = (name: string, args: Record<string, unknown>, id = "call-1") =>
 
 function beforeTool(options: ApprovalGateOptions) {
   const { handlers } = approvalGate(options) as { handlers: Pick<ToolHooks, "beforeTool"> };
+  return handlers.beforeTool;
+}
+
+/** The approval gate a role built with `defineRole` installs, ready to drive a call through. */
+function gateFrom(role: DefinedRole) {
+  const registration = (role.extensions[0]?.hooks ?? []).find(isApprovalGate);
+  if (registration === undefined) throw new Error("the role has no approval gate");
+  const { handlers } = registration as unknown as { handlers: Pick<ToolHooks, "beforeTool"> };
   return handlers.beforeTool;
 }
 
@@ -342,5 +355,131 @@ describe("approval conditions from officehum.json", () => {
       holds("ne", "a", "a"),
       holds("in", ["a", "b"], "c"),
     ]).toEqual([false, true, false, false]);
+  });
+});
+
+describe("named approval limits", () => {
+  const invoiceApprovals = [
+    {
+      id: "large_invoice",
+      tool: "create_invoice",
+      description: "Invoices over the set amount",
+      when: [{ arg: "amount", op: "gt" as const, value: { limit: "large_invoice" } }],
+    },
+  ];
+
+  it("gates at the manifest's default, and at the overlay's value when a business sets one", async () => {
+    const atDefault = beforeTool({ approvals: invoiceApprovals, limits: { large_invoice: 5000 } });
+    expect(
+      await atDefault(call("create_invoice", { amount: 4000 }), hookApi(), context),
+    ).toBeUndefined();
+    expect(
+      (await atDefault(call("create_invoice", { amount: 6000 }), hookApi(), context))?.block,
+    ).toContain("Invoices over the set amount");
+
+    const tightened = beforeTool({ approvals: invoiceApprovals, limits: { large_invoice: 2500 } });
+    expect(
+      await tightened(call("create_invoice", { amount: 2000 }), hookApi(), context),
+    ).toBeUndefined();
+    expect(
+      (await tightened(call("create_invoice", { amount: 3000 }), hookApi(), context))?.block,
+    ).toContain("Invoices over the set amount");
+  });
+
+  it("fails safe when a named limit does not resolve, rather than letting the call through", async () => {
+    const gate = beforeTool({ approvals: invoiceApprovals, limits: {} });
+    expect(
+      (await gate(call("create_invoice", { amount: 100 }), hookApi(), context))?.block,
+    ).toBeDefined();
+  });
+
+  it("gives a code condition the resolved limits in its environment", async () => {
+    let seen: Readonly<Record<string, number>> | undefined;
+    const gate = beforeTool({
+      approvals: invoiceApprovals,
+      limits: { large_invoice: 2500 },
+      when: {
+        large_invoice: (args, environment) => {
+          seen = environment.limits;
+          return Number(args.amount) > (environment.limits.large_invoice ?? 0);
+        },
+      },
+    });
+    expect(
+      await gate(call("create_invoice", { amount: 1000 }), hookApi(), context),
+    ).toBeUndefined();
+    expect(
+      (await gate(call("create_invoice", { amount: 4000 }), hookApi(), context))?.block,
+    ).toBeDefined();
+    expect(seen).toEqual({ large_invoice: 2500 });
+  });
+
+  it("lets an async condition read durable records and decide either way", async () => {
+    const Known = defineDoc<{ known: boolean }>({
+      kind: "test.first-contact",
+      version: 1,
+      scope: "session",
+      initial: () => ({ known: false }),
+    });
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    const gate = beforeTool({
+      approvals: invoiceApprovals,
+      approve,
+      when: {
+        large_invoice: async (_args, { read }, predicateContext) =>
+          !((await read.snapshot(Known, predicateContext))?.known ?? false),
+      },
+    });
+    // A target the role has met before needs no person; a first contact does.
+    await gate(
+      call("create_invoice", { amount: 1 }),
+      hookApi(new Map(), new Map([["test.first-contact", { known: true }]])),
+      context,
+    );
+    expect(approve).not.toHaveBeenCalled();
+    await gate(
+      call("create_invoice", { amount: 1 }, "call-2"),
+      hookApi(new Map(), new Map([["test.first-contact", { known: false }]])),
+      context,
+    );
+    expect(approve).toHaveBeenCalledOnce();
+  });
+
+  it("gates the call when a condition throws, never letting it through", async () => {
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    const gate = beforeTool({
+      approvals: invoiceApprovals,
+      approve,
+      when: {
+        large_invoice: () => {
+          throw new Error("cannot decide");
+        },
+      },
+    });
+    await gate(call("create_invoice", { amount: 1 }), hookApi(), context);
+    expect(approve).toHaveBeenCalledOnce();
+  });
+});
+
+describe("the Sample Stockroom's named limits", () => {
+  const adjust = (quantity: number, id = "call-1") =>
+    call("stock_adjust", { sku: "BOLT-10", quantity, reason: "count" }, id);
+
+  it("gates at the manifest's default, and at a business overlay's value", async () => {
+    const role = sampleStockroom({ engine: stubEngine({}) });
+    expect(role.current().limits).toEqual({ large_increase: 10, large_decrease: -10 });
+    const gate = gateFrom(role);
+    expect(await gate(adjust(10), hookApi(), context)).toBeUndefined();
+    expect((await gate(adjust(11, "call-2"), hookApi(), context))?.block).toContain(
+      "Adding more units",
+    );
+
+    const overlaid = sampleStockroom({ engine: stubEngine({}), overlays: [STOCKROOM_OVERLAY] });
+    expect(overlaid.current().limits).toEqual({ large_increase: 5, large_decrease: -10 });
+    const tightened = gateFrom(overlaid);
+    expect(await tightened(adjust(5), hookApi(), context)).toBeUndefined();
+    expect((await tightened(adjust(6, "call-3"), hookApi(), context))?.block).toContain(
+      "Adding more units",
+    );
   });
 });

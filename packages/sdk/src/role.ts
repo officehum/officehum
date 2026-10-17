@@ -184,6 +184,10 @@ export function defineRole(options: DefineRoleOptions): DefinedRole {
         approvals: manifest.approvals,
         approve: options.approve,
         ...(options.when ? { when: options.when } : {}),
+        // Live, so an overlay's limit change takes effect on reload, like the prompt sections.
+        get limits() {
+          return current.limits;
+        },
       }),
       ...(options.hooks ?? []),
     ],

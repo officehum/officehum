@@ -14,6 +14,7 @@ import {
   ToolTask,
 } from "@earendil-works/pi-durable";
 import type { ApprovalDeclaration, ConditionDeclaration } from "./manifest.js";
+import { limitName } from "./manifest.js";
 
 /** The cancellation and deadline context Pi Durable passes to hooks. */
 export type HookContext = Parameters<ToolHooks["beforeTool"]>[2];
@@ -21,8 +22,17 @@ export type HookContext = Parameters<ToolHooks["beforeTool"]>[2];
 /** A tool call's arguments, as the model sent them after validation. */
 export type ToolArguments = Readonly<Record<string, unknown>>;
 
-/** Durable documents available to an approval condition, without mutation methods. */
-export type ApprovalConditionContext = { readonly read: DocumentReader };
+/** Durable documents and resolved limits available to an approval condition, without mutation methods. */
+export type ApprovalConditionContext = {
+  /** The hook's document reader, bound to this call. */
+  readonly read: DocumentReader;
+  /**
+   * The role's resolved limits, e.g. `{ large_invoice: 2500 }`: the manifest's defaults with the
+   * business's overlay applied. A code condition reads the same values a `{ "limit": "NAME" }`
+   * condition resolves against.
+   */
+  readonly limits: Readonly<Record<string, number>>;
+};
 
 /** Decides whether an approval applies to this exact tool intent. */
 export type ApprovalCondition = (
@@ -70,6 +80,12 @@ export interface ApprovalGateOptions {
    * An approval with no condition applies to every call of its tool.
    */
   readonly when?: Readonly<Record<string, ApprovalCondition>>;
+  /**
+   * The role's resolved limits, keyed by name, e.g. `{ large_invoice: 2500 }`. Conditions declared as
+   * `{ "limit": "NAME" }` compare against them, and code conditions read them from the environment.
+   * Omitted: no limits, so a named limit resolves to nothing and its approval waits for a person.
+   */
+  readonly limits?: Readonly<Record<string, number>> | undefined;
 }
 
 const gates = new WeakSet<HookRegistration>();
@@ -131,6 +147,8 @@ function assertApplicability(stored: StoredApplicability, tool: string, argsJson
 export function approvalGate(options: ApprovalGateOptions): HookRegistration {
   const registration = hook(ToolTask, {
     beforeTool: async (call, api, context) => {
+      // Read per call, so a role that resolves its limits live (defineRole) sees overlay changes.
+      const limits = options.limits ?? {};
       for (const approval of options.approvals) {
         if (approval.tool !== call.name) continue;
         const memoKey = `officehum.approval.${call.id}.${approval.id}`;
@@ -150,14 +168,14 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
                   snapshot: api.snapshot.bind(api),
                   snapshotAsOf: api.snapshotAsOf.bind(api),
                 };
-                const result = await applies(call.arguments, { read }, context);
+                const result = await applies(call.arguments, { read, limits }, context);
                 required = typeof result === "boolean" ? result : true;
               } catch {
                 context.abortSignal?.throwIfAborted();
                 required = true;
               }
             } else if (approval.when !== undefined) {
-              required = conditionsHold(approval.when, call.arguments);
+              required = conditionsHold(approval.when, call.arguments, limits);
             }
             applicability = await api.memo<StoredApplicability>(
               applicabilityKey,
@@ -217,16 +235,21 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
 }
 
 /**
- * Whether every condition holds for a call's arguments. Fails safe: a condition on an argument that
- * is missing, or of a type it cannot compare, counts as holding, so the action waits for a person.
+ * Whether every condition holds for a call's arguments, resolving `{ "limit": "NAME" }` values from
+ * `limits`. Fails safe: a condition on an argument that is missing or of a type it cannot compare, or
+ * a named limit that does not resolve to a number, counts as holding, so the action waits for a person.
  */
 export function conditionsHold(
   conditions: readonly ConditionDeclaration[],
   args: ToolArguments,
+  limits: Readonly<Record<string, number>> = {},
 ): boolean {
   return conditions.every((condition) => {
     const actual = args[condition.arg];
-    const expected = condition.value;
+    const name = limitName(condition.value);
+    const expected = name === undefined ? condition.value : limits[name];
+    // An unknown limit leaves nothing to compare against, so the action needs approval rather than passing.
+    if (name !== undefined && typeof expected !== "number") return true;
     if (actual === undefined || actual === null) return true;
     switch (condition.op) {
       case "eq":
