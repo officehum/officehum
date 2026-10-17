@@ -7,6 +7,13 @@ import { fileURLToPath } from "node:url";
 
 export const SAMPLE_DIR = fileURLToPath(new URL("../fixtures/sample-desk", import.meta.url));
 export const ACME_OVERLAY = fileURLToPath(new URL("../fixtures/overlays/acme", import.meta.url));
+export const STOCKROOM_DIR = fileURLToPath(
+  new URL("../fixtures/sample-stockroom", import.meta.url),
+);
+/** A business's overlay for the Sample Stockroom: it changes one named limit and leaves the rest. */
+export const STOCKROOM_OVERLAY = fileURLToPath(
+  new URL("../fixtures/overlays/acme-stockroom", import.meta.url),
+);
 
 const temps: string[] = [];
 

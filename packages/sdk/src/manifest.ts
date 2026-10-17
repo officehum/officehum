@@ -63,6 +63,7 @@ const TicketType = Type.String({
   "x-hint": 'a dotted ticket type, like "invoice.create"',
 });
 const Text = (maxLength: number) => Type.String({ minLength: 1, maxLength });
+const SNAKE_NAME = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
 /** Words passed to the role's engine, e.g. `["variance", "--summary"]`. */
 const EngineArgs = Type.Array(Type.String({ minLength: 1 }), { minItems: 1 });
@@ -94,6 +95,21 @@ const ToolDeclaration = Type.Object(
   { additionalProperties: false },
 );
 
+/**
+ * A number the business sets: the role declares the limit with a description and a default, and an
+ * overlay changes the value. Limits live in `officehum.json` and overlays, never in prompt text.
+ */
+const LimitDeclaration = Type.Object(
+  { description: Text(300), default: Type.Number() },
+  { additionalProperties: false },
+);
+
+/**
+ * A condition's value that names a limit, e.g. `{ "limit": "large_invoice" }`, instead of a number.
+ * It resolves to the business's value for that limit when the approval gate runs.
+ */
+const LimitReference = Type.Object({ limit: SnakeName }, { additionalProperties: false });
+
 /** A condition on a tool call's arguments, e.g. `{ "arg": "amount", "op": "gt", "value": 2500 }`. */
 const ConditionDeclaration = Type.Object(
   {
@@ -104,6 +120,7 @@ const ConditionDeclaration = Type.Object(
       Type.String(),
       Type.Boolean(),
       Type.Array(Type.Union([Type.Number(), Type.String()])),
+      LimitReference,
     ]),
   },
   { additionalProperties: false },
@@ -181,6 +198,7 @@ export const ManifestSchema = Type.Object(
     commands: Type.Optional(Type.Array(CommandDeclaration)),
     connectors: Type.Array(KebabId),
     approvals: Type.Array(ApprovalDeclaration),
+    limits: Type.Optional(Type.Record(Type.String(), LimitDeclaration)),
     channels: Type.Array(Type.Enum([...CHANNELS])),
     accepts: Type.Array(AcceptDeclaration),
     skills: Type.Array(SkillDeclaration),
@@ -194,6 +212,7 @@ export type Department = (typeof DEPARTMENTS)[number];
 export type Channel = (typeof CHANNELS)[number];
 export type ToolDeclaration = Static<typeof ToolDeclaration>;
 export type ApprovalDeclaration = Static<typeof ApprovalDeclaration>;
+export type LimitDeclaration = Static<typeof LimitDeclaration>;
 export type AcceptDeclaration = Static<typeof AcceptDeclaration>;
 export type SkillDeclaration = Static<typeof SkillDeclaration>;
 export type ModelDeclaration = Static<typeof ModelDeclaration>;
@@ -202,6 +221,16 @@ export type ConditionDeclaration = Static<typeof ConditionDeclaration>;
 export type RuntimeDeclaration = Static<typeof RuntimeDeclaration>;
 export type EngineDeclaration = Static<typeof EngineDeclaration>;
 export type CommandDeclaration = Static<typeof CommandDeclaration>;
+
+/**
+ * The limit a condition's value names, or `undefined` when the value is a literal. A named limit is
+ * resolved from the manifest's default and the business's overlay before it is compared.
+ */
+export function limitName(value: ConditionDeclaration["value"]): string | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const name = (value as { limit?: unknown }).limit;
+  return typeof name === "string" ? name : undefined;
+}
 
 /**
  * Validates parsed `officehum.json` content: the schema, then the rules that span fields (no
@@ -246,6 +275,12 @@ function crossFieldIssues(manifest: AgentManifest, source: string): Issue[] {
   duplicates(manifest.skills, (skill) => skill.id, "skills", "skill");
   duplicates(manifest.connectors, (connector) => connector, "connectors", "connector");
   duplicates(manifest.channels, (channel) => channel, "channels", "channel");
+
+  for (const name of Object.keys(manifest.limits ?? {})) {
+    if (!SNAKE_NAME.test(name)) {
+      add(joinPath("limits", name), 'must be named in snake_case, like "large_invoice"');
+    }
+  }
 
   const reserved = new Set<string>(RESERVED_TOOL_NAMES);
   const sdkTools = new Set<string>(SDK_TOOL_NAMES);
@@ -319,7 +354,7 @@ function engineIssues(manifest: AgentManifest, add: (path: string, message: stri
     if (tool.description === undefined)
       add(at("description"), "is required for an engine tool: it is all the model reads about it");
     for (const [name, parameter] of Object.entries(tool.parameters ?? {})) {
-      if (!/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/.test(name)) {
+      if (!SNAKE_NAME.test(name)) {
         add(at(`parameters.${name}`), 'must be named in snake_case, like "period"');
       }
       const numeric = parameter.type === "number" || parameter.type === "integer";
@@ -333,12 +368,27 @@ function engineIssues(manifest: AgentManifest, add: (path: string, message: stri
   });
 
   const toolsByName = new Map(manifest.tools.map((tool) => [tool.name, tool]));
+  const declaredLimits = new Set(Object.keys(manifest.limits ?? {}));
   manifest.approvals.forEach((approval, index) => {
     const parameters = toolsByName.get(approval.tool)?.parameters;
     approval.when?.forEach((condition, conditionIndex) => {
       const at = `approvals[${index}].when[${conditionIndex}]`;
       if (parameters !== undefined && !(condition.arg in parameters)) {
         add(`${at}.arg`, `${show(condition.arg)} is not a parameter of ${show(approval.tool)}`);
+      }
+      const limit = limitName(condition.value);
+      if (limit !== undefined) {
+        // A named limit replaces a numeric threshold, so it needs one of the numeric comparisons.
+        if (!["gt", "gte", "lt", "lte"].includes(condition.op)) {
+          add(
+            `${at}.value`,
+            `names a limit, which needs "gt", "gte", "lt" or "lte" (op is ${show(condition.op)}); use a literal value instead`,
+          );
+        }
+        if (!declaredLimits.has(limit)) {
+          add(`${at}.value`, `${show(limit)} is not a declared limit`);
+        }
+        return;
       }
       if (condition.op === "in" && !Array.isArray(condition.value)) {
         add(`${at}.value`, 'must be a list when op is "in"');

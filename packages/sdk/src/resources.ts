@@ -46,6 +46,12 @@ export const OverlaySettingsSchema = Type.Object(
     skills: Type.Optional(Type.Array(SkillEdit)),
     /** Edits to the role's tools: "-name" switches one off, "+name" back on. Tools cannot be added here. */
     tools: Type.Optional(Type.Array(ToolEdit)),
+    /**
+     * The business's values for the role's named limits, e.g. `{ "large_invoice": 2500 }`. A limit may
+     * be changed, never removed: a `null` value is refused, because removing it would switch its
+     * approval off.
+     */
+    limits: Type.Optional(Type.Record(Type.String(), Type.Union([Type.Number(), Type.Null()]))),
   },
   { additionalProperties: false },
 );
@@ -77,6 +83,11 @@ export interface ResolvedRole {
   };
   /** Declared tools switched off by an overlay. */
   readonly disabledTools: readonly string[];
+  /**
+   * Named limits, resolved: every limit the manifest declares, with the business's overlay values
+   * applied. An overlay changes a value; it can neither add a limit nor remove one.
+   */
+  readonly limits: Readonly<Record<string, number>>;
 }
 
 export interface ResolveRoleOptions {
@@ -155,6 +166,11 @@ export function resolveRoleFiles(options: ResolveRoleOptions): Validation<Resolv
   let model: ResolvedRole["model"] = { ...manifest.defaultModel };
   const disabledTools = new Set<string>();
   const tools = new Set(manifest.tools.map((tool) => tool.name));
+  // Every declared limit starts at the manifest's default; an overlay changes values, never removes.
+  const declaredLimits = manifest.limits ?? {};
+  const limits: Record<string, number> = Object.fromEntries(
+    Object.entries(declaredLimits).map(([name, declaration]) => [name, declaration.default]),
+  );
 
   // Overlay layers, lowest first.
   for (const dir of options.overlays ?? []) {
@@ -262,6 +278,25 @@ export function resolveRoleFiles(options: ResolveRoleOptions): Validation<Resolv
         disabledTools.delete(name);
       }
     });
+    settings.limits &&
+      Object.entries(settings.limits).forEach(([name, value]) => {
+        const path = joinPath("limits", name);
+        if (!(name in declaredLimits)) {
+          add(
+            file(ROLE_FILES.settings),
+            path,
+            `${show(name)} is not a limit of this role; a limit is declared in officehum.json`,
+          );
+        } else if (value === null) {
+          add(
+            file(ROLE_FILES.settings),
+            path,
+            `${show(name)} configures an approval and cannot be removed; set a number to change it`,
+          );
+        } else {
+          limits[name] = value;
+        }
+      });
   }
 
   if (issues.length > 0) return { ok: false, issues };
@@ -274,6 +309,7 @@ export function resolveRoleFiles(options: ResolveRoleOptions): Validation<Resolv
       skills: [...skills.values()].sort((a, b) => a.name.localeCompare(b.name)),
       model,
       disabledTools: [...disabledTools].sort(),
+      limits,
     },
   };
 }

@@ -97,6 +97,45 @@ describe("resolveRoleFiles", () => {
     expect(role.model.modelId).toBe("claude-opus-5-5");
   });
 
+  it("resolves a named limit from the manifest's default and an overlay's value", () => {
+    const withLimits = {
+      ...manifest,
+      limits: { large_invoice: { description: "Invoices over the amount", default: 5000 } },
+    };
+    expect(resolve([], SAMPLE_DIR, withLimits).limits).toEqual({ large_invoice: 5000 });
+    const overlay = tempDir("acme", {
+      "settings.json": JSON.stringify({ limits: { large_invoice: 2500 } }),
+    });
+    expect(resolve([overlay], SAMPLE_DIR, withLimits).limits).toEqual({ large_invoice: 2500 });
+  });
+
+  it("refuses an overlay limit that is unknown or removed, and accepts a changed one", () => {
+    const withLimits = {
+      ...manifest,
+      limits: { large_invoice: { description: "Invoices over the amount", default: 5000 } },
+    };
+    const bad = tempDir("acme", {
+      "settings.json": JSON.stringify({ limits: { vat_rate: 20, large_invoice: null } }),
+    });
+    expect(problems([bad], SAMPLE_DIR, withLimits)).toEqual([
+      'overlay acme/settings.json › limits.vat_rate: "vat_rate" is not a limit of this role; a limit is declared in officehum.json',
+      'overlay acme/settings.json › limits.large_invoice: "large_invoice" configures an approval and cannot be removed; set a number to change it',
+    ]);
+    const changed = tempDir("acme", {
+      "settings.json": JSON.stringify({ limits: { large_invoice: 2500 } }),
+    });
+    expect(problems([changed], SAMPLE_DIR, withLimits)).toEqual([]);
+  });
+
+  it("never lets an overlay switch an approval off", () => {
+    const overlay = tempDir("acme", {
+      "settings.json": JSON.stringify({ approvals: ["-large_invoice"] }),
+    });
+    expect(problems([overlay])).toEqual([
+      "overlay acme/settings.json › approvals: is not a known field",
+    ]);
+  });
+
   it("never lets an overlay add a tool or name an unknown skill", () => {
     const overlay = tempDir("acme", {
       "settings.json": JSON.stringify({ skills: ["+payroll"], tools: ["+issue_refund", "book"] }),

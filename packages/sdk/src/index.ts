@@ -104,6 +104,7 @@ export {
   DEPARTMENTS,
   type Department,
   type EngineDeclaration,
+  type LimitDeclaration,
   MANIFEST_FILE,
   MANIFEST_SCHEMA_VERSION,
   ManifestSchema,

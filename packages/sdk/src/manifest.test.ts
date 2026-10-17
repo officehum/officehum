@@ -91,6 +91,35 @@ describe("validateManifest", () => {
     ]);
   });
 
+  it("checks approval conditions that name a limit", () => {
+    const limits = { large_invoice: { description: "Invoices over the amount", default: 5000 } };
+    const approvals = [
+      {
+        id: "large_invoice",
+        tool: "book_appointment",
+        description: "Invoices over the amount",
+        when: [{ arg: "amount", op: "gt", value: { limit: "nope" } }],
+      },
+      {
+        id: "flagged",
+        tool: "book_appointment",
+        description: "Flagged",
+        when: [{ arg: "amount", op: "eq", value: { limit: "large_invoice" } }],
+      },
+    ];
+    expect(messages(withFields({ limits, approvals }))).toEqual([
+      'officehum.json › approvals[0].when[0].value: "nope" is not a declared limit',
+      'officehum.json › approvals[1].when[0].value: names a limit, which needs "gt", "gte", "lt" or "lte" (op is "eq"); use a literal value instead',
+    ]);
+  });
+
+  it("names limits in snake_case", () => {
+    const limits = { "Large Invoice": { description: "Invoices over the amount", default: 5000 } };
+    expect(messages(withFields({ limits }))).toEqual([
+      'officehum.json › limits.Large Invoice: must be named in snake_case, like "large_invoice"',
+    ]);
+  });
+
   it("checks ticket types are dotted", () => {
     const accepts = [{ type: "booking", description: "Book" }];
     expect(messages(withFields({ accepts }))).toEqual([

@@ -144,22 +144,25 @@ export default function bookkeeper(options: {
 ```
 
 Code conditions may be synchronous one-argument predicates or async predicates that read committed
-durable documents through a read-only environment:
+durable documents through a read-only environment, and may read the role's limits through it too:
 
 ```ts
-const firstContact: ApprovalCondition = async (args, { read }, context) => {
+const firstContact: ApprovalCondition = async (args, { read, limits }, context) => {
   const history = await read.snapshot(MessagesDoc, context);
-  return !history?.messages.some((message) => sameTarget(message, args));
+  if (history?.messages.some((message) => sameTarget(message, args))) return false;
+  return invoiceTotal(args) > (limits.large_invoice ?? 0);
 };
 ```
 
-The environment exposes only bound `snapshot` and `snapshotAsOf` methods. Before approving or
-bypassing, the gate stores a canonical tool/arguments applicability memo with the computed boolean.
-That value is immutable for the call across recovery, including `false`; existing legacy decision
-memos remain authoritative. Predicate errors, rejected promises, and nonboolean results require
-approval, while active cancellation propagates. This keeps a previously declined call declined even
-when another call later changes the durable history that the predicate reads. Named approval limits
-remain outside this contract.
+The environment exposes only bound `snapshot` and `snapshotAsOf` methods, plus the resolved
+`limits`. A role can also read them directly, through `role.current().limits`, when it writes a
+condition that needs the business's values. Before approving or bypassing, the gate stores a
+canonical tool/arguments applicability memo with the computed boolean. That value is immutable for
+the call across recovery, including `false`; existing legacy decision memos remain authoritative.
+Predicate errors, rejected promises, and nonboolean results require approval, while active
+cancellation propagates. This keeps a previously declined call declined even when another call later
+changes the durable history that the predicate reads, and a condition that names a limit it cannot
+resolve waits for a person, like any other error.
 
 Installing it on any Pi Durable harness:
 
@@ -181,7 +184,7 @@ An overlay is a directory with the package's layout. Overlays sit on the package
 | `AGENTS.override.md` | Not allowed | Optional | Replaces every `AGENTS.md` below it |
 | `APPEND_SYSTEM.md` | Optional | Optional | The top-most one wins (Pi's rule) |
 | `skills/<name>/` | Bundled skills | New or edited skills | Merged by name; the higher layer wins |
-| `settings.json` | Not allowed (defaults are in `officehum.json`) | Model; skills and tools on or off | Applied in order; later overlays win |
+| `settings.json` | Not allowed (defaults are in `officehum.json`) | Model; skills and tools on or off; named limits | Applied in order; later overlays win |
 
 An overlay's `settings.json` uses Pi's setting names and its `+name` / `-name` edit lists:
 
@@ -191,13 +194,17 @@ An overlay's `settings.json` uses Pi's setting names and its `+name` / `-name` e
   "defaultModel": "ultramarine-1-flash",
   "defaultThinkingLevel": "high",
   "skills": ["+vip-customers", "-collections"],
-  "tools": ["-send_reminder"]
+  "tools": ["-send_reminder"],
+  "limits": { "large_invoice": 2500 }
 }
 ```
 
 Rules:
 
 - Overlays can switch tools **off**, never add them. New tools arrive only in a package release.
+- **Limits change; they are never removed.** An overlay sets a value for a limit the package declares.
+  It cannot add a limit, remove one, or switch its approval off: a `null` value is refused, because a
+  limit that disappeared would leave the approval it configures with nothing to compare.
 - Overlay skills hold **instructions and reference files only** (`.md`, `.txt`, `.csv`, `.json`), never
   scripts. Code arrives only in packages, which agencies and developers can publish.
 - A replaced skill keeps its on/off state; a new skill starts on.
@@ -221,8 +228,8 @@ so a business's configuration is never overwritten.
 
 - **Studio** edits `AGENTS.md` (or replaces it with `AGENTS.override.md`, with a warning), edits
   `APPEND_SYSTEM.md`, adds and edits skills (the spec's playbooks), switches skills and tools on or off,
-  and picks the model. When a role upgrade changes a file the business overrides, Studio shows the
-  difference.
+  sets the business's named limits, and picks the model. When a role upgrade changes a file the business
+  overrides, Studio shows the difference.
 - **Plain-language configuration.** The officehum.com portal takes requests like "chase overdue
   invoices weekly, not daily" and hands them to a configurator agent on the customer's server. It
   drafts the overlay change, validates it with `resolveRoleFiles`, shows the person a diff, and
@@ -282,8 +289,10 @@ tests and evals.
 - **No secrets.** The engine sees only `PATH`, `HOME`, `LANG` and what the host passes explicitly; model
   keys and connector tokens never reach it.
 - **Guardrails from data.** An approval's `when` conditions (`gt`, `gte`, `lt`, `lte`, `eq`, `ne`, `in`
-  over the call's arguments) decide which calls wait for a person. They fail safe: a condition on a
-  missing or unreadable argument counts as met. A condition written in code takes precedence.
+  over the call's arguments) decide which calls wait for a person. A threshold may be a named limit,
+  `{ "limit": "large_invoice" }`, that the business sets in its overlay. They fail safe: a condition on
+  a missing or unreadable argument, or on a limit that does not resolve, counts as met. A condition
+  written in code takes precedence.
 - **Operator commands** are engine views with no model involved: `runOperatorCommand(manifest, engine,
   name)`. Studio and Teams show them in Office Hum; other hosts show them their own way.
 
@@ -416,8 +425,16 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
     { "name": "send_reminder", "replay": "unsafe", "skill": "collections" }
   ],
   "connectors": ["quickbooks"],
+  "limits": {
+    "large_invoice": { "description": "The amount above which invoices need approval", "default": 5000 }
+  },
   "approvals": [
-    { "id": "large_invoice", "tool": "create_invoice", "description": "Invoices over the set amount" }
+    {
+      "id": "large_invoice",
+      "tool": "create_invoice",
+      "description": "Invoices over the set amount",
+      "when": [{ "arg": "amount", "op": "gt", "value": { "limit": "large_invoice" } }]
+    }
   ],
   "channels": ["email"],
   "accepts": [
@@ -441,7 +458,8 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
 | `tools[]` | `name` in `snake_case`, unique; `replay` required, `"safe"` or `"unsafe"`; optional `skill` puts the tool in that skill's extension. Engine tools add `engine` (the subcommand), `description`, `parameters` and `guidelines`. `read_skill` (the SDK's), `board_*`, `delegate` and `ask` (the Office's) are reserved. |
 | `commands[]` | Operator views: `name`, `description`, and the `engine` subcommand they run. |
 | `connectors` | Kebab-case ids of the apps the business must connect, e.g. `quickbooks`. |
-| `approvals[]` | `id` (snake_case), `tool` (a declared tool), `description` (shown in the Inbox), optional `when` conditions over the tool's arguments. Conditions too complex to declare go in the entry point's `when`, keyed by `id`. |
+| `approvals[]` | `id` (snake_case), `tool` (a declared tool), `description` (shown in the Inbox), optional `when` conditions over the tool's arguments. A numeric comparison may take a named limit as its value, `{ "limit": "large_invoice" }`, instead of a number. Conditions too complex to declare go in the entry point's `when`, keyed by `id`. |
+| `limits` | Named amounts the business sets, e.g. `large_invoice`: each has a `description` and a `default`. An approval compares against a limit with `{ "limit": "NAME" }` for `gt`, `gte`, `lt` or `lte`. An overlay changes a value, never removes it. |
 | `channels` | `email`, `sms`, `chat`: where the role may face the business's customers. |
 | `accepts[]` | Dotted ticket types (`invoice.create`) with a description shown to delegating agents. |
 | `skills[]` | `id` (the folder under `skills/`) and `enabledByDefault`. The name and description come from `SKILL.md`, so they cannot drift. Every bundled skill folder must be listed. |
@@ -459,6 +477,7 @@ Every validator reports all problems at once, each with a path and a plain messa
 officehum.json › tools[1].replay: must be one of "safe", "unsafe" (got "maybe")
 skills/collections/SKILL.md › name: must match its folder name "collections" (got "Collections")
 overlay acme/settings.json › tools[0]: "issue_refund" is not a tool of this role; overlays can switch tools off, not add them
+overlay acme/settings.json › limits.vat_rate: "vat_rate" is not a limit of this role; a limit is declared in officehum.json
 package.json › dependencies.@officehum/office: is not allowed; a role must run on any Pi Durable install without Office Hum
 role › bookkeeper › create_invoice: replay is "safe" in code but "unsafe" in officehum.json
 ```

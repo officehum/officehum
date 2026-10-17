@@ -50,18 +50,28 @@
     }
   ],
   "connectors": [],
+  "limits": {
+    "large_increase": {
+      "description": "Units a single adjustment may add before a person approves it",
+      "default": 10
+    },
+    "large_decrease": {
+      "description": "Units a single adjustment may remove before a person approves it (a negative quantity)",
+      "default": -10
+    }
+  },
   "approvals": [
     {
       "id": "large_increase",
       "tool": "stock_adjust",
-      "description": "Adding more than 10 units",
-      "when": [{ "arg": "quantity", "op": "gt", "value": 10 }]
+      "description": "Adding more units than the business allows without approval",
+      "when": [{ "arg": "quantity", "op": "gt", "value": { "limit": "large_increase" } }]
     },
     {
       "id": "large_decrease",
       "tool": "stock_adjust",
-      "description": "Removing more than 10 units",
-      "when": [{ "arg": "quantity", "op": "lt", "value": -10 }]
+      "description": "Removing more units than the business allows without approval",
+      "when": [{ "arg": "quantity", "op": "lt", "value": { "limit": "large_decrease" } }]
     }
   ],
   "channels": ["chat"],
