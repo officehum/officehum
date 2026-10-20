@@ -17,7 +17,7 @@
     { "name": "reschedule_appointment", "replay": "safe" },
     { "name": "cancel_appointment", "replay": "safe" }
   ],
-  "connectors": [],
+  "connectors": ["google-calendar"],
   "approvals": [
     {
       "id": "confirm_contact_creation",
@@ -50,7 +50,7 @@
       "description": "Confirm this appointment cancellation"
     }
   ],
-  "channels": ["chat"],
+  "channels": ["email", "sms", "chat"],
   "accepts": [
     {
       "type": "booking.request",
@@ -63,8 +63,22 @@
         },
         { "person": true }
       ]
+    },
+    {
+      "type": "customer.reply",
+      "description": "Reply to an inbound customer message",
+      "done": [{ "person": true }]
     }
   ],
-  "skills": [],
+  "dispatches": [
+    {
+      "type": "invoice.question",
+      "when": "a customer asks about an invoice, a price, or what they owe"
+    }
+  ],
+  "skills": [
+    { "id": "qualifying-inquiries", "enabledByDefault": true },
+    { "id": "rescheduling", "enabledByDefault": true }
+  ],
   "evals": "evals"
 }
