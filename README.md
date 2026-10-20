@@ -294,7 +294,7 @@ credential. Only `module` and an optional `export` are allowed per entry, and an
 ```json
 {
   "calendar": { "module": "./clients/calendar.mjs" },
-  "quickbooks": { "module": "@officehum/quickbooks", "export": "createQuickBooks" }
+  "quickbooks": { "module": "@officehum/quickbooks", "export": "quickbooksClient" }
 }
 ```
 
