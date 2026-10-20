@@ -14,6 +14,11 @@ export type Contact = {
   phone: string | null;
   revision: number;
   bookingIds: string[];
+  /**
+   * When a customer's authenticated inbound message last matched this contact, as an ISO-8601 UTC
+   * timestamp; null until then. An observation, so it never moves `revision`.
+   */
+  lastSeenAt: string | null;
 };
 
 type ContactOperation = {
@@ -229,6 +234,7 @@ export function contactTools(): ToolRegistration[] {
           ...normalized,
           revision: 1,
           bookingIds: [],
+          lastSeenAt: null,
         };
         state.nextId += 1;
         state.contacts.push(contact);
@@ -363,4 +369,22 @@ export async function linkBookingContact(
       bookingId,
     });
   }, context);
+}
+
+/**
+ * Record that a stored contact wrote in, matched by the authenticated inbound sender's exact email —
+ * never guessed from the message text or from a name. The profile revision does not move: this is an
+ * observation, not an edit. Returns the id it marked, or undefined when no contact owns that address.
+ */
+export function markContactSeen(
+  state: ContactsDocument,
+  senderEmail: string,
+  at: string,
+): string | undefined {
+  const email = senderEmail.trim().toLowerCase();
+  if (email.length === 0) return undefined;
+  const contact = state.contacts.find((candidate) => candidate.email === email);
+  if (contact === undefined) return undefined;
+  contact.lastSeenAt = at;
+  return contact.id;
 }

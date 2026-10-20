@@ -27,7 +27,7 @@ import {
   scriptedProvider,
 } from "../../../packages/office/src/testing/scripted-model.js";
 import manifest from "../officehum.json" with { type: "json" };
-import frontdesk, { ContactsDoc } from "./index.js";
+import frontdesk, { ContactsDoc, discountApprovalCondition } from "./index.js";
 
 const temps: string[] = [];
 afterEach(() => {
@@ -102,6 +102,47 @@ async function attemptLifecycle(
   const toolResult = [...view.messages].reverse().find((message) => message.role === "toolResult");
   await harness.close(BACKGROUND_CONTEXT);
   return { calendar, first, second, settled, toolResult };
+}
+
+/** Book through the real Harness with an optional discount, recording every approval the desk asks for. */
+async function attemptDiscountBooking(
+  discountPercent: number | undefined,
+  decide: (approvalId: string) => boolean,
+) {
+  const approvals: string[] = [];
+  const calendar = tempCalendar();
+  const role = frontdesk({
+    calendar,
+    approve: async (request) => {
+      approvals.push(request.approvalId);
+      return { approved: decide(request.approvalId) };
+    },
+  });
+  const faux = fauxProvider({ provider: "frontdesk-discount-test", models: [{ id: "model" }] });
+  const args = {
+    start: "2030-01-15T09:00:00Z",
+    customer: "Demo Guest",
+    ...(discountPercent === undefined ? {} : { discountPercent }),
+  };
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall("book_appointment", args), { stopReason: "toolUse" }),
+    fauxAssistantMessage("Finished"),
+  ]);
+  const models = createModels();
+  models.setProvider(faux.provider);
+  const registry = createRegistry();
+  for (const extension of role.extensions) registry.install(extension);
+  const harness = await Harness.open(new MemoryStorage(), { models, registry }, BACKGROUND_CONTEXT);
+  const root = await harness.root(BACKGROUND_CONTEXT, {
+    agent: { ...role.agent, model: { provider: "frontdesk-discount-test", modelId: "model" } },
+  });
+  const submission = await root.submit({ type: "input", content: "Book it" }, BACKGROUND_CONTEXT);
+  const settled = await submission.wait(BACKGROUND_CONTEXT);
+  if (settled.status === "done" && settled.type === "input") {
+    await root.commit((tx) => tx.entry(AssistantEntry, settled.answer), BACKGROUND_CONTEXT);
+  }
+  await harness.close(BACKGROUND_CONTEXT);
+  return { calendar, approvals };
 }
 
 describe("frontdesk role", () => {
@@ -503,6 +544,77 @@ describe("frontdesk role", () => {
   });
 });
 
+describe("frontdesk discount gate", () => {
+  const environment = (limits: Readonly<Record<string, number>>) => ({ read: {}, limits }) as never;
+
+  it("reads the discount rate from the manifest's named limit", () => {
+    const calendar = tempCalendar();
+    expect(frontdesk({ calendar }).current().limits).toEqual({ booking_discount_percent: 0 });
+    calendar.close();
+  });
+
+  it("lets an overlay change the discount rate without touching the package", () => {
+    const calendar = tempCalendar();
+    const overlay = mkdtempSync(join(tmpdir(), "officehum-frontdesk-limit-"));
+    temps.push(overlay);
+    writeFileSync(
+      join(overlay, "settings.json"),
+      JSON.stringify({ limits: { booking_discount_percent: 15 } }),
+    );
+    expect(frontdesk({ calendar, overlays: [overlay] }).current().limits).toEqual({
+      booking_discount_percent: 15,
+    });
+    calendar.close();
+  });
+
+  it("gates a discount above the resolved limit and fails safe otherwise", () => {
+    const atDefault = environment({ booking_discount_percent: 0 });
+    expect(discountApprovalCondition({}, atDefault, BACKGROUND_CONTEXT)).toBe(false);
+    expect(discountApprovalCondition({ discountPercent: 0 }, atDefault, BACKGROUND_CONTEXT)).toBe(
+      false,
+    );
+    expect(discountApprovalCondition({ discountPercent: 20 }, atDefault, BACKGROUND_CONTEXT)).toBe(
+      true,
+    );
+
+    const raised = environment({ booking_discount_percent: 25 });
+    expect(discountApprovalCondition({ discountPercent: 20 }, raised, BACKGROUND_CONTEXT)).toBe(
+      false,
+    );
+    expect(discountApprovalCondition({ discountPercent: 30 }, raised, BACKGROUND_CONTEXT)).toBe(
+      true,
+    );
+    // A discount that is not a real number, and a limit that did not resolve, wait for a person.
+    expect(discountApprovalCondition({ discountPercent: "20" }, raised, BACKGROUND_CONTEXT)).toBe(
+      true,
+    );
+    expect(
+      discountApprovalCondition({ discountPercent: 20 }, environment({}), BACKGROUND_CONTEXT),
+    ).toBe(true);
+  });
+
+  it("waits for a person when a booking carries a discount over the limit", async () => {
+    const attempt = await attemptDiscountBooking(20, () => true);
+    expect(attempt.approvals).toEqual(["confirm_booking", "discount_booking"]);
+    expect(attempt.calendar.bookings()).toHaveLength(1);
+    attempt.calendar.close();
+  });
+
+  it("does not book a discounted appointment when the discount is declined", async () => {
+    const attempt = await attemptDiscountBooking(20, (id) => id !== "discount_booking");
+    expect(attempt.approvals).toEqual(["confirm_booking", "discount_booking"]);
+    expect(attempt.calendar.bookings()).toEqual([]);
+    attempt.calendar.close();
+  });
+
+  it("never asks the discount gate for a booking without a discount", async () => {
+    const attempt = await attemptDiscountBooking(undefined, () => true);
+    expect(attempt.approvals).toEqual(["confirm_booking"]);
+    expect(attempt.calendar.bookings()).toHaveLength(1);
+    attempt.calendar.close();
+  });
+});
+
 /** The turns the scripted model plays back per brief scenario, keyed by scenario id. */
 const askedForASlot: ScriptedScript = [
   { toolCalls: [{ name: "check_schedule", args: { date: "2030-01-15" } }] },
@@ -597,6 +709,15 @@ describe("frontdesk brief contract (RASF-3129)", () => {
     expect(agent.ok).toBe(true);
     expect(agent.issues).toEqual([]);
     calendar.close();
+  });
+
+  it("declares the discount rate as a named limit gated by its own approval", () => {
+    expect(roleManifest.limits?.booking_discount_percent?.default).toBe(0);
+    expect(
+      roleManifest.approvals.some(
+        (approval) => approval.id === "discount_booking" && approval.tool === "book_appointment",
+      ),
+    ).toBe(true);
   });
 
   it("passes every brief scenario on a bare Pi Durable harness with the scripted model", async () => {

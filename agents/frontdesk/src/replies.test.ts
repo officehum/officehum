@@ -7,6 +7,7 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import { createRegistry, defineDoc, Harness, MemoryStorage } from "@earendil-works/pi-durable";
 import { afterEach, describe, expect, it } from "vitest";
+import { contactTools } from "./contacts.js";
 import frontdesk, {
   ContactsDoc,
   RepliesDoc,
@@ -41,6 +42,77 @@ const calendar = {
     throw new Error("unused");
   },
 };
+
+/** Run one inbound reply where `to` is the authenticated sender, optionally seeding a stored contact. */
+async function replyAsInbound(to: string, seedEmail: string | undefined) {
+  const target: ReplyTarget = {
+    receiptId: "11111111-1111-4111-8111-111111111111",
+    conversationId: "pending",
+    messengerId: "officehum.resend.reply.v1:test",
+    from: "desk@example.test",
+    to,
+    replyTo: "desk@example.test",
+    subject: "Re: Hello",
+    inReplyTo: "<first@example.test>",
+    references: ["<first@example.test>"],
+  };
+  const sends: unknown[] = [];
+  const messenger: ReplyMessenger = {
+    identity: target.messengerId,
+    async prepare(receiptId, conversationId) {
+      expect(receiptId).toBe(target.receiptId);
+      return { ...target, conversationId };
+    },
+    async send(intent, options) {
+      sends.push({ target: intent.target, text: intent.text, requestId: options.requestId });
+      return { id: "22222222-2222-4222-8222-222222222222", status: "accepted" };
+    },
+  };
+  const role = frontdesk({
+    calendar,
+    replyMessenger: messenger,
+    approveReply: async () => ({ approved: true, by: "operator" }),
+  });
+  const provider = fauxProvider({ provider: "reply-contact", models: [{ id: "model" }] });
+  provider.setResponses([
+    fauxAssistantMessage(
+      fauxToolCall("reply_message", { receiptId: target.receiptId, text: "Hello." }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("Done"),
+  ]);
+  const models = createModels();
+  models.setProvider(provider.provider);
+  const registry = createRegistry();
+  for (const extension of role.extensions) registry.install(extension);
+  const harness = await Harness.open(new MemoryStorage(), { models, registry }, BACKGROUND_CONTEXT);
+  harnesses.push(harness);
+  if (seedEmail !== undefined) {
+    const seed = contactTools().find((tool) => tool.name === "create_contact");
+    if (seed === undefined) throw new Error("missing create_contact");
+    await seed.execute(
+      { name: "Guest", email: seedEmail },
+      {
+        conversationId: 900,
+        taskId: 900,
+        callId: "seed",
+        commit: harness.commit.bind(harness),
+        snapshot: harness.snapshot.bind(harness),
+      } as never,
+      BACKGROUND_CONTEXT,
+    );
+  }
+  const root = await harness.root(BACKGROUND_CONTEXT, {
+    agent: { ...role.agent, model: { provider: "reply-contact", modelId: "model" } },
+  });
+  const submission = await root.submit({ type: "input", content: "Reply" }, BACKGROUND_CONTEXT);
+  const settled = await submission.wait(BACKGROUND_CONTEXT);
+  return {
+    sends,
+    settled,
+    contacts: await harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT),
+  };
+}
 
 describe("Front Desk threaded replies", () => {
   it("blocks an unoffered customer mutation without changing shared state", async () => {
@@ -214,5 +286,34 @@ describe("Front Desk threaded replies", () => {
     expect(prepares).toBe(1);
     expect(sends).toBe(0);
     expect((await harness.snapshot(RepliesDoc, BACKGROUND_CONTEXT))?.replies ?? []).toEqual([]);
+  });
+
+  it("records a known inbound sender on the contact's record, guessing nothing from the text", async () => {
+    const attempt = await replyAsInbound("guest@example.test", "guest@example.test");
+    expect(attempt.settled.status).toBe("done");
+    expect(attempt.sends).toHaveLength(1);
+    expect(attempt.contacts?.contacts).toHaveLength(1);
+    // Identity comes from the exact envelope address; the marker is an observation, so revision stays.
+    expect(attempt.contacts?.contacts[0]).toMatchObject({
+      id: "contact-1",
+      email: "guest@example.test",
+      revision: 1,
+    });
+    expect(attempt.contacts?.contacts[0]?.lastSeenAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    );
+  });
+
+  it("never invents or marks a contact for an inbound sender the address book does not know", async () => {
+    const attempt = await replyAsInbound("stranger@example.test", "guest@example.test");
+    expect(attempt.settled.status).toBe("done");
+    expect(attempt.contacts?.contacts).toEqual([
+      expect.objectContaining({
+        id: "contact-1",
+        email: "guest@example.test",
+        revision: 1,
+        lastSeenAt: null,
+      }),
+    ]);
   });
 });
