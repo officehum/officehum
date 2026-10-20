@@ -7,7 +7,7 @@ import {
   type ToolExecutionApi,
 } from "@earendil-works/pi-durable";
 import { afterEach, describe, expect, it } from "vitest";
-import { ContactsDoc, contactTools } from "./contacts.js";
+import { ContactsDoc, contactTools, markContactSeen } from "./contacts.js";
 
 const harnesses: Harness[] = [];
 
@@ -64,6 +64,7 @@ describe("Front Desk contacts", () => {
         phone: "+15551234567",
         revision: 1,
         bookingIds: [],
+        lastSeenAt: null,
       },
       replayed: false,
     });
@@ -84,6 +85,7 @@ describe("Front Desk contacts", () => {
           phone: "+15551234567",
           revision: 2,
           bookingIds: [],
+          lastSeenAt: null,
         },
         {
           id: "contact-2",
@@ -92,6 +94,7 @@ describe("Front Desk contacts", () => {
           phone: null,
           revision: 1,
           bookingIds: [],
+          lastSeenAt: null,
         },
       ],
     });
@@ -273,5 +276,27 @@ describe("Front Desk contacts", () => {
         BACKGROUND_CONTEXT,
       ),
     ).rejects.toThrow(/unknown contact/i);
+  });
+
+  it("marks a known contact seen by its exact envelope email, never by name or message text", async () => {
+    const { harness, named, api } = await setup();
+    await named("create_contact").execute(
+      { name: "Guest", email: "guest@example.test" },
+      api("create-1"),
+      BACKGROUND_CONTEXT,
+    );
+    const marked = await harness.commit(async (tx) => {
+      const state = await tx.doc(ContactsDoc);
+      // An unmatched sender changes nothing; the exact authenticated address marks the contact.
+      expect(
+        markContactSeen(state, "STRANGER@example.test", "2030-01-15T09:00:00.000Z"),
+      ).toBeUndefined();
+      return markContactSeen(state, "GUEST@example.test", "2030-01-15T09:00:00.000Z");
+    }, BACKGROUND_CONTEXT);
+    expect(marked).toBe("contact-1");
+    expect((await harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT))?.contacts[0]).toMatchObject({
+      revision: 1,
+      lastSeenAt: "2030-01-15T09:00:00.000Z",
+    });
   });
 });

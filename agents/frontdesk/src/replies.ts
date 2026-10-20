@@ -8,6 +8,7 @@ import {
   ToolTask,
 } from "@earendil-works/pi-durable";
 import type { ApprovalDecision, ApprovalRequest, Approver } from "@officehum/sdk";
+import { ContactsDoc, markContactSeen } from "./contacts.js";
 
 export type ReplyTarget = {
   receiptId: string;
@@ -331,6 +332,11 @@ export function repliesTools(messenger?: ReplyMessenger, approve?: Approver): To
             return prior;
           }
           doc.replies.push(candidate);
+          // A customer wrote in: the reply's destination is the inbound envelope's authenticated
+          // sender. When it exactly matches a stored contact, record a last-seen marker. Identity
+          // comes only from that verified address, never from the message text, and no contact is
+          // created or corrected here, so the first-contact approval is untouched.
+          markContactSeen(await tx.doc(ContactsDoc), candidate.target.to, new Date().toISOString());
           return candidate;
         }, context);
         return toolResult(stored, false);

@@ -18,6 +18,12 @@
     { "name": "cancel_appointment", "replay": "safe" }
   ],
   "connectors": ["google-calendar"],
+  "limits": {
+    "booking_discount_percent": {
+      "description": "The discount rate, in percent, above which a booking needs a person's approval",
+      "default": 0
+    }
+  },
   "approvals": [
     {
       "id": "confirm_contact_creation",
@@ -38,6 +44,11 @@
       "id": "confirm_booking",
       "tool": "book_appointment",
       "description": "Confirm this appointment booking"
+    },
+    {
+      "id": "discount_booking",
+      "tool": "book_appointment",
+      "description": "Confirm a discounted booking above the business's set rate"
     },
     {
       "id": "confirm_reschedule",
