@@ -162,6 +162,41 @@
       }
     },
     {
+      "id": "collections-run-every-overdue-invoice",
+      "description": "A collections round reads every overdue invoice and sends each one the reminder its own stage calls for, with nothing waiting for a person",
+      "severity": "normal",
+      "tags": ["brief"],
+      "input": {
+        "kind": "message",
+        "channel": "chat",
+        "text": "Please run the collections round for this morning: chase everything that is overdue."
+      },
+      "stubs": {
+        "find_customer": { "text": "Demo Guest — customer-1 — guest@example.com" },
+        "list_invoices": {
+          "text": "Overdue:\n1042 — Demo Guest — balance 120.00 USD — due 2030-02-01\n1043 — Demo Guest — balance 45.00 USD — due 2030-01-15"
+        },
+        "get_invoice": {
+          "text": "Invoice 1042 — Demo Guest — total 120.00 USD — balance 120.00 USD — due 2030-02-01"
+        },
+        "create_invoice": { "text": "Created invoice 1045 for customer-1" },
+        "send_invoice": { "text": "Sent invoice 1042 to guest@example.com" },
+        "send_reminder": {
+          "text": "Reminder sent for the invoice this call named, at the stage it asked for."
+        }
+      },
+      "expect": {
+        "calls": [
+          { "tool": "list_invoices", "args": { "status": "overdue" } },
+          { "tool": "send_reminder", "args": { "invoice": "1042", "tone": "friendly" } },
+          { "tool": "send_reminder", "args": { "invoice": "1043", "tone": "firm" } }
+        ],
+        "notCalled": ["create_invoice", "send_invoice"],
+        "approvalsRequested": [],
+        "reply": { "contains": ["1042", "1043"] }
+      }
+    },
+    {
       "id": "billing-question-answered-with-figures",
       "description": "A billing question is answered with the invoice number, the balance and the due date the tools returned",
       "severity": "normal",

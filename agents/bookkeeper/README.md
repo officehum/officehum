@@ -123,13 +123,18 @@ Both code conditions fail safe: a draft they cannot sum, an invoice or customer 
 answer for, or a limit that did not resolve all wait for a person rather than passing silently. A
 device with no approver blocks every gated action.
 
-### Changing the `large_invoice` limit
+### Changing the limits
 
-The limit is the manifest's `large_invoice`, in cents (`500000` is 5,000.00). A business changes it
-in an overlay's `settings.json` — no edit to this package:
+`large_invoice` is the manifest's `large_invoice`, in cents (`500000` is 5,000.00). The collections
+cadence is the manifest's `collections_first_days`, `collections_second_days` and
+`collections_final_days`: how many days after its due date an invoice is sent its friendly, firm and
+final reminder. A business changes any of them in an overlay's `settings.json` — no edit to this
+package, and no restart: `send_reminder` reads the resolved limits on every call, so an overlay that
+raises `collections_first_days` to 6 keeps a friendly reminder for a four-day-old invoice in its
+pocket:
 
 ```json
-{ "limits": { "large_invoice": 250000 } }
+{ "limits": { "large_invoice": 250000, "collections_first_days": 6 } }
 ```
 
 ## The tools
@@ -143,7 +148,7 @@ Six tools, each declaring its replay policy exactly as `officehum.json` does:
 | `get_invoice` | safe | `{ invoice }` — a QuickBooks id, or the number a customer quotes |
 | `create_invoice` | unsafe | `{ customer, lines, dueInDays?, jobReference?, currency? }` |
 | `send_invoice` | unsafe | `{ invoice, to? }` — `to` is another address, and waits for a person |
-| `send_reminder` | unsafe | `{ invoice, tone }` — `friendly`, `firm` or `final` (this one belongs to the collections skill) |
+| `send_reminder` | unsafe | `{ invoice, tone }` — `friendly`, `firm` or `final`, once per invoice per stage (this one belongs to the collections skill) |
 
 Every figure a tool speaks — an invoice number, a total, a balance, a due date — is what the client
 returned, in cents. `create_invoice` takes each line's unit price in **integer cents** and never a
@@ -157,14 +162,29 @@ the invoice it already created instead of a second one. `send_reminder` uses the
 endpoint, because QuickBooks has no reminder endpoint of its own: the tone is the role's own wording,
 and the requestId is still this call's, so a retried reminder is not a second reminder.
 
+## One reminder per invoice and stage
+
+`send_reminder` keeps a durable ledger — the `bookkeeper.collections` document, conversation scope,
+latest history — of the stages this conversation has sent, per invoice, with the time each went out.
+It writes that record in the **same commit that returns the receipt**, so a process killed the moment
+after the commit leaves a restart with a reminder already recorded and nothing to send. A repeated
+run, a retried call or a restart is answered from the ledger: the tool reports what was already sent
+and reaches no client at all. A different stage for the same invoice (firm after friendly) is its own
+send and goes through. A paid invoice is never chased, and a stage before its day — at the business's
+own cadence — is refused rather than sent early.
+
+The ledger lives in the conversation, so a run's conversation is the unit it protects. A run in
+another conversation starts from an empty ledger.
+
 ## The files
 
 | Path | What it holds |
 | --- | --- |
-| `officehum.json` | The manifest: six tools, three approvals, the `large_invoice` limit, skills, evals |
+| `officehum.json` | The manifest: six tools, three approvals, four limits, accepts with completion evidence, skills, evals |
 | `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
-| `src/index.ts` | The factory: the tools, the skill tools and the code conditions |
-| `src/tools.ts` | The six tools, the two code conditions and the write `requestId` |
-| `evals/situations.json` | The six eval scenarios |
+| `src/index.ts` | The factory: the tools, the skill tools, the code conditions and the live limits reader |
+| `src/tools.ts` | The six tools, the `bookkeeper.collections` ledger, the cadence helpers and the write `requestId` |
+| `src/collections.test.ts` | The ledger: a repeated run, a restart after the commit, and the cadence from limits |
+| `evals/situations.json` | The seven eval scenarios |
 | `evals.smoke.json` | The turns `--model scripted` plays back for them |
 | `skills/` | `invoicing`, `collections` and `billing-questions`, with their references |

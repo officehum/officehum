@@ -39,7 +39,7 @@
       "name": "send_reminder",
       "replay": "unsafe",
       "skill": "collections",
-      "description": "Send a collections reminder for an overdue invoice, in a friendly, firm or final tone."
+      "description": "Send a collections reminder for an overdue invoice, in a friendly, firm or final tone. One reminder per invoice per stage, at the stage the business's cadence has reached."
     }
   ],
   "connectors": ["quickbooks"],
@@ -47,6 +47,18 @@
     "large_invoice": {
       "description": "The amount above which an invoice waits for a person's approval before it is created",
       "default": 500000
+    },
+    "collections_first_days": {
+      "description": "How many days after its due date an overdue invoice is sent a friendly reminder",
+      "default": 3
+    },
+    "collections_second_days": {
+      "description": "How many days after its due date an overdue invoice is sent a firm reminder",
+      "default": 14
+    },
+    "collections_final_days": {
+      "description": "How many days after its due date an overdue invoice is sent a final notice",
+      "default": 30
     }
   },
   "approvals": [
@@ -85,6 +97,11 @@
     {
       "type": "invoice.question",
       "description": "Answer a billing question",
+      "done": [{ "person": true }]
+    },
+    {
+      "type": "collections.run",
+      "description": "Chase the overdue invoices: one reminder per invoice, at the stage its age calls for",
       "done": [{ "person": true }]
     }
   ],
