@@ -3,7 +3,7 @@
  * message and the role's stable sections must stay byte-identical, and the system message must lead
  * the request. The scripted provider records each request. No network and no real model are used.
  */
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Scenario } from "@officehum/sdk";
@@ -12,7 +12,12 @@ import { scriptedProvider } from "../testing/scripted-model.js";
 import { piDurableRunner } from "./pi-durable-runner.js";
 import { type PromptCacheRequest, promptCacheFailures } from "./prompt-cache.js";
 
-/** Every role package under `agents/`: a directory holding an `officehum.json`. */
+/**
+ * Every runnable role package under `agents/`: a directory holding an `officehum.json` and a declared
+ * entry point. A package between its spec issue and its factory issue (the Bookkeeper, RASF-3126
+ * before RASF-3127) declares no entry point, so there is no bundle to load and no prompt to compare;
+ * it joins this loop the moment its `main`/`exports` does.
+ */
 function roleDirectories(): string[] {
   const agents = fileURLToPath(new URL("../../../../agents", import.meta.url));
   return readdirSync(agents, { withFileTypes: true })
@@ -20,11 +25,27 @@ function roleDirectories(): string[] {
     .map((entry) => join(agents, entry.name))
     .filter((dir) => {
       try {
-        return statSync(join(dir, "officehum.json")).isFile();
+        return statSync(join(dir, "officehum.json")).isFile() && declaresEntryPoint(dir);
       } catch {
         return false;
       }
     });
+}
+
+/** Whether a package's `package.json` names the module a host imports to build the role. */
+function declaresEntryPoint(dir: string): boolean {
+  try {
+    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
+      main?: unknown;
+      exports?: unknown;
+    };
+    if (typeof pkg.main === "string") return true;
+    return (
+      typeof pkg.exports === "string" || (typeof pkg.exports === "object" && pkg.exports !== null)
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Three model turns — two calls to the SDK's `read_skill`, then an answer — so three requests land. */
