@@ -24,11 +24,20 @@ export {
   type BookkeeperToolset,
   bookkeeperTools,
   type CallIdentity,
+  type CollectionsCadence,
+  CollectionsDoc,
+  type CollectionsDocument,
+  collectionsCadence,
+  collectionsStage,
+  daysOverdue,
   findCustomerByReference,
   findInvoiceByReference,
   largeInvoiceCondition,
   newRecipientCondition,
+  type ReminderSent,
   type ReminderTone,
+  sentStage,
+  stageStartDay,
   writeRequestId,
 } from "./tools.js";
 
@@ -47,8 +56,13 @@ export interface BookkeeperOptions {
 }
 
 export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
-  const tools = bookkeeperTools(options.quickbooks);
-  return defineRole({
+  // The collections cadence is read from the role's own resolved limits at every call, so an
+  // overlay's value is what a reminder is measured against and a reload needs no rebuild. The
+  // reader is bound to the role this call returns; before it exists no cadence resolves, and a
+  // reminder then refuses rather than guessing a stage.
+  let role: DefinedRole | undefined;
+  const tools = bookkeeperTools(options.quickbooks, () => role?.current().limits ?? {});
+  const created = defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
     tools: [
@@ -70,4 +84,6 @@ export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });
+  role = created;
+  return created;
 }

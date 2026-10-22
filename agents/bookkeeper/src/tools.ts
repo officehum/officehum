@@ -15,7 +15,7 @@
 
 import { createHash } from "node:crypto";
 import { Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
+import { defineDoc, defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { Customer, Invoice, InvoiceDraft, Money, QuickBooks } from "@officehum/quickbooks";
 import type { ApprovalCondition } from "@officehum/sdk";
 
@@ -113,13 +113,125 @@ type CreatedInvoiceDetails = {
 type SentInvoiceDetails = { sent: boolean; invoice: InvoiceDetails | null; to: string | null };
 type ReminderDetails = {
   sent: boolean;
+  /** True when the stage was already in the ledger: the call sent nothing and read nothing. */
+  alreadySent: boolean;
   invoice: InvoiceDetails | null;
   tone: ReminderTone;
   to: string | null;
+  /** When the stage was recorded, on a send and on an "already sent"; null when it is not recorded. */
+  sentAt: string | null;
 };
 
 /** The three tones the collections skill sends a reminder in. */
 export type ReminderTone = "friendly" | "firm" | "final";
+
+/** One reminder this conversation has sent: which invoice, at which stage, and when. */
+export type ReminderSent = {
+  /** The invoice's QuickBooks id, which names it whatever reference the call used. */
+  invoiceId: string;
+  /** The reference the call used: the id, or the document number a person or a run quoted. */
+  reference: string;
+  /** The stage that went out. An invoice plus a stage is what may go out only once. */
+  tone: ReminderTone;
+  /** The address it went to, as the customer's record held it. */
+  to: string;
+  /** When the stage was recorded, ISO-8601 UTC. */
+  sentAt: string;
+};
+
+/** The collections ledger of one conversation: every stage sent, and when. */
+export type CollectionsDocument = { sent: ReminderSent[] };
+
+/**
+ * The durable ledger that makes a collections run idempotent: per invoice, the stages this
+ * conversation has already sent and when. Conversation scope with latest history, so a run keeps one
+ * ledger, it survives a restart, and it — never the transcript, which a crash can lose — is what
+ * decides whether a reminder goes out again. A later run finds the stage recorded here and sends
+ * nothing.
+ */
+export const CollectionsDoc = defineDoc<CollectionsDocument>({
+  kind: "bookkeeper.collections",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "current",
+  initial: () => ({ sent: [] }),
+});
+
+/**
+ * The stage a ledger already holds for an invoice, if it holds one. A record matches when the stage
+ * is the same and either the reference this call used or the invoice's own id is the same, so the
+ * document number a person quotes and the id a run lists are one invoice, not two.
+ */
+export function sentStage(
+  sent: readonly ReminderSent[],
+  reference: string,
+  invoiceId: string | undefined,
+  tone: ReminderTone,
+): ReminderSent | undefined {
+  return sent.find(
+    (record) =>
+      record.tone === tone &&
+      (record.reference === reference ||
+        (invoiceId !== undefined && record.invoiceId === invoiceId)),
+  );
+}
+
+/** The business's cadence, resolved: how many days after its due date each stage starts. */
+export interface CollectionsCadence {
+  readonly firstDays: number;
+  readonly secondDays: number;
+  readonly finalDays: number;
+}
+
+/** The day after the due date a stage starts at, from one resolved cadence. */
+export function stageStartDay(tone: ReminderTone, cadence: CollectionsCadence): number {
+  if (tone === "friendly") return cadence.firstDays;
+  if (tone === "firm") return cadence.secondDays;
+  return cadence.finalDays;
+}
+
+/** A limit as a whole number of days; a missing, fractional or negative one is not a cadence. */
+function wholeDays(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+/**
+ * The business's cadence, read from the role's *resolved* limits — the manifest's defaults or the
+ * values an overlay set — at the moment a reminder is about to go out, the way
+ * `largeInvoiceCondition` reads `large_invoice`. `undefined` when a limit did not resolve, is not a
+ * whole number of days, or the three are out of order: a cadence the code cannot read is no cadence,
+ * and a reminder then refuses instead of guessing which stage is due.
+ */
+export function collectionsCadence(
+  limits: Readonly<Record<string, number>>,
+): CollectionsCadence | undefined {
+  const first = limits.collections_first_days;
+  const second = limits.collections_second_days;
+  const final = limits.collections_final_days;
+  if (!wholeDays(first) || !wholeDays(second) || !wholeDays(final)) return undefined;
+  if (first > second || second > final) return undefined;
+  return { firstDays: first, secondDays: second, finalDays: final };
+}
+
+/** Whole days from a `YYYY-MM-DD` due date to today, in UTC; undefined when the date is not one. */
+export function daysOverdue(dueOn: string, now: Date = new Date()): number | undefined {
+  const due = Date.parse(`${dueOn}T00:00:00.000Z`);
+  const today = Date.parse(`${now.toISOString().slice(0, 10)}T00:00:00.000Z`);
+  if (!Number.isFinite(due) || !Number.isFinite(today)) return undefined;
+  return Math.round((today - due) / 86_400_000);
+}
+
+/** The stage an invoice's age calls for: the latest stage whose day has arrived, else none yet. */
+export function collectionsStage(
+  days: number,
+  cadence: CollectionsCadence,
+): ReminderTone | undefined {
+  if (days >= cadence.finalDays) return "final";
+  if (days >= cadence.secondDays) return "firm";
+  if (days >= cadence.firstDays) return "friendly";
+  return undefined;
+}
 
 /** One customer as details: no optional field, so a UI always reads one shape. */
 function customerJson(customer: Customer): CustomerDetails {
@@ -164,6 +276,32 @@ function sameAddress(left: string, right: string): boolean {
  */
 function textResult(value: string) {
   return { output: [{ type: "text" as const, text: value }] };
+}
+
+/**
+ * The result for a stage the ledger already holds. It reports what the record says and reaches for
+ * neither QuickBooks nor the clock: a repeat of a sent stage is answered from durable state alone,
+ * which is why it can be answered after a restart and why it costs no client call.
+ */
+function alreadySentResult(
+  record: ReminderSent,
+  invoice: InvoiceDetails | null,
+  tone: ReminderTone,
+) {
+  const details: ReminderDetails = {
+    sent: false,
+    alreadySent: true,
+    invoice,
+    tone,
+    to: record.to,
+    sentAt: record.sentAt,
+  };
+  return {
+    ...textResult(
+      `Invoice ${record.invoiceId} already had its ${tone} reminder recorded on ${record.sentAt}, to ${record.to}: nothing was sent again.`,
+    ),
+    details,
+  };
 }
 
 /** `YYYY-MM-DD`, `days` from today in UTC: the only date form QuickBooks accepts. */
@@ -228,10 +366,18 @@ const lineParameters = Type.Object(
 );
 
 /**
- * Builds the six tools over one client. Every one is plain Pi Durable: it installs into any harness,
- * and a bare harness with no client builds the same tools and refuses at the point of use.
+ * Builds the six tools over one client and the business's limits. Every one is plain Pi Durable: it
+ * installs into any harness, and a bare harness with no client builds the same tools and refuses at
+ * the point of use.
+ *
+ * `limits` is read at every call, so an overlay's change to the collections cadence takes effect on
+ * reload, like the prompt sections. A host that passes none resolves no cadence, and a reminder then
+ * refuses rather than guessing a stage.
  */
-export function bookkeeperTools(quickbooks: QuickBooks | undefined): BookkeeperToolset {
+export function bookkeeperTools(
+  quickbooks: QuickBooks | undefined,
+  limits: () => Readonly<Record<string, number>> = () => ({}),
+): BookkeeperToolset {
   const findCustomer = defineTool({
     name: "find_customer",
     description:
@@ -533,7 +679,7 @@ export function bookkeeperTools(quickbooks: QuickBooks | undefined): BookkeeperT
   const sendReminder = defineTool({
     name: "send_reminder",
     description:
-      "Send a collections reminder for an overdue invoice, in a friendly, firm or final tone. One reminder per invoice, and a final notice waits for a person.",
+      "Send a collections reminder for an overdue invoice, in a friendly, firm or final tone. One reminder per invoice per stage, at the stage the business's cadence has reached; a final notice waits for a person.",
     parameters: Type.Object(
       {
         invoice: Type.String({
@@ -541,22 +687,33 @@ export function bookkeeperTools(quickbooks: QuickBooks | undefined): BookkeeperT
         }),
         tone: Type.Union([Type.Literal("friendly"), Type.Literal("firm"), Type.Literal("final")], {
           description:
-            "friendly while the invoice is fresh, firm once it is overdue, and final only with a person's approval",
+            "friendly once the invoice is a few days overdue, firm once it has been overdue a while, and final only after the business's final stage and with a person's approval",
         }),
       },
       { additionalProperties: false },
     ),
     replay: "unsafe",
-    execute: async (args, api) => {
+    execute: async (args, api, context) => {
       const books = requireQuickBooks(quickbooks);
-      const invoice = await findInvoiceByReference(books, args.invoice);
+      const reference = args.invoice.trim();
+      // The ledger decides first, and it decides without QuickBooks: a stage this conversation has
+      // already sent is never sent again, so a repeated run, a retried call or a restart after a
+      // crash costs no read and no second reminder. This is the whole point of the ledger, so it is
+      // read before anything else the call could reach.
+      const ledger = await api.snapshot(CollectionsDoc, api.conversationId, context);
+      const recorded = sentStage(ledger?.sent ?? [], reference, undefined, args.tone);
+      if (recorded !== undefined) return alreadySentResult(recorded, null, args.tone);
+
+      const invoice = await findInvoiceByReference(books, reference);
       const customer =
         invoice === undefined ? undefined : await books.getCustomer(invoice.customerId);
       const details: ReminderDetails = {
         sent: false,
+        alreadySent: false,
         invoice: invoice === undefined ? null : invoiceJson(invoice),
         tone: args.tone,
         to: customer?.email ?? null,
+        sentAt: null,
       };
       if (invoice === undefined) {
         return {
@@ -566,6 +723,12 @@ export function bookkeeperTools(quickbooks: QuickBooks | undefined): BookkeeperT
           isError: true,
           details,
         };
+      }
+      // The same invoice under another reference — the document number a run quotes where a person
+      // gave the id — is the same reminder, so it is answered from the ledger too.
+      const sameInvoice = sentStage(ledger?.sent ?? [], reference, invoice.id, args.tone);
+      if (sameInvoice !== undefined) {
+        return alreadySentResult(sameInvoice, details.invoice, args.tone);
       }
       if (invoice.status === "paid") {
         return {
@@ -585,15 +748,66 @@ export function bookkeeperTools(quickbooks: QuickBooks | undefined): BookkeeperT
           details,
         };
       }
+      // The cadence is the business's, read resolved from its own limits on every call: the numbers
+      // the skill's reference holds are the defaults, not the law. A stage whose day has not arrived
+      // is refused here rather than sent early, and a cadence that did not resolve sends nothing.
+      const days = daysOverdue(invoice.dueOn);
+      const cadence = collectionsCadence(limits());
+      if (days === undefined || cadence === undefined) {
+        return {
+          ...textResult(
+            `The business's collections cadence could not be read, so no reminder for invoice ${invoiceLabel(invoice)} was sent. A person should check the role's collections limits.`,
+          ),
+          isError: true,
+          details,
+        };
+      }
+      const startsAt = stageStartDay(args.tone, cadence);
+      if (days < startsAt) {
+        const due = collectionsStage(days, cadence);
+        return {
+          ...textResult(
+            `Invoice ${invoiceLabel(invoice)} is ${days} days overdue, and the business sends a ${args.tone} reminder ${startsAt} days after the due date: ${due === undefined ? "no stage is due yet" : `the ${due} stage is the one due`}. Nothing was sent.`,
+          ),
+          isError: true,
+          details,
+        };
+      }
       // QuickBooks has no reminder endpoint of its own: a dunning reminder is the invoice sent again,
       // which is why the tone is the role's wording and the receipt is the send's. The requestId is
       // this call's, so a retried reminder is not a second one.
       const sent = await books.sendInvoice(invoice.id, { requestId: writeRequestId(api) });
+      const reminder: ReminderSent = {
+        invoiceId: sent.id,
+        reference,
+        tone: args.tone,
+        to: customer.email,
+        sentAt: new Date().toISOString(),
+      };
+      // The stage is recorded in the same commit that produces the receipt the model reads, so
+      // nothing can be killed between the reminder being counted and the run knowing it was sent: a
+      // restart re-reads this record and sends nothing.
+      const stored = await api.commit(async (tx): Promise<ReminderSent> => {
+        const doc = await tx.doc(CollectionsDoc, api.conversationId);
+        const prior = sentStage(doc.sent, reference, sent.id, args.tone);
+        // A call of this conversation that got here first recorded the stage already: its record
+        // stands, and one invoice and stage still has exactly one record.
+        if (prior !== undefined) return prior;
+        doc.sent.push(reminder);
+        return reminder;
+      }, context);
       return {
         ...textResult(
           `Sent a ${args.tone} reminder for invoice ${invoiceLabel(sent)} to ${customer.email}: balance ${moneyText(sent.balance)}, due ${sent.dueOn}.`,
         ),
-        details: { sent: true, invoice: invoiceJson(sent), tone: args.tone, to: customer.email },
+        details: {
+          sent: true,
+          alreadySent: false,
+          invoice: invoiceJson(sent),
+          tone: args.tone,
+          to: customer.email,
+          sentAt: stored.sentAt,
+        },
       };
     },
   });

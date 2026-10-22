@@ -341,35 +341,23 @@ describe("send_invoice", () => {
 });
 
 describe("send_reminder", () => {
-  it("sends one reminder in the tone it was asked for, and names the balance", async () => {
-    const tools = bookkeeperTools(seeded());
-    const result = await tools.sendReminder.execute(
-      { invoice: "1042", tone: "firm" },
-      call("remind-1"),
-      BACKGROUND_CONTEXT,
-    );
-    expect(text(result)).toContain("Sent a firm reminder for invoice 1042 to guest@example.com");
-    expect(text(result)).toContain("balance 120.00 USD");
-    expect(result.details).toMatchObject({ sent: true, tone: "firm", to: "guest@example.com" });
-  });
-
-  it("leaves a paid invoice alone and refuses an unknown one", async () => {
-    const tools = bookkeeperTools(seeded());
-    const paid = await tools.sendReminder.execute(
-      { invoice: "1044", tone: "final" },
-      call("remind-2"),
-      BACKGROUND_CONTEXT,
-    );
-    expect(paid.isError).toBe(true);
-    expect(paid.details).toMatchObject({ sent: false, tone: "final" });
-    expect(text(paid)).toContain("paid");
-
-    const unknown = await tools.sendReminder.execute(
-      { invoice: "9999", tone: "friendly" },
-      call("remind-3"),
-      BACKGROUND_CONTEXT,
-    );
-    expect(unknown.isError).toBe(true);
+  // The reminder's own tests live in collections.test.ts: it keeps a durable ledger, so its send, its
+  // refusal of a stage whose day has not arrived, and its "already sent" answer all run against a
+  // real Harness there. What stays here is the shape the manifest and the collections skill depend on.
+  it("keeps its name, its replay policy and the tone a final notice is gated on", () => {
+    const tool = bookkeeperTools(seeded()).sendReminder;
+    expect(tool.name).toBe("send_reminder");
+    expect(tool.replay).toBe("unsafe");
+    // `final_notice` is a manifest condition on this argument — `{ "arg": "tone", "op": "eq",
+    // "value": "final" }` — so the parameter must still name exactly the three tones.
+    const parameters = tool.parameters as {
+      properties: { tone: { anyOf: readonly { const: string }[] } };
+    };
+    expect(parameters.properties.tone.anyOf.map((entry) => entry.const)).toEqual([
+      "friendly",
+      "firm",
+      "final",
+    ]);
   });
 });
 

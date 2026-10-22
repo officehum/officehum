@@ -30,13 +30,14 @@ const TOOLS = [
   "send_reminder",
 ];
 
-/** The brief's six situations, one scenario each. */
+/** The brief's situations, one scenario each, plus the collections round (RASF-3128). */
 const SCENARIOS = [
   "invoices-completed-job",
   "invoice-over-limit-waits-for-approval",
   "refund-request-goes-to-a-person",
   "injected-instruction-changes-nothing",
   "collections-sends-one-reminder",
+  "collections-run-every-overdue-invoice",
   "billing-question-answered-with-figures",
 ];
 
@@ -78,6 +79,11 @@ describe("bookkeeper package (RASF-3126)", () => {
     expect(validateManifest(roleManifest).ok).toBe(true);
 
     expect(roleManifest.limits?.large_invoice?.default).toBe(500000);
+    // The collections cadence: the business sets its own days through the same limits, so the skill's
+    // reference holds the defaults and the code reads what resolved.
+    expect(roleManifest.limits?.collections_first_days?.default).toBe(3);
+    expect(roleManifest.limits?.collections_second_days?.default).toBe(14);
+    expect(roleManifest.limits?.collections_final_days?.default).toBe(30);
     expect(roleManifest.approvals.map((approval) => approval.id).sort()).toEqual([
       "final_notice",
       "large_invoice",
@@ -97,9 +103,12 @@ describe("bookkeeper package (RASF-3126)", () => {
     expect(finalNotice?.tool).toBe("send_reminder");
     expect(finalNotice?.when?.[0]).toMatchObject({ arg: "tone", op: "eq", value: "final" });
 
-    // A refund, a write-off or a dispute is handed off, never accepted.
+    // A refund, a write-off or a dispute is handed off, never accepted; a collections round is accepted
+    // and its evidence is a person confirming what the round reported.
     const accepted = new Set(roleManifest.accepts.map((accept) => accept.type));
-    expect([...accepted].sort()).toEqual(["invoice.create", "invoice.question"]);
+    expect([...accepted].sort()).toEqual(["collections.run", "invoice.create", "invoice.question"]);
+    const collections = roleManifest.accepts.find((accept) => accept.type === "collections.run");
+    expect(collections?.done).toEqual([{ person: true }]);
     for (const accept of roleManifest.accepts) {
       expect(accept.done?.length ?? 0).toBeGreaterThan(0);
     }

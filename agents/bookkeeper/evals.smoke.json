@@ -60,6 +60,16 @@
       "text": "One reminder went out: a firm note for invoice 1042, balance 120.00 USD, due 2030-01-01. No other invoice was overdue."
     }
   ],
+  "collections-run-every-overdue-invoice": [
+    { "toolCalls": [{ "name": "list_invoices", "args": { "status": "overdue" } }] },
+    {
+      "toolCalls": [{ "name": "send_reminder", "args": { "invoice": "1042", "tone": "friendly" } }]
+    },
+    { "toolCalls": [{ "name": "send_reminder", "args": { "invoice": "1043", "tone": "firm" } }] },
+    {
+      "text": "Both overdue invoices were chased: a friendly reminder for 1042 and a firm one for 1043. Nothing is waiting for a person's approval."
+    }
+  ],
   "billing-question-answered-with-figures": [
     { "toolCalls": [{ "name": "find_customer", "args": { "name": "Demo Guest" } }] },
     { "toolCalls": [{ "name": "get_invoice", "args": { "invoice": "1042" } }] },
