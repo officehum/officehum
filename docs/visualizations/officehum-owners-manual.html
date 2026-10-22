@@ -306,10 +306,10 @@
         role packages that do the work, the Paper Instruments model and document libraries they use,
         and the Office Hum layer that hosts, coordinates and configures them.</p>
       <dl class="plate">
-        <div><dt>Source checked</dt><dd><code>main</code> @ d08fc9f</dd></div>
+        <div><dt>Source checked</dt><dd><code>main</code> @ 712d6d9</dd></div>
         <div><dt>Pi Durable</dt><dd>1.3.0, pinned</dd></div>
         <div><dt>Linear project</dt><dd>officehum · 196 issues</dd></div>
-        <div><dt>Roles built</dt><dd>1 of 3 in M1</dd></div>
+        <div><dt>Roles built</dt><dd>3 of 3 in M1</dd></div>
       </dl>
       <div class="keyline">
         <span><i class="sw o"></i>Office Hum</span>
@@ -369,8 +369,8 @@
               <li><b>Market wording disagreed.</b> The README said “medium-sized businesses”, the Linear
                 project “small businesses”, and RASF-3199 and RASF-3205 “mid-market”. Linear now says
                 medium-sized companies everywhere (updated 15 Oct).</li>
-              <li><b>One role exists.</b> Front Desk is built. Bookkeeper (called the reference role) and
-                Office Manager are in the backlog. Sales was not planned; it is now an epic (RASF-3295)
+              <li><b>All three M1 roles exist.</b> Front Desk, Bookkeeper (the reference role) and Office
+                Manager are built. Sales was not planned; it is now an epic (RASF-3295)
                 under a new catalog of free roles for every department (RASF-3293).</li>
             </ul>
           </div>
@@ -433,7 +433,8 @@
             <tr><td>Paper provider</td><td><code>packages/provider-paper</code></td><td>Portable <code>pi-ai</code> provider for Ultramarine 1 Flash, so a role's default model resolves in a bare Pi Durable install</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Google Calendar client</td><td><code>packages/google-calendar</code></td><td>Portable REST client and fake for tests</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Workboard, relay, office extension</td><td>none yet</td><td>The team runtime that lets roles hand work to each other</td><td><span class="chip planned">M2</span></td></tr>
-            <tr class="planned"><td>Bookkeeper, Office Manager</td><td>none yet</td><td>The other two starter roles</td><td><span class="chip planned">M1</span></td></tr>
+            <tr><td>Bookkeeper role</td><td><code>agents/bookkeeper</code></td><td>Invoices completed jobs, chases overdue invoices, answers billing questions; QuickBooks client and fake</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Office Manager role</td><td><code>agents/office-manager</code></td><td>Triages requests and writes the daily digest; no tools of its own</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Paper Office tool pack and worker</td><td>none yet</td><td>Word, PowerPoint and Excel tools for every role</td><td><span class="chip planned">M3</span></td></tr>
             <tr class="planned"><td>Studio, Inbox, hosted servers</td><td>none yet</td><td>Web interface, approvals inbox, one server per business</td><td><span class="chip planned">M4</span></td></tr>
           </tbody>
@@ -480,7 +481,7 @@
           <!-- Row 3: roles -->
           <g><rect x="20" y="300" width="146" height="78" rx="6" class="bx"/><text x="93" y="322" text-anchor="middle" class="tb">Front Desk</text><text x="93" y="341" text-anchor="middle" class="tl c-ok">BUILT</text><text x="93" y="362" text-anchor="middle" class="tm">booking.request</text></g>
           <g class="planned"><rect x="178" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="251" y="322" text-anchor="middle" class="tb">Bookkeeper</text><text x="251" y="341" text-anchor="middle" class="tl c-part">PLANNED M1</text><text x="251" y="362" text-anchor="middle" class="tm">invoice.create</text></g>
-          <g class="planned"><rect x="336" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="409" y="322" text-anchor="middle" class="tb">Office Manager</text><text x="409" y="341" text-anchor="middle" class="tl c-part">PLANNED M1</text><text x="409" y="362" text-anchor="middle" class="tm">triage · digest</text></g>
+          <g><rect x="336" y="300" width="146" height="78" rx="6" class="bx"/><text x="409" y="322" text-anchor="middle" class="tb">Office Manager</text><text x="409" y="341" text-anchor="middle" class="tl c-ok">BUILT</text><text x="409" y="362" text-anchor="middle" class="tm">triage.request</text></g>
           <g class="planned"><rect x="494" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="567" y="322" text-anchor="middle" class="tb">Sales</text><text x="567" y="341" text-anchor="middle" class="tl c-part">PLANNED</text><text x="567" y="362" text-anchor="middle" class="tm">lead.qualify</text></g>
 
           <path d="M330 378V404" class="ln" marker-end="url(#ah1)"/>
@@ -650,7 +651,7 @@
           <tbody>
             <tr><td>Front Desk</td><td><code>booking.request</code>, <code>customer.reply</code></td><td>Contact create and update, first contact, booking, discount over the set rate, reschedule, cancel</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Bookkeeper</td><td><code>invoice.create</code>, <code>invoice.question</code></td><td><code>large_invoice</code> (over $5,000 by default), <code>new_recipient</code>, <code>final_notice</code></td><td><span class="chip planned">M1 backlog</span></td></tr>
-            <tr class="planned"><td>Office Manager</td><td><code>triage</code>, <code>digest.request</code></td><td>No tools of its own; the office's front door for unrouted work</td><td><span class="chip planned">M1 backlog</span></td></tr>
+            <tr><td>Office Manager</td><td><code>triage.request</code>, <code>digest.request</code></td><td>No tools of its own; the office's front door for unrouted work</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Configurator</td><td>Plain-language configuration requests</td><td>Every overlay change shown as a diff for approval</td><td><span class="chip planned">M4 backlog</span></td></tr>
             <tr class="planned"><td>Sales</td><td><code>lead.qualify</code>, <code>quote.request</code></td><td><code>discount_over_limit</code>, <code>large_quote</code>, <code>first_contact</code> (draft brief)</td><td><span class="chip planned">Epic RASF-3295</span></td></tr>
           </tbody>
@@ -796,9 +797,9 @@
             <text x="676" y="184" class="tm">hands off</text><text x="752" y="184" class="tm" style="fill: var(--ink)">invoice.create</text>
             <text x="752" y="200" class="tm" style="fill: var(--ink)">booking.request</text></g>
           <!-- Office Manager -->
-          <g class="planned"><rect x="40" y="320" width="260" height="110" rx="6" class="bx dash"/>
-            <text x="56" y="344" class="tb">Office Manager</text><text x="284" y="344" text-anchor="end" class="tl c-part">PLANNED</text>
-            <text x="56" y="368" class="tm">accepts</text><text x="132" y="368" class="tm" style="fill: var(--ink)">triage</text>
+          <g><rect x="40" y="320" width="260" height="110" rx="6" class="bx"/>
+            <text x="56" y="344" class="tb">Office Manager</text><text x="284" y="344" text-anchor="end" class="tl c-ok">BUILT SOLO</text>
+            <text x="56" y="368" class="tm">accepts</text><text x="132" y="368" class="tm" style="fill: var(--ink)">triage.request</text>
             <text x="132" y="386" class="tm" style="fill: var(--ink)">digest.request</text>
             <text x="56" y="410" class="ts">Catches tickets no role accepts</text></g>
           <!-- Bookkeeper -->
@@ -822,7 +823,7 @@
           <path d="M660 340L604 296" class="ln" marker-start="url(#ah2)" marker-end="url(#ah2)"/>
           <text x="236" y="252" class="tm halo">agent_dispatch</text>
           <text x="614" y="252" class="tm halo">agent_inbox</text>
-          <text x="228" y="304" class="tm halo">triage</text>
+          <text x="228" y="304" class="tm halo">triage.request</text>
           <text x="614" y="304" class="tm halo">agent_reply</text>
 
           <!-- Forbidden direct line -->
