@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "id": "bookkeeper",
+  "name": "Bookkeeper",
+  "department": "finance",
+  "role": "Invoices completed jobs, chases overdue invoices, and answers billing questions from QuickBooks",
+  "defaultModel": {
+    "provider": "paper",
+    "modelId": "ultramarine-1-flash",
+    "thinkingLevel": "max"
+  },
+  "tools": [
+    {
+      "name": "find_customer",
+      "replay": "safe",
+      "description": "Find a customer by name or email."
+    },
+    {
+      "name": "list_invoices",
+      "replay": "safe",
+      "description": "List a customer's invoices, filtered by status: open, overdue or paid."
+    },
+    {
+      "name": "get_invoice",
+      "replay": "safe",
+      "description": "Read one invoice: its lines, total, balance and due date."
+    },
+    {
+      "name": "create_invoice",
+      "replay": "unsafe",
+      "description": "Create an invoice for a customer from a job's lines. The billing system works out each amount and the total."
+    },
+    {
+      "name": "send_invoice",
+      "replay": "unsafe",
+      "description": "Send an invoice to the customer's email on file, or to another address a person approves."
+    },
+    {
+      "name": "send_reminder",
+      "replay": "unsafe",
+      "skill": "collections",
+      "description": "Send a collections reminder for an overdue invoice, in a friendly, firm or final tone."
+    }
+  ],
+  "connectors": ["quickbooks"],
+  "limits": {
+    "large_invoice": {
+      "description": "The amount above which an invoice waits for a person's approval before it is created",
+      "default": 500000
+    }
+  },
+  "approvals": [
+    {
+      "id": "large_invoice",
+      "tool": "create_invoice",
+      "description": "Confirm an invoice whose lines come to more than the business's set amount",
+      "when": [{ "arg": "total", "op": "gt", "value": { "limit": "large_invoice" } }]
+    },
+    {
+      "id": "new_recipient",
+      "tool": "send_invoice",
+      "description": "Confirm sending this invoice to an address other than the customer's email on file"
+    },
+    {
+      "id": "final_notice",
+      "tool": "send_reminder",
+      "description": "Confirm a final notice to a customer",
+      "when": [{ "arg": "tone", "op": "eq", "value": "final" }]
+    }
+  ],
+  "channels": ["email"],
+  "accepts": [
+    {
+      "type": "invoice.create",
+      "description": "Invoice a completed job",
+      "done": [
+        {
+          "tool": "list_invoices",
+          "args": { "customer": "{ticket.data.customer}" },
+          "expect": "found"
+        },
+        { "person": true }
+      ]
+    },
+    {
+      "type": "invoice.question",
+      "description": "Answer a billing question",
+      "done": [{ "person": true }]
+    }
+  ],
+  "dispatches": [
+    {
+      "type": "finance.review",
+      "when": "a refund, a write-off or a dispute needs a person"
+    }
+  ],
+  "mayNot": [
+    {
+      "action": "Move money, issue a refund or a write-off, or settle a dispute",
+      "instead": "hand the request to a person as finance.review"
+    },
+    {
+      "action": "Work out an amount, a total or a balance itself",
+      "instead": "read every figure from the QuickBooks tools"
+    },
+    {
+      "action": "Promise something a person must approve",
+      "instead": "say the request has gone to a person, and wait for their decision"
+    }
+  ],
+  "skills": [
+    { "id": "collections", "enabledByDefault": true },
+    { "id": "invoicing", "enabledByDefault": true },
+    { "id": "billing-questions", "enabledByDefault": true }
+  ],
+  "evals": "evals"
+}
