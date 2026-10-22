@@ -1,0 +1,24 @@
+{
+  "name": "@officehum/office-manager",
+  "version": "0.0.0",
+  "description": "Portable Office Manager role: reads a request and says what it is and where it belongs, and writes the day's digest.",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "officehum.json",
+    "AGENTS.md",
+    "APPEND_SYSTEM.md",
+    "skills",
+    "evals"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "1.3.x",
+    "@earendil-works/pi-durable": "1.3.x"
+  },
+  "devDependencies": {
+    "@officehum/sdk": "0.0.0"
+  }
+}
