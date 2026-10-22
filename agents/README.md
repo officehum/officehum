@@ -60,8 +60,8 @@ First roles, in milestone M1:
 | Folder | Package | Department | Status |
 | --- | --- | --- | --- |
 | `frontdesk` | `@officehum/frontdesk` | Front office | Built (solo) |
-| `bookkeeper` | `@officehum/bookkeeper` (reference agent for accounting) | Finance | Planned (RASF-3070) |
+| `bookkeeper` | `@officehum/bookkeeper` (reference agent for accounting) | Finance | Built (RASF-3127) |
 | `office-manager` | `@officehum/office-manager` | Operations | Planned (RASF-3071) |
 
-Only `frontdesk/` exists today. The roster grows into a free catalog of roles for every department
-of a company (RASF-3293), starting with a Sales agent (RASF-3295).
+`frontdesk/` and `bookkeeper/` exist today. The roster grows into a free catalog of roles for every
+department of a company (RASF-3293), starting with a Sales agent (RASF-3295).

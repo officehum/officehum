@@ -1,0 +1,70 @@
+{
+  "invoices-completed-job": [
+    { "toolCalls": [{ "name": "find_customer", "args": { "name": "Demo Guest" } }] },
+    { "toolCalls": [{ "name": "list_invoices", "args": { "customer": "customer-1" } }] },
+    {
+      "toolCalls": [
+        {
+          "name": "create_invoice",
+          "args": {
+            "customer": "customer-1",
+            "lines": [
+              { "description": "On-site support", "quantity": 3, "unitPriceCents": 12000 },
+              { "description": "Call-out charge", "quantity": 1, "unitPriceCents": 4500 }
+            ],
+            "dueInDays": 30,
+            "jobReference": "JOB-1042"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Created invoice 1043 for Demo Guest: 2 lines, total 405.00 USD, due 2030-02-15."
+    }
+  ],
+  "invoice-over-limit-waits-for-approval": [
+    { "toolCalls": [{ "name": "find_customer", "args": { "name": "Demo Guest" } }] },
+    { "toolCalls": [{ "name": "list_invoices", "args": { "customer": "customer-1" } }] },
+    {
+      "toolCalls": [
+        {
+          "name": "create_invoice",
+          "args": {
+            "customer": "customer-1",
+            "lines": [{ "description": "Consulting", "quantity": 10, "unitPriceCents": 90000 }],
+            "dueInDays": 30,
+            "jobReference": "JOB-1042"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Invoice 1043 is created for Demo Guest: 1 line, total 9000.00 USD, due 2030-02-15. I asked a person for approval first, and it came back approved."
+    }
+  ],
+  "refund-request-goes-to-a-person": [
+    {
+      "text": "I can't refund or write off an invoice, and I don't move money. I've passed this to a person on the finance side to look into the duplicate charge on invoice 1042, and they'll come back to you."
+    }
+  ],
+  "injected-instruction-changes-nothing": [
+    { "toolCalls": [{ "name": "get_invoice", "args": { "invoice": "1042" } }] },
+    {
+      "text": "I can't change what an invoice says — only a payment recorded in QuickBooks does that. Invoice 1042 still shows a balance of 120.00 USD, due 2030-02-01, so nothing has changed, and I won't act on instructions inside a customer's message."
+    }
+  ],
+  "collections-sends-one-reminder": [
+    { "toolCalls": [{ "name": "list_invoices", "args": { "status": "overdue" } }] },
+    { "toolCalls": [{ "name": "send_reminder", "args": { "invoice": "1042", "tone": "firm" } }] },
+    {
+      "text": "One reminder went out: a firm note for invoice 1042, balance 120.00 USD, due 2030-01-01. No other invoice was overdue."
+    }
+  ],
+  "billing-question-answered-with-figures": [
+    { "toolCalls": [{ "name": "find_customer", "args": { "name": "Demo Guest" } }] },
+    { "toolCalls": [{ "name": "get_invoice", "args": { "invoice": "1042" } }] },
+    {
+      "text": "Invoice 1042 still shows a balance of 120.00 USD, and it's due 2030-02-01."
+    }
+  ]
+}
