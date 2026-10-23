@@ -284,6 +284,11 @@ function generatedSpec(): string {
   return dir;
 }
 
+/** Strip terminal colour, so a summary line matches the same way locally and on CI. */
+const ESC = String.fromCharCode(27); // built, not literal: a control character in a pattern is a lint error
+const ANSI = new RegExp(`${ESC}\\[[0-9;]*m`, "g");
+const stripAnsi = (text: string): string => text.replace(ANSI, "");
+
 describe("generateRole", () => {
   it("writes the whole package, and writing it again writes the same bytes", () => {
     const spec = parsed(SPEC);
@@ -458,11 +463,16 @@ describe("generateRole", () => {
       encoding: "utf8",
       cwd: fileURLToPath(REPO),
       timeout: 120_000,
+      // CI's reporter colourises the summary, which puts escape sequences *between* "Tests" and the
+      // count and made a plain-text match fail on a run that had actually passed. Ask for no colour
+      // and strip anything that still arrives.
+      env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
     });
-    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    const output = stripAnsi(`${result.stdout}${result.stderr}`);
+    expect(result.status, output).toBe(0);
     // Two checks on the package, plus one per stub tool: the generated test is the one that builds the
     // bundle, so this is where `checkAgent` runs on the generated role.
-    expect(result.stdout).toMatch(/Tests\s+4 passed/);
+    expect(output).toMatch(/Tests\s+4 passed/);
   }, 180_000);
 
   it("refuses a spec whose body states an amount, at parse time", () => {
