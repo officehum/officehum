@@ -47,4 +47,5 @@ mode and grades evals for.
 | --- | --- |
 | `sample-desk/` | A minimal portable role used across the SDK's role, package, eval and context tests. |
 | `sample-stockroom/` | The engine-backed role; its `evals/` suite is the one the CLI's eval runner grades. |
+| `sample-stockroom/ROLE_SPEC.md` | The four-layer spec that package is generated from (RASF-3099). It is checked in beside the fixture because the Role Factory's tests generate from it and assert the package equals the fixture on the manifest, the prompt files, the skills and the evals. |
 | `overlays/` | Example overlays applied over a fixture in tests. |

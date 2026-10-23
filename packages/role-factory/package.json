@@ -1,9 +1,12 @@
 {
   "name": "@officehum/role-factory",
   "version": "0.0.0",
-  "description": "The Role Factory's ROLE_SPEC.md: the one reviewable document a role is generated from, organised by the four layers, and the parser that validates it.",
+  "description": "The Role Factory: ROLE_SPEC.md, the one reviewable document a role is generated from, and the parser and generator that validate it and write the role package from it.",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "officehum-role": "./dist/cli.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
