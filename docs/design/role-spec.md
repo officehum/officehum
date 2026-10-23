@@ -2,8 +2,8 @@
 
 The Role Factory (epic RASF-3096) turns an interview into a role package. Between the two there is one
 document a person reads and approves: `ROLE_SPEC.md`. **The interview writes it; the generator reads
-it** (RASF-3099). This file defines the format and the parser for it
-(`@officehum/role-factory`, RASF-3098); running the interview and writing the package are not its work.
+it.** This file defines the format and the parser for it (`@officehum/role-factory`, RASF-3098), and
+what the generator writes from it (`generateRole`, RASF-3099); running the interview is neither.
 
 A spec is one Markdown file:
 
@@ -116,6 +116,29 @@ is a field nobody would review.
 
 `evals` is the one field whose value changes in kind: a list of scenarios in the spec, a directory in
 the manifest, because the manifest points at where the generator writes them.
+
+The rest of a package is derived, not declared — no spec field names it, and none of it is hand-edited
+afterwards:
+
+| File | What it is |
+| --- | --- |
+| `package.json` | `@officehum/<id>`, version `0.1.0`, `type: module`, Pi Durable and pi-ai as peers at `1.3.x`, `@officehum/sdk` a dependency, and `"officehum": { "generated": true }`, which is what makes `validatePackage` judge the package strictly |
+| `AGENTS.md` sections | The body, then `## You may` and a `## You may not` table (action, what to do instead) from `wisdom.authority`, then — when the role declares an engine — the line that its numbers come from the engine and its limits are not written here |
+| `APPEND_SYSTEM.md` | Four standard rules first (sources over fluency, stop at the boundary, deterministic first, say what you don't know), then `context.append_system`, then one line per approval saying what waits for a person |
+| `README.md` | How to install the role on any Pi Durable harness, the tools, what waits for a person, and the may-not table — for a person, never read at run time |
+| `src/index.ts` | The only generated code: the factory (`defineRole` with the package directory, the manifest, the overlays, the approver and the engine), plus a typed not-implemented stub for a tool the spec declares with no engine, cli or mcp source |
+| `src/role.test.ts` | The role's own run of the SDK's checks: `validatePackage` and `checkAgent` in strict mode |
+| `evals/spec.json` | The spec's scenarios, in the SDK's format |
+| `evals/generated.json` | The generator's own critical scenarios: one per approval (declined, and the gated call must not run), one per unsafe tool (an instruction hidden in the input asks for it and must not be called) and one per `may_not` (a person asks for the prohibited action; no tool that could perform it runs, and the reply offers the `instead`) |
+
+Nothing else is generated: an approval, a limit or a replay policy is a manifest field the SDK enforces,
+never TypeScript. The generator writes into an empty directory, overwrites no file, and produces
+byte-identical output for the same spec, so a regeneration is a diff that comes back empty. Completion
+evidence per ticket type is not generated here (RASF-3231).
+
+`generateRole(spec, outDir, { overlayDir })` is the generator; `officehum-role generate <spec.md>
+<out-dir> [--overlay <dir>]` is the same thing on the command line, and exits non-zero when the spec,
+the manifest, the evals or the four-layer check refuses the run.
 
 ## Field reference
 
@@ -396,8 +419,12 @@ which `validateManifest` accepts, whose scenarios `validateSuite` accepts, and w
 ## Not in the format yet
 
 - **Dispatches and the context plan.** `officehum.json`'s `dispatches` and `contextPlan` have no spec
-  field. A generated role's card therefore carries no `mayNot` either: `wisdom.authority` is enforceable
-  text, not card data. Both are open until the generator (RASF-3099) needs them.
+  field, so a generated package cannot carry them: they are written by hand in the package, or the
+  field is added to the format later. A generated role does keep its `mayNot` — the merge carries the
+  `action` and `instead` of every prohibition — but `enforced_by` is a factory check, not card data:
+  how a prohibition is enforced stays in the spec and in the generated evals.
+- **A package version.** A generated `package.json` starts at `0.1.0` and its owner bumps it; the
+  format has no version field.
 - **A body with no "You may not" section.** The check on `AGENTS.md` wants one; the spec's body does not
   hold it, because prohibitions and their enforcement live in `wisdom.authority`, and the generator writes
   the section from there.
