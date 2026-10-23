@@ -27,6 +27,7 @@ import type { DocumentRunReceipt } from "./run-ledger.js";
 import { runLedger } from "./run-ledger.js";
 import { configuredInterpreter } from "./test-helpers.js";
 import { WORD_TOOL_REGISTRATIONS } from "./word-tools.js";
+import { XLSX_TOOL_REGISTRATIONS } from "./xlsx-tools.js";
 
 const interpreter = configuredInterpreter();
 const suite = interpreter === undefined ? describe.skip : describe;
@@ -302,12 +303,14 @@ suite("the bare harness and Office Hum shapes agree", () => {
     expect(body.wrote.map((output) => output.versionId).sort()).toEqual(
       viaService.outputs.map((output) => output.versionId).sort(),
     );
-    // The pack now carries the typed Word tools beside the Python workspace; the workspace comes first.
+    // The pack now carries the typed Word, PowerPoint and Excel tools beside the Python workspace;
+    // the workspace comes first.
     expect(pack.tools[0]?.name).toBe(RUN_DOCUMENT_PYTHON);
     expect(pack.tools.map((item) => item.name)).toEqual([
       RUN_DOCUMENT_PYTHON,
       ...WORD_TOOL_REGISTRATIONS,
       ...PPTX_TOOL_REGISTRATIONS,
+      ...XLSX_TOOL_REGISTRATIONS,
     ]);
   });
 });

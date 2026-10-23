@@ -7,9 +7,10 @@
  * checks that the pack is driven only by the injected `DocumentService` — and that the Python worker
  * carries no agent loop, no model client and no general shell.
  *
- * The typed Word tools are held to the same rules: they are `defineTool` registrations over the injected
- * service, they send a fixed program with no arguments interpolated into it, and the adapter that program
- * imports is a document library on the workspace API — no path from a caller anywhere in it.
+ * The typed Word, PowerPoint and Excel tools are held to the same rules: they are `defineTool`
+ * registrations over the injected service, they send a fixed program with no arguments interpolated
+ * into it, and the adapter that program imports is a document library on the workspace API — no path
+ * from a caller anywhere in it.
  */
 
 import { readFileSync } from "node:fs";
@@ -24,6 +25,8 @@ import { PPTX_TOOL_REGISTRATIONS } from "./pptx-tools.js";
 import { paperOfficeToolPack, RUN_DOCUMENT_PYTHON } from "./run-document-python.js";
 import { WORD_OPERATIONS, wordInstruction } from "./word-operations.js";
 import { WORD_TOOL_REGISTRATIONS } from "./word-tools.js";
+import { XLSX_OPERATIONS, xlsxInstruction } from "./xlsx-operations.js";
+import { XLSX_TOOL_REGISTRATIONS } from "./xlsx-tools.js";
 
 const root = new URL("../", import.meta.url);
 const packageJson = JSON.parse(readFileSync(new URL("package.json", root), "utf8")) as {
@@ -104,6 +107,7 @@ describe("the pack's portability boundary", () => {
       RUN_DOCUMENT_PYTHON,
       ...WORD_TOOL_REGISTRATIONS,
       ...PPTX_TOOL_REGISTRATIONS,
+      ...XLSX_TOOL_REGISTRATIONS,
     ]);
     expect(pack.tools[0]?.name).toBe(RUN_DOCUMENT_PYTHON);
   });
@@ -152,6 +156,13 @@ describe("the pack's portability boundary", () => {
       // The only variable in a program is the operation's own name; no argument is ever spliced in.
       expect(code).toMatch(
         /^import word_adapter\n\ndocuments\.result\(word_adapter\.run\("[a-z]+", documents\.arguments\(\)\)\)$/u,
+      );
+      expect(code).not.toContain("$");
+    }
+    for (const operation of XLSX_OPERATIONS) {
+      const code = xlsxInstruction(operation);
+      expect(code).toMatch(
+        /^import xlsx_adapter\n\ndocuments\.result\(xlsx_adapter\.run\("[a-z]+", documents\.arguments\(\)\)\)$/u,
       );
       expect(code).not.toContain("$");
     }
@@ -240,6 +251,39 @@ describe("the worker's own boundary", () => {
     expect(adapterSource).not.toContain("https://");
     expect(adapterSource).toContain("documents.open_input");
     expect(adapterSource).toContain("documents.declare_output");
+  });
+
+  it("keeps the Excel adapter on the workspace API, and out of the calculator's chair", () => {
+    const excelSource = readFileSync(new URL("python/xlsx_adapter.py", root), "utf8");
+    // It names the process ban in prose — that is the honest reason it cannot recalculate — so what is
+    // checked here is that it never *imports* a way out of the workspace, nor takes a credential.
+    for (const forbidden of [
+      "import requests",
+      "import urllib",
+      "import socket",
+      "import subprocess",
+      "import openai",
+      "import http",
+      "sys.argv",
+      "os.environ",
+      "api_key",
+    ]) {
+      expect(excelSource).not.toContain(forbidden);
+    }
+    // No operation reads a path, a URL or a credential out of its parameters.
+    expect(excelSource).not.toContain('params["path"]');
+    expect(excelSource).not.toContain('entry["path"]');
+    expect(excelSource).not.toContain("https://");
+    expect(excelSource).toContain("documents.open_input");
+    expect(excelSource).toContain("documents.declare_output");
+    // It refuses what it cannot preserve rather than dropping it, and it never calculates.
+    expect(excelSource).toContain("macro-payload");
+    expect(excelSource).toContain("external-relationship");
+    expect(excelSource).toContain("broken-reference");
+    expect(excelSource).toContain("openpyxl.oracle");
+    expect(excelSource).toContain('"computed": False');
+    // The three sentinels are the ones that prove the fork owns the installed module.
+    expect(workerSource).toContain('"xlsx_adapter",');
   });
 
   it("does not depend on the container profile it still needs", () => {

@@ -6,8 +6,9 @@
  * pack therefore runs in a bare Pi Durable harness with a fake service (see the portability test) and
  * inside Office Hum with the local service.
  *
- * It carries `run_document_python` and, unless withheld, the six typed Word tools from `word-tools.ts`
- * and the seven typed PowerPoint tools from `pptx-tools.ts`. The typed tools are the same operation
+ * It carries `run_document_python` and, unless withheld, the six typed Word tools from `word-tools.ts`,
+ * the seven typed PowerPoint tools from `pptx-tools.ts` and the six typed Excel tools from
+ * `xlsx-tools.ts`. The typed tools are the same operation
  * underneath: a fixed program on the same service, so both share the lease, the staging, the package
  * inspection, the operation receipts and the idempotency.
  *
@@ -28,6 +29,7 @@ import type { DocumentLease } from "./lease.js";
 import { operationIdForCall } from "./operation.js";
 import { pptxTools } from "./pptx-tools.js";
 import { wordTools } from "./word-tools.js";
+import { xlsxTools } from "./xlsx-tools.js";
 
 export const RUN_DOCUMENT_PYTHON = "run_document_python";
 export const PAPER_OFFICE_PACK_ID = "paper-office";
@@ -63,6 +65,13 @@ export interface PaperOfficeToolPackOptions {
    * workspace can withhold it.
    */
   readonly includePptxTools?: boolean;
+  /**
+   * Whether the pack carries the typed Excel tools (`inspect_workbook`, `read_workbook`,
+   * `create_workbook`, `edit_workbook`, `preview_workbook`, `compare_workbook`) beside the Python
+   * workspace. Defaults to `true`, like the Word and PowerPoint sets: the typed surface is the
+   * reviewable one, and a role that wants only the workspace can withhold it.
+   */
+  readonly includeXlsxTools?: boolean;
   readonly packId?: string;
 }
 
@@ -125,6 +134,7 @@ export function paperOfficeToolPack(options: PaperOfficeToolPackOptions): PaperO
       runDocumentPython(options),
       ...(options.includeWordTools === false ? [] : wordTools(options)),
       ...(options.includePptxTools === false ? [] : pptxTools(options)),
+      ...(options.includeXlsxTools === false ? [] : xlsxTools(options)),
     ],
   };
 }
