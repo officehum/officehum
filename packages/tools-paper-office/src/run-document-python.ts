@@ -1,13 +1,17 @@
 /**
- * The portable Paper Office tool pack, and its one tool: `run_document_python`.
+ * The portable Paper Office tool pack: the Python workspace, and the typed Word operations on top of it.
  *
  * This is the Pi Durable surface the design asks for — `defineTool` registrations a role manifest can
  * attach or withhold, taking an injected `DocumentService` and never the Office Hum host. The same
  * pack therefore runs in a bare Pi Durable harness with a fake service (see the portability test) and
  * inside Office Hum with the local service.
  *
+ * It carries `run_document_python` and, unless withheld, the six typed Word tools from `word-tools.ts`.
+ * The typed tools are the same operation underneath: a fixed program on the same service, so both share
+ * the lease, the staging, the package inspection, the operation receipts and the idempotency.
+ *
  * The operation ID is derived from the Pi Durable conversation and call identity, never from an
- * argument: a model cannot choose its own replay identity. The tool is declared `replay: "safe"`,
+ * argument: a model cannot choose its own replay identity. Every tool is declared `replay: "safe"`,
  * because the service is idempotent by operation ID — an interrupted call that reruns resolves to the
  * same committed receipt instead of a second edit.
  */
@@ -21,6 +25,7 @@ import type {
 } from "./document-service.js";
 import type { DocumentLease } from "./lease.js";
 import { operationIdForCall } from "./operation.js";
+import { wordTools } from "./word-tools.js";
 
 export const RUN_DOCUMENT_PYTHON = "run_document_python";
 export const PAPER_OFFICE_PACK_ID = "paper-office";
@@ -41,6 +46,13 @@ export interface PaperOfficeToolPackOptions {
    * still receive no usable lease: the tool then refuses instead of reaching for anything wider.
    */
   readonly leaseFor: (lookup: LeaseLookup) => Promise<DocumentLease | undefined>;
+  /**
+   * Whether the pack carries the typed Word tools (`inspect_document`, `read_document`,
+   * `create_document`, `edit_document`, `preview_document`, `compare_document`) beside the Python
+   * workspace. Defaults to `true`: the typed surface is the reviewable one, and a role that wants only
+   * the workspace can withhold it.
+   */
+  readonly includeWordTools?: boolean;
   readonly packId?: string;
 }
 
@@ -99,7 +111,10 @@ const DESCRIPTION = [
 export function paperOfficeToolPack(options: PaperOfficeToolPackOptions): PaperOfficeToolPack {
   return {
     id: options.packId ?? PAPER_OFFICE_PACK_ID,
-    tools: [runDocumentPython(options)],
+    tools: [
+      runDocumentPython(options),
+      ...(options.includeWordTools === false ? [] : wordTools(options)),
+    ],
   };
 }
 

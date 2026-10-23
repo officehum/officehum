@@ -50,6 +50,13 @@ export const DOCUMENT_REFUSAL_CODES = [
   "symlink",
   "traversal",
   "output-invalid",
+  // Word adapter: the typed refusals paper-docx raises, mapped one-for-one so a model sees why
+  "document-protected",
+  "malformed-package",
+  "unsupported-structure",
+  "boundary-violation",
+  "target-not-found",
+  "ambiguous-target",
   // Submitted code
   "code-error",
   "code-syntax",

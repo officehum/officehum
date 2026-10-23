@@ -1,10 +1,11 @@
 # @officehum/tools-paper-office
 
 A **task-leased Paper Office document workspace** for a Pi Durable role: a `DocumentService` a host
-injects, an isolated Python 3.13 worker pinned to `paper-docx`, `paper-pptx` and `paper-xlsx`, and the
-portable `run_document_python` tool. It depends on Pi Durable, `pi-ai` and `@officehum/sdk` (for the
-FileStore contract) — never on `@officehum/office` — so the same pack runs in a bare Pi Durable harness
-with a fake service and inside Office Hum with the local one.
+injects, an isolated Python 3.13 worker pinned to `paper-docx`, `paper-pptx` and `paper-xlsx`, the
+portable `run_document_python` tool, and the typed Word operations built on top of it. It depends on Pi
+Durable, `pi-ai` and `@officehum/sdk` (for the FileStore contract) — never on `@officehum/office` — so
+the same pack runs in a bare Pi Durable harness with a fake service and inside Office Hum with the local
+one.
 
 Design: [`docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md`](../../docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md).
 
@@ -78,6 +79,57 @@ documents.result({"revenue": revenue})
 
 Every refusal raises `WorkspaceError` with a stable `code`. There is no function that takes a path, and
 `open`/`eval`/`exec`/`compile`/`input` are not in the submitted code's builtins.
+
+## The typed Word operations
+
+`inspect_document`, `read_document`, `create_document`, `edit_document`, `preview_document` and
+`compare_document` are the same operation underneath as `run_document_python`: each one validates its
+arguments, resolves them against the task's lease, and runs a fixed program
+(`python/word_adapter.py`) through the same `DocumentService` — so typed calls and submitted snippets
+share the lease, the staging, the package inspection, the receipts and the idempotency. Withhold them
+with `paperOfficeToolPack({ includeWordTools: false })` if a role should get only the workspace.
+
+**A file reference, never a path.** Every operation takes `{ fileId, versionId, name, sha256, size }`
+from the task's lease or from an earlier operation's output. All five fields are checked against the
+lease before the run; a reference the lease does not grant is `ungranted-input`, and an output is one
+staging file name (`traversal` if it could be anything else).
+
+| Tool | What it does | What it refuses |
+| --- | --- | --- |
+| `inspect_document` | Counts, story parts, the heading outline, table shapes, comments with their thread state, tracked changes by type, blind regions, `w:documentProtection` | a reference outside the lease; an unreadable package |
+| `read_document` | **Bounded pages** of `paragraphs`, `headings`, `tables` (with optional cell text), `comments` or `revisions`, each page carrying its size, cursor, total and next cursor | a page size over 50, a cursor past the end, an unknown section |
+| `create_document` | A new `.docx` **draft** from typed blocks (headings, paragraphs, bullet/decimal lists, tables, page breaks) | a non-`.docx` name, a ragged table, an undefined style, a format the lease does not permit |
+| `edit_document` | An **unpublished proposal**: a new immutable version of a leased file, from ordered steps (see below) | a read-only source, a protected document without an explicit acknowledgment, a stale anchor, an ambiguous or missing target, a step the fork cannot do untracked |
+| `preview_document` | Bounded, structure-marked text (`H1:`, `P:`, `L:`, `T2x2:`) plus the pending-change redline | the same page rules as `read_document` |
+| `compare_document` | Structural change set, per-story unified text diff, and the redline of the second version | an unreadable version of either side |
+
+**Edits.** Steps apply in the order given, and each validates its own anchor — exact paragraph text, or a
+`{ story, index, contentHash }` anchor reacquired from `read_document` and refused if the content has
+moved on. The kinds are `insertSection`, `replaceParagraphs`, `deleteParagraphs`, `replaceText`,
+`updateCell`, `insertRow`, `deleteRow`, `addComment`, `replyComment`, `resolveComment`, `deleteComment`,
+`acceptRevisions` and `rejectRevisions`. Word-level steps are recorded as **real tracked changes** by
+default, so a reviewer gets a Word redline and not just a text diff; an edit carries an author, and an
+optional ISO date so a host can pin what the revisions are stamped with.
+
+**What an edit proves.** The proposal's result reports the source and output `sha256`, the structural
+change set (`added`, `removed`, `changed`, and `byteIdenticalCount`), a text diff, a redline, per-step
+evidence, a reopen witness, and the `patch_save` part lists. Untouched parts come back **byte-identical**
+— relationships, styles, headers, footers, numbering, theme, settings, `docProps` and untouched sections
+— because the edit writes through `docx.package.patch_save`, which restores the original bytes of every
+part that is semantically unchanged. The variant test fixture makes `word/styles.xml` deliberately
+different from what a re-serialization would emit, so the proposal matching it exactly is evidence that
+the part was restored rather than rewritten.
+
+**Drafts and proposals, never publications.** `create_document` writes a new file; `edit_document`
+proposes a new version of a leased one. Both report `published: false` and the result validator refuses
+anything else, because publication belongs to the review surface (RASF-3285).
+
+**What the fork cannot do** (worked around, not hidden): paragraph removal and replacement exist only as
+tracked changes, so `deleteParagraphs`/`replaceParagraphs` refuse `tracked: false` with
+`unsupported-structure`; row insertion and deletion have no tracked variant, so they appear in the change
+set and the text diff but are recorded as `tracked: false` rather than pretending to be revisions;
+`diff_package`, `text_diff` and `pending_changes` are path-based, so the adapter opens each version a
+bounded number of times rather than once.
 
 ## Receipts, replay and immutability
 
@@ -172,13 +224,22 @@ the versions the issue pinned. Move them here and in `PAPER_LIBRARY_PINS` togeth
 all-format fixtures, because the receipt records the pins.
 
 Tests that need a real interpreter **skip visibly** when `OFFICEHUM_PAPER_PYTHON` is unset — no test
-guesses at a path, and no test touches the network.
+guesses at a path, and no test touches the network. The typed Word tests follow the same rule:
+`word-operations.test.ts`, `word-tools.test.ts` and the two refusal fixtures in `word-fixtures.test.ts`
+run in both configurations (the package inspection is in process), and the interpreter-backed Word
+fixtures — read, draft, edit, preservation, replay, portability — skip visibly without it.
 
 ## What later issues add
 
-`DocumentService` is deliberately small: RASF-3283 lands the Python workspace operation. The typed
-`inspect_document`, `read_document`, `edit_document`, `create_document`, `preview_document`,
-`compare_document` and `publish_document` operations arrive with the format adapters (RASF-3284) and
-the review surface (RASF-3285) on this same interface. RASF-3193 (the office file store) replaces the
-in-package ledger's staging root with its own store, and RASF-3111 replaces the Python-level guards
-with container enforcement.
+`DocumentService` is deliberately small. RASF-3283 lands the Python workspace operation and RASF-3300
+lands the typed Word operations on it. The PowerPoint adapter (RASF-3284) and the Excel adapter
+(RASF-3301) arrive on this same interface, and RASF-3285 adds `publish_document` — until it lands,
+nothing in this pack can publish: every new document is a draft and every edit is a proposal.
+RASF-3193 (the office file store) replaces the in-package ledger's staging root with its own store, and
+RASF-3111 replaces the Python-level guards with container enforcement.
+
+The typed Word tools add six refusal codes beside the ones RASF-3283 fixed — `document-protected`,
+`malformed-package`, `unsupported-structure`, `boundary-violation`, `target-not-found` and
+`ambiguous-target` — because each is a different thing a caller must react to differently. A worker code
+the pack does not know still collapses to `worker-refused`, so a new code cannot widen the contract
+silently.

@@ -548,6 +548,7 @@ def block_process() -> None:
 ALLOWED_IMPORTS = frozenset(
     {
         "officehum_documents",
+        "word_adapter",
         "docx",
         "pptx",
         "openpyxl",

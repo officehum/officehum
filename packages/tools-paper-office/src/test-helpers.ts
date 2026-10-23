@@ -9,7 +9,7 @@
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { crc32, deflateRawSync } from "node:zlib";
+import { crc32, deflateRawSync, inflateRawSync } from "node:zlib";
 import type {
   DeclaredOutput,
   PaperWorker,
@@ -367,6 +367,115 @@ export async function sentinelReport(
 
 export function workerScriptPath(): string {
   return defaultWorkerScript();
+}
+
+/**
+ * A real Word fixture, built through the worker so it comes from the pinned library rather than a
+ * hand-written archive: headings, paragraphs, a two-by-two table, a header and a footer, an anchored
+ * comment and a tracked insertion.
+ *
+ * `awkward` makes one *untouched* part byte-different from what a re-serialization would emit — the
+ * XML declaration of `word/styles.xml` loses `standalone="yes"` — so a test can prove the part came
+ * back verbatim instead of being rewritten.
+ */
+export interface WordFixtureOptions {
+  readonly awkward?: boolean;
+  /** Turn Restrict Editing on, so a test can check that an edit of a locked document refuses. */
+  readonly protected?: boolean;
+  readonly name?: string;
+}
+
+export function wordFixtureCode(options: WordFixtureOptions = {}): string {
+  const lines = [
+    "import docx, zipfile",
+    "import docx.blocks",
+    "",
+    "document = docx.Document()",
+    "document.add_heading('Quarterly Close', level=1)",
+    "document.add_paragraph('Draft prepared by the office.')",
+    "document.add_heading('Revenue', level=2)",
+    "figure = document.add_paragraph('Revenue was 1250 dollars.')",
+    "table = document.add_table(rows=2, cols=2)",
+    "for row, values in enumerate([['Account', 'Amount'], ['Revenue', '1250']]):",
+    "    for column, value in enumerate(values):",
+    "        table.cell(row, column).text = value",
+    "document.sections[0].header.paragraphs[0].text = 'Office Hum - internal'",
+    "document.sections[0].footer.paragraphs[0].text = 'Page footer'",
+    "document.add_comment(",
+    "    [figure.runs[0]], text='Please confirm this figure.', author='Reviewer'",
+    ")",
+    "docx.blocks.insert_section_after(",
+    "    document, 'Draft prepared by the office.', heading='Notes',",
+    "    paragraphs=['Initial review'], author='Reviewer', tracked=True,",
+    ")",
+  ];
+  if (options.protected === true) {
+    lines.push(
+      "import docx.protection",
+      "docx.protection.set_protection(document, edit='readOnly')",
+    );
+  }
+  lines.push(
+    `path = documents.declare_output(${JSON.stringify(options.name ?? "brief.docx")}, "docx")`,
+  );
+  lines.push("document.save(path)");
+  if (options.awkward === true) {
+    lines.push(
+      "# One untouched part, byte-different from what a re-serialization would emit.",
+      "with zipfile.ZipFile(path) as source:",
+      "    entries = [(item, source.read(item.filename)) for item in source.infolist()]",
+      "with zipfile.ZipFile(path, 'w') as target:",
+      "    for item, data in entries:",
+      "        if item.filename == 'word/styles.xml':",
+      "            data = data.replace(b' standalone=\"yes\"', b'')",
+      "        target.writestr(item, data)",
+    );
+  }
+  lines.push(
+    "documents.result({",
+    "    'paragraphs': len(docx.Document(path).paragraphs),",
+    "    'comments': len(docx.Document(path).comments),",
+    "})",
+  );
+  return lines.join("\n");
+}
+
+/**
+ * The parts of a ZIP archive, by name, extracted. Enough for a test to compare an untouched part's
+ * bytes between a source document and the proposal an edit produced — the evidence that preservation is
+ * real rather than plausible.
+ */
+export function zipEntries(bytes: Uint8Array): ReadonlyMap<string, Uint8Array> {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let eocd = -1;
+  const floor = Math.max(0, bytes.byteLength - 22 - 65_535);
+  for (let offset = bytes.byteLength - 22; offset >= floor; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) {
+      eocd = offset;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error("not a ZIP archive");
+  const count = view.getUint16(eocd + 10, true);
+  let cursor = view.getUint32(eocd + 16, true);
+  const entries = new Map<string, Uint8Array>();
+  for (let index = 0; index < count; index += 1) {
+    if (view.getUint32(cursor, true) !== 0x02014b50) throw new Error("malformed central directory");
+    const method = view.getUint16(cursor + 10, true);
+    const compressedSize = view.getUint32(cursor + 20, true);
+    const nameLength = view.getUint16(cursor + 28, true);
+    const extraLength = view.getUint16(cursor + 30, true);
+    const commentLength = view.getUint16(cursor + 32, true);
+    const localOffset = view.getUint32(cursor + 42, true);
+    const name = new TextDecoder().decode(bytes.subarray(cursor + 46, cursor + 46 + nameLength));
+    const localNameLength = view.getUint16(localOffset + 26, true);
+    const localExtraLength = view.getUint16(localOffset + 28, true);
+    const start = localOffset + 30 + localNameLength + localExtraLength;
+    const raw = bytes.subarray(start, start + compressedSize);
+    entries.set(name, method === 0 ? Uint8Array.from(raw) : Uint8Array.from(inflateRawSync(raw)));
+    cursor += 46 + nameLength + extraLength + commentLength;
+  }
+  return entries;
 }
 
 export interface DirectWorkerRequest {
