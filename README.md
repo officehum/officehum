@@ -342,10 +342,35 @@ that must branch on what a tool returned cannot be written as JSON; use `piDurab
 | Package | Path | What it is |
 | --- | --- | --- |
 | `@officehum/sdk` | `packages/sdk` | Manifest schema and helpers for building an agent package |
+| `@officehum/provider-paper` | `packages/provider-paper` | Portable Paper Instruments provider for `pi-ai` |
+| `@officehum/tools-paper-office` | `packages/tools-paper-office` | Task-leased Paper Office document worker and its `DocumentService` |
 | `@officehum/google-calendar` | `packages/google-calendar` | Portable REST and fake Google Calendar scheduling client |
 | `@officehum/office` | `packages/office` | Runtime: Pi Durable harness, workboard, relay, workflow engine |
 | `@officehum/cli` | `packages/cli` | Run an office, watch the board, steer a live agent |
 | `@officehum/<role>` | `agents/<role>` | One role agent each (Front Desk, Bookkeeper, Office Manager first) |
+
+## Paper Office document workspace
+
+A task can be granted a **task lease** on immutable document versions and a bounded Python workspace
+for Word, PowerPoint and Excel work. The grant is a lease, not a directory: it names input version IDs
+with their hashes and the output formats the task may produce, and nothing else is reachable. Every
+call binds a stable operation ID, the code and argument hashes, the source hashes, the policy version
+and the pinned library versions into one receipt, so a replayed call returns the same commit and a
+refusal or a timeout leaves the sources untouched.
+
+The workspace runs in an isolated Python 3.13 subprocess with a scrubbed environment, kernel rlimits
+and a lease-scoped staging directory. It needs an interpreter with the three Paper forks installed
+exactly as pinned; there is no safe default, so the host names it:
+
+```sh
+packages/tools-paper-office/scripts/provision-worker.sh          # one-shot: uv + CPython 3.13
+export OFFICEHUM_PAPER_PYTHON="$PWD/packages/tools-paper-office/.worker/bin/python"
+```
+
+Without that variable the interpreter-backed tests skip visibly and no document workspace is
+available. See [`packages/tools-paper-office/README.md`](packages/tools-paper-office/README.md) for
+the lease model, each enforced limit and — importantly — what is *not* enforced until the container
+profile (RASF-3111) lands. The Python-level guards are a bounded workspace, not a sandbox.
 
 ## Development
 

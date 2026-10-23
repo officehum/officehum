@@ -148,3 +148,10 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Python bytecode from the checked-in worker
+__pycache__/
+*.pyc
+
+# The provisioned Paper document worker interpreter
+packages/tools-paper-office/.worker/

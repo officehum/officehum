@@ -12,8 +12,8 @@
     "agents/*"
   ],
   "scripts": {
-    "build": "npm run build -w @officehum/sdk -w @officehum/frontdesk -w @officehum/google-calendar -w @officehum/quickbooks -w @officehum/bookkeeper -w @officehum/office-manager -w @officehum/provider-paper -w @officehum/office -w @officehum/cli",
-    "typecheck": "npm run typecheck -w @officehum/sdk -w @officehum/frontdesk -w @officehum/google-calendar -w @officehum/quickbooks -w @officehum/bookkeeper -w @officehum/office-manager -w @officehum/provider-paper -w @officehum/office -w @officehum/cli",
+    "build": "npm run build -w @officehum/sdk -w @officehum/frontdesk -w @officehum/google-calendar -w @officehum/quickbooks -w @officehum/bookkeeper -w @officehum/office-manager -w @officehum/provider-paper -w @officehum/tools-paper-office -w @officehum/office -w @officehum/cli",
+    "typecheck": "npm run typecheck -w @officehum/sdk -w @officehum/frontdesk -w @officehum/google-calendar -w @officehum/quickbooks -w @officehum/bookkeeper -w @officehum/office-manager -w @officehum/provider-paper -w @officehum/tools-paper-office -w @officehum/office -w @officehum/cli",
     "test": "vitest run",
     "lint": "biome check .",
     "format": "biome format --write .",
