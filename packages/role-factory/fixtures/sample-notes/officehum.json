@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "id": "sample-notes",
+  "name": "Sample Notes",
+  "department": "operations",
+  "role": "Keeps the team's shared notes and answers questions about them",
+  "defaultModel": {
+    "provider": "paper",
+    "modelId": "ultramarine-1-flash"
+  },
+  "runtimes": [{ "name": "python3", "version": ">=3.10" }],
+  "engine": {
+    "command": ["python3", "engine/engine.py"],
+    "description": "The notes engine: add, search, archive and list"
+  },
+  "tools": [
+    {
+      "name": "search_notes",
+      "replay": "safe",
+      "engine": ["search"],
+      "description": "Search the shared notes and return the passages that match.",
+      "parameters": {
+        "text": { "type": "string", "description": "The words to look for" }
+      }
+    },
+    {
+      "name": "add_note",
+      "replay": "unsafe",
+      "engine": ["add"],
+      "description": "Add a note to the shared notes and return its id.",
+      "parameters": {
+        "text": { "type": "string", "description": "The note itself" },
+        "length": { "type": "integer", "description": "How many words the note holds" }
+      },
+      "guidelines": ["Say the note's id back to whoever asked for it."]
+    },
+    {
+      "name": "archive_note",
+      "replay": "unsafe",
+      "engine": ["archive"],
+      "description": "Move a note out of the shared notes and into the archive.",
+      "parameters": {
+        "id": { "type": "string", "description": "The note's id" }
+      },
+      "noApproval": "An internal move within the notes store; nothing outside it changes."
+    }
+  ],
+  "commands": [
+    {
+      "name": "list-notes",
+      "description": "List the notes the store holds, with their ids",
+      "engine": ["list"]
+    }
+  ],
+  "connectors": [],
+  "approvals": [
+    {
+      "id": "long_note",
+      "tool": "add_note",
+      "description": "Notes longer than the length the business sets",
+      "when": [{ "arg": "length", "op": "gt", "value": { "limit": "long_note" } }]
+    }
+  ],
+  "limits": {
+    "long_note": {
+      "description": "The length above which adding a note waits for a person",
+      "default": 1200
+    }
+  },
+  "channels": ["email", "chat"],
+  "accepts": [
+    {
+      "type": "note.add",
+      "description": "Add a note to the shared notes",
+      "done": [
+        {
+          "tool": "search_notes",
+          "args": { "text": "{ticket.data.text}" },
+          "expect": "found"
+        },
+        { "person": true }
+      ]
+    }
+  ],
+  "mayNot": [
+    {
+      "action": "Add a note longer than the business's limit without asking",
+      "instead": "Ask the person who wants the note to approve it"
+    },
+    {
+      "action": "Archive a note another agent is still working on",
+      "instead": "Ask the agent's owner, or the person who asked, to decide"
+    },
+    {
+      "action": "Rewrite a note's text once it is written",
+      "instead": "Add a new note that replaces it, and say which one it replaces"
+    }
+  ],
+  "skills": [{ "id": "note-house-style", "enabledByDefault": true }],
+  "evals": "evals"
+}

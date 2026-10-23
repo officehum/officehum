@@ -385,7 +385,8 @@ that no agent accepts.
 
 The Role Factory builds the plan from a context profile in the interview. A rule table recommends each
 technique with a reason that quotes the interview, and a person accepts or rejects each one in
-`ROLE_SPEC.md`. The generated package carries context evals: the prompt stays under budget, the prompt
+`ROLE_SPEC.md` — the document the interview writes and the generator reads ([role-spec.md](role-spec.md)).
+The generated package carries context evals: the prompt stays under budget, the prompt
 prefix is identical across turns, cited ids survive filtering, and sub-agents return valid results.
 
 **Durable context patterns** (`@officehum/sdk`, on Pi Durable's own hooks):

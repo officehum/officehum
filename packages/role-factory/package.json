@@ -1,0 +1,35 @@
+{
+  "name": "@officehum/role-factory",
+  "version": "0.0.0",
+  "description": "The Role Factory's ROLE_SPEC.md: the one reviewable document a role is generated from, organised by the four layers, and the parser that validates it.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officehum/officehum.git",
+    "directory": "packages/role-factory"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@officehum/sdk": "0.0.0",
+    "typebox": "1.3.27",
+    "yaml": "2.9.1"
+  }
+}
