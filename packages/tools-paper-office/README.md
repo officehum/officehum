@@ -2,10 +2,10 @@
 
 A **task-leased Paper Office document workspace** for a Pi Durable role: a `DocumentService` a host
 injects, an isolated Python 3.13 worker pinned to `paper-docx`, `paper-pptx` and `paper-xlsx`, the
-portable `run_document_python` tool, and the typed Word operations built on top of it. It depends on Pi
-Durable, `pi-ai` and `@officehum/sdk` (for the FileStore contract) — never on `@officehum/office` — so
-the same pack runs in a bare Pi Durable harness with a fake service and inside Office Hum with the local
-one.
+portable `run_document_python` tool, and the typed Word and PowerPoint operations built on top of it.
+It depends on Pi Durable, `pi-ai` and `@officehum/sdk` (for the FileStore contract) — never on
+`@officehum/office` — so the same pack runs in a bare Pi Durable harness with a fake service and inside
+Office Hum with the local one.
 
 Design: [`docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md`](../../docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md).
 
@@ -131,6 +131,90 @@ set and the text diff but are recorded as `tracked: false` rather than pretendin
 `diff_package`, `text_diff` and `pending_changes` are path-based, so the adapter opens each version a
 bounded number of times rather than once.
 
+## The typed PowerPoint operations
+
+`inspect_presentation`, `read_presentation`, `create_presentation`, `edit_presentation`,
+`preview_presentation`, `compare_presentation` and `compose_presentation` are the same operation
+underneath as `run_document_python`: each one validates its arguments, resolves them against the task's
+lease, and runs a fixed program (`python/pptx_adapter.py`) through the same `DocumentService` — so typed
+calls and submitted snippets share the lease, the staging, the package inspection, the receipts and the
+idempotency. Withhold them with `paperOfficeToolPack({ includePptxTools: false })` if a role should get
+only the workspace, or with `includeWordTools: false` if it should get only PowerPoint.
+
+Seven, where Word has six: a deck can absorb another deck's slides, and that import carries its own
+relationship-policy refusals and part ledger. The rest mirror the Word adapter one for one.
+
+| Tool | What it does | What it refuses |
+| --- | --- | --- |
+| `inspect_presentation` | Slide, master, layout, shape, text-block, notes, media, picture, table and chart counts; the bounded slide outline with each slide's layout and title; media references with their part hashes; which text is a blind region; how much text is estimated to overflow its box | a reference outside the lease; an unreadable package; an external relationship |
+| `read_presentation` | **Bounded pages** of `slides` (order and layout), `text` (every block with its resolved effective font and a structural anchor), `shapes`, `notes` or `media` references, each page carrying its size, cursor, total and next cursor | a page size over 50, a cursor past the end, an unknown section |
+| `create_presentation` | A new `.pptx` **draft** from typed slides: a title, paragraphs, bullet lists, tables and speaker notes | a non-`.pptx` name, a ragged table, a layout this deck does not define, a format the lease does not permit |
+| `edit_presentation` | An **unpublished proposal**: a new immutable version of a leased deck, from ordered steps (see below) | a read-only source, a stale or ambiguous anchor, a missing target, a layout rebind whose placeholders cannot be reconciled, a step that would not reopen as a presentation |
+| `preview_presentation` | Bounded **structural** slide previews — `T:`/`B:`/`P:`/`TC:` text lines, `TB<rows>x<columns>:`, `PIC:<ext>:`, `CH:<type>:` — plus notes, media and estimated overflow | the same page rules as `read_presentation` |
+| `compare_presentation` | Structural change set, the fork's own slide-level diff, and a **before/after preview of every changed slide** | an unreadable version of either side |
+| `compose_presentation` | Appends one leased deck's slides into another as an unpublished proposal, by `adopt_theme`, `keep_appearance` or `bake` | a read-only destination, a mode that is not one of the three, a relationship the import cannot carry |
+
+**Edits.** Steps apply in the order given, and each validates its own target before anything is written:
+`replaceText` (anchored, formatting-preserving), `replaceTextEverywhere` (with an optional `expect`
+count so drift refuses instead of passing silently), `writeNotes`, `addSlide`, `cloneSlide`,
+`deleteSlide`, `moveSlide`, `rebindLayout`, `applyFooters`, `deleteShape`, `moveShape`, `copyShape`.
+An anchor is either the block `read_presentation` reported — `part`, `block_index`, `content_hash`, and
+`version`/`locator` for a current anchor — or that paragraph's exact literal text. The fork refuses a
+stale anchor with `stale-anchor` rather than editing whatever moved into its place, which is the correct
+answer to "edit a proposal made against an older version".
+
+**What an edit proves.** The proposal's result reports the source and output `sha256`, the structural
+change set (parts `added`, `removed`, `changed` — each with its **before and after sha256** — and
+`byteIdenticalCount`), the fork's own slide-level diff, a before/after structural preview of each changed
+slide, per-step evidence, a reopen witness, and the preservation block. Untouched parts come back
+**byte-identical** — layouts, masters, both themes, media, the notes master, and the slides the edit did
+not touch — because the edit writes through `pptx.package.patch_save`, which restores the original bytes
+of every part that is semantically unchanged. The fixtures argue this with per-part sha256 rather than by
+eye: the test unzips both versions, hashes every member, and checks the hashes the result *reports*
+against the hashes the packages actually hold.
+
+**Drafts and proposals, never publications.** `create_presentation` writes a new file;
+`edit_presentation` and `compose_presentation` propose a new version of a leased one. All report
+`published: false` and the result validator refuses anything else, because publication belongs to the
+review surface (RASF-3285).
+
+### There is no bitmap renderer, and the results say so
+
+`paper-pptx` 0.2.0 has **no rasteriser** — nothing in the fork turns a slide into an image — and this
+worker has no isolation to run one (RASF-3111). Nor can it measure text the way PowerPoint would: the
+fork's only measurement path is `TextFrame.fit_text`, which is a fit *application* rather than a report
+(it turns autofit off and writes a best-fit point size into every run), and it resolves a TrueType font
+**installed on the host** via `FontFiles.find`, so its answer changes with the machine and cannot be
+bound into a receipt. So:
+
+- A **preview is structural**, not a picture: slide text with structure markers, the shape inventory with
+  effective formatting, speaker notes, media references, and the per-slide change set. `rendering.bitmap`
+  is `false` in every result, `rendering.limits` names exactly what is missing and why, and the result
+  validator **refuses a worker that claims a bitmap rendering**.
+- **Overflow is computed and reported**, or reported as a limit. The estimate multiplies the resolved
+  font size by a published constant pair (`averageGlyphAdvanceEm` 0.5, `lineHeightEm` 1.2), compares the
+  result with the box's own geometry minus its own text insets, and reports the numbers it used —
+  `linesNeeded`, `requiredHeightEmu`, `availableHeightEmu`, `estimatedWidthEmu`, `availableWidthEmu`.
+  It is an estimate, not a measurement, and it is labelled `advance-estimate`; the constants ride in
+  every result so a caller can see what was assumed.
+- Before estimating anything, the report reads the frame's **own declared autofit**: `normAutofit` with a
+  font scale means the deck already shrank the text (`compensated: true`), and `spAutoFit` means the box
+  grows to the text, so a fixed-box overflow cannot occur. Only when neither is declared is a number
+  computed.
+- When the estimate cannot be made, the report says why — an inherited shape geometry, an unresolved font
+  size, a box narrower than its own insets, table-cell text — with `computed: false` and a `reason`. The
+  result validator refuses an uncomputed, uncompensated overflow that gives no reason, so a limit can
+  never be silently ignored.
+
+**What the fork cannot do** (worked around or reported, not hidden): table-cell text is a **blind
+region** for effective values (the resolver does not walk table styles), so its formatting is reported
+unresolved rather than guessed; PowerPoint carries no revision markup, so there is no redline — review
+gets the structural change set, the slide diff and the before/after preview; `shape_by_name` refuses an
+ambiguity, and because `add_copy` keeps its source's display name a copy is addressed by `shapeId` (the
+step evidence reports the new id); `rebind_layout` refuses a placeholder it cannot reconcile unless
+`orphanPolicy: "bake"` is passed; `mc:AlternateContent` subtrees are not surveyable, so an operation that
+must see everything refuses rather than guessing.
+
 ## Receipts, replay and immutability
 
 Every call gets an operation ID derived from the Pi Durable conversation and call identity — never from
@@ -178,6 +262,14 @@ An interpreter that cannot apply a limit says so: the worker reports which limit
 receipt records the ones it could not. On macOS `RLIMIT_AS` cannot be lowered at all (`current limit
 exceeds maximum limit`), so the memory limit is reported as **not enforced** there; on Linux it is
 enforced.
+
+A typed reply is bounded too. A deck-shaped result is intrinsically richer than a document-shaped one —
+every package part has a hash, and a before/after preview is per slide — so the PowerPoint tools budget
+32 KB of JSON where the Word tools budget 16 KB, rather than dropping evidence a reviewer needs. When
+even that is not enough, the reply gives up its cosmetic preview lines first (the counts, the change set,
+the hashes and the file ids all stay), then the byte-identical parts' hash sample, then the per-step
+evidence and the diff's per-slide deltas, and it names what it left out in an `omitted` list. The whole
+result is always in the receipt.
 
 ## What is *not* enforced yet
 
@@ -227,19 +319,26 @@ Tests that need a real interpreter **skip visibly** when `OFFICEHUM_PAPER_PYTHON
 guesses at a path, and no test touches the network. The typed Word tests follow the same rule:
 `word-operations.test.ts`, `word-tools.test.ts` and the two refusal fixtures in `word-fixtures.test.ts`
 run in both configurations (the package inspection is in process), and the interpreter-backed Word
-fixtures — read, draft, edit, preservation, replay, portability — skip visibly without it.
+fixtures — read, draft, edit, preservation, replay, portability — skip visibly without it. The typed
+PowerPoint tests do the same: `pptx-operations.test.ts` always runs, `pptx-fixtures.test.ts` runs its
+three no-interpreter refusal fixtures in both configurations and skips its eleven interpreter-backed
+fixtures with a named reason when no interpreter is configured.
 
 ## What later issues add
 
-`DocumentService` is deliberately small. RASF-3283 lands the Python workspace operation and RASF-3300
-lands the typed Word operations on it. The PowerPoint adapter (RASF-3284) and the Excel adapter
-(RASF-3301) arrive on this same interface, and RASF-3285 adds `publish_document` — until it lands,
-nothing in this pack can publish: every new document is a draft and every edit is a proposal.
-RASF-3193 (the office file store) replaces the in-package ledger's staging root with its own store, and
-RASF-3111 replaces the Python-level guards with container enforcement.
+`DocumentService` is deliberately small. RASF-3283 landed the Python workspace operation, RASF-3300 the
+typed Word operations on it, and RASF-3284 the typed PowerPoint operations. The Excel adapter (RASF-3301)
+arrives on this same interface, and RASF-3285 adds `publish_document` — until it lands, nothing in this
+pack can publish: every new document is a draft and every edit is a proposal. RASF-3193 (the office file
+store) replaces the in-package ledger's staging root with its own store, RASF-3111 replaces the
+Python-level guards with container enforcement (and is the only route to a real renderer), and a review
+surface that can render a before/after *picture* needs that same isolation.
 
-The typed Word tools add six refusal codes beside the ones RASF-3283 fixed — `document-protected`,
-`malformed-package`, `unsupported-structure`, `boundary-violation`, `target-not-found` and
-`ambiguous-target` — because each is a different thing a caller must react to differently. A worker code
-the pack does not know still collapses to `worker-refused`, so a new code cannot widen the contract
-silently.
+The typed Word tools added six refusal codes beside the ones RASF-3283 fixed —
+`document-protected`, `malformed-package`, `unsupported-structure`, `boundary-violation`,
+`target-not-found` and `ambiguous-target`. The typed PowerPoint tools add three more, because each is a
+different thing a caller must react to differently: `stale-anchor` (the anchored content moved on),
+`package-limit` (the archive has no single unambiguous reading) and `relationship-policy` (a
+relationship graph cannot be carried across as asked). Both adapters share the five codes that mean the
+same thing to either format. A worker code the pack does not know still collapses to `worker-refused`, so
+a new code cannot widen the contract silently.

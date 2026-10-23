@@ -6,9 +6,10 @@
  * pack therefore runs in a bare Pi Durable harness with a fake service (see the portability test) and
  * inside Office Hum with the local service.
  *
- * It carries `run_document_python` and, unless withheld, the six typed Word tools from `word-tools.ts`.
- * The typed tools are the same operation underneath: a fixed program on the same service, so both share
- * the lease, the staging, the package inspection, the operation receipts and the idempotency.
+ * It carries `run_document_python` and, unless withheld, the six typed Word tools from `word-tools.ts`
+ * and the seven typed PowerPoint tools from `pptx-tools.ts`. The typed tools are the same operation
+ * underneath: a fixed program on the same service, so both share the lease, the staging, the package
+ * inspection, the operation receipts and the idempotency.
  *
  * The operation ID is derived from the Pi Durable conversation and call identity, never from an
  * argument: a model cannot choose its own replay identity. Every tool is declared `replay: "safe"`,
@@ -25,6 +26,7 @@ import type {
 } from "./document-service.js";
 import type { DocumentLease } from "./lease.js";
 import { operationIdForCall } from "./operation.js";
+import { pptxTools } from "./pptx-tools.js";
 import { wordTools } from "./word-tools.js";
 
 export const RUN_DOCUMENT_PYTHON = "run_document_python";
@@ -53,6 +55,14 @@ export interface PaperOfficeToolPackOptions {
    * the workspace can withhold it.
    */
   readonly includeWordTools?: boolean;
+  /**
+   * Whether the pack carries the typed PowerPoint tools (`inspect_presentation`,
+   * `read_presentation`, `create_presentation`, `edit_presentation`, `preview_presentation`,
+   * `compare_presentation`, `compose_presentation`) beside the Python workspace. Defaults to `true`,
+   * like the Word set: the typed surface is the reviewable one, and a role that wants only the
+   * workspace can withhold it.
+   */
+  readonly includePptxTools?: boolean;
   readonly packId?: string;
 }
 
@@ -114,6 +124,7 @@ export function paperOfficeToolPack(options: PaperOfficeToolPackOptions): PaperO
     tools: [
       runDocumentPython(options),
       ...(options.includeWordTools === false ? [] : wordTools(options)),
+      ...(options.includePptxTools === false ? [] : pptxTools(options)),
     ],
   };
 }

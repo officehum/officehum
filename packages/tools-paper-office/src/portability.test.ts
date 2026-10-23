@@ -20,6 +20,7 @@ import {
   resolvePaperInterpreter,
   workerEnvironment,
 } from "./paper-worker.js";
+import { PPTX_TOOL_REGISTRATIONS } from "./pptx-tools.js";
 import { paperOfficeToolPack, RUN_DOCUMENT_PYTHON } from "./run-document-python.js";
 import { WORD_OPERATIONS, wordInstruction } from "./word-operations.js";
 import { WORD_TOOL_REGISTRATIONS } from "./word-tools.js";
@@ -102,6 +103,7 @@ describe("the pack's portability boundary", () => {
     expect(pack.tools.map((item) => item.name)).toEqual([
       RUN_DOCUMENT_PYTHON,
       ...WORD_TOOL_REGISTRATIONS,
+      ...PPTX_TOOL_REGISTRATIONS,
     ]);
     expect(pack.tools[0]?.name).toBe(RUN_DOCUMENT_PYTHON);
   });

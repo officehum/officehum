@@ -57,6 +57,10 @@ export const DOCUMENT_REFUSAL_CODES = [
   "boundary-violation",
   "target-not-found",
   "ambiguous-target",
+  // PowerPoint adapter: the typed refusals paper-pptx raises, mapped one-for-one
+  "stale-anchor",
+  "package-limit",
+  "relationship-policy",
   // Submitted code
   "code-error",
   "code-syntax",

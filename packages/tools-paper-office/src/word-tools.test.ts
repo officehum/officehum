@@ -26,6 +26,7 @@ import {
   WORD_TOOL_NAMES,
   wordInstruction,
 } from "./word-operations.js";
+import { WORD_TOOL_REGISTRATIONS } from "./word-tools.js";
 
 const FILE_A = `file_${"A".repeat(26)}`;
 const FILE_B = `file_${"B".repeat(26)}`;
@@ -428,7 +429,10 @@ describe("the typed Word tools run only through the injected service", () => {
   it("registers every typed tool as replay-safe with a closed argument schema", async () => {
     const service = scriptedService(readResult());
     const pack = paperOfficeToolPack({ service, leaseFor: async () => LEASE });
-    const typed = pack.tools.filter((tool) => tool.name !== "run_document_python");
+    // The pack also carries the typed PowerPoint tools; this is the Word set alone.
+    const typed = pack.tools.filter((tool) =>
+      (WORD_TOOL_REGISTRATIONS as readonly string[]).includes(tool.name),
+    );
     expect(typed.map((tool) => tool.name)).toEqual([
       INSPECT_DOCUMENT,
       READ_DOCUMENT,
