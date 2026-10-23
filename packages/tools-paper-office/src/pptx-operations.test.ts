@@ -42,6 +42,7 @@ import { PPTX_TOOL_ORDER, PPTX_TOOL_REGISTRATIONS, pptxTools } from "./pptx-tool
 import { paperOfficeToolPack, RUN_DOCUMENT_PYTHON } from "./run-document-python.js";
 import { pptxPackage, sha256, utf8 } from "./test-helpers.js";
 import { WORD_TOOL_REGISTRATIONS } from "./word-tools.js";
+import { XLSX_TOOL_REGISTRATIONS } from "./xlsx-tools.js";
 
 const FILE_A = `file_${"A".repeat(26)}`;
 const FILE_B = `file_${"B".repeat(26)}`;
@@ -727,6 +728,7 @@ describe("the typed PowerPoint surface", () => {
       RUN_DOCUMENT_PYTHON,
       ...WORD_TOOL_REGISTRATIONS,
       ...PPTX_TOOL_REGISTRATIONS,
+      ...XLSX_TOOL_REGISTRATIONS,
     ]);
     for (const tool of full.tools) expect(tool.replay).toBe("safe");
 
@@ -735,6 +737,7 @@ describe("the typed PowerPoint surface", () => {
       leaseFor: async () => LEASE,
       includeWordTools: false,
       includePptxTools: false,
+      includeXlsxTools: false,
     });
     expect(workspaceOnly.tools.map((tool) => tool.name)).toEqual([RUN_DOCUMENT_PYTHON]);
 
@@ -746,6 +749,7 @@ describe("the typed PowerPoint surface", () => {
     expect(withoutPptx.tools.map((tool) => tool.name)).toEqual([
       RUN_DOCUMENT_PYTHON,
       ...WORD_TOOL_REGISTRATIONS,
+      ...XLSX_TOOL_REGISTRATIONS,
     ]);
 
     const withoutWord = paperOfficeToolPack({
@@ -756,6 +760,7 @@ describe("the typed PowerPoint surface", () => {
     expect(withoutWord.tools.map((tool) => tool.name)).toEqual([
       RUN_DOCUMENT_PYTHON,
       ...PPTX_TOOL_REGISTRATIONS,
+      ...XLSX_TOOL_REGISTRATIONS,
     ]);
   });
 });

@@ -273,6 +273,10 @@ function withExternalLink(bytes: Uint8Array, target: string): Uint8Array {
 }
 
 suite("the Word adapter reads a leased document in bounded pages", () => {
+  // This one walks five sections a page at a time, so it drives far more interpreter runs than its
+  // siblings; under a loaded suite (three format adapters' fixtures spawn real subprocesses in
+  // parallel) five seconds is not enough, so it gets the same explicit budget the PowerPoint fixtures
+  // give their slow tests.
   it("pages paragraphs, headings, tables, comments and tracked changes to the end", async () => {
     const { store, service } = harness();
     const source = await fixture(store, service, { operationId: "conv:read-fixture" });
@@ -381,7 +385,7 @@ suite("the Word adapter reads a leased document in bounded pages", () => {
     expect(changes.every((item) => item.author === "Reviewer")).toBe(true);
     expect(changes.some((item) => item.isParagraphMark)).toBe(true);
     expect(revisions.result.page.hasMore).toBe(false);
-  });
+  }, 30_000);
 
   it("inspects counts, protection and the heading outline without writing anything", async () => {
     const { store, service } = harness();

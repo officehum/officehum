@@ -34,6 +34,7 @@ import {
   wordProgram,
 } from "./word-operations.js";
 import { WORD_TOOL_REGISTRATIONS, wordTools } from "./word-tools.js";
+import { XLSX_TOOL_REGISTRATIONS } from "./xlsx-tools.js";
 
 const FILE_A = `file_${"A".repeat(26)}`;
 const FILE_B = `file_${"B".repeat(26)}`;
@@ -514,9 +515,11 @@ describe("the typed Word surface", () => {
       RUN_DOCUMENT_PYTHON,
       ...WORD_TOOL_REGISTRATIONS,
       ...PPTX_TOOL_REGISTRATIONS,
+      ...XLSX_TOOL_REGISTRATIONS,
     ]);
     for (const tool of full.tools) expect(tool.replay).toBe("safe");
-    // Withholding the Word set leaves the PowerPoint set, and withholding both leaves the workspace.
+    // Withholding the Word set leaves the PowerPoint and Excel sets, and withholding all three typed
+    // sets leaves the workspace alone.
     const withoutWord = paperOfficeToolPack({
       service,
       leaseFor: async () => LEASE,
@@ -525,12 +528,14 @@ describe("the typed Word surface", () => {
     expect(withoutWord.tools.map((tool) => tool.name)).toEqual([
       RUN_DOCUMENT_PYTHON,
       ...PPTX_TOOL_REGISTRATIONS,
+      ...XLSX_TOOL_REGISTRATIONS,
     ]);
     const workspaceOnly = paperOfficeToolPack({
       service,
       leaseFor: async () => LEASE,
       includeWordTools: false,
       includePptxTools: false,
+      includeXlsxTools: false,
     });
     expect(workspaceOnly.tools.map((tool) => tool.name)).toEqual([RUN_DOCUMENT_PYTHON]);
   });

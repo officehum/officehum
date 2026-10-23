@@ -172,15 +172,6 @@ export function docxPackage(): Uint8Array {
   ]);
 }
 
-export function xlsxPackage(): Uint8Array {
-  return buildZip([
-    { name: "[Content_Types].xml", data: CONTENT_TYPES },
-    { name: "xl/workbook.xml", data: "<workbook/>" },
-    { name: "xl/_rels/workbook.xml.rels", data: relationships(["worksheets/sheet1.xml"]) },
-    { name: "xl/worksheets/sheet1.xml", data: "<worksheet/>" },
-  ]);
-}
-
 const PPTX_CONTENT_TYPES = [
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
   '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
@@ -202,6 +193,84 @@ export function pptxPackage(): Uint8Array {
     },
     { name: "docProps/core.xml", data: "<core/>" },
   ]);
+}
+
+const XLSX_CONTENT_TYPES = [
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+  '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+  '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+  '<Default Extension="xml" ContentType="application/xml"/>',
+  '<Override PartName="/xl/workbook.xml"',
+  ' ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>',
+  '<Override PartName="/xl/worksheets/sheet1.xml"',
+  ' ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>',
+  "</Types>",
+].join("");
+
+/** A structurally valid Excel package with internal relationships only. */
+export function xlsxPackage(): Uint8Array {
+  return buildZip([
+    { name: "[Content_Types].xml", data: XLSX_CONTENT_TYPES },
+    {
+      name: "xl/workbook.xml",
+      data: [
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"',
+        ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
+        '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>',
+        "</workbook>",
+      ].join(""),
+    },
+    {
+      name: "xl/_rels/workbook.xml.rels",
+      data: relationships(["worksheets/sheet1.xml", "styles.xml"]),
+    },
+    { name: "xl/worksheets/sheet1.xml", data: "<worksheet/>" },
+    { name: "xl/styles.xml", data: "<styleSheet/>" },
+  ]);
+}
+
+/**
+ * An xlsx-shaped package a test can make hostile in one specific way, so the structural refusals can
+ * be exercised without a provisioned interpreter.
+ */
+export function xlsxLike(overrides: PackageOverrides = {}): Uint8Array {
+  if (overrides.entries !== undefined) return buildZip(overrides.entries);
+  const parts: ZipEntry[] = [];
+  if (overrides.omitContentTypes !== true) {
+    parts.push({ name: "[Content_Types].xml", data: XLSX_CONTENT_TYPES });
+  }
+  parts.push({
+    name: "xl/workbook.xml",
+    data: [
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"',
+      ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
+      '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>',
+      "</workbook>",
+    ].join(""),
+  });
+  const rels = [
+    ...(overrides.targets ?? ["worksheets/sheet1.xml"]).map(
+      (target) => `<Relationship Id="rId${target.length}" Type="t" Target="${target}"/>`,
+    ),
+    ...(overrides.external ?? []).map(
+      (target) =>
+        `<Relationship Id="r${target.length}" Type="t" Target="${target}" TargetMode="External"/>`,
+    ),
+  ];
+  parts.push({
+    name: "xl/_rels/workbook.xml.rels",
+    data: [
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+      ...rels,
+      "</Relationships>",
+    ].join(""),
+  });
+  parts.push({ name: "xl/worksheets/sheet1.xml", data: "<worksheet/>" });
+  parts.push(...(overrides.extra ?? []));
+  return buildZip(parts);
 }
 
 /** A pptx-shaped package a test can make hostile in one specific way. */
@@ -558,6 +627,141 @@ export function pptxFixtureCode(options: PptxFixtureOptions = {}): string {
     "documents.result({'slides': len(reopened.slides), 'text': len(str(reopened.slide_width))})",
   );
   return lines.join("\n");
+}
+
+/**
+ * A real Excel fixture, built through the worker so it comes from the pinned library rather than a
+ * hand-written archive: a `Revenue` sheet with values, a formula, a number format and a chart, a
+ * `Notes` sheet of text, a `Styles` sheet carrying a font and a percentage format, a workbook-scoped
+ * named range, and a formula whose value the *package* caches — as Excel would have written it.
+ *
+ * `broken` adds three unresolvable references — a sheet that does not exist, a range outside the grid
+ * and a name that is not defined — so a test can prove they are reported rather than repaired.
+ *
+ * `unmodeled` gives the *untouched* `Notes` sheet an `extLst` carrying an x14 sparkline group — content
+ * openpyxl does not model, which is what a real workbook from Excel holds and what its own reader warns
+ * it "will be removed". A stock round trip re-serializes that sheet and guts the sparklines; preserve
+ * mode must return the original bytes, extension and all.
+ */
+export interface XlsxFixtureOptions {
+  readonly variant?: "main" | "revised";
+  readonly broken?: boolean;
+  readonly unmodeled?: boolean;
+  readonly name?: string;
+}
+
+export function xlsxFixtureCode(options: XlsxFixtureOptions = {}): string {
+  const name = options.name ?? "close.xlsx";
+  const formula = options.variant === "revised" ? "=SUM(B2:B2)" : "=SUM(B2:B3)";
+  const cached = options.variant === "revised" ? "1250" : "1500";
+  const lines = [
+    "import zipfile",
+    "from openpyxl import Workbook",
+    "from openpyxl.chart import BarChart, Reference",
+    "from openpyxl.styles import Font, PatternFill",
+    "from openpyxl.workbook.defined_name import DefinedName",
+    "",
+    "wb = Workbook()",
+    "revenue = wb.active",
+    "revenue.title = 'Revenue'",
+    "revenue['A1'] = 'Account'",
+    "revenue['B1'] = 'Amount'",
+    "revenue['A2'] = 'Revenue'",
+    "revenue['B2'] = 1250",
+    "revenue['A3'] = 'Support'",
+    "revenue['B3'] = 250",
+    "revenue['A4'] = 'Total'",
+    `revenue['B4'] = ${JSON.stringify(formula)}`,
+    "revenue['C1'] = '=RevenueTotal*2'",
+    "revenue['D1'] = '=Notes!A1'",
+    "revenue['E1'] = '=SUM(A:A)'",
+    "revenue['A1'].font = Font(bold=True)",
+    "revenue['B2'].number_format = '#,##0.00'",
+  ];
+  if (options.broken === true) {
+    lines.push(
+      "revenue['F1'] = '=Missing!A1'",
+      "revenue['F2'] = '=SUM(Revenue!A1:A2000000)'",
+      "revenue['F3'] = '=GoneTotal*2'",
+    );
+  }
+  lines.push(
+    "notes = wb.create_sheet('Notes')",
+    "notes['A1'] = 'Draft prepared by the office.'",
+    "notes['A1'].fill = PatternFill('solid', fgColor='FFEE99')",
+    "styles = wb.create_sheet('Styles')",
+    "styles['A1'] = 'Label'",
+    "styles['A2'] = 42",
+    "styles['A2'].font = Font(italic=True, size=14)",
+    "styles['A2'].number_format = '0.00%'",
+    "wb.defined_names.add(DefinedName('RevenueTotal', attr_text='Revenue!$B$2'))",
+    "chart = BarChart()",
+    "chart.title = 'Revenue by account'",
+    "chart.add_data(Reference(revenue, min_col=2, min_row=1, max_row=3), titles_from_data=True)",
+    "revenue.add_chart(chart, 'G2')",
+    `path = documents.declare_output(${JSON.stringify(name)}, "xlsx")`,
+    "wb.save(path)",
+    "",
+    "# The package's own cached value for B4, as Excel writes one. A stock save drops it; the splice",
+    "# removes it when an input changes, and openpyxl never computes a replacement.",
+    "with zipfile.ZipFile(path) as source:",
+    "    entries = [(item, source.read(item.filename)) for item in source.infolist()]",
+    "with zipfile.ZipFile(path, 'w') as target:",
+    "    for item, data in entries:",
+    "        if item.filename == 'xl/worksheets/sheet1.xml':",
+    `            data = data.replace(b'<f>${formula.slice(1)}</f><v></v>', b'<f>${formula.slice(1)}</f><v>${cached}</v>')`,
+  );
+  if (options.unmodeled === true) {
+    lines.push(
+      "        if item.filename == 'xl/worksheets/sheet2.xml':",
+      "            # An x14 sparkline group: modeled by Excel, not by openpyxl, whose reader warns that it",
+      '            # "will be removed". A stock round trip re-serializes the sheet and takes the',
+      "            # sparklines with it; preserve mode must copy the original bytes.",
+      "            sparkline = (",
+      "                b'<extLst><ext uri=\"{05C60535-1F16-4fd2-B633-F4F36F0B64E0}\">'",
+      "                b'<x14:sparklineGroups xmlns:x14=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\"'",
+      "                b' xmlns:xm=\"http://schemas.microsoft.com/office/excel/2006/main\">'",
+      "                b'<x14:sparklineGroup type=\"column\"><x14:sparklines><x14:sparkline>'",
+      "                b'<xm:f>Revenue!B2:B3</xm:f><xm:sqref>B6</xm:sqref>'",
+      "                b'</x14:sparkline></x14:sparklines></x14:sparklineGroup>'",
+      "                b'</x14:sparklineGroups></ext></extLst>'",
+      "            )",
+      "            data = data.replace(b'</worksheet>', sparkline + b'</worksheet>')",
+    );
+  }
+  lines.push(
+    "        target.writestr(item, data)",
+    "",
+    "import openpyxl",
+    "",
+    "# Reopened with the pinned library's own cached-value reader, so the fixture reports what the",
+    "# package holds rather than what it intended to write.",
+    "reopened = openpyxl.load_workbook(path, data_only=True)",
+    "documents.result({",
+    "    'sheets': len(reopened.sheetnames),",
+    "    'cached': reopened['Revenue']['B4'].value,",
+    "})",
+  );
+  return lines.join("\n");
+}
+
+/**
+ * A stock round trip of one leased workbook, saved beside the proposal.
+ *
+ * `preserve=False` opts out of preserve mode, so this is the lossy path openpyxl takes by default: it
+ * re-serializes every part from the model. A test uses it to prove that a part the adapter returned
+ * byte-identical is *not* what a re-serialization would have produced.
+ */
+export function xlsxNaiveRoundTripCode(input: string, output = "naive.xlsx"): string {
+  return [
+    "from openpyxl import load_workbook",
+    "",
+    `source = documents.open_input(${JSON.stringify(input)})`,
+    `path = documents.declare_output(${JSON.stringify(output)}, "xlsx")`,
+    "workbook = load_workbook(source, preserve=False)",
+    "workbook.save(path)",
+    "documents.result({'sheets': len(workbook.sheetnames)})",
+  ].join("\n");
 }
 
 /**

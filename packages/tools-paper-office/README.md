@@ -2,7 +2,8 @@
 
 A **task-leased Paper Office document workspace** for a Pi Durable role: a `DocumentService` a host
 injects, an isolated Python 3.13 worker pinned to `paper-docx`, `paper-pptx` and `paper-xlsx`, the
-portable `run_document_python` tool, and the typed Word and PowerPoint operations built on top of it.
+portable `run_document_python` tool, and the typed Word, PowerPoint and Excel operations built on top
+of it.
 It depends on Pi Durable, `pi-ai` and `@officehum/sdk` (for the FileStore contract) — never on
 `@officehum/office` — so the same pack runs in a bare Pi Durable harness with a fake service and inside
 Office Hum with the local one.
@@ -215,6 +216,86 @@ step evidence reports the new id); `rebind_layout` refuses a placeholder it cann
 `orphanPolicy: "bake"` is passed; `mc:AlternateContent` subtrees are not surveyable, so an operation that
 must see everything refuses rather than guessing.
 
+## The typed Excel operations
+
+`inspect_workbook`, `read_workbook`, `create_workbook`, `edit_workbook`, `preview_workbook` and
+`compare_workbook` are the same shape as their Word and PowerPoint siblings: each validates its
+arguments, resolves them against the task's lease, and runs a fixed program (`python/xlsx_adapter.py`)
+through the same `DocumentService`. Withhold them with `paperOfficeToolPack({ includeXlsxTools: false })`.
+
+Six, mirroring Word: Excel has one primitive the other formats do not need — a *cell*, addressed by
+sheet and A1 coordinate — and a formula is a value a caller supplies rather than one this pack computes.
+There is no `compose`: a workbook does not absorb another workbook's sheets in one operation.
+
+| Tool | What it does | What it refuses |
+| --- | --- | --- |
+| `inspect_workbook` | Sheet order with each sheet's size, protection and freeze state; cell, formula, styled-cell, table, merged-range and validation counts; the named ranges with the range each names; the charts with their series references; how many chart parts the package holds that this version does not model | a reference outside the lease; an unreadable package; a macro; an external link |
+| `read_workbook` | **Bounded pages** of `sheets`, `cells` (with each formula and the value the package cached), `formulas` (with every reference each makes), `names`, `styles` or `charts`, each page carrying its size, cursor, total and next cursor | a page size over 50, a cursor past the end, an unknown section, a range over 4 096 cells, a `cells` read with no sheet or range |
+| `create_workbook` | A new `.xlsx` **draft** from typed sheets: names, blocks of literals and formulas, styles, named ranges, column widths and a frozen pane | a non-`.xlsx` name, a ragged or oversized block, a defined name whose reference points at a sheet the workbook does not have, a format the lease does not permit |
+| `edit_workbook` | An **unpublished proposal**: a new immutable version of a leased workbook, from ordered steps (see below) | a read-only source, an unknown sheet, a sheet this workbook does not have, an edit that would leave a reference pointing nowhere, a step that would not reopen as a workbook |
+| `preview_workbook` | Bounded **structural** sheet previews — `V:`/`F:`/`S:` value, formula and style lines, `N:` names, `T:` tables, `C:` charts, `M:` merges, `AF:` autofilters | the same page rules as `read_workbook` |
+| `compare_workbook` | The structural change set, the cell and formula diff, the style diff, the formulas that read a changed cell, and explicit numeric checks | an unreadable version of either side |
+
+**Edits.** Steps apply in the order given, and each validates its own target before anything is written:
+`setCell` (a literal, `null` to clear, or a formula), `setRange` (literals only, exactly the block the
+range covers), `clearCells`, `setStyle`, `setColumnWidth`, `addSheet`, `deleteSheet`, `renameSheet`,
+`setName`, `removeName`. A value that begins with `=` must use the `formula` field in an edit, so a
+string that looks like a formula is never silently given a new meaning — in `create_workbook`, a string
+beginning with `=` *is* the formula, because that is how a draft's totals are laid out from source data.
+A rename rewrites the references that name the sheet; a delete or a name removal that would strand a
+reference refuses with `broken-reference` **before anything is written**, naming every reference it found.
+
+**What an edit proves.** The proposal's result reports the source and output `sha256`, the fork's own
+edit receipt (the changed-cell set, keyed by the part that holds each cell), the structural change set
+with each part's before and after `sha256`, the cell and formula diff, the style diff, the formulas that
+read a changed cell, explicit numeric checks, a reopen witness, and the preservation block. Untouched
+parts come back **byte-identical** — other sheets, charts, drawings and the theme — because
+`openpyxl.preserve` is on by default for `load_workbook(path)`: the original package is the source of
+truth and the save is a splice, so an untouched part is raw-copied rather than re-serialized. The
+fixtures argue this with per-part sha256 *and* with a stock round trip of the same source: one fixture's
+untouched sheet carries an x14 sparkline group, which openpyxl's own reader warns it "will be removed" —
+the stock round trip drops it, and the proposal returns the original bytes.
+
+### No calculation happens here, and the results say so
+
+`openpyxl.oracle` is the fork's only calculation path and it implements **no engine**: its own
+documentation says a partial engine would be a "silent-wrongness machine", so it delegates to headless
+LibreOffice. This worker cannot spawn a process — its import guard denies `subprocess` and it patches
+`os.system`, `os.popen`, `os.fork` and `os.exec*` — so a recalculation is impossible here even where
+LibreOffice is installed, and `openpyxl.oracle.available()` is `false` on a machine without it. So:
+
+- Every result carries a `recalculation` block: `available`, `attempted: false`, `computed: false`,
+  `processSpawned: false`, the reason in words, and the 22 functions `ORACLE_UNSUPPORTED_FUNCS` names
+  that the oracle would refuse *anywhere* (`LAMBDA`, `LET`, `WEBSERVICE`, the `CUBE*` family, …). The
+  result validator **refuses a worker that claims a computed value, an attempted run or a spawned
+  process**, and refuses a block whose reason or limits are empty.
+- No operation returns a calculated value. A `cachedValue` a read reports is one the *package* already
+  held, marked `cachedKnown`, and the `create` result says plainly that a formula written into a draft
+  has no cached value until Excel or LibreOffice opens it.
+- What the adapter *does* verify arithmetically: the exact before and after of each changed cell with
+  its exact decimal delta, and — where a changed cell's own formula is `SUM(<range>)` — **its own exact
+  sum of the cells that range names**, reported beside whatever value the file cached. When the splice
+  drops a cache because an input changed, `agrees` is `null` with that reason rather than a guess; when
+  the file's cache is there to compare against, `agrees` is the comparison (`true` or `false`), and a
+  difference is reported rather than resolved. Every sum names the cells it added.
+- The proposal's own recalculation request is read out of the package and reported
+  (`workbookRequest.requestsRecalculation`), so a reviewer knows Excel will recalculate on open.
+
+**Reference verification.** `inspect`, `read`, `edit` and `compare` walk every formula surface the
+library itself knows about — cells, defined names, print areas, data validation, conditional formatting,
+table ranges and chart series — and report the ones that cannot resolve: a sheet prefix naming a sheet
+the workbook does not have, a name that is not defined, a range outside the grid, a structured reference
+to a table that is gone, an `[1]Sheet!A1` reference to another workbook, and the `#REF!` operands and
+cached error values `openpyxl.preserve.hygiene` finds. A source that already has one is **reported, not
+refused and not repaired** — a reviewer needs to see it — while an operation that would *add* one refuses
+with `broken-reference`. The two claims the design makes about preservation and calculation are therefore
+both checkable: `preservation.byteIdentical` is a sha256 list, and `recalculation.computed` is `false`
+with a reason.
+
+**Charts are read, never drawn.** A chart's series references are part of the reference verification, and
+a chart part the library cannot model is counted in `unmodeledChartParts` rather than silently ignored.
+Creating a chart belongs to the data pack ([RASF-3204](https://linear.app/riseandshinefutures/issue/RASF-3204)).
+
 ## Receipts, replay and immutability
 
 Every call gets an operation ID derived from the Pi Durable conversation and call identity — never from
@@ -265,11 +346,13 @@ enforced.
 
 A typed reply is bounded too. A deck-shaped result is intrinsically richer than a document-shaped one —
 every package part has a hash, and a before/after preview is per slide — so the PowerPoint tools budget
-32 KB of JSON where the Word tools budget 16 KB, rather than dropping evidence a reviewer needs. When
-even that is not enough, the reply gives up its cosmetic preview lines first (the counts, the change set,
-the hashes and the file ids all stay), then the byte-identical parts' hash sample, then the per-step
-evidence and the diff's per-slide deltas, and it names what it left out in an `omitted` list. The whole
-result is always in the receipt.
+32 KB of JSON where the Word tools budget 16 KB, rather than dropping evidence a reviewer needs. The
+Excel tools budget 32 KB like the PowerPoint ones, because their review material is dense — every changed
+cell carries its exact before and after, and every numeric check carries an exact sum — and that material
+is the **last** thing to go: a reply gives up its preview lines first, then each part change's own XML
+delta lines, the byte-identical parts' hash sample and the changed-cell map, and only then the dependency
+list, the per-step evidence and the numeric checks — naming what it left out in an `omitted` list. The
+whole result is always in the receipt.
 
 ## What is *not* enforced yet
 
@@ -322,14 +405,17 @@ run in both configurations (the package inspection is in process), and the inter
 fixtures — read, draft, edit, preservation, replay, portability — skip visibly without it. The typed
 PowerPoint tests do the same: `pptx-operations.test.ts` always runs, `pptx-fixtures.test.ts` runs its
 three no-interpreter refusal fixtures in both configurations and skips its eleven interpreter-backed
-fixtures with a named reason when no interpreter is configured.
+fixtures with a named reason when no interpreter is configured. The typed Excel tests do the same:
+`xlsx-operations.test.ts` always runs, and `xlsx-fixtures.test.ts` runs its four no-interpreter refusal
+fixtures (a malformed archive, a VBA project, an external relationship, an ungranted reference) in both
+configurations while its ten interpreter-backed fixtures skip visibly without one.
 
 ## What later issues add
 
 `DocumentService` is deliberately small. RASF-3283 landed the Python workspace operation, RASF-3300 the
-typed Word operations on it, and RASF-3284 the typed PowerPoint operations. The Excel adapter (RASF-3301)
-arrives on this same interface, and RASF-3285 adds `publish_document` — until it lands, nothing in this
-pack can publish: every new document is a draft and every edit is a proposal. RASF-3193 (the office file
+typed Word operations on it, RASF-3284 the typed PowerPoint operations and RASF-3301 the typed Excel
+operations — all three format adapters are on this same interface. RASF-3285 adds `publish_document` —
+until it lands, nothing in this pack can publish: every new document is a draft and every edit is a proposal. RASF-3193 (the office file
 store) replaces the in-package ledger's staging root with its own store, RASF-3111 replaces the
 Python-level guards with container enforcement (and is the only route to a real renderer), and a review
 surface that can render a before/after *picture* needs that same isolation.
@@ -339,6 +425,8 @@ The typed Word tools added six refusal codes beside the ones RASF-3283 fixed —
 `target-not-found` and `ambiguous-target`. The typed PowerPoint tools add three more, because each is a
 different thing a caller must react to differently: `stale-anchor` (the anchored content moved on),
 `package-limit` (the archive has no single unambiguous reading) and `relationship-policy` (a
-relationship graph cannot be carried across as asked). Both adapters share the five codes that mean the
-same thing to either format. A worker code the pack does not know still collapses to `worker-refused`, so
+relationship graph cannot be carried across as asked). The typed Excel tools add one more —
+`broken-reference`, for a reference this workbook cannot resolve, which only a spreadsheet has — and
+share the macro and external-link codes the host already enforces structurally. All three adapters share
+the five codes that mean the same thing to any format. A worker code the pack does not know still collapses to `worker-refused`, so
 a new code cannot widen the contract silently.

@@ -61,6 +61,10 @@ export const DOCUMENT_REFUSAL_CODES = [
   "stale-anchor",
   "package-limit",
   "relationship-policy",
+  // Excel: a reference the workbook cannot resolve. A spreadsheet is the one format where a stored
+  // formula can name something that is not there, so the adapter reports one it finds and refuses an
+  // operation that would add one.
+  "broken-reference",
   // Submitted code
   "code-error",
   "code-syntax",
