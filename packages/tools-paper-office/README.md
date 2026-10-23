@@ -317,6 +317,44 @@ versions. Then:
 - `reads` in a receipt is what the run actually opened — the lineage of a cross-format transformation —
   and output metadata records `derivedFrom`.
 
+## Review and publication
+
+An edit to an existing business file is a **proposal**, and nothing publishes it until a person has
+reviewed *that exact version*. `publicationGate` is the surface: it opens a durable review from the
+immutable source and proposed hashes, records a person's decision bound to those hashes, and only then
+lets the FileStore's own publish compare-and-swap move the published pointer.
+
+- **One evidence shape.** Word, PowerPoint and Excel each keep their native comparison, and
+  `reviewEvidenceFromWord/Pptx/Xlsx` normalise it into one `ReviewEvidence`: the change set, the native
+  diff, the format's preview (redline / before-and-after slides / changed cells), a set of deterministic
+  checks and the limits of that evidence. `reviewEvidenceFromService` runs the format's own `compare_*`
+  through the worker, so the evidence is the adapter's, not a second differ.
+- **The approval *is* the hashes.** `reviewBindingOf` seals the file, the source version and hash, the
+  proposed version and hash, the diff digest and the validation digest; the review ID is that binding.
+  Two proposals that differ in one byte of the document or one line of evidence have different bindings,
+  different review IDs, and therefore no shared approval. A decision carries the whole binding and the
+  gate compares it by value (`approvalCovers`), so an approval for one proposal cannot publish another.
+- **A rubric cannot approve.** `withRubric` records a qualitative score beside the deterministic checks;
+  `mayApprove` is always `false` and the publish path never reads it.
+- **Every refusal leaves the pointer where it was.** A missing decision (`not-approved`), a denial
+  (`denied`), a mismatched approval (`approval-mismatch`), a proposal a newer edit superseded
+  (`stale-review`) and a published pointer that moved after the review (`version-conflict`) all return
+  before the FileStore is asked to publish.
+- **Restart-safe.** The review is written to a durable ledger before anyone decides. A restart reopens
+  the same pending review — it is neither re-created nor auto-approved.
+- **A new file is a draft.** It needs no review; the gate only guards an existing file's published
+  pointer.
+- **An agent may ask; a person decides.** `publish_document` is in the pack only when the host supplies
+  a gate (withhold it and the pack has no publish path at all). It resolves the host's review for the
+  exact proposed version and asks the gate; with no review, a pending review, a denial or an approval
+  bound to other hashes, it returns the refusal and nothing moves. The agent cannot name an approval.
+
+The CLI is the person's surface: `officehum review list|show|decide|publish` shows the file, both
+versions with their hashes, the evidence, the deterministic checks and the stated limits, then records
+the decision and publishes behind the FileStore compare-and-swap. This is deliberately **not** the
+`--approval allow|deny` tool-approval flag: that one decides whether a gated tool call may run, and says
+nothing about which bytes would become the published version.
+
 ## Limits, and exactly where each is enforced
 
 | Limit | Enforced by | How |
@@ -413,12 +451,16 @@ configurations while its ten interpreter-backed fixtures skip visibly without on
 ## What later issues add
 
 `DocumentService` is deliberately small. RASF-3283 landed the Python workspace operation, RASF-3300 the
-typed Word operations on it, RASF-3284 the typed PowerPoint operations and RASF-3301 the typed Excel
-operations — all three format adapters are on this same interface. RASF-3285 adds `publish_document` —
-until it lands, nothing in this pack can publish: every new document is a draft and every edit is a proposal. RASF-3193 (the office file
+typed Word operations on it, RASF-3284 the typed PowerPoint operations, RASF-3301 the typed Excel
+operations and RASF-3285 the review-and-publication gate above — all three format adapters are on this
+same interface, and an existing file's published pointer now moves only behind a person's approval bound
+to the exact hashes. RASF-3193 (the office file
 store) replaces the in-package ledger's staging root with its own store, RASF-3111 replaces the
 Python-level guards with container enforcement (and is the only route to a real renderer), and a review
 surface that can render a before/after *picture* needs that same isolation.
+
+The review gate adds four refusal codes of its own — `not-approved`, `denied`, `approval-mismatch` and
+`stale-review` — because each is a different thing a person or a host must react to differently.
 
 The typed Word tools added six refusal codes beside the ones RASF-3283 fixed —
 `document-protected`, `malformed-package`, `unsupported-structure`, `boundary-violation`,

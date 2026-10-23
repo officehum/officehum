@@ -51,6 +51,14 @@ import {
 } from "@officehum/office";
 import { PAPER_MODEL_REF, paperProvider } from "@officehum/provider-paper";
 import type { ApprovalDecision, ApprovalRequest, Approver, HookContext } from "@officehum/sdk";
+import { localVersionedFileStore } from "@officehum/sdk";
+import {
+  publicationGate,
+  type ReviewResult,
+  reviewLedger,
+  reviewReport,
+  reviewSummaryLine,
+} from "@officehum/tools-paper-office";
 import { runEvalCommand } from "./eval.js";
 import {
   parseModelRef,
@@ -121,6 +129,10 @@ const USAGE = `Usage:
   officehum inbox [--state DIR]
   officehum bookings [--state DIR] [--calendar local|google]
   officehum contacts [--state DIR]
+  officehum review list [--state DIR]
+  officehum review show [--state DIR] --review REVIEW_ID
+  officehum review decide [--state DIR] --review REVIEW_ID --verdict approve|deny --by NAME [--approval ID]
+  officehum review publish [--state DIR] --review REVIEW_ID --operation-id OID [--approval ID]
   officehum --version`;
 
 function parse(args: string[]): Parsed {
@@ -1229,6 +1241,131 @@ async function runRun(
   }
 }
 
+const REVIEW_USAGE = `Usage:
+  officehum review list [--state DIR]
+  officehum review show [--state DIR] --review REVIEW_ID
+  officehum review decide [--state DIR] --review REVIEW_ID --verdict approve|deny --by NAME [--approval ID]
+  officehum review publish [--state DIR] --review REVIEW_ID --operation-id OID [--approval ID]`;
+
+interface ReviewArguments {
+  readonly sub: string;
+  readonly state: string;
+  readonly review: string | undefined;
+  readonly verdict: "approve" | "deny" | undefined;
+  readonly by: string | undefined;
+  readonly approval: string | undefined;
+  readonly operationId: string | undefined;
+}
+
+function parseReviewArguments(args: readonly string[]): ReviewArguments {
+  const sub = args[0];
+  if (sub === undefined) throw new UsageError(REVIEW_USAGE);
+  const options: Record<string, string> = {};
+  for (let index = 1; index < args.length; index += 2) {
+    const raw = args[index];
+    const option = raw?.replace(/^--/u, "");
+    if (raw === undefined || !raw.startsWith("--") || option === undefined) {
+      throw new UsageError(`Unknown option: ${raw ?? ""}\n${REVIEW_USAGE}`);
+    }
+    const value = args[index + 1];
+    if (value === undefined || value.startsWith("--")) {
+      throw new UsageError(`${raw} requires a value.\n${REVIEW_USAGE}`);
+    }
+    options[option] = value;
+  }
+  const verdict = options.verdict;
+  if (verdict !== undefined && verdict !== "approve" && verdict !== "deny") {
+    throw new UsageError("--verdict must be approve or deny.");
+  }
+  return {
+    sub,
+    state: options.state ?? join(".officehum", "documents"),
+    review: options.review,
+    verdict,
+    by: options.by,
+    approval: options.approval,
+    operationId: options["operation-id"],
+  };
+}
+
+function requireReviewOption(value: string | undefined, name: string): string {
+  if (value === undefined) throw new UsageError(`review needs ${name}.\n${REVIEW_USAGE}`);
+  return value;
+}
+
+/**
+ * The person's review of an exact proposed file version, and the publication that follows it.
+ *
+ * This is a *different* gate from `--approval`: that one decides whether a gated tool call may run,
+ * and says nothing about which bytes would become the published version. This one shows the exact
+ * artifact identity and the format-native evidence, records a person's decision bound to those
+ * hashes, and only then lets the FileStore compare-and-swap the published pointer — refusing, with
+ * the pointer left where it was, whenever the review is missing, denied, mismatched or superseded.
+ */
+export async function runReview(args: readonly string[], io: CliIo): Promise<number> {
+  const parsed = parseReviewArguments(args);
+  const store = localVersionedFileStore(join(parsed.state, "files"));
+  const ledger = reviewLedger(join(parsed.state, "reviews"));
+
+  if (parsed.sub === "list") {
+    const records = await ledger.list();
+    if (records.length === 0) io.output("No reviews.");
+    else for (const record of records) io.output(reviewSummaryLine(record));
+    return 0;
+  }
+
+  const gate = publicationGate({ store, ledger });
+
+  if (parsed.sub === "show") {
+    const found = await gate.get(requireReviewOption(parsed.review, "--review"));
+    if (!found.ok) return refused(found, io);
+    for (const line of reviewReport(found.value)) io.output(line);
+    return 0;
+  }
+
+  if (parsed.sub === "decide") {
+    const reviewId = requireReviewOption(parsed.review, "--review");
+    const verdict = parsed.verdict;
+    if (verdict === undefined)
+      throw new UsageError(`review decide needs --verdict.\n${REVIEW_USAGE}`);
+    const decided = await gate.decide({
+      reviewId,
+      verdict: verdict === "approve" ? "approved" : "denied",
+      by: requireReviewOption(parsed.by, "--by"),
+      approvalId: parsed.approval ?? `cli:${reviewId}`,
+    });
+    if (!decided.ok) return refused(decided, io);
+    io.output(
+      `${decided.value.verdict === "approved" ? "Approved" : "Denied"} ${reviewId} ` +
+        `by ${decided.value.by} (approval ${decided.value.approvalId})`,
+    );
+    return 0;
+  }
+
+  if (parsed.sub === "publish") {
+    const published = await gate.publish({
+      reviewId: requireReviewOption(parsed.review, "--review"),
+      operationId: requireReviewOption(parsed.operationId, "--operation-id"),
+      ...(parsed.approval === undefined ? {} : { approvalId: parsed.approval }),
+    });
+    if (!published.ok) return refused(published, io);
+    io.output(
+      `Published ${published.value.receipt.published.name} ` +
+        `${published.value.receipt.previous?.versionId ?? "unpublished"} -> ` +
+        `${published.value.receipt.published.versionId} (operation ${published.value.operationId})`,
+    );
+    return 0;
+  }
+
+  throw new UsageError(`Unknown review subcommand: ${parsed.sub}\n${REVIEW_USAGE}`);
+}
+
+function refused(result: ReviewResult<unknown>, io: CliIo): number {
+  if (result.ok) return 0;
+  io.error(`Refused (${result.code}): ${result.message}`);
+  return 1;
+}
+
 export async function runCli(
   args: string[],
   io: CliIo,
@@ -1240,6 +1377,7 @@ export async function runCli(
       return 0;
     }
     if (args[0] === "run") return await runRun(args.slice(1), io, dependencies);
+    if (args[0] === "review") return await runReview(args.slice(1), io);
     if (args[0] === "eval") return await runEvalCommand(args.slice(1), io, dependencies);
     const parsed = parse(args);
     if (

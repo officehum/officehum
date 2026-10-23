@@ -182,6 +182,60 @@ export {
   pptxTools,
 } from "./pptx-tools.js";
 export {
+  PUBLISH_DOCUMENT,
+  type PublishDocumentToolOptions,
+  type PublishLookup,
+  publishDocumentTool,
+  reviewForProposed,
+} from "./publish-tool.js";
+export {
+  approvalCovers,
+  type OpenReviewInput,
+  type PublicationGate,
+  type PublicationGateOptions,
+  type PublishReviewInput,
+  publicationGate,
+  REVIEW_SCHEMA,
+  REVIEW_SCHEMA_VERSION,
+  type ReviewArtifact,
+  type ReviewBinding,
+  type ReviewDecision,
+  type ReviewIdentity,
+  type ReviewLedger,
+  type ReviewProposal,
+  type ReviewPublication,
+  type ReviewRecord,
+  type ReviewResult,
+  type ReviewVerdict,
+  reviewBindingOf,
+  reviewIdFor,
+  reviewLedger,
+  sameBinding,
+} from "./review.js";
+export {
+  REVIEW_EVIDENCE_SCHEMA,
+  REVIEW_EVIDENCE_VERSION,
+  type ReviewChangeSet,
+  type ReviewCheck,
+  type ReviewEvidence,
+  type ReviewEvidenceSource,
+  type ReviewNumeric,
+  type ReviewPartChange,
+  type ReviewRubric,
+  type ReviewValidation,
+  reviewEvidence,
+  reviewEvidenceFromPptx,
+  reviewEvidenceFromWord,
+  reviewEvidenceFromXlsx,
+  withRubric,
+} from "./review-evidence.js";
+export { reviewReport, reviewSummaryLine } from "./review-report.js";
+export {
+  type ReviewCompareRequest,
+  reviewEvidenceFromService,
+  reviewLeaseInputs,
+} from "./review-service.js";
+export {
   type LeaseLookup,
   PAPER_OFFICE_PACK_ID,
   type PaperOfficeToolPack,

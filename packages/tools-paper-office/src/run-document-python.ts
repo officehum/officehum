@@ -28,6 +28,7 @@ import type {
 import type { DocumentLease } from "./lease.js";
 import { operationIdForCall } from "./operation.js";
 import { pptxTools } from "./pptx-tools.js";
+import { type PublishDocumentToolOptions, publishDocumentTool } from "./publish-tool.js";
 import { wordTools } from "./word-tools.js";
 import { xlsxTools } from "./xlsx-tools.js";
 
@@ -72,6 +73,12 @@ export interface PaperOfficeToolPackOptions {
    * reviewable one, and a role that wants only the workspace can withhold it.
    */
   readonly includeXlsxTools?: boolean;
+  /**
+   * The host's publication gate and the lookup that finds the review for a proposed version. When
+   * supplied, the pack carries `publish_document`; without it the tool is withheld, because a pack
+   * with no gate has nothing to publish behind and an agent must not be able to publish by itself.
+   */
+  readonly publish?: PublishDocumentToolOptions;
   readonly packId?: string;
 }
 
@@ -135,6 +142,7 @@ export function paperOfficeToolPack(options: PaperOfficeToolPackOptions): PaperO
       ...(options.includeWordTools === false ? [] : wordTools(options)),
       ...(options.includePptxTools === false ? [] : pptxTools(options)),
       ...(options.includeXlsxTools === false ? [] : xlsxTools(options)),
+      ...(options.publish === undefined ? [] : [publishDocumentTool(options.publish)]),
     ],
   };
 }

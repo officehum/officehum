@@ -73,6 +73,12 @@ export const DOCUMENT_REFUSAL_CODES = [
   // Ledger and recovery
   "ledger-integrity",
   "incomplete-run",
+  // Review and publication: an existing file's published pointer moves only behind a person's
+  // approval bound to the exact hashes, so the ways a publication is refused are their own codes.
+  "not-approved",
+  "denied",
+  "approval-mismatch",
+  "stale-review",
 ] as const;
 
 export type DocumentRefusalCode = (typeof DOCUMENT_REFUSAL_CODES)[number];
