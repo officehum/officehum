@@ -120,22 +120,28 @@ function contextIssues(packageDir: string, add: AddIssue): void {
   for (const file of [ROLE_FILES.agents, ROLE_FILES.appendSystem]) {
     const text = readText(join(packageDir, file));
     if (text === undefined) continue;
-    for (const match of thresholdMatches(text)) {
+    for (const match of contextNumbers(text)) {
       add("context", file, "", `states ${show(match.text)} (${match.what}); ${NUMBER_HOME}`);
     }
   }
 }
 
-/** One number found in a context file: where it is, the text itself, and what kind of number it is. */
-type NumberFound = { readonly index: number; readonly text: string; readonly what: string };
+/** One number found in context text: where it is, the text itself, and what kind of number it is. */
+export interface ContextNumber {
+  readonly index: number;
+  readonly text: string;
+  readonly what: string;
+}
 
 /**
- * Every amount, percentage and threshold wording in a context file, once each. Money and percentages
+ * Every amount, percentage and threshold wording in context text, once each. Money and percentages
  * are matched first, so "invoices over $2,500" is reported as `$2,500`, not as the wording around it.
+ * A context text that is not a file on disk — the Role Factory's spec body — is checked with this too,
+ * so the rule has one implementation.
  */
-function thresholdMatches(text: string): NumberFound[] {
+export function contextNumbers(text: string): ContextNumber[] {
   const taken: { readonly start: number; readonly end: number }[] = [];
-  const matches: NumberFound[] = [];
+  const matches: ContextNumber[] = [];
   for (const { pattern, what } of THRESHOLDS) {
     // matchAll clones the pattern, so these shared `g` regexes keep no state between files.
     for (const match of text.matchAll(pattern)) {
@@ -207,7 +213,8 @@ function workflowIssues(manifest: AgentManifest, add: AddIssue): void {
   });
 }
 
-function countWords(text: string): number {
+/** Words in a context text, counted the one way: a context budget is counted like this everywhere. */
+export function countWords(text: string): number {
   const trimmed = text.trim();
   return trimmed === "" ? 0 : trimmed.split(/\s+/).length;
 }

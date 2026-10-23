@@ -102,12 +102,25 @@ export {
   type VersionedFileRef,
   type VersionedFileStore,
 } from "./files.js";
-export { FOUR_LAYERS, type FourLayer, formatIssue, type Issue, type Validation } from "./issues.js";
+export {
+  FOUR_LAYERS,
+  type FourLayer,
+  formatIssue,
+  formatPointer,
+  type Issue,
+  joinPath,
+  schemaIssues,
+  show,
+  type Validation,
+} from "./issues.js";
 export {
   AGENTS_WORDS_MAX,
   AGENTS_WORDS_WARN,
   type CheckFourLayersOptions,
+  type ContextNumber,
   checkFourLayers,
+  contextNumbers,
+  countWords,
   GENERIC_TOOLS,
   HOST_FOLDERS,
 } from "./layers.js";
@@ -130,6 +143,7 @@ export {
   type EngineDeclaration,
   type HistoryFilterDeclaration,
   type LimitDeclaration,
+  limitName,
   MANIFEST_FILE,
   MANIFEST_SCHEMA_VERSION,
   ManifestSchema,
