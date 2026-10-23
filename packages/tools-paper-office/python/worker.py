@@ -549,6 +549,7 @@ ALLOWED_IMPORTS = frozenset(
     {
         "officehum_documents",
         "word_adapter",
+        "pptx_adapter",
         "docx",
         "pptx",
         "openpyxl",

@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { DOCUMENT_REFUSAL_CODES, DocumentError } from "./errors.js";
 import { DEFAULT_LIMITS, type DocumentLease } from "./lease.js";
 import { intentForRun, intentSha256, POLICY_VERSION } from "./operation.js";
+import { PPTX_TOOL_REGISTRATIONS } from "./pptx-tools.js";
 import { paperOfficeToolPack, RUN_DOCUMENT_PYTHON } from "./run-document-python.js";
 import { docxPackage, sha256, utf8 } from "./test-helpers.js";
 import {
@@ -512,12 +513,24 @@ describe("the typed Word surface", () => {
     expect(full.tools.map((tool) => tool.name)).toEqual([
       RUN_DOCUMENT_PYTHON,
       ...WORD_TOOL_REGISTRATIONS,
+      ...PPTX_TOOL_REGISTRATIONS,
     ]);
     for (const tool of full.tools) expect(tool.replay).toBe("safe");
+    // Withholding the Word set leaves the PowerPoint set, and withholding both leaves the workspace.
+    const withoutWord = paperOfficeToolPack({
+      service,
+      leaseFor: async () => LEASE,
+      includeWordTools: false,
+    });
+    expect(withoutWord.tools.map((tool) => tool.name)).toEqual([
+      RUN_DOCUMENT_PYTHON,
+      ...PPTX_TOOL_REGISTRATIONS,
+    ]);
     const workspaceOnly = paperOfficeToolPack({
       service,
       leaseFor: async () => LEASE,
       includeWordTools: false,
+      includePptxTools: false,
     });
     expect(workspaceOnly.tools.map((tool) => tool.name)).toEqual([RUN_DOCUMENT_PYTHON]);
   });

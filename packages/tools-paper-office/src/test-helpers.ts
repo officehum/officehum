@@ -181,6 +181,59 @@ export function xlsxPackage(): Uint8Array {
   ]);
 }
 
+const PPTX_CONTENT_TYPES = [
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+  '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+  '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+  '<Default Extension="xml" ContentType="application/xml"/>',
+  '<Override PartName="/ppt/presentation.xml"',
+  ' ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>',
+  "</Types>",
+].join("");
+
+/** A structurally valid PowerPoint package with internal relationships only. */
+export function pptxPackage(): Uint8Array {
+  return buildZip([
+    { name: "[Content_Types].xml", data: PPTX_CONTENT_TYPES },
+    { name: "ppt/presentation.xml", data: '<p:presentation xmlns:p="p"/>' },
+    {
+      name: "ppt/_rels/presentation.xml.rels",
+      data: relationships(["slides/slide1.xml", "../docProps/core.xml"]),
+    },
+    { name: "docProps/core.xml", data: "<core/>" },
+  ]);
+}
+
+/** A pptx-shaped package a test can make hostile in one specific way. */
+export function pptxLike(overrides: PackageOverrides = {}): Uint8Array {
+  if (overrides.entries !== undefined) return buildZip(overrides.entries);
+  const parts: ZipEntry[] = [];
+  if (overrides.omitContentTypes !== true) {
+    parts.push({ name: "[Content_Types].xml", data: PPTX_CONTENT_TYPES });
+  }
+  parts.push({ name: "ppt/presentation.xml", data: '<p:presentation xmlns:p="p"/>' });
+  const rels = [
+    ...(overrides.targets ?? ["slides/slide1.xml"]).map(
+      (target) => `<Relationship Id="rId${target.length}" Type="t" Target="${target}"/>`,
+    ),
+    ...(overrides.external ?? []).map(
+      (target) =>
+        `<Relationship Id="r${target.length}" Type="t" Target="${target}" TargetMode="External"/>`,
+    ),
+  ];
+  parts.push({
+    name: "ppt/_rels/presentation.xml.rels",
+    data: [
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+      ...rels,
+      "</Relationships>",
+    ].join(""),
+  });
+  parts.push(...(overrides.extra ?? []));
+  return buildZip(parts);
+}
+
 export interface PackageOverrides {
   readonly targets?: readonly string[];
   readonly external?: readonly string[];
@@ -436,6 +489,73 @@ export function wordFixtureCode(options: WordFixtureOptions = {}): string {
     "    'paragraphs': len(docx.Document(path).paragraphs),",
     "    'comments': len(docx.Document(path).comments),",
     "})",
+  );
+  return lines.join("\n");
+}
+
+/**
+ * A real PowerPoint fixture, built through the worker so it comes from the pinned library rather than
+ * a hand-written archive: a title slide, a content slide carrying a two-by-two table, a picture, a
+ * notes slide, and a blank slide with two text boxes — one whose text deliberately exceeds its box and
+ * one that comfortably fits, so an overflow report can be argued both ways.
+ *
+ * `variant: "appendix"` builds the small second deck `compose_presentation` appends slides from.
+ */
+export interface PptxFixtureOptions {
+  readonly variant?: "main" | "appendix";
+  readonly name?: string;
+}
+
+export function pptxFixtureCode(options: PptxFixtureOptions = {}): string {
+  const lines =
+    options.variant === "appendix"
+      ? [
+          "import pptx",
+          "",
+          "prs = pptx.Presentation()",
+          "slide = prs.slides.add_slide(prs.slide_layouts.get_by_name('Title and Content'))",
+          "slide.shapes.title.text = 'Appendix'",
+          "slide.placeholders[1].text_frame.text = 'Notes for the appendix.'",
+        ]
+      : [
+          "import io",
+          "import pptx",
+          "from pptx.enum.text import MSO_AUTO_SIZE",
+          "from pptx.media import SPEAKER_IMAGE_BYTES",
+          "from pptx.util import Inches",
+          "",
+          "prs = pptx.Presentation()",
+          "title = prs.slides.add_slide(prs.slide_layouts.get_by_name('Title Slide'))",
+          "title.shapes.title.text = 'Quarterly Close'",
+          "title.placeholders[1].text = 'Draft prepared by the office'",
+          "content = prs.slides.add_slide(prs.slide_layouts.get_by_name('Title and Content'))",
+          "content.shapes.title.text = 'Revenue'",
+          "content.placeholders[1].text_frame.text = 'Revenue was 1250 dollars.'",
+          "content.notes_slide",
+          "content.replace_notes_text('Confirm the revenue figure with the bookkeeper.')",
+          "content.shapes.add_picture(io.BytesIO(SPEAKER_IMAGE_BYTES), Inches(1), Inches(3.5))",
+          "table = content.shapes.add_table(2, 2, Inches(4), Inches(3.5), Inches(3), Inches(1)).table",
+          "for row, values in enumerate([['Account', 'Amount'], ['Revenue', '1250']]):",
+          "    for column, value in enumerate(values):",
+          "        table.cell(row, column).text = value",
+          "blank = prs.slides.add_slide(prs.slide_layouts.get_by_name('Blank'))",
+          "box = blank.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(2), Inches(0.4))",
+          "box.text_frame.auto_size = MSO_AUTO_SIZE.NONE",
+          "box.text_frame.word_wrap = True",
+          "box.text_frame.text = (",
+          "    'A deliberately long line of text that cannot possibly fit inside a two inch wide box, '",
+          "    'and it keeps going for several more words.'",
+          ")",
+          "fits = blank.shapes.add_textbox(Inches(0.5), Inches(5), Inches(6), Inches(2))",
+          "fits.text_frame.auto_size = MSO_AUTO_SIZE.NONE",
+          "fits.text_frame.word_wrap = True",
+          "fits.text_frame.text = 'A short line.'",
+        ];
+  lines.push(
+    `path = documents.declare_output(${JSON.stringify(options.name ?? "brief.pptx")}, "pptx")`,
+    "prs.save(path)",
+    "reopened = pptx.Presentation(path)",
+    "documents.result({'slides': len(reopened.slides), 'text': len(str(reopened.slide_width))})",
   );
   return lines.join("\n");
 }

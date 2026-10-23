@@ -21,6 +21,7 @@ import { type DocumentFormat, formatFromName, mimeTypeFor } from "./formats.js";
 import { DEFAULT_LIMITS, type DocumentLease, type LeasedInput } from "./lease.js";
 import { localDocumentService } from "./local-document-service.js";
 import { subprocessPaperWorker } from "./paper-worker.js";
+import { PPTX_TOOL_REGISTRATIONS } from "./pptx-tools.js";
 import { paperOfficeToolPack, RUN_DOCUMENT_PYTHON } from "./run-document-python.js";
 import type { DocumentRunReceipt } from "./run-ledger.js";
 import { runLedger } from "./run-ledger.js";
@@ -306,6 +307,7 @@ suite("the bare harness and Office Hum shapes agree", () => {
     expect(pack.tools.map((item) => item.name)).toEqual([
       RUN_DOCUMENT_PYTHON,
       ...WORD_TOOL_REGISTRATIONS,
+      ...PPTX_TOOL_REGISTRATIONS,
     ]);
   });
 });
