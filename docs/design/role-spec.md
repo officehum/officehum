@@ -2,8 +2,9 @@
 
 The Role Factory (epic RASF-3096) turns an interview into a role package. Between the two there is one
 document a person reads and approves: `ROLE_SPEC.md`. **The interview writes it; the generator reads
-it.** This file defines the format and the parser for it (`@officehum/role-factory`, RASF-3098), and
-what the generator writes from it (`generateRole`, RASF-3099); running the interview is neither.
+it.** This file defines the format and the parser for it (`@officehum/role-factory`, RASF-3098), what
+the generator writes from it (`generateRole`, RASF-3099), and the interview that produces it
+(`runInterview` and the questions it asks, RASF-3100).
 
 A spec is one Markdown file:
 
@@ -416,6 +417,69 @@ Parsing it gives a `RoleSpec`; `manifestFromRoleSpec()` gives `fixtures/sample-n
 which `validateManifest` accepts, whose scenarios `validateSuite` accepts, and whose body and skills
 `checkFourLayers` accepts in strict mode once the generator adds the "You may not" section.
 
+## The interview
+
+`officehum-role interview [out.md]` asks a person everything a role needs and writes one
+`ROLE_SPEC.md`, which `officehum-role generate` then compiles. **The questions are data**
+(`src/questions.ts`): the steps, the words, the checks and the spec path each answer lands at. The
+interviewer (`src/interview.ts`) only asks, checks and writes, which is what lets the same interview run
+at a terminal (`terminalIO`, readline), from a script in a test (`scriptedIO`), and in the portal later.
+`runInterview(io, { outPath })` is the whole thing as a function.
+
+| Step | Asks about | Written to |
+| --- | --- | --- |
+| 1. Identity and mandate | the role's id, name, department, one-line purpose, model, channels, connectors, who it reports to, who asks it for work, how it works, rules for every request | `role.id`, `role.name`, `role.department`, `role.role`, `role.defaultModel`, `role.channels`, `role.connectors`, `context.append_system`, and the context body (`role.id`-style ids and names are the answers' own words, restated) |
+| 2. Boundaries and approvals | what it is trusted to do, the lines the business sets, the actions that wait for a person (the tool, and the value compared or the line it compares to), and what it never does (with what it does instead and how that is held to) | `wisdom.authority.may`, `role.limits`, `wisdom.approvals` with `when`, `wisdom.authority.may_not` with `instead` and `enforced_by` |
+| 3. Its program and its tools | whether it has a program of its own (the program, its version range, the script), and each tool: what it does, the words its program is given, whether it is safe to run twice, what it is told, guidelines, and why an unsafe tool needs nobody | `role.runtimes`, `role.engine`, `role.tools[]` (`description`, `engine`, `replay`, `parameters`, `guidelines`, `noApproval`) |
+| 4. Work that arrives | the kinds of work it picks up (each with what settles it) and the work that is not its own | `workflow.accepts[]` with `done`; the hand-offs go into the context body |
+| 5. Procedures | each procedure's name, what it covers, its steps, and whether it is read from the start | `knowledge.skills[]` |
+| 6. Views for whoever runs the office | each view's name, what it shows and what it runs | `workflow.commands[]` |
+| 7. Situations to try it on | three to five situations: what a person says, what should happen, which tools must run and which must not, and how strict the test is | `evals[]` (the name becomes the scenario id, and every declared tool is stubbed; a situation that names no tool asserts only that the run answers) |
+| 8. One business's details (optional) | the business's name, what it adds to the role's own instructions, and its own values for the lines the role declares | `business.name`, `business.agents_md`, `business.settings.limits` |
+
+**Nothing is written until the answers make a role the generator accepts.** At the end of the
+conversation the answers are checked twice: `parseRoleSpec`, and the merged manifest through
+`validateManifest` — the check `generateRole` runs before it writes a package, and the one that owns the
+field shapes the spec parser deliberately does not re-derive. The interview adds only what neither
+checks: a comparison on a value that is not a number. `conditionsHold` fails safe on one — a value it
+cannot compare counts as holding, so the action waits for a person on *every* call — so a wait that was
+meant to be narrow would stop the role every time. The interview knows what each parameter holds because
+it asked, and refuses the answer.
+
+**A problem is traced back to the answer that caused it.** Every answer says which spec path it is
+written to, and every problem is reported at one, so the interview asks again only the questions behind
+it: the question whose answer sits exactly where the problem is; otherwise the one whose answer holds
+that place; otherwise the container's own question. One problem belongs to several questions when they
+share a path — the body, which every line of the role's own instructions is written into — and then all
+of them are asked again, because any of them could be where the number or the amount came from.
+Re-asking terminates three ways: an answer is put at most `MAX_ATTEMPTS` (three) times, a round of
+re-asking is capped at `MAX_ROUNDS` (four), and a round that leaves the document byte-identical stops
+immediately. What is left is reported, plainly, with the question it belongs to, and **nothing is
+written**.
+
+The document is written with the YAML dumper (`YAML.stringify`), never by joining strings: an answer
+holds colons, quotes, newlines and emoji, and a hand-built block of YAML is how a spec becomes
+unparseable. The body is the exception and is written as itself, because `parseRoleSpec` reads it
+verbatim and the generator puts that text into `AGENTS.md`: a dumped body would put a block scalar's `|`
+and its indentation into the prompt the model reads every turn.
+
+### What the interview cannot ask about yet
+
+The interview fills the format as it stands, and the format has gaps. Every one of these is a question a
+person would answer, and no spec field holds the answer:
+
+- **Handed-off work.** There is no dispatch field, so what the role passes on goes into its context
+  body, which says it is not the role's work and that whoever owns it takes it on.
+- **`dispatches` and `contextPlan`.** No spec field (see below), so no question asks for them.
+- **A scenario's approval strategy.** The scenarios a person gives are ordinary ones; the critical
+  declined-approval and hidden-instruction scenarios are the generator's own.
+- **A parameter's allowed values.** `parameters[].enum` has no question: a person names and describes a
+  parameter, not its permitted list.
+- **A tool's skill.** `tool.skill` — which procedure a tool belongs to — is not asked; tools land on the
+  role.
+- **A thinking level, a package version, and `business.settings` beyond its limits.** The model is asked
+  for as `provider/model`, and a business's overlay is asked for its limit values only.
+
 ## Not in the format yet
 
 - **Dispatches and the context plan.** `officehum.json`'s `dispatches` and `contextPlan` have no spec
@@ -428,5 +492,5 @@ which `validateManifest` accepts, whose scenarios `validateSuite` accepts, and w
 - **A body with no "You may not" section.** The check on `AGENTS.md` wants one; the spec's body does not
   hold it, because prohibitions and their enforcement live in `wisdom.authority`, and the generator writes
   the section from there.
-- **The interview.** What a spec's answers look like, and which questions produce which field, is the
-  epic's interview issue (RASF-3096). This file fixes only what the answers are written into.
+- **A field for handed-off work.** A role's dispatching of work it does not take on has no field, so the
+  interview writes what it is told into the context body rather than inventing one.

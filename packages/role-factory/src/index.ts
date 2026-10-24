@@ -9,8 +9,9 @@
  * is the role's AGENTS.md. The fields the spec shares with `officehum.json` keep the manifest's names,
  * so `manifestFromRoleSpec` is a merge, not a translation. `wisdom.authority` is not a manifest field:
  * `generateRole` turns it into the "You may" and "You may not" sections of AGENTS.md (and into the
- * manifest's `mayNot`), and `business` is written to an overlay, never to the package. The one thing
- * this package does not do is the interview that writes a spec (RASF-3096).
+ * manifest's `mayNot`), and `business` is written to an overlay, never to the package. The interview
+ * that writes a spec is here as well (`runInterview`), with its questions as data (`questions.ts`) so
+ * the same questions can run in a terminal, in a test, and in a portal.
  *
  * See docs/design/role-spec.md.
  */
@@ -21,6 +22,52 @@ export {
   generateRole,
   RoleGenerationError,
 } from "./generate.js";
+export {
+  InterviewCancelledError,
+  type InterviewIo,
+  type InterviewOptions,
+  type InterviewResult,
+  MAX_ATTEMPTS,
+  MAX_ROUNDS,
+  runInterview,
+  type ScriptedAnswer,
+  type ScriptedAttempts,
+  type ScriptedIo,
+  type ScriptedIoOptions,
+  scriptedIO,
+  terminalIO,
+  writeDocument,
+} from "./interview.js";
+export {
+  type Answer,
+  type AnswerPlace,
+  AnswerStore,
+  type Answers,
+  type AnswerType,
+  type Ask,
+  type Asked,
+  answerIssues,
+  answersFrom,
+  askOf,
+  asksFor,
+  BUSINESS_STEP,
+  choicesFor,
+  INTERVIEW_STEPS,
+  type InterviewStep,
+  PARAMETER_TYPES,
+  type Problems,
+  problemsOf,
+  problemWith,
+  type Question,
+  questionsBehind,
+  questionsOf,
+  questionsOfStep,
+  type Reask,
+  STEPS,
+  slug,
+  specDocument,
+  specFromAnswers,
+} from "./questions.js";
 export { BODY_PATH } from "./rules.js";
 export {
   type BusinessDeclaration,
