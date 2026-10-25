@@ -436,6 +436,11 @@ Newer releases exist (`paper-docx` 0.2.1, `paper-pptx` 0.2.1, `paper-xlsx` 0.2.2
 the versions the issue pinned. Move them here and in `PAPER_LIBRARY_PINS` together, and re-run the
 all-format fixtures, because the receipt records the pins.
 
+The dedicated all-format acceptance suite (`npm run test:all-format`) runs the cross-format fixture
+workflow, the five-point crash/replay matrix, the review/publication gate, and the per-format and
+portability fixtures together. Run it, and `npm run check`, before enabling the pack on a new role —
+both need `OFFICEHUM_PAPER_PYTHON` set so the interpreter-backed fixtures run instead of skipping.
+
 Tests that need a real interpreter **skip visibly** when `OFFICEHUM_PAPER_PYTHON` is unset — no test
 guesses at a path, and no test touches the network. The typed Word tests follow the same rule:
 `word-operations.test.ts`, `word-tools.test.ts` and the two refusal fixtures in `word-fixtures.test.ts`

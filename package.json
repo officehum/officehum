@@ -15,6 +15,7 @@
     "build": "npm run build -w @officehum/sdk -w @officehum/role-factory -w @officehum/frontdesk -w @officehum/google-calendar -w @officehum/quickbooks -w @officehum/bookkeeper -w @officehum/office-manager -w @officehum/provider-paper -w @officehum/tools-paper-office -w @officehum/office -w @officehum/cli",
     "typecheck": "npm run typecheck -w @officehum/sdk -w @officehum/role-factory -w @officehum/frontdesk -w @officehum/google-calendar -w @officehum/quickbooks -w @officehum/bookkeeper -w @officehum/office-manager -w @officehum/provider-paper -w @officehum/tools-paper-office -w @officehum/office -w @officehum/cli",
     "test": "vitest run",
+    "test:all-format": "vitest run packages/tools-paper-office/src/all-format-acceptance.test.ts packages/tools-paper-office/src/fixtures.test.ts packages/tools-paper-office/src/word-fixtures.test.ts packages/tools-paper-office/src/pptx-fixtures.test.ts packages/tools-paper-office/src/xlsx-fixtures.test.ts packages/tools-paper-office/src/review-service.test.ts packages/tools-paper-office/src/review.test.ts packages/tools-paper-office/src/publish-tool.test.ts packages/tools-paper-office/src/portability.test.ts",
     "lint": "biome check .",
     "format": "biome format --write .",
     "check": "npm run lint && npm run build && npm run typecheck && npm test"
