@@ -306,9 +306,9 @@
         role packages that do the work, the Paper Instruments model and document libraries they use,
         and the Office Hum layer that hosts, coordinates and configures them.</p>
       <dl class="plate">
-        <div><dt>Source checked</dt><dd><code>main</code> @ 712d6d9</dd></div>
+        <div><dt>Source checked</dt><dd><code>main</code> @ 5790a71</dd></div>
         <div><dt>Pi Durable</dt><dd>1.3.0, pinned</dd></div>
-        <div><dt>Linear project</dt><dd>officehum · 196 issues</dd></div>
+        <div><dt>Linear project</dt><dd>officehum · 209 issues</dd></div>
         <div><dt>Roles built</dt><dd>3 of 3 in M1</dd></div>
       </dl>
       <div class="keyline">
@@ -395,14 +395,13 @@
                   Studio marketplace screen (RASF-3299), building on bring-your-own-key (RASF-3175). Today
                   the CLI still accepts only <code>paper</code> or <code>openai</code>, though pi-ai 1.0.2
                   already ships 44 provider adapters.</p></div>
-              <div><div class="stamp s-no">Not built</div>
-                <p><b>The Paper Office tools are designed, not implemented.</b> The design is approved
-                  (14 Oct) and the versioned file store it depends on is merged (PRs #15, #16). The tool
-                  pack, the document service, the restricted Python worker and the Word, PowerPoint and
-                  Excel adapters do not exist yet. <code>paper-docx</code>, <code>paper-pptx</code> and
-                  <code>paper-xlsx</code> are not installed anywhere on this machine. Their tickets
-                  (RASF-3283 to 3286, plus the new Word and Excel adapters RASF-3300 and RASF-3301) are
-                  now in M3.</p></div>
+              <div><div class="stamp s-ok">Built</div>
+                <p><b>The Paper Office tools are built.</b> The restricted worker, the document service
+                  and the Word, PowerPoint and Excel adapters are merged (PRs #43 to #47), and the
+                  all-format acceptance suite is the gate that says so (PR #51). Rendering is structural,
+                  not pictorial: a receipt names what it could not verify instead of implying it.
+                  Recalculation and bitmaps need a system library the worker does not carry, so those two
+                  are disclosed rather than promised.</p></div>
             </div>
           </div>
         </article>
@@ -435,7 +434,7 @@
             <tr class="planned"><td>Workboard, relay, office extension</td><td>none yet</td><td>The team runtime that lets roles hand work to each other</td><td><span class="chip planned">M2</span></td></tr>
             <tr><td>Bookkeeper role</td><td><code>agents/bookkeeper</code></td><td>Invoices completed jobs, chases overdue invoices, answers billing questions; QuickBooks client and fake</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Office Manager role</td><td><code>agents/office-manager</code></td><td>Triages requests and writes the daily digest; no tools of its own</td><td><span class="chip built">Built</span></td></tr>
-            <tr class="planned"><td>Paper Office tool pack and worker</td><td>none yet</td><td>Word, PowerPoint and Excel tools for every role</td><td><span class="chip planned">M3</span></td></tr>
+            <tr><td>Paper Office tool pack and worker</td><td><code>packages/tools-paper-office</code></td><td>Word, PowerPoint and Excel tools for every role</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Studio, Inbox, hosted servers</td><td>none yet</td><td>Web interface, approvals inbox, one server per business</td><td><span class="chip planned">M4</span></td></tr>
           </tbody>
         </table></div>
@@ -480,7 +479,7 @@
 
           <!-- Row 3: roles -->
           <g><rect x="20" y="300" width="146" height="78" rx="6" class="bx"/><text x="93" y="322" text-anchor="middle" class="tb">Front Desk</text><text x="93" y="341" text-anchor="middle" class="tl c-ok">BUILT</text><text x="93" y="362" text-anchor="middle" class="tm">booking.request</text></g>
-          <g class="planned"><rect x="178" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="251" y="322" text-anchor="middle" class="tb">Bookkeeper</text><text x="251" y="341" text-anchor="middle" class="tl c-part">PLANNED M1</text><text x="251" y="362" text-anchor="middle" class="tm">invoice.create</text></g>
+          <g><rect x="178" y="300" width="146" height="78" rx="6" class="bx"/><text x="251" y="322" text-anchor="middle" class="tb">Bookkeeper</text><text x="251" y="341" text-anchor="middle" class="tl c-ok">BUILT</text><text x="251" y="362" text-anchor="middle" class="tm">invoice.create</text></g>
           <g><rect x="336" y="300" width="146" height="78" rx="6" class="bx"/><text x="409" y="322" text-anchor="middle" class="tb">Office Manager</text><text x="409" y="341" text-anchor="middle" class="tl c-ok">BUILT</text><text x="409" y="362" text-anchor="middle" class="tm">triage.request</text></g>
           <g class="planned"><rect x="494" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="567" y="322" text-anchor="middle" class="tb">Sales</text><text x="567" y="341" text-anchor="middle" class="tl c-part">PLANNED</text><text x="567" y="362" text-anchor="middle" class="tm">lead.qualify</text></g>
 
@@ -503,11 +502,11 @@
 
           <!-- Column B: Paper -->
           <g><rect x="670" y="16" width="270" height="50" rx="6" class="bx-v"/><text x="805" y="37" text-anchor="middle" class="t">Paper Instruments</text><text x="805" y="55" text-anchor="middle" class="ts">a supplier of model and libraries</text></g>
-          <text x="670" y="126" class="tl c-mut">DOCUMENT PATH · DESIGNED</text>
-          <g class="planned"><rect x="670" y="138" width="270" height="50" rx="6" class="bx dash"/><text x="805" y="159" text-anchor="middle" class="t">Paper Office tool pack</text><text x="805" y="177" text-anchor="middle" class="ts">typed tools + run_document_python</text></g>
-          <g class="planned"><rect x="670" y="208" width="270" height="50" rx="6" class="bx-o dash"/><text x="805" y="229" text-anchor="middle" class="t">DocumentService</text><text x="805" y="247" text-anchor="middle" class="ts">leases · ledger · validation · review</text></g>
+          <text x="670" y="126" class="tl c-mut">DOCUMENT PATH · BUILT</text>
+          <g><rect x="670" y="138" width="270" height="50" rx="6" class="bx"/><text x="805" y="159" text-anchor="middle" class="t">Paper Office tool pack</text><text x="805" y="177" text-anchor="middle" class="ts">typed tools + run_document_python</text></g>
+          <g><rect x="670" y="208" width="270" height="50" rx="6" class="bx-o"/><text x="805" y="229" text-anchor="middle" class="t">DocumentService</text><text x="805" y="247" text-anchor="middle" class="ts">leases · ledger · validation · review</text></g>
           <g><rect x="670" y="278" width="270" height="50" rx="6" class="bx-o"/><text x="805" y="299" text-anchor="middle" class="t">Versioned FileStore</text><text x="805" y="317" text-anchor="middle" class="ts">immutable versions · receipts · built</text></g>
-          <g class="planned"><rect x="670" y="348" width="270" height="50" rx="6" class="bx dash"/><text x="805" y="369" text-anchor="middle" class="t">Restricted Python worker</text><text x="805" y="387" text-anchor="middle" class="ts">no network · no credentials</text></g>
+          <g><rect x="670" y="348" width="270" height="50" rx="6" class="bx"/><text x="805" y="369" text-anchor="middle" class="t">Restricted Python worker</text><text x="805" y="387" text-anchor="middle" class="ts">no network · no credentials</text></g>
           <g class="planned"><rect x="670" y="418" width="270" height="50" rx="6" class="bx-v dash"/><text x="805" y="439" text-anchor="middle" class="t">paper-docx · pptx · xlsx</text><text x="805" y="457" text-anchor="middle" class="ts">pinned 0.2.x · not installed yet</text></g>
           <path d="M805 188V204" class="ln" marker-end="url(#ah1)"/>
           <path d="M805 258V274" class="ln" marker-end="url(#ah1)"/>
@@ -650,7 +649,7 @@
           <thead><tr><th>Role</th><th>Accepts</th><th>Approval gates</th><th>State</th></tr></thead>
           <tbody>
             <tr><td>Front Desk</td><td><code>booking.request</code>, <code>customer.reply</code></td><td>Contact create and update, first contact, booking, discount over the set rate, reschedule, cancel</td><td><span class="chip built">Built</span></td></tr>
-            <tr class="planned"><td>Bookkeeper</td><td><code>invoice.create</code>, <code>invoice.question</code></td><td><code>large_invoice</code> (over $5,000 by default), <code>new_recipient</code>, <code>final_notice</code></td><td><span class="chip planned">M1 backlog</span></td></tr>
+            <tr><td>Bookkeeper</td><td><code>invoice.create</code>, <code>invoice.question</code></td><td><code>large_invoice</code> (over $5,000 by default), <code>new_recipient</code>, <code>final_notice</code></td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Office Manager</td><td><code>triage.request</code>, <code>digest.request</code></td><td>No tools of its own; the office's front door for unrouted work</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Configurator</td><td>Plain-language configuration requests</td><td>Every overlay change shown as a diff for approval</td><td><span class="chip planned">M4 backlog</span></td></tr>
             <tr class="planned"><td>Sales</td><td><code>lead.qualify</code>, <code>quote.request</code></td><td><code>discount_over_limit</code>, <code>large_quote</code>, <code>first_contact</code> (draft brief)</td><td><span class="chip planned">Epic RASF-3295</span></td></tr>
@@ -803,8 +802,8 @@
             <text x="132" y="386" class="tm" style="fill: var(--ink)">digest.request</text>
             <text x="56" y="410" class="ts">Catches tickets no role accepts</text></g>
           <!-- Bookkeeper -->
-          <g class="planned"><rect x="660" y="320" width="260" height="110" rx="6" class="bx dash"/>
-            <text x="676" y="344" class="tb">Bookkeeper</text><text x="904" y="344" text-anchor="end" class="tl c-part">PLANNED</text>
+          <g><rect x="660" y="320" width="260" height="110" rx="6" class="bx"/>
+            <text x="676" y="344" class="tb">Bookkeeper</text><text x="904" y="344" text-anchor="end" class="tl c-ok">BUILT</text>
             <text x="676" y="368" class="tm">accepts</text><text x="752" y="368" class="tm" style="fill: var(--ink)">invoice.create</text>
             <text x="752" y="386" class="tm" style="fill: var(--ink)">invoice.question</text>
             <text x="676" y="410" class="ts">QuickBooks Online · never moves money</text></g>
@@ -1028,12 +1027,12 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
         <div class="axis"><div></div><div><span>0</span><span>25</span><span>50</span><span>75</span><span>100%</span></div><div></div></div>
 
         <h3>Issues</h3>
-        <div class="stack" role="img" aria-label="196 issues: 12 done, 6 in progress, 178 backlog">
-          <div class="d" style="width:6.1%">12</div>
-          <div class="i" style="width:3.1%">6</div>
-          <div class="b" style="width:90.8%">178 backlog</div>
+        <div class="stack" role="img" aria-label="209 issues: 44 done, 5 in progress, 160 backlog">
+          <div class="d" style="width:21.1%">44</div>
+          <div class="i" style="width:2.4%">5</div>
+          <div class="b" style="width:76.6%">160 backlog</div>
         </div>
-        <div class="legend"><span><i style="background: var(--ok)"></i>Done 12</span><span><i style="background: var(--part)"></i>In progress 6</span><span><i style="background: var(--muted)"></i>Backlog 178</span></div>
+        <div class="legend"><span><i style="background: var(--ok)"></i>Done 44</span><span><i style="background: var(--part)"></i>In progress 5</span><span><i style="background: var(--muted)"></i>Backlog 160</span></div>
 
         <h3>What shipped</h3>
         <div class="tablewrap"><table>
