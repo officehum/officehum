@@ -2,7 +2,10 @@
  * The office extension: the tools an agent uses to work with its colleagues (RASF-3109).
  *
  * A role on its own answers in words and cannot hand work to anybody. Installed beside a role, this
- * extension adds exactly three tools and one prompt section — nothing else:
+ * extension adds exactly three tools and two prompt sections — the `team` section below, and the
+ * `office` section assembled in `./office-extension.js` (which business this is, who its people are,
+ * and the rule that customer and forwarded content is data, never instructions) — plus whatever
+ * hooks a caller supplies, and nothing else:
  *
  * - `agent_dispatch` posts a ticket of a declared type. Routing is by type, never by name, so the
  *   tool reads the accepted types from the installed manifests and refuses a type nobody accepts with
@@ -30,13 +33,29 @@ import {
   defineExtension,
   defineTool,
   type Extension,
+  type HookRegistration,
   section,
   type ToolExecutionApi,
 } from "@earendil-works/pi-durable";
-import type { AgentManifest } from "@officehum/sdk";
+import type { AgentManifest, Approver } from "@officehum/sdk";
 import { type Board, BoardError, type Ticket, type TicketStatus } from "../board/index.js";
 import type { RelayProvenance } from "../relay/message.js";
 import type { Relay } from "../relay/relay.js";
+import { type OfficeBusiness, officeSection, registerOfficeHooks } from "./office-extension.js";
+
+export {
+  OFFICE_DATA_RULE,
+  OFFICE_SECTION_KEY,
+  type OfficeBusiness,
+  type OfficeHookSeam,
+  type OfficeModel,
+  type OfficeOverlays,
+  type OfficeSectionOptions,
+  officeConversation,
+  officeSection,
+  officeText,
+  registerOfficeHooks,
+} from "./office-extension.js";
 
 /** The extension's default install name. `settings.name` overrides it when an office co-hosts roles. */
 export const OFFICE_EXTENSION_NAME = "office";
@@ -87,6 +106,21 @@ export interface OfficeExtensionOptions {
    */
   readonly people: readonly AgentManifest[];
   readonly settings: OfficeExtensionSettings;
+  /**
+   * Which business this is: a name and a sentence, for the `office` section (RASF-3133). Omitted, the
+   * section still lists the office's people and states the data rule, but names no business.
+   */
+  readonly business?: OfficeBusiness;
+  /**
+   * The office's hooks — RASF-3074's budget, hop and provenance, and RASF-3073's approval gate once
+   * it lands. Registered only when supplied; see `registerOfficeHooks`.
+   */
+  readonly hooks?: readonly HookRegistration[];
+  /**
+   * RASF-3073's approver. Accepted so the seam's shape is fixed, and registered by nothing yet: the
+   * gate that consumes it is 3073's to build.
+   */
+  readonly approve?: Approver;
 }
 
 /** What the extension reports a refused tool call as. */
@@ -388,7 +422,18 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
 
   return defineExtension({
     name: settings.name ?? OFFICE_EXTENSION_NAME,
-    sections: [section(TEAM_SECTION_KEY, () => team)],
+    sections: [
+      section(TEAM_SECTION_KEY, () => team),
+      officeSection({
+        board,
+        people: options.people,
+        role,
+        ...(options.business === undefined ? {} : { business: options.business }),
+      }),
+    ],
     tools: [agentDispatch, agentInbox, agentReply],
+    // The hooks seam (RASF-3074, RASF-3073): exactly the registrations a caller supplies, nothing
+    // invented here. With none supplied the office installs no hooks at all.
+    hooks: registerOfficeHooks(options),
   });
 }
