@@ -48,6 +48,7 @@ import {
 } from "../testing/scripted-model.js";
 import {
   OFFICE_EXTENSION_NAME,
+  OFFICE_SECTION_KEY,
   OFFICE_TOOL_NAMES,
   type OfficeExtensionSettings,
   type OfficeToolCall,
@@ -439,9 +440,13 @@ describe("the office extension", () => {
       script: () => ({ text: "Ready." }),
     });
     try {
-      // The extension's own shape: three tools, one section, and no hooks, tasks or wraps.
+      // The extension's own shape: three tools, two sections (team, then office), and no hooks,
+      // tasks or wraps when the caller supplies none.
       expect(fixture.front.tools?.map((tool) => tool.name)).toEqual([...OFFICE_TOOL_NAMES]);
-      expect(fixture.front.sections?.map((entry) => entry.key)).toEqual([TEAM_SECTION_KEY]);
+      expect(fixture.front.sections?.map((entry) => entry.key)).toEqual([
+        TEAM_SECTION_KEY,
+        OFFICE_SECTION_KEY,
+      ]);
       expect(fixture.front.hooks ?? []).toHaveLength(0);
       expect(fixture.front.tasks ?? []).toHaveLength(0);
       expect(fixture.front.wraps ?? []).toHaveLength(0);
