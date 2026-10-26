@@ -644,10 +644,16 @@ const OPERATORS: Readonly<Record<ConditionDeclaration["op"], string>> = {
   eq: "is",
   ne: "is not",
   in: "is one of",
+  present: "is given",
+  absent: "is not given",
 };
 
 /** The condition a person reads in the README: the argument, the comparison, and the value or limit. */
 function conditionText(condition: ConditionDeclaration): string {
+  // A presence condition has nothing to compare against, so it reads as a statement on its own.
+  if (condition.op === "present" || condition.op === "absent") {
+    return `\`${condition.arg}\` ${OPERATORS[condition.op]}`;
+  }
   const named = limitName(condition.value);
   const value =
     named === undefined ? JSON.stringify(condition.value) : `the business's \`${named}\` limit`;

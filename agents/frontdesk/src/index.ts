@@ -61,21 +61,6 @@ export interface FrontDeskOptions {
   readonly approveReply?: Approver;
 }
 
-/**
- * A booking waits for a person only when it carries a discount above the business's rate. The rate is
- * the manifest's `booking_discount_percent` limit — an overlay sets it — so the role never hard-codes a
- * threshold. Absence of `discountPercent` means no discount, so it is not gated; a discount that is not
- * a finite number, or a limit that did not resolve, fails safe and waits rather than passing silently.
- */
-export const discountApprovalCondition: ApprovalCondition = (args, environment) => {
-  const percent = args.discountPercent;
-  if (percent === undefined) return false;
-  if (typeof percent !== "number" || !Number.isFinite(percent)) return true;
-  const limit = environment.limits.booking_discount_percent;
-  if (typeof limit !== "number") return true;
-  return percent > limit;
-};
-
 export default function frontdesk(options: FrontDeskOptions): DefinedRole {
   const checkSchedule = defineTool({
     name: "check_schedule",
@@ -208,7 +193,7 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
     ],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
-    when: { first_contact: firstContactCondition, discount_booking: discountApprovalCondition },
+    when: { first_contact: firstContactCondition },
     hooks: [inboundCustomerToolGuard()],
   });
 }

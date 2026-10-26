@@ -423,11 +423,25 @@ export function declarationIssues(frontmatter: Mapping, source: string): Issue[]
           `${show(arg)} is not a parameter of ${show(tool)}`,
         );
       }
+      const op = text(entry?.op);
+      if (op === "present" || op === "absent") {
+        if (entry?.value !== undefined) {
+          add("wisdom", joinPath(conditionAt, "value"), `must be omitted when op is ${show(op)}`);
+        }
+        return;
+      }
+      if (entry !== undefined && entry.value === undefined) {
+        add(
+          "wisdom",
+          joinPath(conditionAt, "value"),
+          'needs a value unless the op is "present" or "absent"',
+        );
+        return;
+      }
       const limit =
         entry === undefined ? undefined : limitName(entry.value as ConditionDeclaration["value"]);
       if (limit === undefined) return;
       // A named limit replaces a numeric threshold, so it needs one of the numeric comparisons.
-      const op = text(entry?.op);
       if (op !== undefined && !["gt", "gte", "lt", "lte"].includes(op)) {
         add(
           "wisdom",

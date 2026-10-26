@@ -356,6 +356,27 @@ describe("approval conditions from officehum.json", () => {
       holds("in", ["a", "b"], "c"),
     ]).toEqual([false, true, false, false]);
   });
+
+  it("treats an absent optional argument as not applicable only when a condition says so", () => {
+    const when = [
+      { arg: "discountPercent", op: "present" as const },
+      { arg: "discountPercent", op: "gt" as const, value: { limit: "rate" } },
+    ];
+    const limits = { rate: 10 };
+    // Absent means no discount, so nothing waits: the case a bare comparison used to gate every call.
+    expect(conditionsHold(when, {}, limits)).toBe(false);
+    expect(conditionsHold(when, { discountPercent: null }, limits)).toBe(false);
+    expect(conditionsHold(when, { discountPercent: 5 }, limits)).toBe(false);
+    expect(conditionsHold(when, { discountPercent: 15 }, limits)).toBe(true);
+    // A named limit that does not resolve still waits for a person.
+    expect(conditionsHold(when, { discountPercent: 15 }, {})).toBe(true);
+    // Without the presence operator, absence still fails safe: a malformed call cannot skip a gate by
+    // leaving a field out.
+    expect(conditionsHold([when[1] as NonNullable<(typeof when)[1]>], {}, limits)).toBe(true);
+    // `absent` is the mirror, and takes no value either.
+    expect(conditionsHold([{ arg: "x", op: "absent" }], {}, {})).toBe(true);
+    expect(conditionsHold([{ arg: "x", op: "absent" }], { x: 1 }, {})).toBe(false);
+  });
 });
 
 describe("named approval limits", () => {
