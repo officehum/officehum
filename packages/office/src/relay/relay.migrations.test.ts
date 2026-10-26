@@ -42,16 +42,18 @@ function columns(database: DatabaseSync, table: string): string[] {
 
 describe("relay migration", () => {
   it("numbers migrations contiguously from 1", () => {
-    expect(MIGRATIONS.map((migration) => migration.version)).toEqual([1, 2]);
-    expect(applyMigrations(new DatabaseSync(":memory:"))).toBe(2);
+    expect(MIGRATIONS.map((migration) => migration.version)).toEqual(
+      MIGRATIONS.map((_, index) => index + 1),
+    );
+    expect(applyMigrations(new DatabaseSync(":memory:"))).toBe(MIGRATIONS.length);
   });
 
   it("creates the cursor, delivery and wait tables with the specified columns", () => {
     const database = new DatabaseSync(":memory:");
-    expect(applyMigrations(database)).toBe(2);
+    expect(applyMigrations(database)).toBe(MIGRATIONS.length);
     expect(
       (database.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    ).toBe(2);
+    ).toBe(MIGRATIONS.length);
 
     expect(tableNames(database)).toEqual([
       "approvals",
@@ -132,7 +134,7 @@ describe("relay migration", () => {
     try {
       expect(
         (database.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      ).toBe(2);
+      ).toBe(MIGRATIONS.length);
       expect(database.prepare("SELECT COUNT(*) AS n FROM relay_cursor").get()).toEqual({ n: 1 });
       expect(database.prepare("SELECT COUNT(*) AS n FROM relay_deliveries").get()).toEqual({
         n: 1,

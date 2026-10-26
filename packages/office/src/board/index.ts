@@ -69,6 +69,10 @@ export interface NewTicket {
   readonly assignee?: Assignee;
 }
 
+export interface CompleteOptions {
+  readonly result?: string;
+}
+
 export interface Ticket {
   readonly id: string;
   readonly type: string;
@@ -80,6 +84,8 @@ export interface Ticket {
   readonly createdBy: string;
   readonly parentId: string | null;
   readonly workflowRunId: string | null;
+  /** What the ticket was closed with, when the closer said. Null for tickets closed without one. */
+  readonly result: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -119,7 +125,12 @@ export interface Board {
   create(input: NewTicket, callerKey: string): Ticket;
   claim(ticketId: string, actor: string): Ticket;
   comment(ticketId: string, author: string, body: string): string;
-  complete(ticketId: string, actor: string): Ticket;
+  /**
+   * Completes a ticket, recording the answer it was completed with. The answer is a board fact: a
+   * delegator's wait reports it, and a wait that had to fall back to the delegate's transcript would
+   * report whatever the model happened to write last.
+   */
+  complete(ticketId: string, actor: string, options?: CompleteOptions): Ticket;
   cancel(ticketId: string, actor: string): Ticket;
   assign(ticketId: string, assignee: Assignee, actor: string): Ticket;
   get(ticketId: string): Ticket | undefined;
@@ -177,6 +188,7 @@ type TicketRow = {
   created_by: string;
   parent_id: string | null;
   workflow_run_id: string | null;
+  result: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -289,6 +301,7 @@ function toTicket(row: TicketRow): Ticket {
     createdBy: row.created_by,
     parentId: row.parent_id,
     workflowRunId: row.workflow_run_id,
+    result: row.result,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -452,6 +465,7 @@ export function openBoard(file: string): Board {
        created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
+  const setResult = database.prepare("UPDATE tickets SET result = ? WHERE id = ?");
   const moveTicket = database.prepare(
     "UPDATE tickets SET status = ?, assignee = ?, updated_at = ? WHERE id = ?",
   );
@@ -572,7 +586,13 @@ export function openBoard(file: string): Board {
   const authorized = (row: TicketRow, actor: string): boolean =>
     row.assignee !== null && row.assignee === actor ? true : isPerson(actor);
 
-  const closeOut = (ticketId: string, actor: string, to: TicketStatus, kind: string): Ticket => {
+  const closeOut = (
+    ticketId: string,
+    actor: string,
+    to: TicketStatus,
+    kind: string,
+    result?: string,
+  ): Ticket => {
     const id = bounded(ticketId, "Ticket id");
     const closer = bounded(actor, "Actor");
     return transact(() => {
@@ -596,7 +616,8 @@ export function openBoard(file: string): Board {
         );
       }
       moveTicket.run(to, row.assignee, now(), id);
-      appendEvent(id, kind, closer, {});
+      if (result !== undefined) setResult.run(result, id);
+      appendEvent(id, kind, closer, result === undefined ? {} : { result });
       return toTicket(requireTicket(id));
     });
   };
@@ -733,8 +754,8 @@ export function openBoard(file: string): Board {
         return commentId;
       });
     },
-    complete(ticketId, actor) {
-      return closeOut(ticketId, actor, "done", "completed");
+    complete(ticketId, actor, options = {}) {
+      return closeOut(ticketId, actor, "done", "completed", options.result);
     },
     cancel(ticketId, actor) {
       return closeOut(ticketId, actor, "cancelled", "cancelled");

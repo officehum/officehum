@@ -49,16 +49,18 @@ const REQUEST: NewTicket = {
 
 describe("board migrations", () => {
   it("numbers migrations contiguously from 1", () => {
-    expect(MIGRATIONS.map((migration) => migration.version)).toEqual([1, 2]);
+    expect(MIGRATIONS.map((migration) => migration.version)).toEqual(
+      MIGRATIONS.map((_, index) => index + 1),
+    );
     expect(applyMigrations(new DatabaseSync(":memory:"))).toBe(MIGRATIONS.length);
   });
 
-  it("empty DB applies all migrations (user_version = 2) with expected columns", () => {
+  it("empty DB applies all migrations (user_version = head) with expected columns", () => {
     const database = new DatabaseSync(":memory:");
-    expect(applyMigrations(database)).toBe(2);
+    expect(applyMigrations(database)).toBe(MIGRATIONS.length);
     expect(
       (database.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    ).toBe(2);
+    ).toBe(MIGRATIONS.length);
 
     expect(names(database, "table")).toEqual([
       "approvals",
@@ -86,6 +88,8 @@ describe("board migrations", () => {
       "workflow_run_id",
       "created_at",
       "updated_at",
+      // Added by migration 3, so it lands at the end: `ALTER TABLE ADD COLUMN` appends.
+      "result",
     ]);
     expect(columns(database, "ticket_events")).toEqual([
       "id",
@@ -159,7 +163,7 @@ describe("board migrations", () => {
     try {
       expect(
         (database.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      ).toBe(2);
+      ).toBe(MIGRATIONS.length);
       expect(database.prepare("SELECT COUNT(*) AS n FROM tickets").get()).toEqual({ n: 1 });
       expect(database.prepare("SELECT COUNT(*) AS n FROM ticket_events").get()).toEqual({ n: 2 });
       expect(database.prepare("SELECT COUNT(*) AS n FROM ticket_keys").get()).toEqual({ n: 1 });

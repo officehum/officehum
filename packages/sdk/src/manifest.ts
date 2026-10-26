@@ -54,6 +54,11 @@ export const SDK_TOOL_NAMES = ["read_skill"] as const;
 /**
  * Tool names a role may not declare: the SDK's own, and those the Office provides through its
  * extension, which would otherwise collide with the role's when both are selected.
+ *
+ * The `agent_*` three are the office extension's own tools (RASF-3109). The `board_*`, `delegate` and
+ * `ask` names are the ones this list has always carried; they are left as they are, not removed —
+ * reconciling the older names with the tools the Office actually ships is a documentation change, not
+ * this one.
  */
 export const RESERVED_TOOL_NAMES = [
   ...SDK_TOOL_NAMES,
@@ -64,6 +69,9 @@ export const RESERVED_TOOL_NAMES = [
   "board_read",
   "delegate",
   "ask",
+  "agent_dispatch",
+  "agent_inbox",
+  "agent_reply",
 ] as const;
 
 const KebabId = Type.String({
