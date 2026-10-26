@@ -18,6 +18,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # The Paper document worker runs in its own Python 3.13 interpreter with hash-pinned libraries,
+      # and takes that interpreter from OFFICEHUM_PAPER_PYTHON. Unset, its tests skip *visibly* — which
+      # is how the whole Paper suite used to pass a green build without running a single test. Provision
+      # it here so a green build means the suite ran; the script's three doctor sentinels fail the job if
+      # the libraries are not the forks that own their module names.
+      - uses: astral-sh/setup-uv@v5
+      - name: Provision the Paper worker
+        run: |
+          packages/tools-paper-office/scripts/provision-worker.sh "$RUNNER_TEMP/paper-worker"
+          echo "OFFICEHUM_PAPER_PYTHON=$RUNNER_TEMP/paper-worker/bin/python" >> "$GITHUB_ENV"
       - run: npm ci
       - run: npm run lint
       - run: npm run build
