@@ -568,6 +568,18 @@ describe("frontdesk discount gate", () => {
     calendar.close();
   });
 
+  it("declares the inbound reply approval, and leaves raising it to the reply tool", () => {
+    const declared = (manifest as AgentManifest).approvals.find(
+      (approval) => approval.id === "confirm_inbound_reply",
+    );
+    // Visible: this is what puts it on the agent card and in the Inbox list.
+    expect(declared?.tool).toBe("reply_message");
+    expect(declared?.description).toMatch(/authenticated inbound sender/);
+    // Not gated by the manifest: the tool raises this approval with the destination the receipt
+    // authenticated, and the host binds one decision per call, so a second ask would be refused.
+    expect(declared?.when).toBeUndefined();
+  });
+
   it("declares the discount gate as data: present, and above the resolved limit", () => {
     const declared = (manifest as AgentManifest).approvals.find(
       (approval) => approval.id === "discount_booking",

@@ -193,7 +193,12 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
     ],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
-    when: { first_contact: firstContactCondition },
+    // `confirm_inbound_reply` is declared in the manifest so a person sees it on the card and in the
+    // Inbox, but the reply tool raises it itself: its request carries the *resolved* destination the
+    // inbound receipt authenticated, not the call's `receiptId`. The host binds a decision to one
+    // request per call, and would refuse the tool's ask if the gate had already asked, so the gate is
+    // told it does not apply. Making "raised by the tool" a declared property is a follow-up.
+    when: { first_contact: firstContactCondition, confirm_inbound_reply: () => false },
     hooks: [inboundCustomerToolGuard()],
   });
 }
