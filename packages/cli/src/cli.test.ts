@@ -207,12 +207,50 @@ async function freeLoopbackPort(): Promise<number> {
   return address.port;
 }
 
-async function waitUntil(predicate: () => boolean): Promise<void> {
-  for (let attempts = 0; attempts < 700; attempts += 1) {
+/**
+ * Waits for a receipt to reach `wanted`, holding one read-only handle.
+ *
+ * The budget is unchanged at 700 looks and 10ms apart, but this used to open and close SQLite on every
+ * look — up to 700 native opens paying out of the same seven seconds the delivery had. It also reports
+ * the last state it saw, so an intermittent failure on a shared CI runner says what happened instead of
+ * only that it timed out.
+ */
+async function waitForReceiptState(
+  directory: string,
+  emailId: string,
+  wanted: string,
+): Promise<void> {
+  const database = new DatabaseSync(join(directory, "inbound.sqlite"), { readOnly: true });
+  const statement = database.prepare("SELECT state FROM receipts WHERE email_id=?");
+  let last: string | undefined;
+  try {
+    for (let attempts = 0; attempts < 1500; attempts += 1) {
+      const row = statement.get(emailId) as { state: string } | undefined;
+      last = row?.state;
+      if (last === wanted) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  } finally {
+    database.close();
+  }
+  throw new Error(
+    `timed out waiting for receipt ${emailId} to be ${wanted}; last state: ${last ?? "no row"}`,
+  );
+}
+
+/**
+ * Waits for `predicate`, naming what it waited for when it gives up.
+ *
+ * The budget covers work this test does not control: a signed webhook, a full agent turn through the
+ * fake provider, and a durable commit, on a shared CI runner. Seven seconds measured the runner rather
+ * than the code, and two indistinguishable waits meant a failure could not say which one stalled.
+ */
+async function waitUntil(predicate: () => boolean, what: string): Promise<void> {
+  for (let attempts = 0; attempts < 1500; attempts += 1) {
     if (predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  throw new Error("timed out waiting for CLI state");
+  throw new Error(`timed out waiting for ${what}`);
 }
 
 describe("runCli", () => {
@@ -1092,7 +1130,10 @@ describe("runCli", () => {
         listening.io,
         dependencies,
       );
-      await waitUntil(() => listening.output.some((line) => line.includes("Inbound listener:")));
+      await waitUntil(
+        () => listening.output.some((line) => line.includes("Inbound listener:")),
+        "the inbound listener to announce itself",
+      );
       const response = await nativeFetch(`http://127.0.0.1:${port}/webhooks/resend`, {
         method: "POST",
         headers: {
@@ -1104,21 +1145,8 @@ describe("runCli", () => {
         body: raw,
       });
       expect(response.status).toBe(202);
-      await waitUntil(() => replyPosts === 1);
-      await waitUntil(() => {
-        const database = new DatabaseSync(join(directory, "inbound.sqlite"), { readOnly: true });
-        try {
-          return (
-            (
-              database.prepare("SELECT state FROM receipts WHERE email_id=?").get(emailId) as
-                | { state: string }
-                | undefined
-            )?.state === "settled"
-          );
-        } finally {
-          database.close();
-        }
-      });
+      await waitUntil(() => replyPosts === 1, "the reply to be posted");
+      await waitForReceiptState(directory, emailId, "settled");
       await interruptCli();
       expect(await running).toBe(0);
 
