@@ -22,6 +22,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { applyMigrations } from "./migrations.js";
+import { openRelayLedger, type RelayLedger } from "./relay-ledger.js";
 
 export type TicketStatus = "open" | "claimed" | "waiting" | "blocked" | "done" | "cancelled";
 export type Origin = "internal" | "external";
@@ -93,6 +94,19 @@ export interface TicketEvent {
   readonly at: string;
 }
 
+/** A person the office knows: work assigned to them leaves the harness. */
+export interface Person {
+  readonly id: string;
+  readonly name: string;
+}
+
+/** A ticket's provenance row: where the work came from, copied verbatim to its children. */
+export interface Provenance {
+  readonly origin: Origin;
+  readonly sourceChannel: string;
+  readonly sourceContact: string;
+}
+
 export interface ListFilter {
   readonly status?: TicketStatus | readonly TicketStatus[];
   readonly assignee?: string;
@@ -111,6 +125,22 @@ export interface Board {
   get(ticketId: string): Ticket | undefined;
   list(filter?: ListFilter): Ticket[];
   events(ticketId: string, after?: number): TicketEvent[];
+  /**
+   * Every event with `seq > after`, in the global `seq` order (RASF-3067). The relay's cursor is one
+   * number for the whole board, so it needs the whole board's tail, not one ticket's.
+   */
+  eventsAfter(after: number): TicketEvent[];
+  /**
+   * Append a `stalled` event: a delivery the relay could not route and no person could take. It has
+   * no status change of its own — the ticket is where it was — so it is not `assign` or `comment`.
+   */
+  stall(ticketId: string, actor: string, reason: string): TicketEvent;
+  /** Everyone the office knows, in the order they were added. The relay's person fallback reads it. */
+  people(): Person[];
+  /** The ticket's provenance row, or `undefined` when it has none. */
+  provenance(ticketId: string): Provenance | undefined;
+  /** The relay's cursor, delivery ledger and wait index, over this board's handle. */
+  readonly relay: RelayLedger;
   close(): void;
 }
 
@@ -435,6 +465,10 @@ export function openBoard(file: string): Board {
     `SELECT id, seq, ticket_id, kind, actor, payload, at FROM ticket_events
       WHERE ticket_id = ? AND seq > ? ORDER BY seq`,
   );
+  const findEventsAfter = database.prepare(
+    `SELECT id, seq, ticket_id, kind, actor, payload, at FROM ticket_events
+      WHERE seq > ? ORDER BY seq`,
+  );
   const insertComment = database.prepare(
     "INSERT INTO comments (id, ticket_id, author, body, at) VALUES (?, ?, ?, ?, ?)",
   );
@@ -454,6 +488,7 @@ export function openBoard(file: string): Board {
      VALUES (?, ?, ?, 0, 0, ?, ?)`,
   );
   const findPerson = database.prepare("SELECT 1 AS present FROM people WHERE id = ?");
+  const listPeople = database.prepare("SELECT id, name FROM people ORDER BY rowid");
   const findKey = database.prepare(
     "SELECT caller_key, ticket_id, request_json FROM ticket_keys WHERE caller_key = ?",
   );
@@ -462,6 +497,7 @@ export function openBoard(file: string): Board {
   );
 
   const now = (): string => new Date().toISOString();
+  const ledger = openRelayLedger(database);
 
   /**
    * A trigger abort is the ledger refusing a write. Surfacing it as `immutable` keeps a caller from
@@ -502,11 +538,13 @@ export function openBoard(file: string): Board {
     kind: string,
     actor: string | null,
     payload: unknown,
-  ): void => {
+  ): TicketEvent => {
     const at = now();
     const seq = (nextSeq.get() as { seq: number } | undefined)?.seq;
     if (seq === undefined) throw new Error("Failed to read the next board event sequence.");
-    insertEvent.run(randomUUID(), seq, ticketId, kind, actor, JSON.stringify(payload), at);
+    const id = randomUUID();
+    insertEvent.run(id, seq, ticketId, kind, actor, JSON.stringify(payload), at);
+    return { id, seq, ticketId, kind, actor, payload, at };
   };
 
   /** `open` only: an agent takes work by claiming it, and the claim is the ticket's event. */
@@ -761,6 +799,34 @@ export function openBoard(file: string): Board {
       const rows = findEvent.all(id, from) as unknown as EventRow[];
       return rows.map(toEvent);
     },
+    eventsAfter(after) {
+      const from = cursorOf(after);
+      const rows = findEventsAfter.all(from) as unknown as EventRow[];
+      return rows.map(toEvent);
+    },
+    stall(ticketId, actor, reason) {
+      const id = bounded(ticketId, "Ticket id");
+      const by = bounded(actor, "Actor");
+      const why = bounded(reason, "Stall reason", NOTE_MAX);
+      return transact(() => {
+        requireTicket(id);
+        return appendEvent(id, "stalled", by, { reason: why });
+      });
+    },
+    people() {
+      return listPeople.all() as unknown as Person[];
+    },
+    provenance(ticketId) {
+      const row = findProvenance.get(bounded(ticketId, "Ticket id")) as ProvenanceRow | undefined;
+      return row === undefined
+        ? undefined
+        : {
+            origin: row.origin === "external" ? "external" : "internal",
+            sourceChannel: row.source_channel,
+            sourceContact: row.source_contact,
+          };
+    },
+    relay: ledger,
     close() {
       database.close();
     },

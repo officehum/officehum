@@ -49,16 +49,16 @@ const REQUEST: NewTicket = {
 
 describe("board migrations", () => {
   it("numbers migrations contiguously from 1", () => {
-    expect(MIGRATIONS.map((migration) => migration.version)).toEqual([1]);
+    expect(MIGRATIONS.map((migration) => migration.version)).toEqual([1, 2]);
     expect(applyMigrations(new DatabaseSync(":memory:"))).toBe(MIGRATIONS.length);
   });
 
-  it("empty DB applies all migrations (user_version = 1) with expected columns", () => {
+  it("empty DB applies all migrations (user_version = 2) with expected columns", () => {
     const database = new DatabaseSync(":memory:");
-    expect(applyMigrations(database)).toBe(1);
+    expect(applyMigrations(database)).toBe(2);
     expect(
       (database.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-    ).toBe(1);
+    ).toBe(2);
 
     expect(names(database, "table")).toEqual([
       "approvals",
@@ -66,6 +66,9 @@ describe("board migrations", () => {
       "comments",
       "people",
       "provenance",
+      "relay_cursor",
+      "relay_deliveries",
+      "relay_waits",
       "ticket_events",
       "ticket_keys",
       "tickets",
@@ -156,7 +159,7 @@ describe("board migrations", () => {
     try {
       expect(
         (database.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-      ).toBe(1);
+      ).toBe(2);
       expect(database.prepare("SELECT COUNT(*) AS n FROM tickets").get()).toEqual({ n: 1 });
       expect(database.prepare("SELECT COUNT(*) AS n FROM ticket_events").get()).toEqual({ n: 2 });
       expect(database.prepare("SELECT COUNT(*) AS n FROM ticket_keys").get()).toEqual({ n: 1 });

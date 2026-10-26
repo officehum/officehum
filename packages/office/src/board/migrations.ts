@@ -110,7 +110,59 @@ function createWorkboard(database: DatabaseSync): void {
   `);
 }
 
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, up: createWorkboard }];
+/**
+ * Migration 2 adds the relay's cursor, its delivery ledger and its wait index (RASF-3067).
+ *
+ * These live here, in the office's own file, rather than in a table of their own or in Pi Durable's
+ * per-conversation dedup: dedup scoped to a conversation disappears when that conversation is
+ * replaced or rewound, which is exactly the case the relay's ledger is meant to survive. The cursor
+ * and the ledger are two views of one fact — "everything at or below `seq` has a ledger row" — so the
+ * relay writes both in one transaction and can always tell an undelivered event from a delivered one.
+ *
+ * The three tables are additive only, as expand-then-contract requires; nothing here reads a column
+ * a later migration might drop. `relay_deliveries.state` is the delivery's whole lifecycle
+ * (`pending` → `admitted` → `settled`/`failed`, or straight to `skipped`), so recovery never has to
+ * infer it from the cursor.
+ */
+function createRelay(database: DatabaseSync): void {
+  database.exec(`
+    -- One row, id = 1: the highest event seq the relay has accounted for. A missing row is seq 0.
+    CREATE TABLE IF NOT EXISTS relay_cursor (
+      id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO relay_cursor (id, seq) VALUES (1, 0);
+
+    -- One row per event at or below the cursor. 'target_key' is the conversation the event would go
+    -- to ('' when there is no delivery); 'submission_id' is Pi Durable's admission, so a restart can
+    -- reacquire it. 'outcome' is the settled answer, or why a delivery failed.
+    CREATE TABLE IF NOT EXISTS relay_deliveries (
+      event_id TEXT PRIMARY KEY,
+      seq INTEGER NOT NULL,
+      ticket_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      target_key TEXT NOT NULL,
+      submission_id INTEGER,
+      state TEXT NOT NULL CHECK (state IN ('pending','admitted','settled','skipped','failed')),
+      outcome TEXT,
+      at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS relay_deliveries_ticket ON relay_deliveries (ticket_id);
+    CREATE INDEX IF NOT EXISTS relay_deliveries_state ON relay_deliveries (state);
+
+    -- The durable wait's task, keyed by ticket so a restart re-finds it without the cursor.
+    CREATE TABLE IF NOT EXISTS relay_waits (
+      ticket_id TEXT PRIMARY KEY,
+      task_id INTEGER NOT NULL,
+      conversation_id INTEGER NOT NULL,
+      deadline_ms INTEGER
+    );
+  `);
+}
+
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, up: createWorkboard },
+  { version: 2, up: createRelay },
+];
 
 for (const [index, migration] of MIGRATIONS.entries()) {
   if (migration.version !== index + 1) {
