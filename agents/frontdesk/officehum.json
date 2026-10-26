@@ -36,6 +36,11 @@
       "description": "Confirm this contact correction"
     },
     {
+      "id": "confirm_inbound_reply",
+      "tool": "reply_message",
+      "description": "Confirm this exact threaded reply to the authenticated inbound sender"
+    },
+    {
       "id": "first_contact",
       "tool": "send_message",
       "description": "Confirm first contact with this destination and transport"
