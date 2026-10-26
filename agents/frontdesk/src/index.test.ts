@@ -15,6 +15,7 @@ import {
   type AgentManifest,
   checkAgent,
   checkFourLayers,
+  conditionsHold,
   formatReport,
   runEvals,
   validatePackage,
@@ -27,7 +28,7 @@ import {
   scriptedProvider,
 } from "../../../packages/office/src/testing/scripted-model.js";
 import manifest from "../officehum.json" with { type: "json" };
-import frontdesk, { ContactsDoc, discountApprovalCondition } from "./index.js";
+import frontdesk, { ContactsDoc } from "./index.js";
 
 const temps: string[] = [];
 afterEach(() => {
@@ -567,30 +568,33 @@ describe("frontdesk discount gate", () => {
     calendar.close();
   });
 
-  it("gates a discount above the resolved limit and fails safe otherwise", () => {
-    const atDefault = environment({ booking_discount_percent: 0 });
-    expect(discountApprovalCondition({}, atDefault, BACKGROUND_CONTEXT)).toBe(false);
-    expect(discountApprovalCondition({ discountPercent: 0 }, atDefault, BACKGROUND_CONTEXT)).toBe(
-      false,
-    );
-    expect(discountApprovalCondition({ discountPercent: 20 }, atDefault, BACKGROUND_CONTEXT)).toBe(
-      true,
-    );
+  it("declares the discount gate as data: present, and above the resolved limit", () => {
+    const declared = (manifest as AgentManifest).approvals.find(
+      (approval) => approval.id === "discount_booking",
+    )?.when;
+    expect(declared).toEqual([
+      { arg: "discountPercent", op: "present" },
+      { arg: "discountPercent", op: "gt", value: { limit: "booking_discount_percent" } },
+    ]);
 
-    const raised = environment({ booking_discount_percent: 25 });
-    expect(discountApprovalCondition({ discountPercent: 20 }, raised, BACKGROUND_CONTEXT)).toBe(
+    const when = declared ?? [];
+    // No discount at all: "present" is false, so nothing waits. This is the case a bare comparison used
+    // to gate on every call, which is why the gate is data now instead of a hand-written condition.
+    expect(conditionsHold(when, {}, { booking_discount_percent: 0 })).toBe(false);
+    expect(conditionsHold(when, { discountPercent: 0 }, { booking_discount_percent: 0 })).toBe(
       false,
     );
-    expect(discountApprovalCondition({ discountPercent: 30 }, raised, BACKGROUND_CONTEXT)).toBe(
+    expect(conditionsHold(when, { discountPercent: 20 }, { booking_discount_percent: 0 })).toBe(
       true,
     );
-    // A discount that is not a real number, and a limit that did not resolve, wait for a person.
-    expect(discountApprovalCondition({ discountPercent: "20" }, raised, BACKGROUND_CONTEXT)).toBe(
+    expect(conditionsHold(when, { discountPercent: 20 }, { booking_discount_percent: 25 })).toBe(
+      false,
+    );
+    expect(conditionsHold(when, { discountPercent: 30 }, { booking_discount_percent: 25 })).toBe(
       true,
     );
-    expect(
-      discountApprovalCondition({ discountPercent: 20 }, environment({}), BACKGROUND_CONTEXT),
-    ).toBe(true);
+    // A limit that did not resolve still waits for a person rather than passing silently.
+    expect(conditionsHold(when, { discountPercent: 20 }, {})).toBe(true);
   });
 
   it("waits for a person when a booking carries a discount over the limit", async () => {

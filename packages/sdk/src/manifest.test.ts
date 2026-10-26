@@ -124,6 +124,42 @@ describe("validateManifest", () => {
     ]);
   });
 
+  it("takes no value with a presence condition, and needs one otherwise", () => {
+    const presence = [
+      {
+        id: "large_increase",
+        tool: "book_appointment",
+        description: "Increases over the set amount",
+        when: [{ arg: "quantity", op: "present" }],
+      },
+    ];
+    expect(messages(withFields({ approvals: presence }))).toEqual([]);
+
+    const withValue = [
+      {
+        id: "large_increase",
+        tool: "book_appointment",
+        description: "Increases over the set amount",
+        when: [{ arg: "quantity", op: "present", value: 1 }],
+      },
+    ];
+    expect(messages(withFields({ approvals: withValue }))).toEqual([
+      'officehum.json › approvals[0].when[0].value: must be omitted when op is "present"',
+    ]);
+
+    const withoutValue = [
+      {
+        id: "large_increase",
+        tool: "book_appointment",
+        description: "Increases over the set amount",
+        when: [{ arg: "quantity", op: "gt" }],
+      },
+    ];
+    expect(messages(withFields({ approvals: withoutValue }))).toEqual([
+      'officehum.json › approvals[0].when[0].value: needs a value unless the op is "present" or "absent"',
+    ]);
+  });
+
   it("names limits in snake_case", () => {
     const limits = { "Large Invoice": { description: "Invoices over the amount", default: 5000 } };
     expect(messages(withFields({ limits }))).toEqual([

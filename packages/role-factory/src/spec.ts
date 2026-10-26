@@ -139,14 +139,17 @@ const LimitReference = Type.Object({ limit: SnakeName }, { additionalProperties:
 const ConditionDeclaration = Type.Object(
   {
     arg: Type.String({ minLength: 1 }),
-    op: Type.Enum(["gt", "gte", "lt", "lte", "eq", "ne", "in"]),
-    value: Type.Union([
-      Type.Number(),
-      Type.String(),
-      Type.Boolean(),
-      Type.Array(Type.Union([Type.Number(), Type.String()])),
-      LimitReference,
-    ]),
+    // `present` and `absent` take no value: they say what an absent argument means.
+    op: Type.Enum(["gt", "gte", "lt", "lte", "eq", "ne", "in", "present", "absent"]),
+    value: Type.Optional(
+      Type.Union([
+        Type.Number(),
+        Type.String(),
+        Type.Boolean(),
+        Type.Array(Type.Union([Type.Number(), Type.String()])),
+        LimitReference,
+      ]),
+    ),
   },
   { additionalProperties: false },
 );

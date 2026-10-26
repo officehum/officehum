@@ -48,7 +48,11 @@
     {
       "id": "discount_booking",
       "tool": "book_appointment",
-      "description": "Confirm a discounted booking above the business's set rate"
+      "description": "Confirm a discounted booking above the business's set rate",
+      "when": [
+        { "arg": "discountPercent", "op": "present" },
+        { "arg": "discountPercent", "op": "gt", "value": { "limit": "booking_discount_percent" } }
+      ]
     },
     {
       "id": "confirm_reschedule",

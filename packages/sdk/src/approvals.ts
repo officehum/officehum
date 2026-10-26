@@ -238,6 +238,13 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
  * Whether every condition holds for a call's arguments, resolving `{ "limit": "NAME" }` values from
  * `limits`. Fails safe: a condition on an argument that is missing or of a type it cannot compare, or
  * a named limit that does not resolve to a number, counts as holding, so the action waits for a person.
+ *
+ * That fail-safe is wrong for an *optional* argument, where absent means the condition does not apply:
+ * "a discount above the rate waits for a person" should not gate a booking with no discount at all.
+ * `present` and `absent` are the opt-in answer — `when` is a conjunction, so `[{arg, op: "present"},
+ * {arg, op: "gt", value: {limit}}]` says "present, and above it", and an absent argument makes the
+ * first false and the whole condition not hold. Absence alone still holds, so a malformed call cannot
+ * skip a gate by omitting a field.
  */
 export function conditionsHold(
   conditions: readonly ConditionDeclaration[],
@@ -246,11 +253,16 @@ export function conditionsHold(
 ): boolean {
   return conditions.every((condition) => {
     const actual = args[condition.arg];
+    const missing = actual === undefined || actual === null;
+    if (condition.op === "present") return !missing;
+    if (condition.op === "absent") return missing;
+    // The schema refuses these without a value; a value-less condition cannot be evaluated, so it holds.
+    if (condition.value === undefined) return true;
     const name = limitName(condition.value);
     const expected = name === undefined ? condition.value : limits[name];
     // An unknown limit leaves nothing to compare against, so the action needs approval rather than passing.
     if (name !== undefined && typeof expected !== "number") return true;
-    if (actual === undefined || actual === null) return true;
+    if (missing) return true;
     switch (condition.op) {
       case "eq":
         return actual === expected;

@@ -135,18 +135,25 @@ const LimitDeclaration = Type.Object(
  */
 const LimitReference = Type.Object({ limit: SnakeName }, { additionalProperties: false });
 
-/** A condition on a tool call's arguments, e.g. `{ "arg": "amount", "op": "gt", "value": 2500 }`. */
+/**
+ * A condition on a tool call's arguments, e.g. `{ "arg": "amount", "op": "gt", "value": 2500 }`.
+ *
+ * `present` and `absent` take no value. They are the opt-in way to say what an absent argument means,
+ * because a comparison on a missing argument fails safe (it holds) and would gate every call.
+ */
 const ConditionDeclaration = Type.Object(
   {
     arg: Type.String({ minLength: 1 }),
-    op: Type.Enum(["gt", "gte", "lt", "lte", "eq", "ne", "in"]),
-    value: Type.Union([
-      Type.Number(),
-      Type.String(),
-      Type.Boolean(),
-      Type.Array(Type.Union([Type.Number(), Type.String()])),
-      LimitReference,
-    ]),
+    op: Type.Enum(["gt", "gte", "lt", "lte", "eq", "ne", "in", "present", "absent"]),
+    value: Type.Optional(
+      Type.Union([
+        Type.Number(),
+        Type.String(),
+        Type.Boolean(),
+        Type.Array(Type.Union([Type.Number(), Type.String()])),
+        LimitReference,
+      ]),
+    ),
   },
   { additionalProperties: false },
 );
@@ -646,6 +653,16 @@ function engineIssues(manifest: AgentManifest, add: (path: string, message: stri
       const at = `approvals[${index}].when[${conditionIndex}]`;
       if (parameters !== undefined && !(condition.arg in parameters)) {
         add(`${at}.arg`, `${show(condition.arg)} is not a parameter of ${show(approval.tool)}`);
+      }
+      if (condition.op === "present" || condition.op === "absent") {
+        if (condition.value !== undefined) {
+          add(`${at}.value`, `must be omitted when op is ${show(condition.op)}`);
+        }
+        return;
+      }
+      if (condition.value === undefined) {
+        add(`${at}.value`, 'needs a value unless the op is "present" or "absent"');
+        return;
       }
       const limit = limitName(condition.value);
       if (limit !== undefined) {
