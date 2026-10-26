@@ -162,6 +162,7 @@ function createRelay(database: DatabaseSync): void {
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: createWorkboard },
   { version: 2, up: createRelay },
+  { version: 3, up: addTicketResult },
 ];
 
 for (const [index, migration] of MIGRATIONS.entries()) {
@@ -200,4 +201,13 @@ export function applyMigrations(database: DatabaseSync): number {
     }
   }
   return userVersion(database);
+}
+
+/**
+ * The result a ticket closed with. `complete` used to only move the status, so a delegate's answer
+ * lived only in its own transcript — readable by the delegator, but not the thing the delegate said it
+ * was replying with. A tool argument that the host discards is a lie in the tool's schema.
+ */
+function addTicketResult(database: DatabaseSync): void {
+  database.exec("ALTER TABLE tickets ADD COLUMN result TEXT");
 }

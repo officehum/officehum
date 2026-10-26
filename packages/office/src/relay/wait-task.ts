@@ -138,7 +138,10 @@ export function createWaitTask(
           return;
         }
         if (ticket.status === "done" && settledDeliveries(deps.board, ticketId)) {
-          const answer = await answerText(runtime, task.conversationId, context);
+          // A recorded result is what the delegate said it was replying with; its transcript is
+          // whatever it happened to write last. Prefer the answer the board holds, and fall back to
+          // the transcript only for tickets closed without one (a human closing it, say).
+          const answer = ticket.result ?? (await answerText(runtime, task.conversationId, context));
           await runtime.commit(
             () => ({
               status: "terminal",

@@ -800,4 +800,30 @@ describe("workboard", () => {
       .map((path) => relative(repoRoot, path));
     expect(outside).toEqual([]);
   });
+
+  it("records the result a ticket was completed with, and null when nobody said", () => {
+    const board = openBoard(boardFile());
+    const provenance = INTERNAL;
+    const withResult = board.create(
+      { type: "job.request", title: "Paid", createdBy: "agent:desk", provenance },
+      "result-1",
+    );
+    board.claim(withResult.id, "agent:bookkeeper");
+    const completed = board.complete(withResult.id, "agent:bookkeeper", {
+      result: "Invoice 42 is paid.",
+    });
+    expect(completed.result).toBe("Invoice 42 is paid.");
+    expect(board.get(withResult.id)?.result).toBe("Invoice 42 is paid.");
+    // The answer travels in the event too, so a reader of the log sees what closed the ticket.
+    const closed = board.events(withResult.id).filter((event) => event.kind === "completed");
+    expect(closed).toHaveLength(1);
+    expect(closed[0]?.payload).toEqual({ result: "Invoice 42 is paid." });
+
+    const withoutResult = board.create(
+      { type: "job.request", title: "Quiet", createdBy: "agent:desk", provenance },
+      "result-2",
+    );
+    board.claim(withoutResult.id, "agent:bookkeeper");
+    expect(board.complete(withoutResult.id, "agent:bookkeeper").result).toBeNull();
+  });
 });
