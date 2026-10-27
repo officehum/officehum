@@ -712,8 +712,13 @@ suite("the all-format fixture workflow (real worker)", () => {
     expect(await publishedPointer(store, workbook.fileId)).toBe(v1.versionId);
 
     // Workers and libraries are pinned and recorded, and every output reopened.
+    expect(workflow.worker.libraries.python).toMatch(/^3\.13\./);
+    // The patch level of the interpreter is deliberately not pinned: `uv` resolves the newest 3.13,
+    // and a test that names today's patch turns a routine upstream release into a red build. What
+    // the contract requires is a 3.13 interpreter with exactly these three forks owning their module
+    // names.
+    expect(workflow.worker.libraries.python).toMatch(/^3\.13\./);
     expect(workflow.worker.libraries).toMatchObject({
-      python: "3.13.17",
       "paper-docx": "0.2.0",
       "paper-pptx": "0.2.0",
       "paper-xlsx": "0.2.1",

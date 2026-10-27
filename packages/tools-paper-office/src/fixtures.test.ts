@@ -153,8 +153,13 @@ suite("the Office Hum fixture runs all three libraries", () => {
     expect(receipt.resultDeclared).toBe(true);
     expect(receipt.result).toMatchObject({ docx: 2, pptx: 1, xlsx: 1250 });
     expect(receipt.reads).toEqual([]);
+    expect(receipt.worker.libraries.python).toMatch(/^3\.13\./);
+    // The patch level of the interpreter is deliberately not pinned: `uv` resolves the newest 3.13,
+    // and a test that names today's patch turns a routine upstream release into a red build. What
+    // the contract requires is a 3.13 interpreter with exactly these three forks owning their module
+    // names.
+    expect(receipt.worker.libraries.python).toMatch(/^3\.13\./);
     expect(receipt.worker.libraries).toMatchObject({
-      python: "3.13.17",
       "paper-docx": "0.2.0",
       "paper-pptx": "0.2.0",
       "paper-xlsx": "0.2.1",
