@@ -156,11 +156,12 @@ total: QuickBooks works out each line amount and the invoice's total, and the re
 A `jobReference` becomes the invoice's document number, which is the one place this client's
 `InvoiceDraft` can keep it, so an invoice can be found again by job.
 
-Every write carries a `requestId` derived from the durable call identity
-(`conversationId:taskId:callId`, hashed into QuickBooks' 50-character cap), so a retried call returns
-the invoice it already created instead of a second one. `send_reminder` uses the invoice *send*
-endpoint, because QuickBooks has no reminder endpoint of its own: the tone is the role's own wording,
-and the requestId is still this call's, so a retried reminder is not a second reminder.
+Every write carries a `requestId`, hashed into QuickBooks' 50-character cap. `create_invoice` and
+`send_invoice` derive it from the durable call identity (`conversationId:taskId:callId`), so a retried
+call returns the invoice it already created instead of a second one — and two genuine invoices, from
+two calls, stay two. `send_reminder` uses the invoice *send* endpoint, because QuickBooks has no
+reminder endpoint of its own: the tone is the role's own wording, and the requestId is derived from the
+**invoice and the stage** instead, because that pair may go out only once however many calls attempt it.
 
 ## One reminder per invoice and stage
 
@@ -173,8 +174,12 @@ and reaches no client at all. A different stage for the same invoice (firm after
 send and goes through. A paid invoice is never chased, and a stage before its day — at the business's
 own cadence — is refused rather than sent early.
 
-The ledger lives in the conversation, so a run's conversation is the unit it protects. A run in
-another conversation starts from an empty ledger.
+The ledger lives in the conversation, so a run's conversation is the unit it protects: a repeated run,
+a retried call or a restart is answered from it without reaching the client at all. A run in another
+conversation starts from an empty ledger and does ask QuickBooks — but the reminder's requestId is the
+invoice and the stage, so QuickBooks answers with the receipt it already holds and the customer gets
+nothing a second time. The ledger keeps the ordinary path free of a client call; the requestId closes
+the window the ledger cannot, a process killed after the send and before the record.
 
 ## The files
 

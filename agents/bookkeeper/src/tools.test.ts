@@ -13,6 +13,7 @@ import {
   bookkeeperTools,
   largeInvoiceCondition,
   newRecipientCondition,
+  stageRequestId,
   writeRequestId,
 } from "./tools.js";
 
@@ -371,6 +372,22 @@ describe("the write requestId", () => {
     // A call identity far longer than the cap still yields one key, not a colliding prefix.
     const long = `${"conversation-".repeat(6)}:${"task-".repeat(8)}:a`;
     expect(writeRequestId({ conversationId: long, taskId: long, callId: long })).toHaveLength(43);
+  });
+});
+
+describe("the reminder's requestId", () => {
+  it("is one stable key per invoice and stage, and not the call's key", () => {
+    expect(stageRequestId("1042", "firm")).toBe(stageRequestId("1042", "firm"));
+    // Another stage of the same invoice, and the same stage of another invoice, are their own sends.
+    expect(stageRequestId("1042", "firm")).not.toBe(stageRequestId("1042", "friendly"));
+    expect(stageRequestId("1042", "firm")).not.toBe(stageRequestId("1043", "firm"));
+    // QuickBooks' own cap, and the same shape a write's key has.
+    expect(stageRequestId("1042", "firm")).toHaveLength(43);
+    // The stage decides it, not the call that carries it: two different calls agree, which is what
+    // survives a restart into a new call identity.
+    expect(stageRequestId("1042", "firm")).not.toBe(
+      writeRequestId({ conversationId: "c", taskId: "t", callId: "call-1" }),
+    );
   });
 });
 

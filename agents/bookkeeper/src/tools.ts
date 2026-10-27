@@ -5,8 +5,10 @@
  * The client is whoever the host binds — Office Hum the REST client, a test or an eval
  * `fakeQuickBooks` — and every figure these tools speak comes back from it as integer cents. No tool
  * works out an amount, a total or a balance; the receipt quotes what QuickBooks returned. Every write
- * carries a `requestId` derived from the durable call identity, so a retried call reuses QuickBooks'
- * own idempotency instead of creating a second invoice.
+ * carries a `requestId`, so a retried write reuses QuickBooks' own idempotency instead of making a
+ * second one. A write a person starts — an invoice — is keyed by its call, because two genuine
+ * invoices are two writes; a collections reminder is keyed by its invoice and stage, because that
+ * pair may go out only once however many calls attempt it.
  *
  * The client is optional, as Front Desk's Messenger is: a host with no QuickBooks connection — the
  * bare eval harness, for one — still gets every tool and condition, and each refuses clearly rather
@@ -36,6 +38,18 @@ export interface CallIdentity {
 export function writeRequestId(api: CallIdentity): string {
   const identity = `${String(api.conversationId)}:${String(api.taskId)}:${api.callId}`;
   return `bk-${createHash("sha256").update(identity).digest("hex").slice(0, 40)}`;
+}
+
+/**
+ * The `requestId` for one collections reminder: the invoice and the stage, hashed the same way and to
+ * the same cap. A reminder is not this call's write but the stage's: an invoice plus a stage may go
+ * out only once, so those two are what QuickBooks dedupes on. A process killed between the send and
+ * the commit that records it therefore gets the first receipt back instead of sending again, and so
+ * does an attempt from another conversation — which the conversation-scoped ledger cannot reach.
+ */
+export function stageRequestId(invoiceId: string, tone: ReminderTone): string {
+  const stage = `reminder:${invoiceId}:${tone}`;
+  return `bk-${createHash("sha256").update(stage).digest("hex").slice(0, 40)}`;
 }
 
 /** The six tools, named, so the factory places each one where `officehum.json` declares it. */
@@ -775,8 +789,12 @@ export function bookkeeperTools(
       }
       // QuickBooks has no reminder endpoint of its own: a dunning reminder is the invoice sent again,
       // which is why the tone is the role's wording and the receipt is the send's. The requestId is
-      // this call's, so a retried reminder is not a second one.
-      const sent = await books.sendInvoice(invoice.id, { requestId: writeRequestId(api) });
+      // the invoice and the stage, not this call, so a kill between this send and the commit below
+      // leaves nothing the next attempt can duplicate: it carries the same requestId, and QuickBooks
+      // answers with the receipt it already holds instead of sending a second reminder.
+      const sent = await books.sendInvoice(invoice.id, {
+        requestId: stageRequestId(invoice.id, args.tone),
+      });
       const reminder: ReminderSent = {
         invoiceId: sent.id,
         reference,
