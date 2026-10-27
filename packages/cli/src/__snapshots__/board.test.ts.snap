@@ -1,0 +1,15 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`officehum board > renders a fixture office's cards in the four columns and exits 0 1`] = `
+"as of 2026-10-26T12:00:00.000Z
+
+open (2)                         claimed (1)                      waiting (1)                      blocked (1)
+-------------------------------  -------------------------------  -------------------------------  -------------------------------
+4m  unassigned                   2h  agent:bookkeeper             5m  owner                        1d  unassigned
+job.request Invoice 42 unpaid    invoice.create Post the invoice  booking.request Confirm Tuesday  invoice.create VAT is missing
+
+3d  unassigned
+triage.enquiry Ada wants a slot
+
+done 3 · cancelled 1"
+`;
