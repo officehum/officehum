@@ -13,12 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import {
-  type Board,
-  type NewTicket,
-  type Ticket,
-  type TicketStatus,
-} from "@officehum/office/board";
+import type { Board, NewTicket, Ticket, TicketStatus } from "@officehum/office/board";
 // The test helpers, not the host door: a host opens a board, only a test seeds a person.
 import { createWorkboard, seedPerson } from "@officehum/office/board/testing";
 import { afterEach, describe, expect, it } from "vitest";

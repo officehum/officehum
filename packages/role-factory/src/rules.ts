@@ -395,7 +395,7 @@ export function declarationIssues(frontmatter: Mapping, source: string): Issue[]
       add(
         "wisdom",
         joinPath(at, "name"),
-        `${show(name)} is provided by ${sdkTools.has(name) ? "the SDK" : "the Office"}; choose another name`,
+        `${show(name)} is ${sdkTools.has(name) ? "provided by the SDK" : "reserved by Office Hum"}; choose another name`,
       );
     }
     const skill = text(tool.skill);
