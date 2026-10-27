@@ -20,13 +20,29 @@ import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { bookkeeperTools, largeInvoiceCondition, newRecipientCondition } from "./tools.js";
 
+/**
+ * The collections ledger, and the dispute marker a person owns. None of this is a tool and the
+ * manifest declares none of it: a host's own script marks or clears a dispute, so the model cannot
+ * declare one from a customer's message or clear one to get a reminder out.
+ */
+export {
+  CollectionsDoc,
+  type CollectionsDocument,
+  clearDispute,
+  type DisputeMark,
+  dispute,
+  disputed,
+  disputedInvoices,
+  type OpenDispute,
+  type ReminderSent,
+  type ReminderTone,
+  sentStage,
+} from "./collections.js";
 export {
   type BookkeeperToolset,
   bookkeeperTools,
   type CallIdentity,
   type CollectionsCadence,
-  CollectionsDoc,
-  type CollectionsDocument,
   collectionsCadence,
   collectionsStage,
   daysOverdue,
@@ -34,9 +50,6 @@ export {
   findInvoiceByReference,
   largeInvoiceCondition,
   newRecipientCondition,
-  type ReminderSent,
-  type ReminderTone,
-  sentStage,
   stageRequestId,
   stageStartDay,
   writeRequestId,

@@ -18,10 +18,13 @@ stage, and the tool enforces that — you do not have to remember what you sent.
 4. The tool applies the business's own cadence, read from its settings, so take what it answers as
    final. If it says the stage is not due yet, or that the reminder is already recorded, do not call
    it again for that invoice and stage, and do not work the timing out yourself.
-5. A paid invoice gets no reminder at all: leave it alone. If the customer disputes the invoice, or
-   asks for a refund or a write-off, stop and hand it to a person. Do not argue about the figures.
+5. A paid invoice gets no reminder at all: leave it alone. If `send_reminder` says an invoice is in
+   dispute, a person marked it there: it gets no reminder at any stage, so do not chase it, and do not
+   try to clear the dispute — only a person can mark one or take it off. If the customer disputes the
+   invoice, or asks for a refund or a write-off, stop and hand it to a person. Do not argue about the
+   figures.
 6. A final notice waits for a person's approval. Say that it is waiting; if it is declined, leave that
    invoice as it is and say what was decided.
 7. Finish with a short summary a person can read: what went out, naming each invoice and stage with
-   the balance the tool returned; what is waiting for approval; and what needs a person rather than a
-   tool.
+   the balance the tool returned; every invoice an invoice-in-dispute answer left alone, naming who
+   marked it and why; what is waiting for approval; and what needs a person rather than a tool.
