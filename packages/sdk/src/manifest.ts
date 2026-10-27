@@ -499,7 +499,7 @@ function crossFieldIssues(manifest: AgentManifest, source: string): Issue[] {
     if (reserved.has(tool.name)) {
       add(
         joinPath(joinPath("tools", index), "name"),
-        `${show(tool.name)} is provided by ${sdkTools.has(tool.name) ? "the SDK" : "the Office"}; choose another name`,
+        `${show(tool.name)} is ${sdkTools.has(tool.name) ? "provided by the SDK" : "reserved by Office Hum"}; choose another name`,
       );
     }
     if (tool.skill !== undefined && !skills.has(tool.skill)) {

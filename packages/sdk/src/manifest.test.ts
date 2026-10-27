@@ -69,7 +69,7 @@ describe("validateManifest", () => {
       { name: "delegate", replay: "unsafe", noApproval: "internal note; no outside effect" },
     ];
     expect(messages(withFields({ tools }))).toEqual([
-      'officehum.json › tools[2].name: "delegate" is provided by the Office; choose another name',
+      'officehum.json › tools[2].name: "delegate" is reserved by Office Hum; choose another name',
     ]);
   });
 
