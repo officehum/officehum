@@ -16,6 +16,13 @@
  * has single-owner through `acquireLock` above `openSolo`. The relay runs inside that one owning
  * process, so there is no second party to claim against. The only re-entry risk — a redelivery after
  * a crash — is made harmless by the `requestId`, not by a lease.
+ *
+ * What "exactly once" does not mean, learned by killing this process for real (`relay-kill.test.ts`):
+ * the delivery row and the submission are exactly once, but a model turn is not. A `SIGKILL` inside
+ * the delegate's first turn cannot finish it, so the resumed submission runs that turn again — the
+ * same submission id, one ledger row, and two model calls. The guarantee is on the work being
+ * admitted and recorded once, never on a turn being immune to re-execution, and nothing downstream
+ * may assume a side effect inside a turn is idempotent by itself.
  */
 import { randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
