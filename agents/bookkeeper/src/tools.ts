@@ -5,8 +5,10 @@
  * The client is whoever the host binds — Office Hum the REST client, a test or an eval
  * `fakeQuickBooks` — and every figure these tools speak comes back from it as integer cents. No tool
  * works out an amount, a total or a balance; the receipt quotes what QuickBooks returned. Every write
- * carries a `requestId` derived from the durable call identity, so a retried call reuses QuickBooks'
- * own idempotency instead of creating a second invoice.
+ * carries a `requestId`, so a retried write reuses QuickBooks' own idempotency instead of making a
+ * second one. A write a person starts — an invoice — is keyed by its call, because two genuine
+ * invoices are two writes; a collections reminder is keyed by its invoice and stage, because that
+ * pair may go out only once however many calls attempt it.
  *
  * The client is optional, as Front Desk's Messenger is: a host with no QuickBooks connection — the
  * bare eval harness, for one — still gets every tool and condition, and each refuses clearly rather
@@ -15,9 +17,17 @@
 
 import { createHash } from "node:crypto";
 import { Type } from "@earendil-works/pi-ai";
-import { defineDoc, defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
+import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { Customer, Invoice, InvoiceDraft, Money, QuickBooks } from "@officehum/quickbooks";
 import type { ApprovalCondition } from "@officehum/sdk";
+import {
+  CollectionsDoc,
+  disputed,
+  type OpenDispute,
+  type ReminderSent,
+  type ReminderTone,
+  sentStage,
+} from "./collections.js";
 
 /** The durable identity of one tool call, as Pi Durable hands it to a tool's `execute`. */
 export interface CallIdentity {
@@ -36,6 +46,18 @@ export interface CallIdentity {
 export function writeRequestId(api: CallIdentity): string {
   const identity = `${String(api.conversationId)}:${String(api.taskId)}:${api.callId}`;
   return `bk-${createHash("sha256").update(identity).digest("hex").slice(0, 40)}`;
+}
+
+/**
+ * The `requestId` for one collections reminder: the invoice and the stage, hashed the same way and to
+ * the same cap. A reminder is not this call's write but the stage's: an invoice plus a stage may go
+ * out only once, so those two are what QuickBooks dedupes on. A process killed between the send and
+ * the commit that records it therefore gets the first receipt back instead of sending again, and so
+ * does an attempt from another conversation — which the conversation-scoped ledger cannot reach.
+ */
+export function stageRequestId(invoiceId: string, tone: ReminderTone): string {
+  const stage = `reminder:${invoiceId}:${tone}`;
+  return `bk-${createHash("sha256").update(stage).digest("hex").slice(0, 40)}`;
 }
 
 /** The six tools, named, so the factory places each one where `officehum.json` declares it. */
@@ -120,62 +142,12 @@ type ReminderDetails = {
   to: string | null;
   /** When the stage was recorded, on a send and on an "already sent"; null when it is not recorded. */
   sentAt: string | null;
+  /**
+   * The dispute standing against the invoice, when one did and the call therefore sent nothing. A
+   * person marked it; the run reports it rather than chasing the invoice.
+   */
+  disputed: OpenDispute | null;
 };
-
-/** The three tones the collections skill sends a reminder in. */
-export type ReminderTone = "friendly" | "firm" | "final";
-
-/** One reminder this conversation has sent: which invoice, at which stage, and when. */
-export type ReminderSent = {
-  /** The invoice's QuickBooks id, which names it whatever reference the call used. */
-  invoiceId: string;
-  /** The reference the call used: the id, or the document number a person or a run quoted. */
-  reference: string;
-  /** The stage that went out. An invoice plus a stage is what may go out only once. */
-  tone: ReminderTone;
-  /** The address it went to, as the customer's record held it. */
-  to: string;
-  /** When the stage was recorded, ISO-8601 UTC. */
-  sentAt: string;
-};
-
-/** The collections ledger of one conversation: every stage sent, and when. */
-export type CollectionsDocument = { sent: ReminderSent[] };
-
-/**
- * The durable ledger that makes a collections run idempotent: per invoice, the stages this
- * conversation has already sent and when. Conversation scope with latest history, so a run keeps one
- * ledger, it survives a restart, and it — never the transcript, which a crash can lose — is what
- * decides whether a reminder goes out again. A later run finds the stage recorded here and sends
- * nothing.
- */
-export const CollectionsDoc = defineDoc<CollectionsDocument>({
-  kind: "bookkeeper.collections",
-  version: 1,
-  scope: "conversation",
-  history: "latest",
-  fork: "current",
-  initial: () => ({ sent: [] }),
-});
-
-/**
- * The stage a ledger already holds for an invoice, if it holds one. A record matches when the stage
- * is the same and either the reference this call used or the invoice's own id is the same, so the
- * document number a person quotes and the id a run lists are one invoice, not two.
- */
-export function sentStage(
-  sent: readonly ReminderSent[],
-  reference: string,
-  invoiceId: string | undefined,
-  tone: ReminderTone,
-): ReminderSent | undefined {
-  return sent.find(
-    (record) =>
-      record.tone === tone &&
-      (record.reference === reference ||
-        (invoiceId !== undefined && record.invoiceId === invoiceId)),
-  );
-}
 
 /** The business's cadence, resolved: how many days after its due date each stage starts. */
 export interface CollectionsCadence {
@@ -295,6 +267,7 @@ function alreadySentResult(
     tone,
     to: record.to,
     sentAt: record.sentAt,
+    disputed: null,
   };
   return {
     ...textResult(
@@ -714,6 +687,7 @@ export function bookkeeperTools(
         tone: args.tone,
         to: customer?.email ?? null,
         sentAt: null,
+        disputed: null,
       };
       if (invoice === undefined) {
         return {
@@ -729,6 +703,20 @@ export function bookkeeperTools(
       const sameInvoice = sentStage(ledger?.sent ?? [], reference, invoice.id, args.tone);
       if (sameInvoice !== undefined) {
         return alreadySentResult(sameInvoice, details.invoice, args.tone);
+      }
+      // A dispute is a person's marker, and it outranks the cadence: a disputed invoice is chased at
+      // no stage at all. The reason is reported rather than swallowed — an invoice dropped silently
+      // from a run is worse than one chased — and no tool sets or clears the marker, so the model
+      // cannot answer a customer's claim by declaring a dispute of its own.
+      const inDispute = disputed(ledger, invoice.id);
+      if (inDispute !== undefined) {
+        return {
+          ...textResult(
+            `Invoice ${invoiceLabel(invoice)} is in dispute: ${inDispute.by} marked it on ${inDispute.at} — "${inDispute.reason}". It gets no reminder at any stage until a person clears the dispute. Leave it alone and say it is in dispute.`,
+          ),
+          isError: true,
+          details: { ...details, disputed: inDispute },
+        };
       }
       if (invoice.status === "paid") {
         return {
@@ -775,8 +763,12 @@ export function bookkeeperTools(
       }
       // QuickBooks has no reminder endpoint of its own: a dunning reminder is the invoice sent again,
       // which is why the tone is the role's wording and the receipt is the send's. The requestId is
-      // this call's, so a retried reminder is not a second one.
-      const sent = await books.sendInvoice(invoice.id, { requestId: writeRequestId(api) });
+      // the invoice and the stage, not this call, so a kill between this send and the commit below
+      // leaves nothing the next attempt can duplicate: it carries the same requestId, and QuickBooks
+      // answers with the receipt it already holds instead of sending a second reminder.
+      const sent = await books.sendInvoice(invoice.id, {
+        requestId: stageRequestId(invoice.id, args.tone),
+      });
       const reminder: ReminderSent = {
         invoiceId: sent.id,
         reference,
@@ -807,6 +799,7 @@ export function bookkeeperTools(
           tone: args.tone,
           to: customer.email,
           sentAt: stored.sentAt,
+          disputed: null,
         },
       };
     },

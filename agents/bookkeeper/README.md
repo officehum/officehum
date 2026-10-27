@@ -156,11 +156,12 @@ total: QuickBooks works out each line amount and the invoice's total, and the re
 A `jobReference` becomes the invoice's document number, which is the one place this client's
 `InvoiceDraft` can keep it, so an invoice can be found again by job.
 
-Every write carries a `requestId` derived from the durable call identity
-(`conversationId:taskId:callId`, hashed into QuickBooks' 50-character cap), so a retried call returns
-the invoice it already created instead of a second one. `send_reminder` uses the invoice *send*
-endpoint, because QuickBooks has no reminder endpoint of its own: the tone is the role's own wording,
-and the requestId is still this call's, so a retried reminder is not a second reminder.
+Every write carries a `requestId`, hashed into QuickBooks' 50-character cap. `create_invoice` and
+`send_invoice` derive it from the durable call identity (`conversationId:taskId:callId`), so a retried
+call returns the invoice it already created instead of a second one — and two genuine invoices, from
+two calls, stay two. `send_reminder` uses the invoice *send* endpoint, because QuickBooks has no
+reminder endpoint of its own: the tone is the role's own wording, and the requestId is derived from the
+**invoice and the stage** instead, because that pair may go out only once however many calls attempt it.
 
 ## One reminder per invoice and stage
 
@@ -173,8 +174,49 @@ and reaches no client at all. A different stage for the same invoice (firm after
 send and goes through. A paid invoice is never chased, and a stage before its day — at the business's
 own cadence — is refused rather than sent early.
 
-The ledger lives in the conversation, so a run's conversation is the unit it protects. A run in
-another conversation starts from an empty ledger.
+The ledger lives in the conversation, so a run's conversation is the unit it protects: a repeated run,
+a retried call or a restart is answered from it without reaching the client at all. A run in another
+conversation starts from an empty ledger and does ask QuickBooks — but the reminder's requestId is the
+invoice and the stage, so QuickBooks answers with the receipt it already holds and the customer gets
+nothing a second time. The ledger keeps the ordinary path free of a client call; the requestId closes
+the window the ledger cannot, a process killed after the send and before the record.
+
+## A dispute is a person's marker
+
+QuickBooks' invoice status is `open`, `overdue` or `paid` and carries no dispute, so the Bookkeeper
+keeps one in the same collections ledger. It is a **person's** decision and nobody else's: no tool
+marks a dispute or clears one, and the manifest declares none, so the model cannot declare an invoice
+disputed because a customer said so, and cannot clear one to get a reminder out. A host's own script
+writes it, through the two functions below — the only writers of the marker.
+
+While a dispute stands, `send_reminder` refuses that invoice **at every stage**, paid or not, and its
+answer names who marked it, when and why, so the run reports the invoice instead of chasing it or
+quietly dropping it: an invoice silently missing from a run is worse than one chased. Clearing it
+changes nothing about the stages already sent, so the next run resumes at the stage the invoice's age
+calls for rather than starting the cadence over.
+
+```ts
+import { CollectionsDoc, clearDispute, dispute } from "@officehum/bookkeeper";
+
+// A person has read the customer's message and decided invoice 1042 is disputed. The invoice is the
+// QuickBooks id `list_invoices` returns; `by` is required, and a blank one is refused.
+await harness.commit(async (tx) => {
+  dispute(await tx.doc(CollectionsDoc, conversationId), "1042", {
+    reason: "The customer says the second visit was never agreed",
+    by: "ada@example.com",
+  });
+}, context);
+
+// Later, the same person settles it. The next collections run chases the invoice again, at the
+// stage its age calls for.
+await harness.commit(async (tx) => {
+  clearDispute(await tx.doc(CollectionsDoc, conversationId), "1042", { by: "ada@example.com" });
+}, context);
+```
+
+`disputed(ledger, invoiceId)` reads the marker back, and `disputedInvoices(ledger)` lists every
+dispute standing — which is what a report a person reads is built from. The ledger is conversation
+scope, so the marker belongs to the conversation's run, like the record of the stages sent.
 
 ## The files
 
@@ -183,8 +225,9 @@ another conversation starts from an empty ledger.
 | `officehum.json` | The manifest: six tools, three approvals, four limits, accepts with completion evidence, skills, evals |
 | `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
 | `src/index.ts` | The factory: the tools, the skill tools, the code conditions and the live limits reader |
-| `src/tools.ts` | The six tools, the `bookkeeper.collections` ledger, the cadence helpers and the write `requestId` |
-| `src/collections.test.ts` | The ledger: a repeated run, a restart after the commit, and the cadence from limits |
+| `src/tools.ts` | The six tools, the cadence helpers and the write `requestId`s |
+| `src/collections.ts` | The `bookkeeper.collections` ledger: the stages sent, and the dispute marker a person owns |
+| `src/collections.test.ts` | The ledger: a repeated run, a restart, a kill mid-send, a dispute, and the cadence from limits |
 | `evals/situations.json` | The seven eval scenarios |
 | `evals.smoke.json` | The turns `--model scripted` plays back for them |
 | `skills/` | `invoicing`, `collections` and `billing-questions`, with their references |

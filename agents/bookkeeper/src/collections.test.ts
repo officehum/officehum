@@ -11,7 +11,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { awaitWithContext, BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { awaitWithContext, BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
@@ -33,11 +33,17 @@ import {
   type ScriptedTurn,
   scriptedProvider,
 } from "../../../packages/office/src/testing/scripted-model.js";
+import {
+  CollectionsDoc,
+  type CollectionsDocument,
+  clearDispute,
+  dispute,
+  disputed,
+} from "./collections.js";
 import bookkeeper from "./index.js";
 import {
   bookkeeperTools,
   type CollectionsCadence,
-  CollectionsDoc,
   collectionsCadence,
   collectionsStage,
   daysOverdue,
@@ -110,14 +116,25 @@ type Counted = {
   readonly books: QuickBooks;
   /** Every method the tool called, in order, e.g. `["getInvoice", "getCustomer", "sendInvoice"]`. */
   readonly calls: string[];
-  /** How many reminders QuickBooks was actually asked to send. */
+  /** How many times a send was asked for, replays included. */
   sends: number;
+  /**
+   * How many sends actually reached QuickBooks: one per requestId, because a repeated requestId on the
+   * same endpoint gets the stored receipt back instead of a second send. This is the count a duplicate
+   * would move, so it is the one a "no second reminder" test asserts on.
+   */
+  delivered: number;
+  /** Every requestId a send was asked for, in order. */
+  readonly requestIds: string[];
 };
 
 function counting(books: QuickBooks): Counted {
+  const delivered = new Set<string>();
   const counted: Counted = {
     calls: [],
     sends: 0,
+    delivered: 0,
+    requestIds: [],
     books: {
       findCustomers: async (query) => {
         counted.calls.push("findCustomers");
@@ -142,6 +159,11 @@ function counting(books: QuickBooks): Counted {
       sendInvoice: async (id, options) => {
         counted.calls.push("sendInvoice");
         counted.sends += 1;
+        counted.requestIds.push(options.requestId);
+        if (!delivered.has(options.requestId)) {
+          delivered.add(options.requestId);
+          counted.delivered += 1;
+        }
         return await books.sendInvoice(id, options);
       },
       listPayments: async (filter) => {
@@ -227,6 +249,28 @@ async function withHarness(): Promise<{
 }
 
 /**
+ * A person's own write to the ledger: the module API, committed on the run's conversation the way a
+ * host's script would. No tool reaches `dispute` or `clearDispute`, which is why the tests call them
+ * here rather than through the model.
+ */
+async function asPerson(
+  harness: Harness,
+  conversationId: Conversation["id"],
+  work: (ledger: CollectionsDocument) => void,
+): Promise<void> {
+  await harness.commit(async (tx) => {
+    work(await tx.doc(CollectionsDoc, conversationId));
+  }, BACKGROUND_CONTEXT);
+}
+
+/** The person who marks the disputes in these tests. */
+const ADA = "ada@example.com";
+
+/** One invoice forty days overdue: every stage of the cadence has arrived. */
+const finishedBooks = (): QuickBooks =>
+  fakeQuickBooks({ customers: [DEMO_GUEST], invoices: [invoice("1042", day(-40), 12000)] });
+
+/**
  * The role with one extra hook: `tool` has finished — its stage is committed — and the run then
  * hangs, which is exactly where a killed process would leave it.
  */
@@ -242,6 +286,44 @@ function pauseAfter(role: DefinedRole, tool: string, reached: () => void): RoleB
   const [first, ...rest] = role.extensions;
   if (first === undefined) throw new Error("the role returned no extension");
   const extensions = [{ ...first, hooks: [...(first.hooks ?? []), pause] }, ...rest];
+  return { extensions, agent: { ...role.agent, extensions } };
+}
+
+/**
+ * A client that hangs after QuickBooks has taken the send, never returning until the run's context is
+ * aborted: that is a process killed between the reminder going out and the ledger recording it. The
+ * context is the one `send_reminder` runs under, which closing the harness aborts.
+ */
+function hangAfterSend(
+  books: QuickBooks,
+  reached: () => void,
+  running: () => Context | undefined,
+): QuickBooks {
+  let first = true;
+  return {
+    ...books,
+    sendInvoice: async (id: string, options: { requestId: string; to?: string }) => {
+      const receipt = await books.sendInvoice(id, options);
+      if (!first) return receipt;
+      first = false;
+      reached();
+      const context = running();
+      if (context === undefined) return receipt;
+      return await awaitWithContext(new Promise<never>(() => {}), context);
+    },
+  };
+}
+
+/** The role, with the context one tool runs under visible to the client that hangs inside it. */
+function withToolContext(role: DefinedRole, tool: string, seen: { current?: Context }): RoleBundle {
+  const capture = hook(ToolTask, {
+    beforeTool: (call, _api, context) => {
+      if (call.name === tool) seen.current = context;
+    },
+  });
+  const [first, ...rest] = role.extensions;
+  if (first === undefined) throw new Error("the role returned no extension");
+  const extensions = [{ ...first, hooks: [...(first.hooks ?? []), capture] }, ...rest];
   return { extensions, agent: { ...role.agent, extensions } };
 }
 
@@ -642,5 +724,321 @@ describe("a collections round", () => {
     expect(
       await delayed.harness.snapshot(CollectionsDoc, delayed.root.id, BACKGROUND_CONTEXT),
     ).toBeUndefined();
+  });
+});
+
+describe("a reminder's identity (RASF-3393)", () => {
+  it("sends no second reminder when the process dies between the send and the ledger commit", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "officehum-bookkeeper-mid-send-"));
+    temps.push(directory);
+    const counted = counting(overdueBooks());
+
+    let sent!: () => void;
+    const reached = new Promise<void>((resolve) => {
+      sent = resolve;
+    });
+    const seen: { current?: Context } = {};
+    const role = bookkeeper({ quickbooks: hangAfterSend(counted.books, sent, () => seen.current) });
+    const interrupted = withToolContext(role, "send_reminder", seen);
+    const first = scriptedProvider([
+      { toolCalls: [{ name: "send_reminder", args: { invoice: "1042", tone: "firm" } }] },
+      { text: "This turn is never reached: the process dies mid-send." },
+    ]);
+    const harness = await Harness.open(
+      await openNodeJsonlStorage(join(directory, "harness"), BACKGROUND_CONTEXT, { fsync: true }),
+      { models: first.models, registry: registryOf(interrupted.extensions) },
+      BACKGROUND_CONTEXT,
+    );
+    const root = await harness.root(BACKGROUND_CONTEXT, {
+      agent: { ...interrupted.agent, model: first.model },
+    });
+    const submission = await root.submit(
+      { type: "input", content: "Chase the overdue invoice." },
+      BACKGROUND_CONTEXT,
+    );
+    await reached;
+
+    // Killed here: QuickBooks has the reminder, and the ledger has nothing, because the commit that
+    // would record it has not run.
+    expect(counted.delivered).toBe(1);
+    expect(counted.calls).toEqual(["getInvoice", "getCustomer", "sendInvoice"]);
+    expect(await harness.snapshot(CollectionsDoc, root.id, BACKGROUND_CONTEXT)).toBeUndefined();
+    const [pending] = (await harness.inspect(BACKGROUND_CONTEXT)).submissions;
+    if (pending === undefined) throw new Error("the interrupted submission is not there");
+    await harness.close(BACKGROUND_CONTEXT);
+    await submission.wait(BACKGROUND_CONTEXT).catch(() => {});
+
+    // Restarted on the same storage. The interrupted submission comes back, and the model retries the
+    // reminder it has no record of — a fresh call, with a call identity of its own.
+    const second = scriptedProvider([
+      { toolCalls: [{ name: "send_reminder", args: { invoice: "1042", tone: "firm" } }] },
+      { text: "The reminder is recorded now." },
+    ]);
+    const restarted = await Harness.open(
+      await openNodeJsonlStorage(join(directory, "harness"), BACKGROUND_CONTEXT, { fsync: true }),
+      { models: second.models, registry: registryOf(role.extensions) },
+      BACKGROUND_CONTEXT,
+    );
+    harnesses.push(restarted);
+    restarted.resume();
+    const resumed = await restarted.submission(pending.id, BACKGROUND_CONTEXT);
+    if (resumed === undefined) throw new Error("the interrupted submission did not come back");
+    const settled = await resumed.wait(BACKGROUND_CONTEXT);
+    expect(settled.status).toBe("done");
+
+    // The retry asked again, because no ledger had the stage — and got the first send back, because
+    // the requestId is the invoice and the stage rather than the call that carries it. One reminder
+    // reached the customer; one attempt recorded it.
+    expect(counted.sends).toBe(2);
+    expect(counted.delivered).toBe(1);
+    expect(new Set(counted.requestIds).size).toBe(1);
+    const after = await restarted.snapshot(CollectionsDoc, root.id, BACKGROUND_CONTEXT);
+    expect(after?.sent).toHaveLength(1);
+    expect(after?.sent[0]).toMatchObject({ invoiceId: "1042", reference: "1042", tone: "firm" });
+    expect(after?.sent[0]?.sentAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const conversation = await restarted.conversation(root.id, BACKGROUND_CONTEXT);
+    if (conversation === undefined) throw new Error("the conversation did not come back");
+    const view = await conversation.context(BACKGROUND_CONTEXT);
+    expect(lastToolText(view.messages)).toContain("Sent a firm reminder for invoice 1042");
+    expect(lastToolText(view.messages)).toContain("balance 120.00 USD");
+  });
+
+  it("sends nothing again when another conversation retries the same invoice and stage", async () => {
+    const counted = counting(overdueBooks());
+    // One conversation's run...
+    const first = await withHarness();
+    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+    const sent = await tools.sendReminder.execute(
+      { invoice: "1042", tone: "firm" },
+      first.api("firm-first"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(sent.details).toMatchObject({ sent: true, tone: "firm" });
+    expect(counted.delivered).toBe(1);
+
+    // ...and a different conversation, whose ledger starts empty, retrying the same stage. Its call
+    // identity differs, so only the requestId can keep this to one reminder.
+    const second = await withHarness();
+    const again = await bookkeeperTools(counted.books, () => CADENCE_LIMITS).sendReminder.execute(
+      { invoice: "1042", tone: "firm" },
+      second.api("firm-second"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(counted.sends).toBe(2);
+    expect(counted.delivered).toBe(1);
+    expect(new Set(counted.requestIds).size).toBe(1);
+    // QuickBooks answered with the receipt it already held, so the stage is reported as sent, and the
+    // second conversation now holds its own record of it.
+    expect(again.details).toMatchObject({ sent: true, alreadySent: false, tone: "firm" });
+    const ledger = await second.harness.snapshot(
+      CollectionsDoc,
+      second.root.id,
+      BACKGROUND_CONTEXT,
+    );
+    expect(ledger?.sent).toHaveLength(1);
+    expect(ledger?.sent[0]).toMatchObject({ invoiceId: "1042", tone: "firm" });
+  });
+
+  it("still sends a genuinely different stage", async () => {
+    const counted = counting(overdueBooks());
+    const { api } = await withHarness();
+    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+
+    await tools.sendReminder.execute(
+      { invoice: "1042", tone: "firm" },
+      api("firm"),
+      BACKGROUND_CONTEXT,
+    );
+    const friendly = await tools.sendReminder.execute(
+      { invoice: "1042", tone: "friendly" },
+      api("friendly"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(friendly.details).toMatchObject({ sent: true, tone: "friendly" });
+    expect(counted.delivered).toBe(2);
+    expect(new Set(counted.requestIds).size).toBe(2);
+  });
+});
+
+/**
+ * A collections run over an invoice a person has disputed: it lists what is overdue, tries to chase
+ * the one invoice, and reports what the tools said. The last turn is worded from the transcript, the
+ * way a model grounds its summary in what the tools returned.
+ */
+function disputedRound(messages: readonly Message[]): ScriptedTurn {
+  const turns = messages
+    .slice(lastInput(messages) + 1)
+    .filter((message) => message.role === "assistant").length;
+  if (turns === 0) {
+    return { toolCalls: [{ name: "list_invoices", args: { status: "overdue" } }] };
+  }
+  if (turns === 1) {
+    return { toolCalls: [{ name: "send_reminder", args: { invoice: "1042", tone: "firm" } }] };
+  }
+  const texts = toolTexts(messages);
+  const refused = texts.find((value) => value.includes("is in dispute"));
+  return {
+    text:
+      refused === undefined
+        ? "One firm reminder went out for invoice 1042."
+        : `Invoice 1042 is in dispute and was left alone. ${refused}`,
+  };
+}
+
+describe("a disputed invoice (RASF-3394)", () => {
+  it("gets no reminder at any stage, and every refusal says who disputed it and why", async () => {
+    const counted = counting(finishedBooks());
+    const { harness, root, api } = await withHarness();
+    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+    await asPerson(harness, root.id, (ledger) =>
+      dispute(ledger, "1042", {
+        reason: "The customer says the second visit was never agreed",
+        by: ADA,
+      }),
+    );
+
+    // Forty days overdue: every stage of the cadence has arrived, and every one of them is refused.
+    for (const tone of ["friendly", "firm", "final"] as const) {
+      const refused = await tools.sendReminder.execute(
+        { invoice: "1042", tone },
+        api(`disputed-${tone}`),
+        BACKGROUND_CONTEXT,
+      );
+      expect(refused.isError).toBe(true);
+      expect(text(refused)).toContain("is in dispute");
+      expect(text(refused)).toContain(ADA);
+      expect(text(refused)).toContain("The customer says the second visit was never agreed");
+      expect(refused.details).toMatchObject({
+        sent: false,
+        alreadySent: false,
+        tone,
+        disputed: { invoiceId: "1042", by: ADA },
+      });
+    }
+    expect(counted.sends).toBe(0);
+    expect(counted.delivered).toBe(0);
+    const ledger = await harness.snapshot(CollectionsDoc, root.id, BACKGROUND_CONTEXT);
+    expect(ledger?.sent).toEqual([]);
+    expect(ledger?.disputes).toHaveLength(1);
+  });
+
+  it("is left alone by a run, which says in its summary why", async () => {
+    const counted = counting(overdueBooks());
+    const role = bookkeeper({ quickbooks: counted.books });
+    const scripted = scriptedProvider(disputedRound);
+    const harness = await Harness.open(
+      new MemoryStorage(),
+      { models: scripted.models, registry: registryOf(role.extensions) },
+      BACKGROUND_CONTEXT,
+    );
+    harnesses.push(harness);
+    const root = await harness.root(BACKGROUND_CONTEXT, {
+      agent: { ...role.agent, model: scripted.model },
+    });
+    await asPerson(harness, root.id, (ledger) =>
+      dispute(ledger, "1042", { reason: "Cheque posted, not cleared", by: ADA }),
+    );
+
+    const submission = await root.submit(
+      { type: "input", content: "Run the collections round for this morning." },
+      BACKGROUND_CONTEXT,
+    );
+    await submission.wait(BACKGROUND_CONTEXT);
+    const view = await root.context(BACKGROUND_CONTEXT);
+
+    // The run reached the invoice, was told it is in dispute, and reported that rather than chasing or
+    // quietly dropping it.
+    expect(lastToolText(view.messages)).toContain("is in dispute");
+    expect(lastAnswer(view.messages)).toContain("is in dispute");
+    expect(lastAnswer(view.messages)).toContain(ADA);
+    expect(counted.sends).toBe(0);
+    expect(counted.delivered).toBe(0);
+  });
+
+  it("resumes at the stage the invoice's age calls for once a person clears it", async () => {
+    const counted = counting(overdueBooks());
+    const { harness, root, api } = await withHarness();
+    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+    // Twenty days overdue: the firm stage is the one the cadence names, not the first one.
+    const overdueBy = daysOverdue(day(-20));
+    if (overdueBy === undefined) throw new Error("the seeded due date is not a date");
+    expect(collectionsStage(overdueBy, CADENCE)).toBe("firm");
+
+    await asPerson(harness, root.id, (ledger) =>
+      dispute(ledger, "1042", { reason: "Customer is querying the call-out charge", by: ADA }),
+    );
+    const refused = await tools.sendReminder.execute(
+      { invoice: "1042", tone: "firm" },
+      api("before-clear"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(refused.isError).toBe(true);
+    expect(counted.sends).toBe(0);
+
+    await asPerson(harness, root.id, (ledger) => clearDispute(ledger, "1042", { by: ADA }));
+    const sent = await tools.sendReminder.execute(
+      { invoice: "1042", tone: "firm" },
+      api("after-clear"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(sent)).toContain("Sent a firm reminder for invoice 1042 to guest@example.com");
+    expect(sent.details).toMatchObject({ sent: true, tone: "firm", disputed: null });
+    expect(counted.delivered).toBe(1);
+    const ledger = await harness.snapshot(CollectionsDoc, root.id, BACKGROUND_CONTEXT);
+    // The stage it resumed at is the one it stopped at: the cadence did not start over.
+    expect(ledger?.sent.map((record) => record.tone)).toEqual(["firm"]);
+    expect(disputed(ledger, "1042")).toBeUndefined();
+  });
+
+  it("reads a ledger written before the marker and disputes nothing in it", () => {
+    const record = {
+      invoiceId: "1042",
+      reference: "1042",
+      tone: "firm",
+      to: "guest@example.com",
+      sentAt: "2026-10-01T09:00:00.000Z",
+    } as const;
+    const migrated = CollectionsDoc.definition.migrate?.({ sent: [record] }, 1);
+    expect(migrated).toEqual({ sent: [record], disputes: [] });
+  });
+
+  it("still leaves a paid invoice alone, as it did before the marker existed", async () => {
+    const counted = counting(overdueBooks());
+    const { api } = await withHarness();
+    const paid = await bookkeeperTools(counted.books, () => CADENCE_LIMITS).sendReminder.execute(
+      { invoice: "1044", tone: "final" },
+      api("paid"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(paid.isError).toBe(true);
+    expect(text(paid)).toContain("it is paid");
+    expect(text(paid)).not.toContain("in dispute");
+    expect(paid.details).toMatchObject({ sent: false, disputed: null });
+    expect(counted.delivered).toBe(0);
+  });
+
+  it("is a person's decision: no tool marks or clears one, and a mark needs a name", async () => {
+    const ledger: CollectionsDocument = { sent: [], disputes: [] };
+    expect(() => dispute(ledger, "1042", { reason: "Not agreed", by: "   " })).toThrow(/by/);
+    expect(() => dispute(ledger, "1042", { reason: " ", by: ADA })).toThrow(/reason/);
+    expect(() => clearDispute(ledger, "1042", { by: "" })).toThrow(/by/);
+    expect(ledger.disputes).toEqual([]);
+    expect(disputed(ledger, "1042")).toBeUndefined();
+
+    // The role's whole surface: its six tools and the SDK's skill reader, none of which touches the
+    // marker — so a dispute can only be marked or cleared by a person calling the module.
+    const names = bookkeeper({ quickbooks: overdueBooks() })
+      .extensions.flatMap((extension) => extension.tools ?? [])
+      .map((tool) => tool.name)
+      .sort();
+    expect(names).toEqual([
+      "create_invoice",
+      "find_customer",
+      "get_invoice",
+      "list_invoices",
+      "read_skill",
+      "send_invoice",
+      "send_reminder",
+    ]);
   });
 });
