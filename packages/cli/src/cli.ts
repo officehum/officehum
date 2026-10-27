@@ -59,6 +59,7 @@ import {
   reviewReport,
   reviewSummaryLine,
 } from "@officehum/tools-paper-office";
+import { runBoardCommand } from "./board.js";
 import { runEvalCommand } from "./eval.js";
 import {
   parseModelRef,
@@ -117,6 +118,11 @@ export interface CliDependencies {
     options: Parameters<typeof openInboundSession>[0],
   ) => InboundSession;
   readonly openResendMessenger?: (path: string, options: ResendMessengerOptions) => ResendMessenger;
+  /**
+   * The clock the board renders its ages against. Tests inject a fixed one; the wall clock is read in
+   * exactly one place, here, so a rendered board is reproducible.
+   */
+  readonly now?: () => Date;
 }
 
 const USAGE = `Usage:
@@ -129,6 +135,7 @@ const USAGE = `Usage:
   officehum inbox [--state DIR]
   officehum bookings [--state DIR] [--calendar local|google]
   officehum contacts [--state DIR]
+  officehum board [--office DIR] [--once]
   officehum review list [--state DIR]
   officehum review show [--state DIR] --review REVIEW_ID
   officehum review decide [--state DIR] --review REVIEW_ID --verdict approve|deny --by NAME [--approval ID]
@@ -1377,6 +1384,7 @@ export async function runCli(
       return 0;
     }
     if (args[0] === "run") return await runRun(args.slice(1), io, dependencies);
+    if (args[0] === "board") return await runBoardCommand(args.slice(1), io, dependencies);
     if (args[0] === "review") return await runReview(args.slice(1), io);
     if (args[0] === "eval") return await runEvalCommand(args.slice(1), io, dependencies);
     const parsed = parse(args);

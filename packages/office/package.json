@@ -14,6 +14,14 @@
     "./testing": {
       "types": "./dist/testing/scripted-model.d.ts",
       "import": "./dist/testing/scripted-model.js"
+    },
+    "./board": {
+      "types": "./dist/board/host.d.ts",
+      "import": "./dist/board/host.js"
+    },
+    "./board/testing": {
+      "types": "./dist/board/testing.d.ts",
+      "import": "./dist/board/testing.js"
     }
   },
   "files": [

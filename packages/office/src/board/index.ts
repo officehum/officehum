@@ -1,7 +1,7 @@
 /**
  * The workboard: the office's shared record of work (RASF-3066).
  *
- * One SQLite file per office — `board.sqlite`, beside `calendar.sqlite` in the state directory the
+ * One SQLite file per office — `office.sqlite`, beside `calendar.sqlite` in the state directory the
  * caller already passes to `openSolo`. Pi Durable's own store is deliberately not used: a single
  * process owns it, and its per-conversation dedup disappears when a role conversation is replaced or
  * rotated — exactly when the relay (RASF-3067) needs the ledger to still be there. The relay, agent
