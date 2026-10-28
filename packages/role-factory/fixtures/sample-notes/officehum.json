@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../packages/sdk/schema/officehum.schema.json",
   "schemaVersion": 1,
   "id": "sample-notes",
   "name": "Sample Notes",

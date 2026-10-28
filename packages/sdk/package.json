@@ -10,10 +10,12 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./schema/officehum.schema.json": "./schema/officehum.schema.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "schema"
   ],
   "repository": {
     "type": "git",
@@ -21,7 +23,7 @@
     "directory": "packages/sdk"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/emit-schema.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
   },
   "dependencies": {

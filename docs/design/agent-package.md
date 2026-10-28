@@ -430,6 +430,7 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
 
 ```json
 {
+  "$schema": "../../packages/sdk/schema/officehum.schema.json",
   "schemaVersion": 1,
   "id": "bookkeeper",
   "name": "Bookkeeper",
@@ -514,6 +515,36 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
 `version` is the package's `package.json` version, and the supported Pi Durable range is its peer
 dependency, so neither can drift from what npm installs. The Office refuses to load a role whose range
 excludes the release's exact Pi Durable version.
+
+### The published schema
+
+`@officehum/sdk` publishes `schema/officehum.schema.json`: an editor-facing JSON Schema (draft
+2020-12) generated from the SDK's own `ManifestSchema` when the package builds, so it is the manifest
+the code validates, not a second description of it. Point a manifest at it with `$schema`, relative to
+the manifest:
+
+- a role package under `agents/`: `"$schema": "../../packages/sdk/schema/officehum.schema.json"`
+- an SDK fixture under `packages/sdk/fixtures/<name>/`: `"$schema": "../../schema/officehum.schema.json"`
+
+Every manifest this repository ships declares one, and `packages/sdk/src/schema.test.ts` resolves each
+declared path against the file it names — a path that does not work fails the build rather than quietly
+giving an editor no completion. The document's `$id` is `urn:officehum:schema:officehum.json:v1`, its
+`$schema` is `https://json-schema.org/draft/2020-12/schema`, and it claims `additionalProperties:
+false`, so an unknown field is flagged as it is typed.
+
+The schema carries every field in the table above, including the three RASF-3229 added:
+
+- `limits`: a map of snake_case names to `{ "description", "default" }` — the description up to 300
+  characters, the default a number.
+- `tools[].noApproval`: optional text up to 300 characters, saying why an unsafe tool needs none.
+- `accepts[].done`: a list of completion evidence, each entry one of the four shapes — `engine`,
+  `tool` with `expect: "found"`, `file`, or `person: true`.
+
+It is structural, and only structural. The rules that span fields — unique names, reserved tool names,
+the single approval decision every unsafe tool states, limits and tools that a condition or a `done`
+entry refers to — cannot be written in JSON Schema, and stay in `validateManifest`, which reports them
+with a path and a plain message. Role packages the Role Factory generates declare no `$schema`: they are
+written to whatever directory the generator is given, so no relative path is right for them.
 
 ## Validation
 

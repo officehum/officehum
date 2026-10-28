@@ -594,10 +594,14 @@ describe("sample-stockroom, generated from its own spec", () => {
     ]);
   });
 
-  it("merges the same manifest the fixture ships, less the two fields no spec can express", () => {
+  it("merges the same manifest the fixture ships, less the three fields no spec can express", () => {
     const generated = asJson(out(), "officehum.json");
-    const { dispatches, contextPlan, mayNot, ...fixtureShared } = fixtureManifest;
+    // `$schema` joins them: it is a path relative to where the package sits, and the generator writes
+    // to a directory it is given, so a generated manifest declares no schema. The fixture is the one
+    // checked in at a known place and does.
+    const { $schema, dispatches, contextPlan, mayNot, ...fixtureShared } = fixtureManifest;
     const { mayNot: generatedMayNot, ...generatedShared } = generated;
+    expect($schema).toBe("../../schema/officehum.schema.json");
 
     // Every field the spec can express is the fixture's own value: the schema version, the id, the
     // tools and their parameters, the limits, the approvals, the accepts, the commands, the skills and
