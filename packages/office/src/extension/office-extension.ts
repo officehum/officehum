@@ -12,11 +12,11 @@
  * `office`. Nothing here edits or wraps a role's own tools: a role is portable, and the assembly is by
  * reference — it reads `role.agent`, never writes it.
  *
- * The hooks seam is deliberately empty. RASF-3074 (budget, hop and provenance) and RASF-3073 (the
- * approver) have not landed, and this module writes no check of its own. A reader must not believe an
- * office caps money, counts hops or asks a person because of anything here: `registerOfficeHooks`
- * returns exactly the registrations a caller supplies, and an office that supplies none installs none
- * — a claim its test asserts rather than leaves to assumption.
+ * The hooks seam is a pass-through, and that is deliberate. RASF-3141's budget hooks exist as
+ * `budgetHooks` in `../spend/budget.js`, and an office supplies them here (`hooks`); RASF-3073's
+ * approval gate does not exist yet. `registerOfficeHooks` returns exactly the registrations a caller
+ * supplies and never adds one of its own, so a reader can tell whose policy is running: an office that
+ * supplies none installs none, and its test asserts that rather than leaving it to assumption.
  */
 import {
   type AgentChange,
@@ -172,13 +172,14 @@ export function officeConversation(role: RoleBundle, overlays: OfficeOverlays): 
 
 /**
  * The hooks the office installs on its roles' conversations, as the issues that own them land:
- * RASF-3074's budget, hop and provenance hooks, and RASF-3073's approval gate.
+ * RASF-3141's `budgetHooks`, and RASF-3073's approval gate once that gate exists.
  *
- * Both are optional and both are registered only when supplied. This issue writes neither, so the
- * shape is fixed here and nothing is invented to fill it.
+ * Neither is invented here and neither is defaulted. This assembly's job is to pass a caller's
+ * registrations through unchanged, so an office that supplies none installs none — which the suite
+ * asserts, because "the office enforces a budget" has to be a claim about the hooks it was given.
  */
 export interface OfficeHookSeam {
-  /** RASF-3074's registrations — and RASF-3073's approval gate, once that gate exists. */
+  /** RASF-3141's `budgetHooks` — and RASF-3073's approval gate, once that gate exists. */
   readonly hooks?: readonly HookRegistration[];
   /**
    * RASF-3073's approver, accepted now so the seam's shape does not change when the gate lands. The
@@ -190,10 +191,11 @@ export interface OfficeHookSeam {
 /**
  * The hooks the assembly installs: exactly the registrations a caller supplies, and no more.
  *
- * Nothing here enforces anything. There is no budget check, no hop count and no approval, and none is
- * implied by this function existing — RASF-3074 and RASF-3073 own those, and until they land the
- * office registers only what it is handed. With no hooks supplied the office installs no hooks at
- * all, which the suite asserts so the gap is visible in a test rather than in someone's assumptions.
+ * Nothing is added here, and nothing is enforced by this function existing. What an office supplies is
+ * `budgetHooks({ board, prices })` for RASF-3141 and, when it lands, RASF-3073's gate; what it does not
+ * supply it does not get, and an office with no hooks installs none. The suite asserts that shape, so
+ * "the office caps spend" stays a claim about the registrations a caller passed rather than one about
+ * this module's good intentions.
  */
 export function registerOfficeHooks(seam: OfficeHookSeam): readonly HookRegistration[] {
   return seam.hooks === undefined ? [] : [...seam.hooks];

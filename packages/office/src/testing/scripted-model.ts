@@ -153,13 +153,30 @@ function recordRequest(
   };
 }
 
-/** The assistant message a turn becomes: a tool-use response, or a final answer. */
-function assistantFor(turn: ScriptedTurn) {
-  if ("text" in turn) return fauxAssistantMessage(turn.text);
-  return fauxAssistantMessage(
-    turn.toolCalls.map((call) => fauxToolCall(call.name, call.args ?? {})),
-    { stopReason: "toolUse" },
-  );
+/**
+ * The assistant message a turn becomes: a tool-use response, or a final answer.
+ *
+ * Two liberties are taken with what faux would hand back, and both are about not lying to the rest of
+ * the office:
+ *
+ * - `provider`/`model` are stamped from the catalog entry the harness actually resolved. A scripted
+ *   provider stands in for a real model id, and everything downstream — usage accounting, a price-table
+ *   lookup, a transcript a person reads — should see the model that ran.
+ * - `usage` is left exactly as faux produced it. faux fills it with an *estimate* from the transcript's
+ *   character count (about four characters a token) and leaves `cost` at zero. That is a real usage
+ *   record, so a budget's token accounting is exercised honestly by a scripted run; what no scripted run
+ *   can report is money, which is why the office prices tokens with its own table instead of trusting a
+ *   provider's cost.
+ */
+function assistantFor(turn: ScriptedTurn, model: Model<string>) {
+  const message =
+    "text" in turn
+      ? fauxAssistantMessage(turn.text)
+      : fauxAssistantMessage(
+          turn.toolCalls.map((call) => fauxToolCall(call.name, call.args ?? {})),
+          { stopReason: "toolUse" },
+        );
+  return { ...message, provider: model.provider, model: model.id };
 }
 
 /**
@@ -212,7 +229,7 @@ export function scriptedProvider(
     // faux shifts one response per call, so re-arm with this same factory: the script, not faux's
     // queue, is the only thing that can run out, and it fails with a message naming the turn.
     faux.appendResponses([respond]);
-    return assistantFor(turnFor(context.messages, calls - 1));
+    return assistantFor(turnFor(context.messages, calls - 1), model);
   };
   faux.setResponses([respond]);
 

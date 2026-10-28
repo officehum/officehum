@@ -13,9 +13,11 @@
  * enforced by triggers as well (see `migrations.ts`), so immutability does not depend on callers being
  * polite.
  *
- * No agent-facing tools live here (that is RASF-3109), and nothing charges a budget: `used_*` stays 0
- * until usage accounting (RASF-3074) rolls it up, which is why the column semantics are defined even
- * though this issue never writes them.
+ * No agent-facing tools live here (that is RASF-3109). Spend accounting does: `chargeUsage` and
+ * `admitCall` (RASF-3141) are the only writers of `used_*`, they run in one `BEGIN IMMEDIATE` with a
+ * `spend_ledger` row keyed by the call, and they roll every delta up to every ancestor — so a parent's
+ * `used_*` is its whole tree's spend and a ceiling is a chain ceiling rather than one ticket's private
+ * allowance. `block` is the status a stopped chain lands in; a `blocked` ticket is one a person holds.
  */
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -64,6 +66,7 @@ export interface NewTicket {
   readonly budget?: {
     readonly maxTokens?: number;
     readonly maxUsdCents?: number;
+    readonly maxCalls?: number;
     readonly maxHops?: number;
   };
   readonly assignee?: Assignee;
@@ -121,6 +124,94 @@ export interface ListFilter {
   readonly limit?: number;
 }
 
+/**
+ * One ticket's ceilings and what its chain has spent (RASF-3141).
+ *
+ * `used*` is the ticket's own row, which the board also keeps as its subtree total: every charge rolls
+ * up to every ancestor, so a parent's `used` is what its whole tree has spent. That is what makes a
+ * ceiling a chain ceiling rather than one ticket's private allowance.
+ *
+ * `remaining*` is the number a ceiling check reads, and it is deliberately *not* `max - used` of this
+ * row alone. A child's ceiling is materialized when it is created, so a sibling that spends afterwards
+ * would leave the first child's own row claiming headroom the chain no longer has. The remaining figures
+ * therefore take the tightest of this row and every ancestor's remainder, which is why a sibling's spend
+ * reduces the other's headroom at read time. `null` is uncapped, at any level of the chain.
+ */
+export interface Budget {
+  readonly ticketId: string;
+  readonly maxCalls: number | null;
+  readonly maxTokens: number | null;
+  readonly maxUsdCents: number | null;
+  readonly usedCalls: number;
+  readonly usedTokens: number;
+  readonly usedUsdCents: number;
+  readonly hopCount: number;
+  readonly maxHops: number;
+  readonly remainingCalls: number | null;
+  readonly remainingTokens: number | null;
+  readonly remainingUsdCents: number | null;
+}
+
+/** What one charge adds to a ticket, and to every ancestor. Every field is optional; every one is a count. */
+export interface UsageCharge {
+  readonly calls?: number;
+  readonly tokens?: number;
+  readonly usdCents?: number;
+  /** The role doing the spending, recorded on the ledger row for the per-agent-per-day reader. */
+  readonly agent?: string;
+}
+
+/** One charge's outcome: whether it was new, and the ticket's ceilings and spend after it. */
+export interface ChargeResult {
+  readonly charged: boolean;
+  readonly budget: Budget;
+}
+
+/**
+ * One tool call's outcome at the call ceiling. `admitted` is the ceiling's answer; `charged` says whether
+ * this call id was new, so a replay is admitted without being counted twice.
+ */
+export interface CallAdmission {
+  readonly admitted: boolean;
+  readonly charged: boolean;
+  readonly budget: Budget;
+}
+
+/** What one agent spent on one day, from the ledger. `agent` is null for spend with no role behind it. */
+export interface AgentSpend {
+  /** The UTC date, `YYYY-MM-DD`. */
+  readonly day: string;
+  readonly agent: string | null;
+  readonly calls: number;
+  readonly tokens: number;
+  readonly usdCents: number;
+}
+
+/** The ticket a relay conversation is working, and the role the conversation belongs to. */
+export interface ConversationTicket {
+  readonly ticketId: string;
+  readonly agent: string;
+}
+
+/** Why a ticket was blocked, and the person who now holds it. */
+export interface BlockOptions {
+  readonly reason: string;
+  readonly assignee?: Assignee;
+}
+
+/**
+ * Whether a budget has nothing left to spend, and which ceilings are spent. The one definition of "at
+ * or over": the mid-turn hook, the relay's door and the CLI all ask this rather than compare numbers of
+ * their own, because two comparisons are two policies.
+ */
+export function budgetSpent(budget: Budget): readonly ("calls" | "tokens" | "usd")[] {
+  const spent: ("calls" | "tokens" | "usd")[] = [];
+  if (budget.remainingCalls !== null && budget.remainingCalls <= 0) spent.push("calls");
+  if (budget.remainingTokens !== null && budget.remainingTokens <= 0) spent.push("tokens");
+  if (budget.remainingUsdCents !== null && budget.remainingUsdCents <= 0) spent.push("usd");
+  return spent;
+}
+
 export interface Board {
   create(input: NewTicket, callerKey: string): Ticket;
   claim(ticketId: string, actor: string): Ticket;
@@ -146,6 +237,39 @@ export interface Board {
    * no status change of its own — the ticket is where it was — so it is not `assign` or `comment`.
    */
   stall(ticketId: string, actor: string, reason: string): TicketEvent;
+  /**
+   * Moves a ticket to `blocked` and appends one `blocked` event carrying the reason, optionally handing
+   * it to a person (RASF-3141). `stall` deliberately does not change the status, so before this there
+   * was no way for the board to say "this work has stopped and a human owns it" — and a status no call
+   * can reach is a status a reader cannot trust.
+   *
+   * Idempotent on purpose: a budget that is spent refuses every later call, and each refusal would
+   * otherwise append another event for the same fact. Already `blocked` returns the ticket unchanged.
+   */
+  block(ticketId: string, actor: string, options: BlockOptions): Ticket;
+  /**
+   * Charges one call's spend to a ticket and to every ancestor, exactly once per `callId`. The ledger
+   * row and the incremented counters commit together, so a crash lands both or neither, and a replay of
+   * the same call finds its row and adds nothing.
+   */
+  chargeUsage(ticketId: string, callId: string, charge: UsageCharge): ChargeResult;
+  /**
+   * Charges one tool call against the call ceiling and answers whether it may run. The check and the
+   * increment are one `BEGIN IMMEDIATE`, so two calls in one round cannot both take the last slot.
+   */
+  admitCall(ticketId: string, callId: string, agent?: string): CallAdmission;
+  /** The ticket's ceilings, its chain's spend and its remaining headroom. `undefined` for no such ticket. */
+  budget(ticketId: string): Budget | undefined;
+  /** What the ledger says each agent spent on each day, newest day first. */
+  spendByAgent(): AgentSpend[];
+  /**
+   * Binds a relay conversation to the ticket it is working, so the mid-turn hooks — which see only a
+   * `conversationId` — can find the ticket to charge. Written by the relay in the commit that opens a
+   * delivery; a repeat of the same binding is the same binding.
+   */
+  bindConversation(conversationId: number, binding: ConversationTicket): void;
+  /** The ticket and role a conversation is bound to, or `undefined` for a conversation with no ticket. */
+  conversationTicket(conversationId: number): ConversationTicket | undefined;
   /** Everyone the office knows, in the order they were added. The relay's person fallback reads it. */
   people(): Person[];
   /** The ticket's provenance row, or `undefined` when it has none. */
@@ -170,6 +294,11 @@ const TERMINAL: readonly TicketStatus[] = ["done", "cancelled"];
 /** A ticket is completable only once someone is working on it. `open` and unassigned work is not. */
 const COMPLETABLE: readonly TicketStatus[] = ["claimed", "waiting", "blocked"];
 const DEFAULT_MAX_HOPS = 4;
+/**
+ * How far a chain walk goes before it stops. A parent link is written once and never moves, so a cycle
+ * cannot occur through the API; the bound is there so a hand-edited row could not hang a read.
+ */
+const MAX_CHAIN = 64;
 /** `list` default and cap. A bigger request is clamped, not rejected: a reader paging a large board
  * should not have to discover the cap by failing. */
 const DEFAULT_LIMIT = 100;
@@ -212,8 +341,22 @@ type BudgetRow = {
   used_usd_cents: number;
   hop_count: number;
   max_hops: number;
+  used_calls: number;
+  max_calls: number | null;
 };
-type BudgetLimits = { readonly maxTokens: number | null; readonly maxUsdCents: number | null };
+type ConversationRow = { ticket_id: string; agent: string };
+type SpendRow = {
+  day: string;
+  agent: string | null;
+  calls: number;
+  tokens: number;
+  usd_cents: number;
+};
+type BudgetLimits = {
+  readonly maxTokens: number | null;
+  readonly maxUsdCents: number | null;
+  readonly maxCalls: number | null;
+};
 
 function fail(kind: BoardErrorKind, message: string, details?: unknown): BoardError {
   return new BoardError(kind, message, details);
@@ -338,6 +481,7 @@ type NormalizedCreate = {
   readonly budget: {
     readonly maxTokens: number | null;
     readonly maxUsdCents: number | null;
+    readonly maxCalls: number | null;
     readonly maxHops: number | null;
   };
   readonly assignee: Assignee | null;
@@ -386,6 +530,7 @@ function normalizeCreate(input: NewTicket): NormalizedCreate {
   const budget = {
     maxTokens: optionalCount(input.budget?.maxTokens, "maxTokens"),
     maxUsdCents: optionalCount(input.budget?.maxUsdCents, "maxUsdCents"),
+    maxCalls: optionalCount(input.budget?.maxCalls, "maxCalls"),
     maxHops: optionalCount(input.budget?.maxHops, "maxHops"),
   };
   const assignee = assigneeOf(input.assignee);
@@ -493,13 +638,41 @@ export function openBoard(file: string): Board {
     "INSERT INTO provenance (ticket_id, origin, source_channel, source_contact) VALUES (?, ?, ?, ?)",
   );
   const findBudget = database.prepare(
-    `SELECT max_tokens, max_usd_cents, used_tokens, used_usd_cents, hop_count, max_hops
+    `SELECT max_tokens, max_usd_cents, used_tokens, used_usd_cents, hop_count, max_hops,
+            used_calls, max_calls
        FROM budgets WHERE ticket_id = ?`,
   );
   const insertBudget = database.prepare(
     `INSERT INTO budgets
-      (ticket_id, max_tokens, max_usd_cents, used_tokens, used_usd_cents, hop_count, max_hops)
-     VALUES (?, ?, ?, 0, 0, ?, ?)`,
+      (ticket_id, max_tokens, max_usd_cents, used_tokens, used_usd_cents, hop_count, max_hops,
+       used_calls, max_calls)
+     VALUES (?, ?, ?, 0, 0, ?, ?, 0, ?)`,
+  );
+  const findLedgerRow = database.prepare(
+    "SELECT 1 AS present FROM spend_ledger WHERE call_id = ? AND kind = ?",
+  );
+  const insertLedgerRow = database.prepare(
+    `INSERT INTO spend_ledger (call_id, kind, ticket_id, agent, calls, tokens, usd_cents, at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const addSpend = database.prepare(
+    `UPDATE budgets SET used_calls = used_calls + ?, used_tokens = used_tokens + ?,
+            used_usd_cents = used_usd_cents + ?
+      WHERE ticket_id = ?`,
+  );
+  const sumByAgent = database.prepare(
+    `SELECT substr(at, 1, 10) AS day, agent,
+            SUM(calls) AS calls, SUM(tokens) AS tokens, SUM(usd_cents) AS usd_cents
+       FROM spend_ledger GROUP BY day, agent
+      ORDER BY day DESC, (agent IS NULL) ASC, agent ASC`,
+  );
+  const findConversation = database.prepare(
+    "SELECT ticket_id, agent FROM ticket_conversations WHERE conversation_id = ?",
+  );
+  const upsertConversation = database.prepare(
+    `INSERT INTO ticket_conversations (conversation_id, ticket_id, agent) VALUES (?, ?, ?)
+     ON CONFLICT (conversation_id) DO UPDATE SET ticket_id = excluded.ticket_id,
+       agent = excluded.agent`,
   );
   const findPerson = database.prepare("SELECT 1 AS present FROM people WHERE id = ?");
   const listPeople = database.prepare("SELECT id, name FROM people ORDER BY rowid");
@@ -559,6 +732,129 @@ export function openBoard(file: string): Board {
     const id = randomUUID();
     insertEvent.run(id, seq, ticketId, kind, actor, JSON.stringify(payload), at);
     return { id, seq, ticketId, kind, actor, payload, at };
+  };
+
+  /** A ticket's own budget row. Every ticket is created with one; a ticket without is uncapped. */
+  const budgetRow = (id: string): BudgetRow | undefined =>
+    findBudget.get(id) as BudgetRow | undefined;
+
+  /**
+   * A ticket's ceilings, its own spend and the tightest headroom up its chain.
+   *
+   * The chain walk is the point. A child's ceilings are materialized at create from the parent's
+   * remainder, so a sibling that spends afterwards leaves the child's own row claiming headroom the
+   * chain no longer has; taking the minimum of this row and every ancestor's remainder is what makes a
+   * sibling's spend bite. `MAX_CHAIN` bounds the walk so a cycle could not hang it, and the visited set
+   * makes that refusal explicit rather than a silent number.
+   */
+  const budgetOf = (id: string): Budget | undefined => {
+    const own = budgetRow(id);
+    if (own === undefined) return undefined;
+    let remainingCalls = remaining(own.max_calls, own.used_calls);
+    let remainingTokens = remaining(own.max_tokens, own.used_tokens);
+    let remainingUsdCents = remaining(own.max_usd_cents, own.used_usd_cents);
+    const tighten = (limit: number | null, used: number, current: number | null): number | null => {
+      const available = remaining(limit, used);
+      if (available === null) return current;
+      return current === null ? available : Math.min(current, available);
+    };
+    const seen = new Set<string>([id]);
+    let parentId = ticketRow(id)?.parent_id ?? null;
+    while (parentId !== null && !seen.has(parentId) && seen.size < MAX_CHAIN) {
+      seen.add(parentId);
+      const ancestor = budgetRow(parentId);
+      if (ancestor !== undefined) {
+        remainingCalls = tighten(ancestor.max_calls, ancestor.used_calls, remainingCalls);
+        remainingTokens = tighten(ancestor.max_tokens, ancestor.used_tokens, remainingTokens);
+        remainingUsdCents = tighten(
+          ancestor.max_usd_cents,
+          ancestor.used_usd_cents,
+          remainingUsdCents,
+        );
+      }
+      parentId = ticketRow(parentId)?.parent_id ?? null;
+    }
+    return {
+      ticketId: id,
+      maxCalls: own.max_calls,
+      maxTokens: own.max_tokens,
+      maxUsdCents: own.max_usd_cents,
+      usedCalls: own.used_calls,
+      usedTokens: own.used_tokens,
+      usedUsdCents: own.used_usd_cents,
+      hopCount: own.hop_count,
+      maxHops: own.max_hops,
+      remainingCalls,
+      remainingTokens,
+      remainingUsdCents,
+    };
+  };
+
+  /**
+   * One charge, exactly once per `callId`, rolled up to every ancestor.
+   *
+   * The whole body is one `BEGIN IMMEDIATE`: the ledger row, the ticket's counters and the ancestors'
+   * counters commit together or not at all, so a crash between "spend" and "refusal" cannot leave a
+   * charge half applied, and a second attempt at the same call finds its row and adds nothing. The gate
+   * (the call ceiling) is asked inside the same transaction for the same reason — two calls in one round
+   * must not both read the last free slot.
+   */
+  const chargeOnce = (
+    ticketId: string,
+    callId: string,
+    delta: { readonly calls: number; readonly tokens: number; readonly usdCents: number },
+    options: {
+      readonly agent: string | undefined;
+      readonly gate: boolean;
+      readonly kind: "call" | "usage";
+    },
+  ): ChargeResult & { readonly admitted: boolean } => {
+    const id = bounded(ticketId, "Ticket id");
+    const key = bounded(callId, "Call id", 400);
+    for (const [label, value] of [
+      ["calls", delta.calls],
+      ["tokens", delta.tokens],
+      ["usdCents", delta.usdCents],
+    ] as const) {
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+        throw fail("invalid_argument", `A charge's ${label} must be a whole number of 0 or more.`);
+      }
+    }
+    const agent = options.agent === undefined ? null : bounded(options.agent, "Charging agent");
+    return transact(() => {
+      requireTicket(id);
+      const known = budgetOf(id);
+      if (known === undefined) throw fail("not_found", `No budget row for ticket ${id}.`);
+      if (findLedgerRow.get(key, options.kind) !== undefined) {
+        // Already charged: a replay of the same call, or a retry of the same attempt. Nothing to add.
+        return { charged: false, admitted: true, budget: known };
+      }
+      if (options.gate) {
+        // The call ceiling is checked against the chain's remainder, before the increment, so the call
+        // that would cross it is refused without buying a slot it never uses.
+        if (known.remainingCalls !== null && known.remainingCalls <= 0) {
+          return { charged: false, admitted: false, budget: known };
+        }
+      }
+      insertLedgerRow.run(
+        key,
+        options.kind,
+        id,
+        agent,
+        delta.calls,
+        delta.tokens,
+        delta.usdCents,
+        now(),
+      );
+      let current: string | null = id;
+      let depth = 0;
+      while (current !== null && depth < MAX_CHAIN) {
+        addSpend.run(delta.calls, delta.tokens, delta.usdCents, current);
+        current = ticketRow(current)?.parent_id ?? null;
+        depth += 1;
+      }
+      return { charged: true, admitted: true, budget: budgetOf(id) ?? known };
+    });
   };
 
   /** `open` only: an agent takes work by claiming it, and the claim is the ticket's event. */
@@ -681,7 +977,11 @@ export function openBoard(file: string): Board {
           parent === undefined ? undefined : (findBudget.get(parent.id) as BudgetRow | undefined);
         const ceilings: BudgetLimits =
           parentBudget === undefined
-            ? { maxTokens: request.budget.maxTokens, maxUsdCents: request.budget.maxUsdCents }
+            ? {
+                maxTokens: request.budget.maxTokens,
+                maxUsdCents: request.budget.maxUsdCents,
+                maxCalls: request.budget.maxCalls,
+              }
             : {
                 maxTokens: narrow(
                   remaining(parentBudget.max_tokens, parentBudget.used_tokens),
@@ -690,6 +990,10 @@ export function openBoard(file: string): Board {
                 maxUsdCents: narrow(
                   remaining(parentBudget.max_usd_cents, parentBudget.used_usd_cents),
                   request.budget.maxUsdCents,
+                ),
+                maxCalls: narrow(
+                  remaining(parentBudget.max_calls, parentBudget.used_calls),
+                  request.budget.maxCalls,
                 ),
               };
         const hopCount = parentBudget === undefined ? 0 : parentBudget.hop_count + 1;
@@ -732,7 +1036,14 @@ export function openBoard(file: string): Board {
           at,
           at,
         );
-        insertBudget.run(id, ceilings.maxTokens, ceilings.maxUsdCents, hopCount, maxHops);
+        insertBudget.run(
+          id,
+          ceilings.maxTokens,
+          ceilings.maxUsdCents,
+          hopCount,
+          maxHops,
+          ceilings.maxCalls,
+        );
         appendEvent(id, "created", request.createdBy, {});
         insertKey.run(key, id, requestJson);
         return toTicket(requireTicket(id));
@@ -833,6 +1144,90 @@ export function openBoard(file: string): Board {
         requireTicket(id);
         return appendEvent(id, "stalled", by, { reason: why });
       });
+    },
+    block(ticketId, actor, options) {
+      const id = bounded(ticketId, "Ticket id");
+      const by = bounded(actor, "Actor");
+      const why = bounded(options.reason, "Block reason", NOTE_MAX);
+      const assignee = assigneeOf(options.assignee);
+      return transact(() => {
+        const row = requireTicket(id);
+        const status = statusOf(row.status);
+        if (TERMINAL.includes(status)) {
+          throw fail("invalid_status", `Ticket ${id} is already ${status}.`, {
+            from: status,
+            to: "blocked",
+          });
+        }
+        // One `blocked` event per block. Every later refusal of an exhausted budget would otherwise
+        // append another event for a fact already on the record.
+        if (status === "blocked") return toTicket(row);
+        if (assignee?.kind === "person" && !isPerson(assignee.id)) {
+          throw fail("invalid_person", `No person ${assignee.id} on this board.`, {
+            id: assignee.id,
+          });
+        }
+        moveTicket.run("blocked", assignee?.id ?? row.assignee, now(), id);
+        appendEvent(
+          id,
+          "blocked",
+          by,
+          assignee === null ? { reason: why } : { reason: why, assignee },
+        );
+        return toTicket(requireTicket(id));
+      });
+    },
+    chargeUsage(ticketId, callId, charge) {
+      const result = chargeOnce(
+        ticketId,
+        callId,
+        {
+          calls: charge.calls ?? 0,
+          tokens: charge.tokens ?? 0,
+          usdCents: charge.usdCents ?? 0,
+        },
+        { agent: charge.agent, gate: false, kind: "usage" },
+      );
+      return { charged: result.charged, budget: result.budget };
+    },
+    admitCall(ticketId, callId, agent) {
+      const result = chargeOnce(
+        ticketId,
+        callId,
+        { calls: 1, tokens: 0, usdCents: 0 },
+        { agent, gate: true, kind: "call" },
+      );
+      return { admitted: result.admitted, charged: result.charged, budget: result.budget };
+    },
+    budget(ticketId) {
+      return budgetOf(bounded(ticketId, "Ticket id"));
+    },
+    spendByAgent() {
+      return (sumByAgent.all() as unknown as SpendRow[]).map((row) => ({
+        day: row.day,
+        agent: row.agent,
+        calls: row.calls,
+        tokens: row.tokens,
+        usdCents: row.usd_cents,
+      }));
+    },
+    bindConversation(conversationId, binding) {
+      if (typeof conversationId !== "number" || !Number.isInteger(conversationId)) {
+        throw fail("invalid_argument", "A conversation id must be a whole number.");
+      }
+      const ticketId = bounded(binding.ticketId, "Ticket id");
+      const agent = bounded(binding.agent, "Agent");
+      transact(() => {
+        requireTicket(ticketId);
+        upsertConversation.run(conversationId, ticketId, agent);
+      });
+    },
+    conversationTicket(conversationId) {
+      if (typeof conversationId !== "number" || !Number.isInteger(conversationId)) {
+        throw fail("invalid_argument", "A conversation id must be a whole number.");
+      }
+      const row = findConversation.get(conversationId) as ConversationRow | undefined;
+      return row === undefined ? undefined : { ticketId: row.ticket_id, agent: row.agent };
     },
     people() {
       return listPeople.all() as unknown as Person[];

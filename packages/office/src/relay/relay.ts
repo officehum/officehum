@@ -293,6 +293,11 @@ export function createRelay(options: RelayOptions): Relay {
         return { kind: "skipped", reason: "claim by the assignee" };
       case "stalled":
         return { kind: "skipped", reason: "a stalled event is an explanation, not work" };
+      case "blocked":
+        return {
+          kind: "skipped",
+          reason: "the ticket is blocked and with a person, so nothing is delivered to an agent",
+        };
       default:
         return { kind: "skipped", reason: `event kind ${event.kind} is not delivered` };
     }
@@ -438,11 +443,20 @@ export function createRelay(options: RelayOptions): Relay {
 
     const decision = await runGuards(event, ticket, guardContext);
     if (!decision.allowed) {
+      // A refused delivery is a stopped chain, and a stopped chain is a person's problem. The guard
+      // has already blocked the ticket when the refusal is exhaustion; the `stalled` event is what
+      // tells a reader of the board that this delivery was the one turned away, and it is why a
+      // refusal is not just a `failed` row in a ledger nobody reads.
+      board.stall(ticket.id, "relay", decision.reason);
       board.relay.settle(event.id, "failed", decision.reason);
       return;
     }
 
     const conversation = await conversationFor(key);
+    // The binding the mid-turn hooks need: they see a conversation id and nothing else, and the
+    // conversation is resolved here, by the party that knows both ids. It is written before the
+    // delivery so a turn that starts immediately already has a ticket to charge.
+    board.bindConversation(conversation.id, { ticketId: ticket.id, agent: roleKey });
     const target: DeliveryTarget = { requestId: event.id, conversationKey: key, conversation };
     const handle = await transport.deliver(target, message);
     board.relay.admitted(event.id, handle.id);
@@ -504,6 +518,15 @@ export function createRelay(options: RelayOptions): Relay {
       conversationKey: row.targetKey,
       conversation: await conversationFor(row.targetKey),
     };
+    // A recovered delivery is still a delivery: the mid-turn hooks charge the ticket this conversation
+    // is working, so the binding is written again here, idempotently.
+    const roleKey = roleKeyOfConversationKey(row.targetKey);
+    if (roleKey !== undefined) {
+      board.bindConversation(target.conversation.id, {
+        ticketId: row.ticketId,
+        agent: roleKey,
+      });
+    }
     const handle = row.submissionId === null ? undefined : await transport.reacquire(target);
     const admitted =
       handle ??

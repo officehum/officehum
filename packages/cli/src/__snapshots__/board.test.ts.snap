@@ -5,7 +5,7 @@ exports[`officehum board > renders a fixture office's cards in the four columns 
 
 open (2)                         claimed (1)                      waiting (1)                      blocked (1)
 -------------------------------  -------------------------------  -------------------------------  -------------------------------
-4m  unassigned                   2h  agent:bookkeeper             5m  owner                        1d  unassigned
+4m  unassigned                   2h  agent:bookkeeper             5m  owner                        1d  owner
 job.request Invoice 42 unpaid    invoice.create Post the invoice  booking.request Confirm Tuesday  invoice.create VAT is missing
 
 3d  unassigned

@@ -64,6 +64,9 @@ describe("relay migration", () => {
       "relay_cursor",
       "relay_deliveries",
       "relay_waits",
+      // Migration 4, RASF-3141: the spend ledger and the conversation→ticket binding the hooks read.
+      "spend_ledger",
+      "ticket_conversations",
       "ticket_events",
       "ticket_keys",
       "tickets",

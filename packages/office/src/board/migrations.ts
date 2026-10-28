@@ -159,10 +159,74 @@ function createRelay(database: DatabaseSync): void {
   `);
 }
 
+/**
+ * Migration 4 adds spend accounting (RASF-3141): the call counters every ticket's budget needed, the
+ * ledger that makes a charge exactly once per call, and the conversation→ticket binding the mid-turn
+ * hook reads.
+ *
+ * `spend_ledger` is keyed by the *call*, not by the ticket: a charge is one fact about one call, so a
+ * replayed call — a recovered run that re-executes the attempt, a retried tool call — finds its own row
+ * and adds nothing. That is the whole of the crash story: the row and the incremented counters commit
+ * together, so a crash either lands both or neither, and a second attempt at the same call is a no-op
+ * rather than a second charge.
+ *
+ * It is append-only by trigger, like `ticket_events`: a ledger a caller can edit is not a ledger, and
+ * "one row per call" is the property a reviewer will try to break first.
+ *
+ * `ticket_conversations` is the binding, written by the relay in the commit that opens a delivery:
+ * Pi Durable's tool hooks see a `conversationId` and nothing else, so the conversation itself has to
+ * carry the ticket it is working and the role it belongs to. It lives here, beside the counters,
+ * because a charge and its ticket must commit or fail together — a document in the harness store
+ * would be a second record that can disagree with this one.
+ */
+function addSpendAccounting(database: DatabaseSync): void {
+  database.exec(`
+    -- NULL max_calls is uncapped, matching max_tokens and max_usd_cents. The two columns land after
+    -- max_hops because ALTER TABLE appends; a reader must not assume a position either way.
+    ALTER TABLE budgets ADD COLUMN used_calls INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE budgets ADD COLUMN max_calls INTEGER;
+
+    -- One row per charged call. 'agent' is the role that spent it, so a reader can total a day per
+    -- agent without guessing from a ticket's current assignee, which moves.
+    CREATE TABLE IF NOT EXISTS spend_ledger (
+      call_id TEXT NOT NULL,
+      -- Admission and usage are two observations of one call, deduped separately: keying both on the
+      -- call id alone meant the first row silenced the second, so a tool's tokens were never charged.
+      kind TEXT NOT NULL CHECK (kind IN ('call', 'usage')),
+      ticket_id TEXT NOT NULL,
+      agent TEXT,
+      calls INTEGER NOT NULL DEFAULT 0,
+      tokens INTEGER NOT NULL DEFAULT 0,
+      usd_cents INTEGER NOT NULL DEFAULT 0,
+      at TEXT NOT NULL,
+      PRIMARY KEY (call_id, kind)
+    );
+    CREATE INDEX IF NOT EXISTS spend_ledger_ticket ON spend_ledger (ticket_id);
+    CREATE INDEX IF NOT EXISTS spend_ledger_agent ON spend_ledger (agent, at);
+
+    CREATE TABLE IF NOT EXISTS ticket_conversations (
+      conversation_id INTEGER PRIMARY KEY,
+      ticket_id TEXT NOT NULL,
+      agent TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ticket_conversations_ticket ON ticket_conversations (ticket_id);
+
+    CREATE TRIGGER IF NOT EXISTS spend_ledger_append_only_update
+    BEFORE UPDATE ON spend_ledger BEGIN
+      SELECT RAISE(ABORT, 'spend_ledger is append-only: charge a new call instead');
+    END;
+    CREATE TRIGGER IF NOT EXISTS spend_ledger_append_only_delete
+    BEFORE DELETE ON spend_ledger BEGIN
+      SELECT RAISE(ABORT, 'spend_ledger is append-only: charge a new call instead');
+    END;
+  `);
+}
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: createWorkboard },
   { version: 2, up: createRelay },
   { version: 3, up: addTicketResult },
+  { version: 4, up: addSpendAccounting },
 ];
 
 for (const [index, migration] of MIGRATIONS.entries()) {

@@ -71,13 +71,16 @@ type Budget = {
   used_usd_cents: number;
   hop_count: number;
   max_hops: number;
+  used_calls: number;
+  max_calls: number | null;
 };
 
 function budgetOf(file: string, ticketId: string): Budget {
   const row = withRaw(file, (database) =>
     database
       .prepare(
-        `SELECT max_tokens, max_usd_cents, used_tokens, used_usd_cents, hop_count, max_hops
+        `SELECT max_tokens, max_usd_cents, used_tokens, used_usd_cents, hop_count, max_hops,
+                used_calls, max_calls
            FROM budgets WHERE ticket_id = ?`,
       )
       .get(ticketId),
@@ -825,5 +828,270 @@ describe("workboard", () => {
     );
     board.claim(withoutResult.id, "agent:bookkeeper");
     expect(board.complete(withoutResult.id, "agent:bookkeeper").result).toBeNull();
+  });
+});
+
+/**
+ * Spend accounting (RASF-3141): the charge, its dedupe, its roll-up and the reader a person uses.
+ *
+ * These are the arithmetic and the exactly-once story. What the *hooks* do with them — refusing a call,
+ * blocking a ticket — is `spend/budget.test.ts`, over a real harness; keeping them apart means a failure
+ * here is a board bug and a failure there is a wiring bug, which is the difference between a number that
+ * is wrong and a number nobody is enforcing.
+ */
+describe("spend accounting", () => {
+  it("charges a call once per call id, and rolls the deltas up to every ancestor", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    seedPerson(file, "owner");
+    const parent = root(board);
+    const kid = child(board, parent);
+    const grandchild = child(board, kid);
+
+    expect(
+      board.chargeUsage(grandchild.id, "call-1", { calls: 1, tokens: 100, usdCents: 3 }).charged,
+    ).toBe(true);
+    for (const ticket of [grandchild, kid, parent]) {
+      expect(budgetOf(file, ticket.id)).toMatchObject({
+        used_calls: 1,
+        used_tokens: 100,
+        used_usd_cents: 3,
+      });
+    }
+
+    // The same call again is the same spend: a replay of one attempt, not a second charge.
+    expect(
+      board.chargeUsage(grandchild.id, "call-1", { calls: 1, tokens: 100, usdCents: 3 }).charged,
+    ).toBe(false);
+    expect(count(file, "spend_ledger")).toBe(1);
+    expect(budgetOf(file, parent.id).used_calls).toBe(1);
+
+    // A different call is different spend, and it rolls up the same way.
+    board.chargeUsage(grandchild.id, "call-2", { calls: 1, tokens: 50 });
+    expect(budgetOf(file, parent.id)).toMatchObject({
+      used_calls: 2,
+      used_tokens: 150,
+      used_usd_cents: 3,
+    });
+    expect(count(file, "spend_ledger")).toBe(2);
+    board.close();
+  });
+
+  it("a replay of one call leaves one ledger row and one increment (crash between spend and refusal)", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    const ticket = root(board, { budget: { maxCalls: 5 } });
+
+    // The shape of the crash: the charge landed, the process died before the refusal could be recorded,
+    // and recovery re-runs the same call. Both attempts name the same call id, so the second is a no-op.
+    const first = board.chargeUsage(ticket.id, "conv:task:call-9", {
+      calls: 1,
+      tokens: 7,
+      usdCents: 1,
+    });
+    const second = board.chargeUsage(ticket.id, "conv:task:call-9", {
+      calls: 1,
+      tokens: 7,
+      usdCents: 1,
+    });
+    expect([first.charged, second.charged]).toEqual([true, false]);
+    expect(count(file, "spend_ledger")).toBe(1);
+    expect(budgetOf(file, ticket.id)).toMatchObject({
+      used_calls: 1,
+      used_tokens: 7,
+      used_usd_cents: 1,
+    });
+    // The ledger is the dedupe: nothing may rewrite it, so no later call can pretend the row was not there.
+    withRaw(file, (database) => {
+      expect(() =>
+        database
+          .prepare("UPDATE spend_ledger SET tokens = 0 WHERE call_id = ?")
+          .run("conv:task:call-9"),
+      ).toThrow(/append-only/);
+    });
+    board.close();
+  });
+
+  it("reports the ticket's spend and the tightest headroom up its chain", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    const parent = root(board, { budget: { maxCalls: 4, maxTokens: 1000 } });
+    const kid = child(board, parent);
+
+    expect(board.budget(kid.id)).toMatchObject({
+      maxCalls: 4,
+      maxTokens: 1000,
+      maxUsdCents: null,
+      usedCalls: 0,
+      hopCount: 1,
+      remainingCalls: 4,
+      remainingTokens: 1000,
+      remainingUsdCents: null,
+    });
+
+    board.chargeUsage(kid.id, "call-1", { calls: 1, tokens: 100 });
+    expect(board.budget(kid.id)).toMatchObject({
+      usedCalls: 1,
+      usedTokens: 100,
+      remainingCalls: 3,
+      remainingTokens: 900,
+    });
+    // The parent's row is subtree spend, and its headroom shrank with the child's.
+    expect(board.budget(parent.id)).toMatchObject({
+      usedCalls: 1,
+      usedTokens: 100,
+      remainingCalls: 3,
+      remainingTokens: 900,
+    });
+    expect(board.budget("no-such-ticket")).toBeUndefined();
+    board.close();
+  });
+
+  it("a sibling's spend reduces the other's headroom", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    const parent = root(board, { budget: { maxCalls: 2 } });
+    const first = child(board, parent);
+    const second = child(board, parent);
+
+    // Both children were materialized while the parent had its whole ceiling; the parent's own remainder
+    // is what stops the second child from spending work the first child already did.
+    expect(board.budget(first.id)?.remainingCalls).toBe(2);
+    expect(board.budget(second.id)?.remainingCalls).toBe(2);
+    board.admitCall(first.id, "call-1");
+    expect(board.budget(second.id)?.remainingCalls).toBe(1);
+    board.admitCall(second.id, "call-2");
+    expect(board.budget(second.id)?.remainingCalls).toBe(0);
+    // At zero the chain is spent, for both children and for the parent.
+    for (const ticket of [first, second, parent]) {
+      expect(board.admitCall(ticket.id, `last-${ticket.id}`).admitted).toBe(false);
+    }
+    expect(budgetOf(file, parent.id).used_calls).toBe(2);
+    board.close();
+  });
+
+  it("admitCall refuses at the ceiling without counting the call it refused", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    const ticket = root(board, { budget: { maxCalls: 2 } });
+
+    expect(board.admitCall(ticket.id, "call-1")).toMatchObject({ admitted: true, charged: true });
+    expect(board.admitCall(ticket.id, "call-2")).toMatchObject({ admitted: true, charged: true });
+    // The third call is refused, and it does not buy a slot it never uses.
+    expect(board.admitCall(ticket.id, "call-3")).toMatchObject({ admitted: false, charged: false });
+    expect(budgetOf(file, ticket.id).used_calls).toBe(2);
+    expect(count(file, "spend_ledger")).toBe(2);
+
+    // A replay of a call that already ran is admitted (it did run) and not counted again.
+    expect(board.admitCall(ticket.id, "call-2")).toMatchObject({ admitted: true, charged: false });
+    expect(budgetOf(file, ticket.id).used_calls).toBe(2);
+    board.close();
+  });
+
+  it("an uncapped ticket admits every call and reports null headroom", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    const ticket = root(board);
+    for (const callId of ["call-1", "call-2", "call-3"]) {
+      expect(board.admitCall(ticket.id, callId).admitted).toBe(true);
+    }
+    expect(board.budget(ticket.id)).toMatchObject({
+      maxCalls: null,
+      remainingCalls: null,
+      usedCalls: 3,
+    });
+    board.close();
+  });
+
+  it("block moves the ticket once, with its reason and the person it went to", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    seedPerson(file, "owner");
+    const ticket = root(board);
+
+    const blocked = board.block(ticket.id, "budget", {
+      reason: "budget reached (2 calls)",
+      assignee: { kind: "person", id: "owner" },
+    });
+    expect(blocked).toMatchObject({ status: "blocked", assignee: "owner" });
+    const blockedEvents = board.events(ticket.id).filter((event) => event.kind === "blocked");
+    expect(blockedEvents).toHaveLength(1);
+    expect(blockedEvents[0]).toMatchObject({ actor: "budget" });
+    expect(blockedEvents[0]?.payload).toEqual({
+      reason: "budget reached (2 calls)",
+      assignee: { kind: "person", id: "owner" },
+    });
+
+    // A second block is the same fact: one event, and the ticket does not move again.
+    board.block(ticket.id, "budget", { reason: "budget reached (3 calls)" });
+    expect(board.events(ticket.id).filter((event) => event.kind === "blocked")).toHaveLength(1);
+    expect(board.get(ticket.id)).toMatchObject({ status: "blocked", assignee: "owner" });
+
+    // A person the office does not know is refused, and a terminal ticket cannot be blocked at all.
+    expect(
+      kindOf(() =>
+        board.block(root(board).id, "budget", {
+          reason: "nobody",
+          assignee: { kind: "person", id: "ghost" },
+        }),
+      ),
+    ).toBe("invalid_person");
+    const finished = root(board);
+    board.claim(finished.id, "agent:bookkeeper");
+    board.complete(finished.id, "agent:bookkeeper", { result: "done" });
+    expect(kindOf(() => board.block(finished.id, "budget", { reason: "late" }))).toBe(
+      "invalid_status",
+    );
+    board.close();
+  });
+
+  it("totals spend per agent per day from the ledger", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    const ticket = root(board);
+    board.chargeUsage(ticket.id, "call-1", {
+      calls: 1,
+      tokens: 100,
+      usdCents: 2,
+      agent: "bookkeeper",
+    });
+    board.chargeUsage(ticket.id, "call-2", {
+      calls: 1,
+      tokens: 50,
+      usdCents: 1,
+      agent: "bookkeeper",
+    });
+    board.chargeUsage(ticket.id, "call-3", { calls: 1, tokens: 10, agent: "frontdesk" });
+    // Spend with no role behind it is a row too, and it says so rather than being dropped.
+    board.chargeUsage(ticket.id, "call-4", { tokens: 5 });
+
+    const today = new Date().toISOString().slice(0, 10);
+    // Grouped by the day the ledger row was written. Two days cannot be produced here — the board writes
+    // its own clock — so the day *ordering* is asserted where it is cheap: the CLI's footer, over rows.
+    expect(board.spendByAgent()).toEqual([
+      { day: today, agent: "bookkeeper", calls: 2, tokens: 150, usdCents: 3 },
+      { day: today, agent: "frontdesk", calls: 1, tokens: 10, usdCents: 0 },
+      { day: today, agent: null, calls: 0, tokens: 5, usdCents: 0 },
+    ]);
+    board.close();
+  });
+
+  it("binds a conversation to the ticket it is working, binding the same id twice once", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    const ticket = root(board);
+
+    expect(board.conversationTicket(41)).toBeUndefined();
+    board.bindConversation(41, { ticketId: ticket.id, agent: "bookkeeper" });
+    expect(board.conversationTicket(41)).toEqual({ ticketId: ticket.id, agent: "bookkeeper" });
+    board.bindConversation(41, { ticketId: ticket.id, agent: "bookkeeper" });
+    expect(count(file, "ticket_conversations")).toBe(1);
+
+    // A conversation for a ticket that does not exist is a mistake, not a binding.
+    expect(kindOf(() => board.bindConversation(42, { ticketId: "ghost", agent: "a" }))).toBe(
+      "not_found",
+    );
+    expect(board.conversationTicket(42)).toBeUndefined();
+    board.close();
   });
 });

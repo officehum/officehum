@@ -21,8 +21,11 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
+  type AgentSpend,
   type Board,
   BoardError,
+  type Budget,
+  formatCents,
   openOfficeBoard,
   type Person,
   type Ticket,
@@ -120,14 +123,48 @@ export function formatAge(now: Date, updatedAt: string): string {
 }
 
 /**
- * A card's two lines: who holds it and how long it has been that way, then its type and title.
+ * A card's lines: who holds it and how long it has been that way, then its type and title, then its
+ * spend when there is any to show.
  *
  * The fields are split this way on purpose. The title is the only field that can be any length, so it
- * is the only one truncation can bite: the owner and the age stay readable on every card.
+ * is the only one truncation can bite: the owner, the age and the spend stay readable on every card.
+ *
+ * The spend line appears only when the ticket has spent something or been given a ceiling. A board
+ * where nothing is budgeted renders exactly as it did before budgets existed — the columns are about
+ * work, and a line of zeroes on every card would push the work off them.
  */
-function cardLines(ticket: Ticket, now: Date): string[] {
+function cardLines(ticket: Ticket, now: Date, budget: Budget | undefined): string[] {
   const owner = ticket.assignee ?? "unassigned";
-  return [`${formatAge(now, ticket.updatedAt)}  ${owner}`, `${ticket.type} ${ticket.title}`];
+  const lines = [`${formatAge(now, ticket.updatedAt)}  ${owner}`, `${ticket.type} ${ticket.title}`];
+  const spend = spendLine(budget);
+  if (spend !== undefined) lines.push(spend);
+  return lines;
+}
+
+/** A count as a card has room for it: `7`, `1.2k`, `3.4M`. Rounded, never invented. */
+export function formatCount(value: number): string {
+  if (value < 1000) return String(value);
+  if (value < 1_000_000) return `${(value / 1000).toFixed(1)}k`;
+  return `${(value / 1_000_000).toFixed(1)}M`;
+}
+
+/**
+ * One card's spend line, or `undefined` when the ticket has none to show: `2/4 calls · 1.2k tok ·
+ * $0.01`. The calls ceiling is the one shown, because the call ceiling is the cap that actually fences
+ * a deterministic worker; the token and dollar ceilings are in the ticket's detail rather than crammed
+ * into a column 31 characters wide.
+ */
+export function spendLine(budget: Budget | undefined): string | undefined {
+  if (budget === undefined) return undefined;
+  const empty = budget.usedCalls === 0 && budget.usedTokens === 0 && budget.usedUsdCents === 0;
+  const capped =
+    budget.maxCalls !== null || budget.maxTokens !== null || budget.maxUsdCents !== null;
+  if (empty && !capped) return undefined;
+  const calls =
+    budget.maxCalls === null
+      ? `${budget.usedCalls} calls`
+      : `${budget.usedCalls}/${budget.maxCalls} calls`;
+  return `${calls} · ${formatCount(budget.usedTokens)} tok · ${formatCents(budget.usedUsdCents)}`;
 }
 
 /** Truncates to `width` with an ellipsis, then pads to it, so every column lines up. */
@@ -137,13 +174,45 @@ function cell(text: string, width = BOARD_COLUMN_WIDTH): string {
   return text.padEnd(width);
 }
 
-/** What the columns do not show: the tickets that are finished or abandoned, and how many. */
-function footer(board: Board): string {
+/**
+ * What the columns do not show: the tickets that are finished or abandoned, and — from the ledger — what
+ * each agent spent on each of the last few days.
+ *
+ * The spend lines come first so the terminal counts stay the board's last line, which is the line a
+ * reader's eye lands on when checking whether the office is keeping up. Spend is per agent per day
+ * because that is the question a person asks of an office ("what did bookkeeping cost us today?"), and
+ * the ticket it belongs to is already on the card.
+ */
+function footer(board: Board): string[] {
   const count = (status: TicketStatus): string => {
     const closed = board.list({ status, limit: LIST_CAP }).length;
     return closed === LIST_CAP ? `${LIST_CAP}+` : String(closed);
   };
-  return `done ${count("done")} · cancelled ${count("cancelled")}`;
+  return [
+    ...spendFooter(board.spendByAgent()),
+    `done ${count("done")} · cancelled ${count("cancelled")}`,
+  ];
+}
+
+/** How many days of spend the footer shows. Older days are counted, not printed. */
+const SPEND_DAYS = 7;
+
+/** One line per agent per day, newest day first, then a count of the days the board did not print. */
+export function spendFooter(spend: readonly AgentSpend[]): string[] {
+  const days: string[] = [];
+  for (const row of spend) if (!days.includes(row.day)) days.push(row.day);
+  const shown = days.slice(0, SPEND_DAYS);
+  const lines = spend
+    .filter((row) => shown.includes(row.day))
+    .map(
+      (row) =>
+        `spend ${row.day}  ${row.agent ?? "unattributed"}  ` +
+        `${row.calls} calls · ${formatCount(row.tokens)} tok · ${formatCents(row.usdCents)}`,
+    );
+  const hidden = days.length - shown.length;
+  if (hidden > 0)
+    lines.push(`spend … ${hidden} earlier ${hidden === 1 ? "day" : "days"} not shown`);
+  return lines;
 }
 
 /**
@@ -157,7 +226,10 @@ export function renderBoard(board: Board, now: Date): string[] {
   const columns = STATUS_COLUMNS.map((status) => {
     const tickets = board.list({ status, limit: LIST_CAP });
     const shown = tickets.length === LIST_CAP ? `${LIST_CAP}+` : String(tickets.length);
-    const body = tickets.flatMap((ticket) => [...cardLines(ticket, now), ""]);
+    const body = tickets.flatMap((ticket) => [
+      ...cardLines(ticket, now, board.budget(ticket.id)),
+      "",
+    ]);
     // The blank is a separator between cards, and there is no card after the last one.
     if (body[body.length - 1] === "") body.pop();
     return { header: `${status} (${shown})`, body };
@@ -176,7 +248,7 @@ export function renderBoard(board: Board, now: Date): string[] {
   for (let index = 0; index < height; index += 1) {
     lines.push(row((column) => cell(column.body[index] ?? "")));
   }
-  lines.push("", footer(board));
+  lines.push("", ...footer(board));
   return lines;
 }
 
@@ -341,6 +413,24 @@ function show(board: Board, ticketId: string | undefined, io: CliIo, now: () => 
   io.output(`  created   ${ticket.createdAt}`);
   if (ticket.detail !== null) io.output(`  detail    ${ticket.detail}`);
   if (ticket.result !== null) io.output(`  result    ${ticket.result}`);
+  // The card shows the used figure; this is where the ceilings and the remaining headroom live, because
+  // "why did this stop" is a question about the ceiling, not about what was spent.
+  const budget = board.budget(ticket.id);
+  if (budget !== undefined) {
+    const money = (limit: number | null, remaining: number | null): string =>
+      limit === null || remaining === null
+        ? "uncapped"
+        : `${formatCents(limit)} (${formatCents(remaining)} left)`;
+    io.output(
+      `  spend     ${budget.usedCalls} calls · ${budget.usedTokens} tokens · ${formatCents(budget.usedUsdCents)}`,
+    );
+    io.output(
+      `  ceiling   ${budget.maxCalls === null ? "no call cap" : `${budget.maxCalls} calls`} · ` +
+        `${money(budget.maxTokens, budget.remainingTokens)} · ` +
+        `${money(budget.maxUsdCents, budget.remainingUsdCents)}`,
+    );
+    io.output(`  hops      ${budget.hopCount}/${budget.maxHops}`);
+  }
   const events = board.events(ticket.id);
   io.output(`  events    ${events.length}`);
   for (const event of events.slice(-DETAIL_EVENTS)) {
