@@ -77,7 +77,11 @@ describe("parseRoleSpec", () => {
     expect(spec.wisdom.authority.may_not).toHaveLength(3);
 
     const manifest = manifestFromRoleSpec(spec);
-    expect(manifest).toEqual(fixtureManifest);
+    // `$schema` is the fixture's own, not something the format writes: a generated package goes to
+    // whatever directory the generator is given, where no relative path to the SDK is right.
+    const { $schema, ...expected } = fixtureManifest;
+    expect(manifest).toEqual(expected);
+    expect($schema).toBe("../../../../packages/sdk/schema/officehum.schema.json");
     expect(manifest.evals).toBe(EVALS_DIR);
     // Nothing of one business's reaches the package: the limit is the role's default, not its value.
     expect(manifest.limits?.long_note?.default).toBe(1200);
