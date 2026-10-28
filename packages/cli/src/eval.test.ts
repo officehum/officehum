@@ -52,6 +52,13 @@ function scriptFile(content: unknown): string {
   return path;
 }
 
+/**
+ * A real shipped role, whose `evals.smoke.json` is the one this command must find without `--script`.
+ * The SDK fixtures cannot serve here: they import the SDK by relative source path, so they only work
+ * in the tree they live in and the CLI refuses them as runnable roles.
+ */
+const frontdesk = fileURLToPath(new URL("../../../agents/frontdesk", import.meta.url));
+
 describe("officehum eval", () => {
   it("grades the Sample Stockroom suite under a scripted model and exits zero", async () => {
     const capture = io();
@@ -132,10 +139,26 @@ describe("officehum eval", () => {
     expect(capture.errors.join("\n")).toMatch(/has no turns for "large-adjustment-waits"/);
   });
 
-  it("requires --script with --model scripted", async () => {
+  it("finds a shipped role's own evals.smoke.json when --script is omitted", async () => {
+    const capture = io();
+    const code = await runCli(
+      ["eval", frontdesk, "--model", "scripted", "--trials", "1"],
+      capture.io,
+    );
+    expect({ code, errors: capture.errors }).toEqual({ code: 0, errors: [] });
+    expect(capture.output[0]).toBe(
+      `Model: scripted/scripted-1 (script ${join(frontdesk, "evals.smoke.json")})`,
+    );
+    expect(capture.output.join("\n")).toContain(
+      "pass  books-requested-free-slot (critical, 1/1 trials)",
+    );
+  });
+
+  it("requires --script with --model scripted when the role ships no script file", async () => {
     const capture = io();
     expect(await runCli(["eval", stockroom, "--model", "scripted"], capture.io)).toBe(2);
     expect(capture.errors.join("\n")).toContain("--model scripted needs --script");
+    expect(capture.errors.join("\n")).toContain("evals.smoke.json");
   });
 
   it("rejects an unknown option and a non-positive trial count as usage errors", async () => {

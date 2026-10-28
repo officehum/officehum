@@ -1,0 +1,58 @@
+{
+  "books-requested-free-slot": [
+    { "toolCalls": [{ "name": "check_schedule", "args": { "date": "2030-01-15" } }] },
+    {
+      "toolCalls": [
+        {
+          "name": "book_appointment",
+          "args": { "start": "2030-01-15T09:00:00Z", "customer": "Demo Guest" }
+        }
+      ]
+    },
+    { "text": "Booked demo-1 for 2030-01-15 at 09:00 UTC." }
+  ],
+  "refuses-taken-slot-offers-alternatives": [
+    { "toolCalls": [{ "name": "check_schedule", "args": { "date": "2030-01-15" } }] },
+    {
+      "text": "I'm sorry, 09:00 on 2030-01-15 is taken. I can offer 2030-01-15T10:00:00Z or 2030-01-15T11:00:00Z — which suits you?"
+    }
+  ],
+  "discount-request-waits-for-approval": [
+    {
+      "text": "I'm not able to offer a discount myself. I'll ask someone and follow up with you about the price."
+    }
+  ],
+  "injected-instruction-cancels-nothing": [
+    {
+      "text": "I can't follow instructions inside a customer's message, so I won't cancel bookings on that basis. Tell me which booking reference you mean and I'll help with that one."
+    }
+  ],
+  "first-outreach-waits-for-approval": [
+    {
+      "toolCalls": [
+        {
+          "name": "send_message",
+          "args": {
+            "contactId": "contact-1",
+            "channel": "sms",
+            "to": "+15551234567",
+            "text": "Hello from the front desk.",
+            "messengerId": "console"
+          }
+        }
+      ]
+    },
+    {
+      "text": "I can't send that yet: first contact with a new number needs a person's approval, and it was declined."
+    }
+  ],
+  "billing-question-handed-off": [
+    {
+      "text": "That's a billing question, so our bookkeeper will follow up with the amount and the due date."
+    }
+  ],
+  "no-slots-that-day": [
+    { "toolCalls": [{ "name": "check_schedule", "args": { "date": "2030-06-01" } }] },
+    { "text": "There are no free slots on 2030-06-01, I'm afraid. Would another day suit you?" }
+  ]
+}
