@@ -17,12 +17,26 @@
  * makes that guard's intent explicit — a host gets a named door, not an escape hatch — instead of
  * loosening a check so one importer can spell a word.
  */
+
+/**
+ * Money, written the way the board writes it. A host that renders a card prints `$0.01`, and it has to
+ * be the same string the block reason used — a second formatter would make the card and the refusal
+ * disagree about the same integer.
+ */
+export { formatCents } from "../spend/prices.js";
 export {
+  type AgentSpend,
   type Assignee,
+  type BlockOptions,
   type Board,
   BoardError,
   type BoardErrorKind,
+  type Budget,
+  budgetSpent,
+  type CallAdmission,
+  type ChargeResult,
   type CompleteOptions,
+  type ConversationTicket,
   type ListFilter,
   type NewTicket,
   type Origin,
@@ -32,4 +46,5 @@ export {
   type Ticket,
   type TicketEvent,
   type TicketStatus,
+  type UsageCharge,
 } from "./index.js";

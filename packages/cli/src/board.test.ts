@@ -17,7 +17,7 @@ import type { Board, NewTicket, Ticket, TicketStatus } from "@officehum/office/b
 // The test helpers, not the host door: a host opens a board, only a test seeds a person.
 import { createWorkboard, seedPerson } from "@officehum/office/board/testing";
 import { afterEach, describe, expect, it } from "vitest";
-import { BOARD_COLUMN_WIDTH, BOARD_WIDTH, formatAge, renderBoard } from "./board.js";
+import { BOARD_COLUMN_WIDTH, BOARD_WIDTH, formatAge, renderBoard, spendFooter } from "./board.js";
 import { type CliDependencies, type CliIo, runCli } from "./cli.js";
 
 const temps: string[] = [];
@@ -73,9 +73,9 @@ function withRaw<T>(file: string, work: (database: DatabaseSync) => T): T {
 
 /**
  * Pins a ticket to one instant, so its age is the clock this file injects rather than the wall clock.
- * `status` is set at the same time because the fixture needs a ticket in a state no board call
- * produces: `stall` records a reason without moving the ticket, and the flow that blocks work
- * (RASF-3074's budget and RASF-3073's approval gate) is not built, so `blocked` has no API path.
+ * `status` is for the states the fixture needs without a matching command: the ticket it forces is one
+ * the board itself would not have moved. Everything the board *can* do goes through the board — the
+ * blocked card is made by `block`, so the board's own path is what puts it in that column.
  */
 function pin(file: string, ticketId: string, at: string, status?: TicketStatus): void {
   withRaw(file, (database) => {
@@ -133,7 +133,12 @@ function fixture(): Fixture {
   const waiting = create(board, { type: "booking.request", title: "Confirm Tuesday" });
   board.assign(waiting.id, { kind: "person", id: "owner" }, "front-desk");
   const blocked = create(board, { type: "invoice.create", title: "VAT is missing" });
-  pin(file, blocked.id, hours(24), "blocked");
+  // The board's own transition, not a hand-forced column: a blocked ticket is one that went to a person.
+  board.block(blocked.id, "budget", {
+    reason: "budget reached (2 calls)",
+    assignee: { kind: "person", id: "owner" },
+  });
+  pin(file, blocked.id, hours(24));
   for (let index = 1; index <= 3; index += 1) {
     const finished = create(board, { type: "invoice.create", title: `Paid ${index}` });
     board.claim(finished.id, "agent:bookkeeper");
@@ -326,6 +331,68 @@ describe("officehum board", () => {
       actor: "owner",
     });
     office.board.close();
+  });
+
+  it("shows each ticket's spend on its card and each agent's day under the board", async () => {
+    const directory = officeDirectory();
+    const file = join(directory, "office.sqlite");
+    seedPerson(file, "owner", "Pat Owner");
+    const board = createWorkboard(file);
+    const ticket = create(board, {
+      title: "Invoice 42",
+      budget: { maxCalls: 4, maxTokens: 10_000 },
+    });
+    board.claim(ticket.id, "agent:bookkeeper");
+    board.chargeUsage(ticket.id, "call-1", {
+      calls: 1,
+      tokens: 600,
+      usdCents: 1,
+      agent: "agent:bookkeeper",
+    });
+    board.chargeUsage(ticket.id, "call-2", { calls: 1, tokens: 600, agent: "agent:bookkeeper" });
+    pin(file, ticket.id, minutes(4));
+
+    const lines = renderBoard(board, NOW);
+    // The card carries the used figure against the call cap — the ceiling that fences work with no
+    // receipts — on its own line, under the title.
+    const card = lines.findIndex((line) => line.includes("job.request Invoice 42"));
+    expect(columnsOf(lines[card + 1] ?? "")[1]).toBe("2/4 calls · 1.2k tok · $0.01");
+    // And the board totals the day per agent, from the ledger rather than from the cards.
+    const today = new Date().toISOString().slice(0, 10);
+    expect(lines.find((line) => line.startsWith("spend "))).toBe(
+      `spend ${today}  agent:bookkeeper  2 calls · 1.2k tok · $0.01`,
+    );
+    // The terminal counts stay the board's last line.
+    expect(lines.at(-1)).toBe("done 0 · cancelled 0");
+    board.close();
+
+    // The detail view is where the ceilings are: a person asking "why did this stop" needs the limit.
+    const capture = scripted([`o ${ticket.id}`, "q"]);
+    expect(await runCli(["board", "--office", directory], capture.io, clock)).toBe(0);
+    const text = capture.output.join("\n");
+    expect(text).toContain("  spend     2 calls · 1200 tokens · $0.01");
+    expect(text).toContain("  ceiling   4 calls · $100.00 ($88.00 left) · uncapped");
+    expect(text).toContain("  hops      0/4");
+  });
+
+  it("prints the newest days of spend and counts the days it leaves out", () => {
+    const rows = Array.from({ length: 9 }, (_, index) => ({
+      day: `2026-10-${String(20 - index).padStart(2, "0")}`,
+      agent: "agent:bookkeeper",
+      calls: index + 1,
+      tokens: 1000,
+      usdCents: 2,
+    }));
+    const lines = spendFooter(rows);
+    // Seven days printed, newest first, then one line that says how many were not.
+    expect(lines).toHaveLength(8);
+    expect(lines[0]).toBe("spend 2026-10-20  agent:bookkeeper  1 calls · 1.0k tok · $0.02");
+    expect(lines[6]).toBe("spend 2026-10-14  agent:bookkeeper  7 calls · 1.0k tok · $0.02");
+    expect(lines[7]).toBe("spend … 2 earlier days not shown");
+    // Spend with no role behind it is named rather than dropped.
+    expect(
+      spendFooter([{ day: "2026-10-20", agent: null, calls: 1, tokens: 5, usdCents: 0 }]),
+    ).toEqual(["spend 2026-10-20  unattributed  1 calls · 5 tok · $0.00"]);
   });
 
   it("needs no network and no model: its module opens one board file and names nothing else", () => {

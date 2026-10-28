@@ -112,7 +112,7 @@ export interface OfficeExtensionOptions {
    */
   readonly business?: OfficeBusiness;
   /**
-   * The office's hooks — RASF-3074's budget, hop and provenance, and RASF-3073's approval gate once
+   * The office's hooks — RASF-3141's `budgetHooks`, and RASF-3073's approval gate once
    * it lands. Registered only when supplied; see `registerOfficeHooks`.
    */
   readonly hooks?: readonly HookRegistration[];
@@ -432,7 +432,7 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
       }),
     ],
     tools: [agentDispatch, agentInbox, agentReply],
-    // The hooks seam (RASF-3074, RASF-3073): exactly the registrations a caller supplies, nothing
+    // The hooks seam (RASF-3141, RASF-3073): exactly the registrations a caller supplies, nothing
     // invented here. With none supplied the office installs no hooks at all.
     hooks: registerOfficeHooks(options),
   });

@@ -71,6 +71,8 @@ describe("board migrations", () => {
       "relay_cursor",
       "relay_deliveries",
       "relay_waits",
+      "spend_ledger",
+      "ticket_conversations",
       "ticket_events",
       "ticket_keys",
       "tickets",
@@ -116,6 +118,25 @@ describe("board migrations", () => {
       "used_usd_cents",
       "hop_count",
       "max_hops",
+      // Added by migration 4, so they land at the end: `ALTER TABLE ADD COLUMN` appends.
+      "used_calls",
+      "max_calls",
+    ]);
+    expect(columns(database, "spend_ledger")).toEqual([
+      "call_id",
+      // Admission and usage are separate observations of one call, deduped independently.
+      "kind",
+      "ticket_id",
+      "agent",
+      "calls",
+      "tokens",
+      "usd_cents",
+      "at",
+    ]);
+    expect(columns(database, "ticket_conversations")).toEqual([
+      "conversation_id",
+      "ticket_id",
+      "agent",
     ]);
     expect(columns(database, "approvals")).toEqual([
       "id",
@@ -135,6 +156,8 @@ describe("board migrations", () => {
     expect(names(database, "trigger")).toEqual([
       "comments_append_only_delete",
       "comments_append_only_update",
+      "spend_ledger_append_only_delete",
+      "spend_ledger_append_only_update",
       "ticket_events_append_only_delete",
       "ticket_events_append_only_update",
     ]);
@@ -200,5 +223,56 @@ describe("board migrations", () => {
     setup.close();
 
     expect(() => openBoard(file)).toThrow(/user_version 99/);
+  });
+
+  it("upgrades a version-3 database in place, keeping its rows (expand-only)", () => {
+    const file = boardFile();
+    // A board as the previous build left it: migrations 1–3, and a ticket whose spend has not been
+    // counted yet because the call columns did not exist.
+    const old = new DatabaseSync(file);
+    for (const migration of MIGRATIONS.filter((step) => step.version <= 3)) migration.up(old);
+    old.exec("PRAGMA user_version = 3");
+    old
+      .prepare(
+        `INSERT INTO tickets (id, type, title, payload, status, assignee, created_by, created_at,
+                              updated_at)
+         VALUES ('t1', 'invoice.create', 'Invoice', '{}', 'claimed', 'agent-a', 'front-desk',
+                 '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z')`,
+      )
+      .run();
+    old
+      .prepare(
+        `INSERT INTO budgets (ticket_id, max_tokens, used_tokens, used_usd_cents, hop_count, max_hops)
+         VALUES ('t1', 1000, 400, 5, 0, 4)`,
+      )
+      .run();
+    old.close();
+
+    const board = openBoard(file);
+    try {
+      expect(board.get("t1")).toMatchObject({ status: "claimed", title: "Invoice" });
+      // The old spend is intact and the new counter starts at zero: nothing was re-derived or guessed.
+      expect(board.budget("t1")).toMatchObject({
+        usedTokens: 400,
+        usedUsdCents: 5,
+        usedCalls: 0,
+        maxCalls: null,
+        remainingCalls: null,
+      });
+      // And the ledger is a new, empty table rather than a back-filled fiction.
+      expect(board.spendByAgent()).toEqual([]);
+    } finally {
+      board.close();
+    }
+
+    const upgraded = new DatabaseSync(file);
+    try {
+      expect(
+        (upgraded.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+      ).toBe(MIGRATIONS.length);
+      expect(upgraded.prepare("SELECT COUNT(*) AS n FROM tickets").get()).toEqual({ n: 1 });
+    } finally {
+      upgraded.close();
+    }
   });
 });
