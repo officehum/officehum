@@ -19,9 +19,14 @@
  * A scenario the selected suites contain but the file does not script is refused before any trial
  * runs, so a stale script fails loudly instead of silently grading nothing. A script that must branch
  * on what a tool returned cannot be written as JSON; use a runner in a test for that.
+ *
+ * Every role ships that file beside its `evals/` directory as `evals.smoke.json`, so `--script` is
+ * optional: without it the command reads the role's own file, the way `agents/bookkeeper` does.
  */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { ModelRef } from "@earendil-works/pi-durable";
 import { type EvalModel, piDurableRunner } from "@officehum/office";
 import {
@@ -134,17 +139,16 @@ export async function runEvalCommand(
     return 1;
   }
 
+  const script = ref.provider === "scripted" ? scriptFileFor(parsed) : undefined;
   const model =
-    ref.provider === "scripted"
-      ? await scriptedModel(parsed, scenarios)
-      : liveModel(ref, dependencies);
+    script === undefined ? liveModel(ref, dependencies) : await scriptedModel(script, scenarios);
 
   const report = await runEvals(suites, piDurableRunner({ dir: parsed.roleDir, model }), {
     ...(parsed.tag === undefined ? {} : { tag: parsed.tag }),
     ...(parsed.trials === undefined ? {} : { trials: parsed.trials }),
   });
   io.output(
-    `Model: ${ref.provider}/${ref.modelId}${parsed.script === undefined ? "" : ` (script ${parsed.script})`}`,
+    `Model: ${ref.provider}/${ref.modelId}${script === undefined ? "" : ` (script ${script})`}`,
   );
   io.output(formatReport(report));
   return report.passed ? 0 : 1;
@@ -156,14 +160,26 @@ function liveModel(ref: ModelRef, dependencies: CliDependencies) {
   return (): EvalModel => runtime;
 }
 
-/** The scripted model factory: rebuilds the provider for every trial so the script replays each time. */
-async function scriptedModel(parsed: EvalArguments, scenarios: readonly Scenario[]) {
-  const file = parsed.script;
-  if (file === undefined) {
+/** The role's own script file: `evals.smoke.json` beside `evals/`, read without `--script`. */
+const DEFAULT_SCRIPT_FILE = "evals.smoke.json";
+
+/**
+ * The script file to read: `--script FILE` when given, otherwise the role's own `evals.smoke.json`.
+ * A role that ships neither is a usage error, raised before any trial runs.
+ */
+function scriptFileFor(parsed: EvalArguments): string {
+  if (parsed.script !== undefined) return parsed.script;
+  const file = join(parsed.roleDir, DEFAULT_SCRIPT_FILE);
+  if (!existsSync(file)) {
     throw new UsageError(
-      `--model scripted needs --script FILE, e.g. --script evals.smoke.json.\n${EVAL_USAGE}`,
+      `--model scripted needs --script FILE, or ${DEFAULT_SCRIPT_FILE} in ${parsed.roleDir}.\n${EVAL_USAGE}`,
     );
   }
+  return file;
+}
+
+/** The scripted model factory: rebuilds the provider for every trial so the script replays each time. */
+async function scriptedModel(file: string, scenarios: readonly Scenario[]) {
   const script = await readEvalScript(file);
   const missing = scenarios.filter((scenario) => script[scenario.id] === undefined);
   if (missing.length > 0) {

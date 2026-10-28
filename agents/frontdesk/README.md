@@ -93,19 +93,21 @@ An embedding host that builds the role itself (rather than the CLI) passes `mess
 
 ## Run its evals
 
-The role's evals live in `evals/situations.json`. `officehum eval` installs only the role's own
-extensions on a fresh in-memory Pi Durable harness, so a role that needs Office Hum fails here:
+The role's evals live in `evals/situations.json`, and the turns a scripted model plays back for them
+are in `evals.smoke.json` (beside `evals/`, not inside it: every `.json` in `evals/` is read as an
+eval suite). `officehum eval` installs only the role's own extensions on a fresh in-memory Pi Durable
+harness, so a role that needs Office Hum fails here:
 
 ```sh
-officehum eval agents/frontdesk --model scripted --script ./evals.smoke.json
+officehum eval agents/frontdesk --model scripted
 ```
 
-`--model scripted` reads a script file mapping each scenario id to the turns the scripted model plays
-back, so a suite runs with no key or network; every selected scenario must have an entry, or the
-command refuses before any trial runs. A script that must branch on a tool result cannot be written
-as JSON — use `piDurableRunner` from `@officehum/office` in a test for that, as the package's own
-`src/index.test.ts` does. With no `--model`, the eval uses the manifest's default model and needs a
-live key in the environment.
+`--model scripted` reads that script file by default, mapping each scenario id to the turns the
+scripted model plays back, so a suite runs with no key or network; every selected scenario must have
+an entry, or the command refuses before any trial runs. Pass `--script FILE` to point at another one.
+A script that must branch on a tool result cannot be written as JSON — use `piDurableRunner` from
+`@officehum/office` in a test for that, as the package's own `src/index.test.ts` does. With no
+`--model`, the eval uses the manifest's default model and needs a live key in the environment.
 
 ## Email and SMS
 
@@ -161,4 +163,5 @@ an `approveReply` decision.
 | `src/messaging.ts` | Outbound messaging and the first-contact condition |
 | `src/replies.ts` | Inbound threaded replies and the inbound conversation guard |
 | `evals/situations.json` | The eval scenarios |
+| `evals.smoke.json` | The turns `--model scripted` plays back for them |
 | `skills/` | Bundled skills and their references |

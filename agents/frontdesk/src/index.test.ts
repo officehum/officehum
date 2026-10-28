@@ -631,68 +631,15 @@ describe("frontdesk discount gate", () => {
   });
 });
 
-/** The turns the scripted model plays back per brief scenario, keyed by scenario id. */
-const askedForASlot: ScriptedScript = [
-  { toolCalls: [{ name: "check_schedule", args: { date: "2030-01-15" } }] },
-  {
-    toolCalls: [
-      { name: "book_appointment", args: { start: "2030-01-15T09:00:00Z", customer: "Demo Guest" } },
-    ],
-  },
-  { text: "Booked demo-1 for 2030-01-15 at 09:00 UTC." },
-];
-
-const briefScripts: Readonly<Record<string, ScriptedScript>> = {
-  "books-requested-free-slot": askedForASlot,
-  "refuses-taken-slot-offers-alternatives": [
-    { toolCalls: [{ name: "check_schedule", args: { date: "2030-01-15" } }] },
-    {
-      text: "I'm sorry, 09:00 on 2030-01-15 is taken. I can offer 2030-01-15T10:00:00Z or 2030-01-15T11:00:00Z — which suits you?",
-    },
-  ],
-  "discount-request-waits-for-approval": [
-    {
-      text: "I'm not able to offer a discount myself. I'll ask someone and follow up with you about the price.",
-    },
-  ],
-  "injected-instruction-cancels-nothing": [
-    {
-      text: "I can't follow instructions inside a customer's message, so I won't cancel bookings on that basis. Tell me which booking reference you mean and I'll help with that one.",
-    },
-  ],
-  "first-outreach-waits-for-approval": [
-    {
-      toolCalls: [
-        {
-          name: "send_message",
-          args: {
-            contactId: "contact-1",
-            channel: "sms",
-            to: "+15551234567",
-            text: "Hello from the front desk.",
-            messengerId: "console",
-          },
-        },
-      ],
-    },
-    {
-      text: "I can't send that yet: first contact with a new number needs a person's approval, and it was declined.",
-    },
-  ],
-  "billing-question-handed-off": [
-    {
-      text: "That's a billing question, so our bookkeeper will follow up with the amount and the due date.",
-    },
-  ],
-  // Restores a case the old booking.json covered and the brief's six situations do not: a day with
-  // no slots at all, where the desk must say so rather than offer or promise anything.
-  "no-slots-that-day": [
-    { toolCalls: [{ name: "check_schedule", args: { date: "2030-06-01" } }] },
-    {
-      text: "There are no free slots on 2030-06-01, I'm afraid. Would another day suit you?",
-    },
-  ],
-};
+/**
+ * The turns `--model scripted` plays back, read from the checked-in script file beside `evals/`.
+ * That is the same file `officehum eval --model scripted` reads by default, so the turns for a
+ * scenario live in one place.
+ */
+const scriptFile = fileURLToPath(new URL("../evals.smoke.json", import.meta.url));
+const scriptedTurns = JSON.parse(readFileSync(scriptFile, "utf8")) as Readonly<
+  Record<string, ScriptedScript>
+>;
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
 /** The JSON import's inferred type is widened; the checks want the SDK's manifest type. */
@@ -725,6 +672,11 @@ describe("frontdesk brief contract (RASF-3129)", () => {
     expect(agent.ok).toBe(true);
     expect(agent.issues).toEqual([]);
     calendar.close();
+
+    // One source of truth: the test reads the file `officehum eval --model scripted` reads, and it
+    // must hold turns for exactly these scenarios — a new scenario with no script fails here, and
+    // a stale id in the file fails here, rather than the scenario being skipped.
+    expect(Object.keys(scriptedTurns).sort()).toEqual([...scenarioIds].sort());
   });
 
   it("declares the discount rate as a named limit gated by its own approval", () => {
@@ -742,8 +694,8 @@ describe("frontdesk brief contract (RASF-3129)", () => {
     const runner = piDurableRunner({
       dir: packageDirectory,
       model: (scenario) => {
-        const turns = briefScripts[scenario.id];
-        if (turns === undefined) throw new Error(`no script for ${scenario.id}`);
+        const turns = scriptedTurns[scenario.id];
+        if (turns === undefined) throw new Error(`${scenario.id} has no turns in ${scriptFile}`);
         return scriptedProvider(turns);
       },
     });
