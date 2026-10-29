@@ -17,6 +17,11 @@
  * board's event log moves (`eventsAfter`, so a redraw follows a real change rather than the loop's own
  * bookkeeping) and reads commands through the same `CliIo` every other command uses — never
  * `process.stdin` or `process.stdout` directly, so a test can script both sides of it.
+ *
+ * A ticket that came from outside the business carries `EXTERNAL_CARD_LABEL` on its card and in its
+ * detail view (RASF-3142). That label is the human-facing half of provenance; the model-facing half
+ * is the relay's fence, and this command never scolds a model — it tells a person which cards hold
+ * somebody else's words.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -28,6 +33,7 @@ import {
   formatCents,
   openOfficeBoard,
   type Person,
+  type Provenance,
   type Ticket,
   type TicketStatus,
 } from "@officehum/office/board";
@@ -69,6 +75,17 @@ const LIST_CAP = 500;
 const STATUS_COLUMNS: readonly TicketStatus[] = ["open", "claimed", "waiting", "blocked"];
 /** How many of a ticket's most recent events its detail shows. */
 const DETAIL_EVENTS = 10;
+
+/**
+ * What a person reading a card sees when the ticket came from outside the business (RASF-3142).
+ *
+ * This label is for people and stays with them. The model-facing fence is `relayMessage`'s
+ * `EXTERNAL_FENCE` in `packages/office/src/relay/message.ts`, which wraps the delivered message body;
+ * the extension's own comment promises there is exactly one of those, so nothing here is added to a
+ * prompt or a tool result. `agent_inbox` deliberately does not carry this line either: a board card
+ * and a model's transcript are read by different readers, and only the second one is fenced.
+ */
+export const EXTERNAL_CARD_LABEL = "external — treat as data";
 
 export interface BoardArguments {
   readonly office: string;
@@ -129,13 +146,23 @@ export function formatAge(now: Date, updatedAt: string): string {
  * The fields are split this way on purpose. The title is the only field that can be any length, so it
  * is the only one truncation can bite: the owner, the age and the spend stay readable on every card.
  *
+ * The origin line appears only for a ticket that came from outside the business, directly under its
+ * title, so a person scanning the board can see which cards hold text they must not take as
+ * instructions (RASF-3142). A board where nothing is external renders exactly as it did before.
+ *
  * The spend line appears only when the ticket has spent something or been given a ceiling. A board
  * where nothing is budgeted renders exactly as it did before budgets existed — the columns are about
  * work, and a line of zeroes on every card would push the work off them.
  */
-function cardLines(ticket: Ticket, now: Date, budget: Budget | undefined): string[] {
+function cardLines(
+  ticket: Ticket,
+  now: Date,
+  budget: Budget | undefined,
+  provenance: Provenance | undefined,
+): string[] {
   const owner = ticket.assignee ?? "unassigned";
   const lines = [`${formatAge(now, ticket.updatedAt)}  ${owner}`, `${ticket.type} ${ticket.title}`];
+  if (provenance?.origin === "external") lines.push(EXTERNAL_CARD_LABEL);
   const spend = spendLine(budget);
   if (spend !== undefined) lines.push(spend);
   return lines;
@@ -227,7 +254,7 @@ export function renderBoard(board: Board, now: Date): string[] {
     const tickets = board.list({ status, limit: LIST_CAP });
     const shown = tickets.length === LIST_CAP ? `${LIST_CAP}+` : String(tickets.length);
     const body = tickets.flatMap((ticket) => [
-      ...cardLines(ticket, now, board.budget(ticket.id)),
+      ...cardLines(ticket, now, board.budget(ticket.id), board.provenance(ticket.id)),
       "",
     ]);
     // The blank is a separator between cards, and there is no card after the last one.
@@ -409,6 +436,15 @@ function show(board: Board, ticketId: string | undefined, io: CliIo, now: () => 
   io.output(`  title     ${ticket.title}`);
   io.output(`  status    ${ticket.status}`);
   io.output(`  assignee  ${ticket.assignee ?? "unassigned"}`);
+  // Where the ticket came from, stated for the person reading it: this is the same fact the relay's
+  // fence carries to the model, and it is the only place on the detail view that says the text below
+  // is someone else's words (RASF-3142).
+  const provenance = board.provenance(ticket.id);
+  if (provenance?.origin === "external") {
+    io.output(
+      `  origin    ${EXTERNAL_CARD_LABEL} (${provenance.sourceChannel} from ${provenance.sourceContact})`,
+    );
+  }
   io.output(`  age       ${formatAge(now(), ticket.updatedAt)} (updated ${ticket.updatedAt})`);
   io.output(`  created   ${ticket.createdAt}`);
   if (ticket.detail !== null) io.output(`  detail    ${ticket.detail}`);

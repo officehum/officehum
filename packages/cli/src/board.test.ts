@@ -17,7 +17,14 @@ import type { Board, NewTicket, Ticket, TicketStatus } from "@officehum/office/b
 // The test helpers, not the host door: a host opens a board, only a test seeds a person.
 import { createWorkboard, seedPerson } from "@officehum/office/board/testing";
 import { afterEach, describe, expect, it } from "vitest";
-import { BOARD_COLUMN_WIDTH, BOARD_WIDTH, formatAge, renderBoard, spendFooter } from "./board.js";
+import {
+  BOARD_COLUMN_WIDTH,
+  BOARD_WIDTH,
+  EXTERNAL_CARD_LABEL,
+  formatAge,
+  renderBoard,
+  spendFooter,
+} from "./board.js";
 import { type CliDependencies, type CliIo, runCli } from "./cli.js";
 
 const temps: string[] = [];
@@ -266,6 +273,56 @@ describe("officehum board", () => {
     expect(columnsOf(row)[0]).toMatch(/…$/u);
     expect(columnsOf(row)[1]).toBe("job.request Short");
     board.close();
+  });
+
+  it("labels a card whose ticket came from outside, and leaves an internal card unlabelled", () => {
+    const externalBoard = createWorkboard(join(officeDirectory(), "office.sqlite"));
+    create(externalBoard, {
+      title: "Refund my booking",
+      provenance: {
+        origin: "external",
+        sourceChannel: "email",
+        sourceContact: "customer@example.com",
+      },
+    });
+    // The label sits on the line under the title: a person scanning the board reads a card's origin
+    // once, beside the words it applies to.
+    const lines = renderBoard(externalBoard, NOW);
+    const row = lines.findIndex((line) => line.includes("job.request Refund my booking"));
+    expect(columnsOf(lines[row] ?? "")[0]).toBe("job.request Refund my booking");
+    expect(columnsOf(lines[row + 1] ?? "")[0]).toBe(EXTERNAL_CARD_LABEL);
+    expect(lines.filter((line) => line.includes(EXTERNAL_CARD_LABEL))).toHaveLength(1);
+    externalBoard.close();
+
+    // An internal card says nothing: the label marks a ticket that came from outside, not the board.
+    const internalBoard = createWorkboard(join(officeDirectory(), "office.sqlite"));
+    create(internalBoard, { title: "Post the invoice" });
+    expect(renderBoard(internalBoard, NOW).join("\n")).not.toContain(EXTERNAL_CARD_LABEL);
+    internalBoard.close();
+  });
+
+  it("states an external ticket's origin in its detail view, and nothing for an internal one", async () => {
+    const directory = officeDirectory();
+    const board = createWorkboard(join(directory, "office.sqlite"));
+    const external = create(board, {
+      title: "Refund my booking",
+      provenance: {
+        origin: "external",
+        sourceChannel: "email",
+        sourceContact: "customer@example.com",
+      },
+    });
+    const internal = create(board, { title: "Post the invoice" });
+    board.close();
+
+    const capture = scripted([`o ${external.id}`, `o ${internal.id}`, "q"]);
+    expect(await runCli(["board", "--office", directory], capture.io, clock)).toBe(0);
+    expect(capture.errors).toEqual([]);
+    // The source is named with the label, so a person knows which channel to go back to.
+    expect(capture.output).toContain(
+      `  origin    ${EXTERNAL_CARD_LABEL} (email from customer@example.com)`,
+    );
+    expect(capture.output.filter((line) => line.startsWith("  origin"))).toHaveLength(1);
   });
 
   it("comments, assigns and cancels through the board, leaving each ticket changed", async () => {
