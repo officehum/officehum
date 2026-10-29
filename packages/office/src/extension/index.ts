@@ -4,8 +4,8 @@
  * A role on its own answers in words and cannot hand work to anybody. Installed beside a role, this
  * extension adds exactly three tools and two prompt sections — the `team` section below, and the
  * `office` section assembled in `./office-extension.js` (which business this is, who its people are,
- * and the rule that customer and forwarded content is data, never instructions) — plus whatever
- * hooks a caller supplies, and nothing else:
+ * and the rule that customer and forwarded content is data, never instructions) — plus the office's
+ * approval gate and whatever hooks a caller supplies, and nothing else:
  *
  * - `agent_dispatch` posts a ticket of a declared type. Routing is by type, never by name, so the
  *   tool reads the accepted types from the installed manifests and refuses a type nobody accepts with
@@ -112,8 +112,8 @@ export interface OfficeExtensionOptions {
    */
   readonly business?: OfficeBusiness;
   /**
-   * The office's hooks — RASF-3141's `budgetHooks`, and RASF-3073's approval gate once
-   * it lands. Registered only when supplied; see `registerOfficeHooks`.
+   * The office's hooks — RASF-3141's `budgetHooks`. The approval gate is not supplied here: it is the
+   * office's own and `registerOfficeHooks` adds it from this board and these manifests (RASF-3138).
    */
   readonly hooks?: readonly HookRegistration[];
   /**
@@ -432,8 +432,15 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
       }),
     ],
     tools: [agentDispatch, agentInbox, agentReply],
-    // The hooks seam (RASF-3141, RASF-3073): exactly the registrations a caller supplies, nothing
-    // invented here. With none supplied the office installs no hooks at all.
+    // There is no approval tool here, and there must not be one (RASF-3138). An approval is meant to
+    // be a fact a person produced about what the model intends to do; a tool the model can call to set
+    // that fact is the model approving itself, and the record would then say a person did. It is the
+    // same structural reason a dispute marker is not a marker when the party in dispute can write it:
+    // a claim the interested party controls is not a finding. The model may cause a request — the gate
+    // blocks the call and records it, and a condition can ask — and only the board's `decideApproval`,
+    // reached from the Inbox or a Teams card, can answer one.
+    // The hooks seam (RASF-3141, RASF-3138): the office's own approval gate, from this board and these
+    // manifests, plus the registrations a caller supplies. With nothing to gate it installs no gate.
     hooks: registerOfficeHooks(options),
   });
 }

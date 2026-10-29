@@ -19,6 +19,19 @@
  */
 
 /**
+ * The Inbox over this board: what a screen or a Teams card reads, and where a person's decision is
+ * recorded (RASF-3138). It is here rather than at the package root because it is a reading of the
+ * board — a host that opens the board is exactly the host that lists and decides its approvals, and
+ * one door is easier to keep honest than two.
+ */
+export {
+  type ApprovalInbox,
+  type ApprovalInboxDetail,
+  type ApprovalInboxItem,
+  type ApprovalInboxOptions,
+  openApprovalInbox,
+} from "../approvals/inbox.js";
+/**
  * Money, written the way the board writes it. A host that renders a card prints `$0.01`, and it has to
  * be the same string the block reason used — a second formatter would make the card and the refusal
  * disagree about the same integer.
@@ -26,7 +39,14 @@
 export { formatCents } from "../spend/prices.js";
 export {
   type AgentSpend,
+  type Approval,
+  type ApprovalDecisionInput,
+  type ApprovalFilter,
+  type ApprovalRequestInput,
+  type ApprovalStatus,
+  type ApprovalStore,
   type Assignee,
+  argsHash,
   type BlockOptions,
   type Board,
   BoardError,
@@ -37,6 +57,7 @@ export {
   type ChargeResult,
   type CompleteOptions,
   type ConversationTicket,
+  canonicalArgs,
   type ListFilter,
   type NewTicket,
   type Origin,

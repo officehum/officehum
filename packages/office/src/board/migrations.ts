@@ -14,6 +14,7 @@
  * agent id or a `people.id`), and the API validates parent and person ids at write time.
  */
 import type { DatabaseSync } from "node:sqlite";
+import { canonicalArgs, hashOfCanonical } from "./approvals.js";
 
 export interface Migration {
   readonly version: number;
@@ -222,11 +223,138 @@ function addSpendAccounting(database: DatabaseSync): void {
   `);
 }
 
+/**
+ * Migration 5 rebuilds `approvals` (RASF-3138): the exact arguments an approval covers, who asked,
+ * who is asked, when the wait ends, and the two ways a wait can end without a person — `expired` and
+ * `cancelled`.
+ *
+ * Why a rebuild rather than the `ALTER TABLE ADD COLUMN` every earlier step uses: SQLite cannot alter
+ * a CHECK constraint, and the one migration 1 wrote admits only `waiting`, `approved` and `declined`.
+ * A cancelled or expired approval is a row the schema must be able to hold, or the API would have to
+ * delete a request to end its wait — losing the record that a person was ever asked. The table is
+ * created fresh, copied row by row (so `args_hash` can be computed from each row's own arguments),
+ * dropped and renamed.
+ *
+ * This is expand-only in spirit, which is the part that matters to a host: no column is dropped and
+ * none changes meaning. The new columns are appended after the old ones, old rows keep their ids,
+ * decisions and timestamps, and a row not yet waiting on a person is the only thing that can move —
+ * `expired` and `cancelled` are legal values, never a rewrite of what somebody decided.
+ *
+ * `args_hash` is computed here rather than left NULL, so a decision taken before this upgrade still
+ * covers the arguments it was taken about. A legacy row whose `args_json` will not parse cannot be
+ * given a hash that any call would match; it is kept verbatim, hashed as its raw text (which matches
+ * nothing the API computes) and, if it was still waiting, closed as `cancelled` with a note saying
+ * why. Failing closed and keeping the record beats a migration that invents an approval.
+ */
+function rebuildApprovals(database: DatabaseSync): void {
+  type LegacyApproval = {
+    id: string;
+    ticket_id: string;
+    approval_id: string;
+    tool: string;
+    args_json: string;
+    status: string;
+    decided_by: string | null;
+    decided_at: string | null;
+    decided_note: string | null;
+    created_at: string;
+  };
+  const legacy = database.prepare("SELECT * FROM approvals").all() as LegacyApproval[];
+
+  database.exec(`
+    CREATE TABLE approvals_v5 (
+      id TEXT PRIMARY KEY,
+      ticket_id TEXT NOT NULL,
+      approval_id TEXT NOT NULL,
+      tool TEXT NOT NULL,
+      args_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'waiting'
+        CHECK (status IN ('waiting','approved','declined','expired','cancelled')),
+      decided_by TEXT, decided_at TEXT, decided_note TEXT,
+      created_at TEXT NOT NULL,
+      args_hash TEXT NOT NULL,              -- sha256 of the canonical args_json
+      requested_by TEXT,                    -- null on rows written before a requester was recorded
+      assignee TEXT,                        -- the people.id asked, when one was named
+      expires_at TEXT                       -- deadline for the decision; null waits
+    );
+  `);
+
+  const insert = database.prepare(
+    `INSERT INTO approvals_v5
+       (id, ticket_id, approval_id, tool, args_json, status, decided_by, decided_at, decided_note,
+        created_at, args_hash, requested_by, assignee, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
+  );
+  for (const row of legacy) {
+    let argsJson = row.args_json;
+    let hash: string;
+    let status = row.status;
+    let note = row.decided_note;
+    try {
+      argsJson = canonicalArgs(JSON.parse(row.args_json));
+      hash = hashOfCanonical(argsJson);
+    } catch {
+      hash = hashOfCanonical(row.args_json);
+      if (status === "waiting") {
+        status = "cancelled";
+        note = "arguments could not be read when the approvals table was rebuilt";
+      }
+    }
+    insert.run(
+      row.id,
+      row.ticket_id,
+      row.approval_id,
+      row.tool,
+      argsJson,
+      status,
+      row.decided_by,
+      row.decided_at,
+      note,
+      row.created_at,
+      hash,
+    );
+  }
+
+  database.exec(`
+    -- Two identical asks while both wait are one ask; the later one is cancelled rather than dropped,
+    -- so the record still says a person was asked twice. Nothing in this build wrote the old table, so
+    -- this is the hand-edited case, and it must not stop the unique index below from being created.
+    UPDATE approvals_v5
+       SET status = 'cancelled',
+           decided_note = 'an identical request on the same ticket was already waiting'
+     WHERE status = 'waiting'
+       AND rowid NOT IN (
+         SELECT MIN(rowid) FROM approvals_v5 WHERE status = 'waiting'
+          GROUP BY ticket_id, tool, args_hash
+       );
+
+    DROP TABLE approvals;
+    ALTER TABLE approvals_v5 RENAME TO approvals;
+
+    CREATE INDEX IF NOT EXISTS approvals_ticket ON approvals (ticket_id);
+    -- One waiting ask per (ticket, tool, arguments), enforced by the file rather than by the caller:
+    -- a model that retries every turn cannot grow the inbox by one row per retry. Partial, because a
+    -- decided request may legitimately be re-asked for the same call later.
+    CREATE UNIQUE INDEX IF NOT EXISTS approvals_waiting
+      ON approvals (ticket_id, tool, args_hash) WHERE status = 'waiting';
+
+    -- The first decision stands, whoever writes second. The API refuses a second decision before it
+    -- reaches SQL; this trigger is the line that holds for a writer that never went through the API.
+    CREATE TRIGGER IF NOT EXISTS approvals_decision_immutable
+    BEFORE UPDATE ON approvals
+    WHEN OLD.status IN ('approved','declined','expired','cancelled')
+    BEGIN
+      SELECT RAISE(ABORT, 'approvals decision is immutable: a decided request cannot be changed');
+    END;
+  `);
+}
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: createWorkboard },
   { version: 2, up: createRelay },
   { version: 3, up: addTicketResult },
   { version: 4, up: addSpendAccounting },
+  { version: 5, up: rebuildApprovals },
 ];
 
 for (const [index, migration] of MIGRATIONS.entries()) {

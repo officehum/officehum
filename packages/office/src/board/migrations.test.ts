@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { type NewTicket, openBoard } from "./index.js";
+import { argsHash, type NewTicket, openBoard } from "./index.js";
 import { applyMigrations, MIGRATIONS } from "./migrations.js";
 
 const temps: string[] = [];
@@ -149,11 +149,17 @@ describe("board migrations", () => {
       "decided_at",
       "decided_note",
       "created_at",
+      // Added by migration 5's rebuild, so they land at the end too.
+      "args_hash",
+      "requested_by",
+      "assignee",
+      "expires_at",
     ]);
     expect(columns(database, "people")).toEqual(["id", "name", "roles"]);
 
     // Immutability is a schema fact, not an API convention.
     expect(names(database, "trigger")).toEqual([
+      "approvals_decision_immutable",
       "comments_append_only_delete",
       "comments_append_only_update",
       "spend_ledger_append_only_delete",
@@ -271,6 +277,106 @@ describe("board migrations", () => {
         (upgraded.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
       ).toBe(MIGRATIONS.length);
       expect(upgraded.prepare("SELECT COUNT(*) AS n FROM tickets").get()).toEqual({ n: 1 });
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("upgrades a version-4 database in place, keeping its approval rows (migration 5)", () => {
+    const file = boardFile();
+    const at = "2026-10-20T00:00:00.000Z";
+    const old = new DatabaseSync(file);
+    for (const migration of MIGRATIONS.filter((step) => step.version <= 4)) migration.up(old);
+    old.exec("PRAGMA user_version = 4");
+    old
+      .prepare(
+        `INSERT INTO tickets (id, type, title, payload, status, assignee, created_by, created_at,
+                              updated_at)
+         VALUES ('t1', 'refund.request', 'Refund the deposit', '{}', 'claimed', 'bookkeeper',
+                 'front-desk', ?, ?)`,
+      )
+      .run(at, at);
+    const insertApproval = old.prepare(
+      `INSERT INTO approvals
+         (id, ticket_id, approval_id, tool, args_json, status, decided_by, decided_at, decided_note,
+          created_at)
+       VALUES (?, 't1', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    // Waiting, and written with its keys in the order the old caller happened to emit them.
+    insertApproval.run(
+      "a1",
+      "large_refund",
+      "issue_refund",
+      '{"to":"acme","amount":500}',
+      "waiting",
+      null,
+      null,
+      null,
+      at,
+    );
+    // Decided before the upgrade: the decision and its note are the part nobody may lose.
+    insertApproval.run(
+      "a2",
+      "large_refund",
+      "issue_refund",
+      '{"amount":2}',
+      "declined",
+      "maria",
+      at,
+      "Not this month.",
+      at,
+    );
+    old.close();
+
+    const board = openBoard(file);
+    try {
+      // The hash is computed during the rebuild from the row's own arguments, so key order in the
+      // legacy text does not matter and the row still covers the call it was asked about.
+      expect(board.approvals.approvalOf("a1")).toMatchObject({
+        status: "waiting",
+        tool: "issue_refund",
+        args: { to: "acme", amount: 500 },
+        argsHash: argsHash({ amount: 500, to: "acme" }),
+        requestedBy: null,
+        assignee: null,
+        expiresAt: null,
+      });
+      expect(board.approvals.approvalOf("a2")).toMatchObject({
+        status: "declined",
+        decidedBy: "maria",
+        decidedNote: "Not this month.",
+      });
+      expect(board.approvals.pendingApprovals().map((row) => row.id)).toEqual(["a1"]);
+
+      board.approvals.decideApproval("a1", { by: "maria", decision: "approved" });
+      expect(
+        board.approvals.approvalCovering(
+          "t1",
+          "issue_refund",
+          argsHash({ amount: 500, to: "acme" }),
+        )?.id,
+      ).toBe("a1");
+    } finally {
+      board.close();
+    }
+
+    const upgraded = new DatabaseSync(file);
+    try {
+      expect(
+        (upgraded.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+      ).toBe(MIGRATIONS.length);
+      expect(upgraded.prepare("SELECT COUNT(*) AS n FROM approvals").get()).toEqual({ n: 2 });
+
+      // The vocabulary the v4 CHECK would have refused: a cancelled or expired request is a row the
+      // rebuilt table must hold, and an invented status is still refused.
+      const insertV5 = upgraded.prepare(
+        `INSERT INTO approvals
+           (id, ticket_id, approval_id, tool, args_json, status, created_at, args_hash)
+         VALUES (?, 't1', 'large_refund', 'issue_refund', '{}', ?, ?, '0')`,
+      );
+      expect(() => insertV5.run("a3", "cancelled", at)).not.toThrow();
+      expect(() => insertV5.run("a4", "expired", at)).not.toThrow();
+      expect(() => insertV5.run("a5", "reconsidering", at)).toThrow(/CHECK/);
     } finally {
       upgraded.close();
     }

@@ -23,32 +23,30 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { type ApprovalStore, openApprovalStore } from "./approvals.js";
+import { BoardError, type BoardErrorKind, fail } from "./errors.js";
 import { applyMigrations } from "./migrations.js";
 import { openRelayLedger, type RelayLedger } from "./relay-ledger.js";
 
 export type TicketStatus = "open" | "claimed" | "waiting" | "blocked" | "done" | "cancelled";
 export type Origin = "internal" | "external";
 export type Assignee = { readonly kind: "agent" | "person"; readonly id: string };
-export type BoardErrorKind =
-  | "not_found"
-  | "invalid_status"
-  | "unauthorized"
-  | "duplicate_key"
-  | "immutable"
-  | "max_hops"
-  | "invalid_person"
-  | "invalid_argument";
 
-export class BoardError extends Error {
-  constructor(
-    readonly kind: BoardErrorKind,
-    message: string,
-    readonly details?: unknown,
-  ) {
-    super(message);
-    this.name = "BoardError";
-  }
-}
+export {
+  type Approval,
+  type ApprovalDecisionInput,
+  type ApprovalFilter,
+  type ApprovalRequestInput,
+  type ApprovalStatus,
+  type ApprovalStore,
+  argsHash,
+  canonicalArgs,
+} from "./approvals.js";
+/**
+ * The refusal type lives in `./errors.js` so the approvals store can throw it too; it is re-exported
+ * here because every existing caller imports it from the board.
+ */
+export { BoardError, type BoardErrorKind };
 
 export interface NewTicket {
   readonly type: string;
@@ -274,6 +272,11 @@ export interface Board {
   people(): Person[];
   /** The ticket's provenance row, or `undefined` when it has none. */
   provenance(ticketId: string): Provenance | undefined;
+  /**
+   * The approvals store over this board's handle (RASF-3138): the durable record of what was asked,
+   * what a person decided, and exactly which arguments a decision covers.
+   */
+  readonly approvals: ApprovalStore;
   /** The relay's cursor, delivery ledger and wait index, over this board's handle. */
   readonly relay: RelayLedger;
   close(): void;
@@ -357,10 +360,6 @@ type BudgetLimits = {
   readonly maxUsdCents: number | null;
   readonly maxCalls: number | null;
 };
-
-function fail(kind: BoardErrorKind, message: string, details?: unknown): BoardError {
-  return new BoardError(kind, message, details);
-}
 
 function bounded(value: unknown, label: string, maximum = 500): string {
   if (typeof value !== "string") throw fail("invalid_argument", `${label} must be a string.`);
@@ -685,6 +684,9 @@ export function openBoard(file: string): Board {
 
   const now = (): string => new Date().toISOString();
   const ledger = openRelayLedger(database);
+  // The approvals store shares this handle, so a decision and the ticket it is about are one history:
+  // the gate that reads a decision sees the row the person's screen committed.
+  const approvals = openApprovalStore(database);
 
   /**
    * A trigger abort is the ledger refusing a write. Surfacing it as `immutable` keeps a caller from
@@ -913,6 +915,10 @@ export function openBoard(file: string): Board {
       }
       moveTicket.run(to, row.assignee, now(), id);
       if (result !== undefined) setResult.run(result, id);
+      // A cancelled ticket takes its waiting approvals with it: nobody should be asked to decide a
+      // request for work that has already been called off. Decided ones are untouched — a person's
+      // answer is a fact even when the ticket it was about went away.
+      if (to === "cancelled") approvals.cancelWaitingApprovals(id, closer);
       appendEvent(id, kind, closer, result === undefined ? {} : { result });
       return toTicket(requireTicket(id));
     });
@@ -1243,6 +1249,7 @@ export function openBoard(file: string): Board {
           };
     },
     relay: ledger,
+    approvals,
     close() {
       database.close();
     },
