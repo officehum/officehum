@@ -7,10 +7,13 @@
  * model from the overlays and leaves the rest of the role alone, and the role's manifest is not
  * mutated by any of it.
  *
- * The last test is the one that matters most while nothing is built: with no hooks supplied the
- * office installs no hooks at all. It asserts that, rather than asserting a comment, so the gap
- * RASF-3074 (budget, hop, provenance) and RASF-3073 (approvals) will fill is visible in the suite.
- * Nothing here caps a budget or asks a person, and none of these tests pretends otherwise.
+ * The hooks seam is where this file's claims changed with RASF-3138. It is no longer a pass-through:
+ * an agent whose manifest declares an approval gets a `beforeTool` gate on the tool task, and an
+ * office with nothing declared installs nothing of its own. Both are asserted, because "the office
+ * holds this call until a person says yes" has to be a claim about the registrations it installs.
+ *
+ * Nothing here runs a model to make those points: a gate is a registration, and the registration is
+ * what the extension hands the harness.
  *
  * Everything runs offline and deterministically: a scripted provider stands in for the model and the
  * board and harness are real SQLite files in a temp directory, exactly as the office extension's own
@@ -28,7 +31,9 @@ import {
   defineTool,
   type Extension,
   type HookRegistration,
+  hook,
   section,
+  ToolTask,
 } from "@earendil-works/pi-durable";
 import type { AgentManifest, RoleBundle } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
@@ -111,6 +116,22 @@ const BOOK_MANIFEST = manifestOf(BOOK, "Bookkeeper", "Invoices completed jobs.",
 ]);
 /** The office's roster, in the order the fixture declares it. */
 const OFFICE_PEOPLE: readonly AgentManifest[] = [FRONT_MANIFEST, BOOK_MANIFEST];
+
+/**
+ * The same front desk, as an agent whose manifest declares a tool that waits for a person. RASF-3138's
+ * gate reads `approvals[]` from the manifest, so the fixture carries both shapes: one agent with
+ * nothing to gate and one with something.
+ */
+const REFUND_MANIFEST: AgentManifest = {
+  ...FRONT_MANIFEST,
+  approvals: [
+    {
+      id: "large_refund",
+      tool: "issue_refund",
+      description: "A refund the customer did not ask for in writing",
+    },
+  ],
+};
 
 /** The fixture tool a role brings with it; the office must add to it, never replace it. */
 const FIXTURE_TOOL = `fixture_note_${FRONT}`;
@@ -344,30 +365,101 @@ describe("officeConversation", () => {
 });
 
 describe("the hooks seam", () => {
-  it("installs no hooks while none are supplied", async () => {
+  it("installs no hook of its own when the agent declares nothing to gate", async () => {
     const fixture = await openFixture();
     try {
       const extension = fixture.extension(BUSINESS);
 
-      // The seam is real but empty: no budget cap, no hop count, no approval is wired by anything in
-      // this issue, and none is implied by the parameter existing.
+      // Nothing in this manifest declares an approval, so there is nothing to hold: an inert gate would
+      // be a registration pretending to be a policy. A budget cap is still the caller's to supply.
       expect(extension.hooks ?? []).toHaveLength(0);
       expect(registerOfficeHooks({})).toEqual([]);
+      expect(registerOfficeHooks({ board: fixture.board })).toEqual([]);
     } finally {
       await fixture.close();
     }
   });
 
-  it("registers exactly the hooks a caller supplies", async () => {
+  it("registers the approval gate for a tool the agent's manifest declares", async () => {
+    const fixture = await openFixture();
+    try {
+      const extension = officeExtension({
+        board: fixture.board,
+        relay: fixture.relay,
+        role: FRONT,
+        people: [REFUND_MANIFEST, BOOK_MANIFEST],
+        settings: { provenance: PROVENANCE },
+      });
+
+      const registered = extension.hooks ?? [];
+      expect(registered).toHaveLength(1);
+      // The tool task is the only one that can refuse a call before it runs, so that is where a gate
+      // must sit. `hook(ToolTask, {})` is the same registration shape, without the handlers.
+      expect(registered[0]?.task).toBe(hook(ToolTask, {}).task);
+      expect(Object.keys(registered[0]?.handlers ?? {})).toContain("beforeTool");
+
+      // The seam alone reaches the same answer, and another agent's declaration does not gate this one.
+      expect(
+        registerOfficeHooks({ board: fixture.board, role: FRONT, people: [REFUND_MANIFEST] }),
+      ).toHaveLength(1);
+      expect(
+        registerOfficeHooks({
+          board: fixture.board,
+          role: BOOK,
+          people: [REFUND_MANIFEST, BOOK_MANIFEST],
+        }),
+      ).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("installs nothing of its own without a board to record a request on", async () => {
+    const fixture = await openFixture();
+    try {
+      // A gate with nowhere to write would block every gated call forever, so the declaration alone is
+      // not enough: the office needs its board.
+      expect(registerOfficeHooks({ role: FRONT, people: [REFUND_MANIFEST] })).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("registers exactly the hooks a caller supplies, after the gate or in its absence", async () => {
     const fixture = await openFixture();
     try {
       const supplied: HookRegistration = { task: "officehum.budget", handlers: {} };
       const extension = fixture.extension(BUSINESS);
 
       expect(registerOfficeHooks({ hooks: [supplied] })).toEqual([supplied]);
-      // Nothing else arrives with them: the assembly adds no hook of its own.
+      // Nothing else arrives with them: the assembly adds no hook of its own when there is no board.
       expect(registerOfficeHooks({ hooks: [supplied] })).toHaveLength(1);
       expect(extension.hooks ?? []).toHaveLength(0);
+
+      // With a gate to install, the caller's registrations still arrive unchanged — after it.
+      const both = registerOfficeHooks({
+        board: fixture.board,
+        role: FRONT,
+        people: [REFUND_MANIFEST],
+        hooks: [supplied],
+      });
+      expect(both).toHaveLength(2);
+      expect(both[1]).toBe(supplied);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("offers the model no tool that can decide an approval", async () => {
+    const fixture = await openFixture();
+    try {
+      const extension = fixture.extension(BUSINESS);
+      const names = extension.tools?.map((tool) => tool.name) ?? [];
+
+      // The office's tools are the three it ships, and none of them answers an approval: a decision
+      // tool would let the model grant its own request, and the record would then say a person did.
+      expect(names).toEqual([...OFFICE_TOOL_NAMES]);
+      expect(names.filter((name) => /approv|decid|reject|deny|grant/.test(name))).toEqual([]);
     } finally {
       await fixture.close();
     }

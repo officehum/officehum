@@ -12,11 +12,13 @@
  * `office`. Nothing here edits or wraps a role's own tools: a role is portable, and the assembly is by
  * reference — it reads `role.agent`, never writes it.
  *
- * The hooks seam is a pass-through, and that is deliberate. RASF-3141's budget hooks exist as
- * `budgetHooks` in `../spend/budget.js`, and an office supplies them here (`hooks`); RASF-3073's
- * approval gate does not exist yet. `registerOfficeHooks` returns exactly the registrations a caller
- * supplies and never adds one of its own, so a reader can tell whose policy is running: an office that
- * supplies none installs none, and its test asserts that rather than leaving it to assumption.
+ * The hooks seam is no longer a pass-through. RASF-3141's budget hooks exist as `budgetHooks` in
+ * `../spend/budget.js` and an office supplies them here (`hooks`); the approval gate is the office's
+ * own and is registered by this module (RASF-3138), because it reads the board rather than a caller's
+ * policy: an agent whose manifest declares approvals gets a `beforeTool` gate whether or not anything
+ * was supplied alongside it. An office with no board still installs nothing of its own — there is
+ * nowhere to record a request — and an office whose agents declare no approvals gets no gate either,
+ * which the suite asserts so "the office gates this tool" stays a claim about a declaration.
  */
 import {
   type AgentChange,
@@ -26,6 +28,7 @@ import {
   section,
 } from "@earendil-works/pi-durable";
 import type { AgentManifest, Approver, RoleBundle } from "@officehum/sdk";
+import { approvalHooks } from "../approvals/gate.js";
 import type { Board } from "../board/index.js";
 
 /** The prompt section key: which business this is, who its people are, and the data rule. */
@@ -171,32 +174,68 @@ export function officeConversation(role: RoleBundle, overlays: OfficeOverlays): 
 }
 
 /**
- * The hooks the office installs on its roles' conversations, as the issues that own them land:
- * RASF-3141's `budgetHooks`, and RASF-3073's approval gate once that gate exists.
+ * The hooks the office installs on its roles' conversations: its own approval gate, plus whatever a
+ * caller supplies.
  *
- * Neither is invented here and neither is defaulted. This assembly's job is to pass a caller's
- * registrations through unchanged, so an office that supplies none installs none — which the suite
- * asserts, because "the office enforces a budget" has to be a claim about the hooks it was given.
+ * `board` is what the gate reads and writes. Without it the gate is not registered at all — a gate with
+ * nowhere to record a request would block every gated call forever — and the seam then behaves exactly
+ * as it did before this issue, returning the caller's registrations unchanged.
+ *
+ * `role` and `people` are how the gate learns which tools wait for a person: the installed manifest for
+ * this agent declares them in `officehum.json` (`approvals[].tool`). When it declares none, no gate is
+ * registered. A hook that allowed every call would be an inert registration dressed as a policy, and
+ * that is the shape this issue is meant to end.
  */
 export interface OfficeHookSeam {
-  /** RASF-3141's `budgetHooks` — and RASF-3073's approval gate, once that gate exists. */
+  /** RASF-3141's `budgetHooks`. Installed unchanged, after the gate. */
   readonly hooks?: readonly HookRegistration[];
-  /**
-   * RASF-3073's approver, accepted now so the seam's shape does not change when the gate lands. The
-   * gate that consumes it is 3073's to build; this module registers nothing from it.
-   */
+  /** RASF-3073's approver, accepted so the seam's shape does not change. Nothing here consumes it. */
   readonly approve?: Approver;
+  /** The office's workboard: where the gate records a request and reads a decision. */
+  readonly board?: Board;
+  /** This agent's manifest id; selects whose declared approvals gate the calls. */
+  readonly role?: string;
+  /** The office's agents, as installed manifests: the source of the declared approvals. */
+  readonly people?: readonly AgentManifest[];
+  /** Gate exactly these tools instead of the ones the manifests declare. */
+  readonly gatedTools?: readonly string[];
+  /** How long a request waits for a decision. Omitted: until someone decides or the ticket is cancelled. */
+  readonly approvalTtlMs?: number;
 }
 
 /**
- * The hooks the assembly installs: exactly the registrations a caller supplies, and no more.
+ * The approvals an agent's manifest declares, as the tool names they gate.
  *
- * Nothing is added here, and nothing is enforced by this function existing. What an office supplies is
- * `budgetHooks({ board, prices })` for RASF-3141 and, when it lands, RASF-3073's gate; what it does not
- * supply it does not get, and an office with no hooks installs none. The suite asserts that shape, so
- * "the office caps spend" stays a claim about the registrations a caller passed rather than one about
- * this module's good intentions.
+ * The declaration is the role's own statement — "`issue_refund` waits for a person" — and it is already
+ * validated by `@officehum/sdk`'s `checkAgent`. Reading it here rather than inventing a list means the
+ * office enforces what the manifest says, and a tool nobody declared is never gated by surprise.
+ */
+function declaredTools(people: readonly AgentManifest[], role: string | undefined): string[] {
+  if (role === undefined) return [];
+  const manifest = people.find((entry) => entry.id === role);
+  if (manifest === undefined) return [];
+  return [...new Set(manifest.approvals.map((approval) => approval.tool))].sort();
+}
+
+/**
+ * The hooks the assembly installs: the office's approval gate when it has anything to gate, then
+ * exactly the registrations a caller supplies.
+ *
+ * The gate comes first so its refusal is the one the model reads: it names the person who has been
+ * asked, and a budget hook's refusal would say the ticket is blocked instead. Ordering does not weaken
+ * the budget — a gated call that the gate allows still meets every later hook.
  */
 export function registerOfficeHooks(seam: OfficeHookSeam): readonly HookRegistration[] {
-  return seam.hooks === undefined ? [] : [...seam.hooks];
+  const supplied = seam.hooks === undefined ? [] : [...seam.hooks];
+  if (seam.board === undefined) return supplied;
+  const gated = seam.gatedTools ?? declaredTools(seam.people ?? [], seam.role);
+  if (gated.length === 0) return supplied;
+  return [
+    ...approvalHooks({
+      board: seam.board,
+      gatedTools: gated,
+      ...(seam.approvalTtlMs === undefined ? {} : { ttlMs: seam.approvalTtlMs }),
+    }),
+    ...supplied,
+  ];
 }
