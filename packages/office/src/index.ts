@@ -96,8 +96,11 @@ export {
   type StoredInboundReceipt,
 } from "./resend-inbox.js";
 export {
+  type InboundDisposition,
+  type InboundOutcome,
   openResendListener,
   type ResendListener,
+  type TwilioHookOptions,
 } from "./resend-listener.js";
 export {
   openResendMessenger,
