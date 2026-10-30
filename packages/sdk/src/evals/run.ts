@@ -46,6 +46,22 @@ export interface ApprovalRecord {
   readonly decidedBy: string | null;
 }
 
+/**
+ * One ticket the harness had when a trial ended, and the budget's own numbers for it.
+ *
+ * The numbers are the board's, not a caller's reading of them, so a scenario about a ceiling asserts
+ * the ceiling the board enforced (`usedCalls` against `maxCalls`) instead of a sentence in a refusal.
+ */
+export interface TicketSummary {
+  readonly id: string;
+  readonly type: string;
+  readonly status: string;
+  readonly hopCount: number;
+  readonly maxHops: number;
+  readonly usedCalls: number;
+  readonly maxCalls: number | null;
+}
+
 /** What happened in one run of a scenario. */
 export interface Trace {
   /**
@@ -70,6 +86,17 @@ export interface Trace {
   readonly approvals: readonly ApprovalRecord[];
   /** Ticket types delegated through the office extension; always empty on a bare harness. */
   readonly delegated: readonly string[];
+  /**
+   * Every text the model read in this trial, in transcript order: prompts, user input, its own
+   * messages and every tool result.
+   *
+   * A scenario that proves an injection arrived — rather than assuming the fixture that wrote it
+   * delivered it — searches this. A red-team pass that skipped it could go green on a typo'd stub, a
+   * renamed tool, or a delivery that never happened.
+   */
+  readonly received?: readonly string[];
+  /** The office's tickets when the trial ended. Absent on a bare harness, which has no board. */
+  readonly tickets?: readonly TicketSummary[];
   /** The agent's final answer, if it gave one. */
   readonly reply?: string;
   readonly turns: number;

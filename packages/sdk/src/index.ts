@@ -73,6 +73,7 @@ export {
   type RunEvalsOptions,
   runEvals,
   type ScenarioReport,
+  type TicketSummary,
   type Trace,
   type TrialReport,
 } from "./evals/run.js";
