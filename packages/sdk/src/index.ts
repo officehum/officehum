@@ -65,7 +65,9 @@ export {
 } from "./engine.js";
 export {
   type AgentRunner,
+  type ApprovalRecord,
   type EvalReport,
+  type ExecutedCall,
   formatReport,
   gradeTrace,
   type RunEvalsOptions,

@@ -127,7 +127,7 @@ export interface CliDependencies {
 
 const USAGE = `Usage:
   officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE]
-  officehum eval ROLE_DIR [--model provider/model] [--tag TAG] [--trials N] [--script FILE]
+  officehum eval ROLE_DIR [--model provider/model] [--tag TAG] [--trials N] [--script FILE] [--mode bare|office]
   officehum demo [--state DIR] [--approval allow|deny] [--calendar local] [--messenger console]
   officehum start --message TEXT --request-id ID [--state DIR] [--provider paper|openai] [--model ID] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
   officehum resume [--state DIR] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]

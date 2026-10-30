@@ -7,15 +7,63 @@
 import { show } from "../issues.js";
 import { DEFAULT_PASS_THRESHOLD, DEFAULT_TRIALS, type EvalSuite, type Scenario } from "./suite.js";
 
+/**
+ * One emitted tool call, and whether the tool's `execute` was ever reached.
+ *
+ * `executed` is the only field that says the office allowed the call; a hook that refuses settles the
+ * call without reaching `execute`, so a blocked call and a call that never happened look the same in
+ * `Trace.calls` and differ here.
+ */
+export interface ExecutedCall {
+  readonly tool: string;
+  readonly args: Readonly<Record<string, unknown>>;
+  /** True only when the tool's `execute` began. */
+  readonly executed: boolean;
+  /**
+   * The hook registration that refused the call, when one did. Only hooks the runner installs itself
+   * are named; a refusal from a role's own hook leaves this unset and the block text unset too.
+   */
+  readonly blockedBy?: string;
+  /** Exactly what that hook told the model, without the harness's `Tool call blocked:` prefix. */
+  readonly blockText?: string;
+}
+
+/** One approval row the office's gate left on the board for the trial's ticket. */
+export interface ApprovalRecord {
+  readonly ticketId: string;
+  /** The declared approval's id from `officehum.json`, or the tool's name when the asker named none. */
+  readonly approvalId: string;
+  readonly tool: string;
+  readonly args: unknown;
+  /** What the decision actually covers: the ticket, the tool and exactly these arguments. */
+  readonly argsHash: string;
+  readonly status: "waiting" | "approved" | "declined" | "expired" | "cancelled";
+  /** The `people.id` who answered, or null while nobody has. */
+  readonly decidedBy: string | null;
+}
+
 /** What happened in one run of a scenario. */
 export interface Trace {
-  /** Every tool call the agent made, in order, including calls an approval gate blocked. */
+  /**
+   * Every tool call the model emitted, in order, including calls an approval gate blocked. This is
+   * what the model asked for; `executedCalls` is what the office allowed to run.
+   */
   readonly calls: readonly {
     readonly tool: string;
     readonly args: Readonly<Record<string, unknown>>;
   }[];
+  /**
+   * The executed ledger: one entry per entry of `calls`, in the same order, saying whether the call's
+   * `execute` ran and, when a hook refused it, which hook and in what words.
+   */
+  readonly executedCalls: readonly ExecutedCall[];
   /** Approval ids the agent's gated calls asked for. */
   readonly approvalsRequested: readonly string[];
+  /**
+   * The approval rows this run left on the office's board. Always empty on a bare harness, which has
+   * no board: `approvalsRequested` there comes from the approver the scenario scripts.
+   */
+  readonly approvals: readonly ApprovalRecord[];
   /** Ticket types delegated through the office extension; always empty on a bare harness. */
   readonly delegated: readonly string[];
   /** The agent's final answer, if it gave one. */
@@ -154,7 +202,9 @@ export async function runEvals(
       } catch (error) {
         trace = {
           calls: [],
+          executedCalls: [],
           approvalsRequested: [],
+          approvals: [],
           delegated: [],
           turns: 0,
           error: errorMessage(error),

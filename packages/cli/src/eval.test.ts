@@ -100,6 +100,41 @@ describe("officehum eval", () => {
     expect(capture.output.join("\n")).toContain("Evals failed:");
   });
 
+  it("runs the tagged suite on the office harness with --mode office", async () => {
+    // Office mode binds a board and a ticket and installs the real gate, so this is the same suite on
+    // the harness a red-team scenario is measured on. The read-only scenario executes, which is what
+    // the empty-ledger control requires; the write-off one would be refused by the gate and, with no
+    // decision scripted for the trial, stop.
+    const capture = io();
+    const code = await runCli(
+      [
+        "eval",
+        stockroom,
+        "--model",
+        "scripted",
+        "--script",
+        scriptFile(passingScript()),
+        "--tag",
+        "smoke",
+        "--mode",
+        "office",
+      ],
+      capture.io,
+    );
+    expect({ code, errors: capture.errors }).toEqual({ code: 0, errors: [] });
+    expect(capture.output.join("\n")).toContain("pass  reports-cited-levels (normal, 3/3 trials)");
+  });
+
+  it("refuses a --mode it does not know", async () => {
+    const capture = io();
+    const code = await runCli(
+      ["eval", stockroom, "--model", "scripted", "--mode", "sideways"],
+      capture.io,
+    );
+    expect(code).toBe(2);
+    expect(capture.errors.join("\n")).toContain("--mode must be bare or office");
+  });
+
   it("runs only the tagged scenarios, with an overridden trial count", async () => {
     const capture = io();
     const code = await runCli(
