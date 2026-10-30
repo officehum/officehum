@@ -72,6 +72,12 @@ export {
   readMessengerIdentity,
 } from "./messenger-identity.js";
 export {
+  OFFICE_CONFIG_FILE,
+  type OfficeConfig,
+  type OfficeConfigFile,
+  openOfficeConfig,
+} from "./office-config.js";
+export {
   canonicalJson as canonicalInboundJson,
   canonicalMailbox,
   type InboundAttachment,
@@ -127,6 +133,18 @@ export {
   type RoleRunOptions,
   type RoleRunResult,
 } from "./roles/run-role.js";
+export {
+  emailInText,
+  openSmsIntake,
+  SMS_CALLBACK_TYPE,
+  SMS_CREATED_BY,
+  SmsConversationDoc,
+  type SmsIntake,
+  type SmsIntakeOptions,
+  type SmsRoute,
+  SmsRoutesDoc,
+  smsEnvelope,
+} from "./sms-intake.js";
 export {
   type ConnectorIdentity,
   type GoogleConnectorIdentity,

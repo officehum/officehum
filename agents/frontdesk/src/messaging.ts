@@ -3,7 +3,15 @@ import { defineDoc, defineTool, type ToolRegistration } from "@earendil-works/pi
 import type { ApprovalCondition } from "@officehum/sdk";
 import { ContactsDoc } from "./contacts.js";
 
-export type MessageChannel = "email" | "sms";
+/**
+ * The one channel this role can send on.
+ *
+ * SMS used to be here, and it was reachable: the tool offered it, and the delivery path validated an
+ * E.164 destination for it. RASF-3162 buys SMS inbound only, so the channel is gone rather than
+ * hidden — a type with one member is what a schema of one member compiles from, and there is no
+ * branch left in this file that could accept a phone number.
+ */
+export type MessageChannel = "email";
 export type MessageIntent = { to: string; channel: MessageChannel; text: string };
 export type DeliveryReceipt = { id: string; status: "recorded" | "accepted" };
 
@@ -45,7 +53,6 @@ type SendArguments = {
 type MessageIntentMemo = Omit<MessageRecord, "delivery">;
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
-const PHONE = /^\+[1-9][0-9]{6,14}$/u;
 
 function hasForbiddenControl(value: string, allowMessageWhitespace = false): boolean {
   return [...value].some((character) => {
@@ -69,14 +76,10 @@ function exactBounded(value: string, label: string, maximum: number): string {
   return value;
 }
 
-function validTarget(channel: MessageChannel, value: string): string {
-  const target = exactBounded(value, "Message destination", channel === "email" ? 254 : 16);
-  if (channel === "email") {
-    if (target !== target.toLowerCase() || !EMAIL.test(target)) {
-      throw new Error("Email destination must be a canonical lowercase email address.");
-    }
-  } else if (!PHONE.test(target)) {
-    throw new Error("SMS destination must be a canonical international phone number.");
+function validTarget(value: string): string {
+  const target = exactBounded(value, "Message destination", 254);
+  if (target !== target.toLowerCase() || !EMAIL.test(target)) {
+    throw new Error("Email destination must be a canonical lowercase email address.");
   }
   return target;
 }
@@ -91,13 +94,31 @@ function validText(value: string): string {
   return value;
 }
 
+/**
+ * The delivery layer's refusal: the second of the two places outbound SMS is refused.
+ *
+ * The tool's schema no longer offers `sms`, which stops a model expressing the call. That is a check
+ * at the edge, and edges move — a persisted intent written by an older build, a host that calls a
+ * messenger itself, a helper added later — so the last function before a message leaves this role
+ * refuses anything but email too. The two fail differently: the schema is a model that cannot say it,
+ * this is a delivery that will not do it. It refuses by name so the failure says why rather than
+ * looking like a typo in a destination.
+ */
+export function deliverableChannel(channel: unknown): "email" {
+  if (channel !== "email") {
+    throw new Error(
+      "The Front Desk sends email only: SMS is inbound, and a reply to a text goes out as email.",
+    );
+  }
+  return "email";
+}
+
 function normalizedArguments(args: SendArguments): SendArguments {
-  const channel = args.channel;
-  if (channel !== "email" && channel !== "sms") throw new Error("Unknown message channel.");
+  const channel = deliverableChannel(args.channel);
   return {
     contactId: exactBounded(args.contactId, "Contact ID", 200),
     channel,
-    to: validTarget(channel, args.to),
+    to: validTarget(args.to),
     text: validText(args.text),
     messengerId: exactBounded(args.messengerId, "Messenger ID", 200),
   };
@@ -129,7 +150,7 @@ function assertPinned(
     !Number.isSafeInteger(pinned.contactRevision) ||
     typeof pinned.contactName !== "string" ||
     typeof pinned.to !== "string" ||
-    (pinned.channel !== "email" && pinned.channel !== "sms") ||
+    pinned.channel !== "email" ||
     typeof pinned.text !== "string"
   ) {
     throw new Error("This messaging call identity was already used with different arguments.");
@@ -218,8 +239,7 @@ export const firstContactCondition: ApprovalCondition = async (raw, environment,
     if (contacts === undefined || !Array.isArray(contacts.contacts)) return true;
     const contact = contacts.contacts.find(({ id }) => id === args.contactId);
     if (contact === undefined) return true;
-    const destination = args.channel === "email" ? contact.email : contact.phone;
-    if (destination !== args.to) return true;
+    if (contact.email !== args.to) return true;
     const state = await environment.read.snapshot(MessagesDoc, context);
     if (state === undefined) return true;
     if (!Array.isArray(state.messages)) return true;
@@ -235,7 +255,7 @@ export const firstContactCondition: ApprovalCondition = async (raw, environment,
           !Number.isSafeInteger(message.contactRevision) ||
           typeof message.contactName !== "string" ||
           typeof message.to !== "string" ||
-          (message.channel !== "email" && message.channel !== "sms") ||
+          message.channel !== "email" ||
           typeof message.text !== "string" ||
           typeof message.delivery?.id !== "string" ||
           (message.delivery.status !== "recorded" && message.delivery.status !== "accepted"),
@@ -265,11 +285,13 @@ export function messagingTools(messenger?: Messenger): ToolRegistration[] {
   const transport = messenger?.identity ?? "unconfigured";
   const send = defineTool({
     name: "send_message",
-    description: `Send an explicit saved-contact message through messenger ${transport}. This call raises the approval request for a person and sends the message when they grant it; the first message to a destination on this transport waits for that person.`,
+    description: `Send an explicit saved-contact email through messenger ${transport}. This call raises the approval request for a person and sends the message when they grant it; the first message to a destination on this transport waits for that person. The Front Desk does not send SMS: an inbound text is answered by email.`,
     parameters: Type.Object(
       {
         contactId: Type.String(),
-        channel: Type.Union([Type.Literal("email"), Type.Literal("sms")]),
+        // Email only. `sms` is not a value the model can express, which is the first of the two
+        // layers that keep outbound SMS dead; see `deliverableChannel` for the second.
+        channel: Type.Literal("email"),
         to: Type.String(),
         text: Type.String(),
         messengerId: Type.String(),
@@ -302,8 +324,7 @@ export function messagingTools(messenger?: Messenger): ToolRegistration[] {
         const contacts = await api.snapshot(ContactsDoc, context);
         const contact = contacts?.contacts.find(({ id }) => id === args.contactId);
         if (contact === undefined) throw new Error(`Unknown contact ${args.contactId}.`);
-        const destination = args.channel === "email" ? contact.email : contact.phone;
-        if (destination !== args.to) {
+        if (contact.email !== args.to) {
           throw new Error("Contact destination mismatch. List current contacts before retrying.");
         }
         pinned = await api.memo<MessageIntentMemo>(
@@ -328,7 +349,7 @@ export function messagingTools(messenger?: Messenger): ToolRegistration[] {
       }
       const delivery = deliveryReceipt(
         await messenger.send(
-          { to: pinned.to, channel: pinned.channel, text: pinned.text },
+          { to: pinned.to, channel: deliverableChannel(pinned.channel), text: pinned.text },
           { requestId: pinned.key },
         ),
       );

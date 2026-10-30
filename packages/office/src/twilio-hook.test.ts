@@ -12,6 +12,8 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   EMPTY_TWIML,
+  FAKE_NUMBER,
+  FakeNumberProvisioner,
   rateLimitWindow,
   TWILIO_FORM_CONTENT_TYPE,
   twilioSignature,
@@ -19,6 +21,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import type { Board } from "./board/index.js";
 import { createWorkboard } from "./board/testing.js";
+import { openOfficeConfig } from "./office-config.js";
 import type { ResendInbox } from "./resend-inbox.js";
 import type { InboundOutcome, ResendListener, TwilioHookOptions } from "./resend-listener.js";
 import { openResendListener } from "./resend-listener.js";
@@ -92,7 +95,13 @@ interface Harness {
 }
 
 async function harness(
-  options: { rateLimit?: TwilioHookOptions["rateLimit"] } = {},
+  options: {
+    rateLimit?: TwilioHookOptions["rateLimit"];
+    isRegistered?: TwilioHookOptions["isRegistered"];
+    onInbound?: TwilioHookOptions["onInbound"];
+    businessNumber?: string;
+    config?: TwilioHookOptions["config"];
+  } = {},
 ): Promise<Harness> {
   const file = officeFile();
   const board = createWorkboard(file);
@@ -102,10 +111,15 @@ async function harness(
     port: 0,
     twilio: {
       authToken: TOKEN,
-      businessNumber: BUSINESS,
+      businessNumber: options.businessNumber ?? BUSINESS,
       board: board.sms,
-      onInbound: (outcome) => outcomes.push(outcome),
-      ...options,
+      ...(options.config === undefined ? {} : { config: options.config }),
+      onInbound: async (outcome) => {
+        outcomes.push(outcome);
+        await options.onInbound?.(outcome);
+      },
+      ...(options.isRegistered === undefined ? {} : { isRegistered: options.isRegistered }),
+      ...(options.rateLimit === undefined ? {} : { rateLimit: options.rateLimit }),
     },
   });
   cleanups.push(async () => {
@@ -333,6 +347,106 @@ describe("Twilio webhook route", () => {
     });
     expect(response.status).toBe(404);
     expect(await response.text()).toBe("not found\n");
+  });
+
+  it("exempts a number the host says is a contact's from the stranger's ceiling", async () => {
+    const window = { limit: 1, windowMs: 60 * 60 * 1000 };
+    const { post, outcomes, file } = await harness({
+      rateLimit: window,
+      isRegistered: (from) => from === CUSTOMER,
+    });
+
+    for (const sid of ["SM1", "SM2", "SM3"]) {
+      expect((await post({ MessageSid: sid, SmsSid: sid })).status).toBe(200);
+    }
+    expect(outcomes.map((outcome) => outcome.disposition)).toEqual([
+      "recorded",
+      "recorded",
+      "recorded",
+    ]);
+    // A customer's texts cost the office nothing it has to meter, so no counter row is written.
+    expect(rows(file, "sms_rate")).toBe(0);
+
+    // A stranger is still held to it, on the same route and the same window.
+    expect((await post({ From: OTHER, MessageSid: "SM4" })).status).toBe(200);
+    expect((await post({ From: OTHER, MessageSid: "SM5" })).status).toBe(200);
+    expect(outcomes.at(-1)?.disposition).toBe("rate_limited");
+  });
+
+  it("reads the business number from the config a provisioner wrote", async () => {
+    // The number a route answers to is a stored fact, not an argument: this is the path a host takes.
+    expect(FAKE_NUMBER).toBe(BUSINESS);
+    const directory = mkdtempSync(join(tmpdir(), "officehum-twilio-config-"));
+    directories.push(directory);
+    const config = openOfficeConfig(join(directory, "office.config.json"));
+    await new FakeNumberProvisioner(FAKE_NUMBER, config).provision("acme-hvac");
+
+    const board = createWorkboard(join(directory, "office.sqlite"));
+    const outcomes: InboundOutcome[] = [];
+    const listener = await openResendListener({
+      inbox: idleInbox(),
+      port: 0,
+      twilio: {
+        authToken: TOKEN,
+        config,
+        board: board.sms,
+        onInbound: (outcome) => void outcomes.push(outcome),
+      },
+    });
+    cleanups.push(async () => {
+      await listener.close();
+      board.close();
+    });
+
+    const params = form();
+    const url = `${listener.address}/hooks/twilio`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": TWILIO_FORM_CONTENT_TYPE,
+        "x-twilio-signature": twilioSignature(TOKEN, url, params),
+      },
+      body: new URLSearchParams(params).toString(),
+    });
+    expect(response.status).toBe(200);
+    expect(outcomes.map((outcome) => outcome.disposition)).toEqual(["recorded"]);
+  });
+
+  it("refuses to start when nothing has been provisioned", async () => {
+    const board = createWorkboard(officeFile());
+    cleanups.push(() => board.close());
+    const directory = mkdtempSync(join(tmpdir(), "officehum-twilio-empty-"));
+    directories.push(directory);
+    await expect(
+      openResendListener({
+        inbox: idleInbox(),
+        port: 0,
+        twilio: {
+          authToken: TOKEN,
+          config: openOfficeConfig(join(directory, "office.config.json")),
+          board: board.sms,
+        },
+      }),
+    ).rejects.toThrow(/no business number/);
+  });
+
+  it("drops the duplicate row when the hand-off fails, so the retry is a second chance", async () => {
+    let failing = true;
+    const { post, outcomes, file } = await harness({
+      onInbound: () => {
+        if (failing) throw new Error("the office is not attached");
+      },
+    });
+
+    // The route recorded the message, then could not hand it on. Twilio is told so, and the row that
+    // would swallow its retry as a duplicate is gone.
+    expect((await post()).status).toBe(503);
+    expect(rows(file, "sms_inbound")).toBe(0);
+
+    failing = false;
+    expect((await post()).status).toBe(200);
+    expect(rows(file, "sms_inbound")).toBe(1);
+    expect(outcomes.map((outcome) => outcome.disposition)).toEqual(["recorded", "recorded"]);
   });
 
   it("refuses to start with a placeholder secret or a number that is not E.164", async () => {

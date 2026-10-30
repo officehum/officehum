@@ -13,6 +13,19 @@ export interface NumberProvisioner {
 }
 
 /**
+ * Where a provisioned number is written down.
+ *
+ * A provisioner that only answers hands a number to whoever asked, and the webhook route is not that
+ * caller: it starts later, in another process, and has to know which number is this office's or every
+ * text is refused as somebody else's. So the number is written to the office's own config when it is
+ * provisioned, and the route reads it from there — one stored fact, not a number repeated in a
+ * command line and a deployment file that can drift apart.
+ */
+export interface NumberSink {
+  setSmsBusinessNumber(number: E164): void;
+}
+
+/**
  * Twilio's documented "magic" US number, from 555-0100–555-0199 — the range reserved for fiction, which
  * Twilio routes but no person receives. It is a real, valid E.164 number, so a fake-provisioned office
  * behaves like a provisioned one; it is nobody's number, so a mistake in a test cannot text a stranger.
@@ -30,11 +43,13 @@ export const FAKE_NUMBER = "+15005550006";
 export class FakeNumberProvisioner implements NumberProvisioner {
   readonly calls: Array<{ readonly companyId: string; readonly number: E164 }> = [];
   readonly #number: E164;
+  readonly #sink: NumberSink | undefined;
 
-  constructor(number: string = FAKE_NUMBER) {
+  constructor(number: string = FAKE_NUMBER, sink?: NumberSink) {
     const parsed = parseE164(number);
     if (parsed === undefined) throw new Error("A fake provisioner still needs an E.164 number.");
     this.#number = parsed;
+    this.#sink = sink;
   }
 
   provision(companyId: string): Promise<{ readonly number: E164 }> {
@@ -42,6 +57,7 @@ export class FakeNumberProvisioner implements NumberProvisioner {
       throw new Error("A number is provisioned for a company, not for nobody.");
     }
     this.calls.push({ companyId, number: this.#number });
+    this.#sink?.setSmsBusinessNumber(this.#number);
     return Promise.resolve({ number: this.#number });
   }
 }

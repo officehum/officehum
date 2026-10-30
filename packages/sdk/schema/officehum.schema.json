@@ -402,10 +402,49 @@
     "channels": {
       "type": "array",
       "items": {
-        "enum": [
-          "email",
-          "sms",
-          "chat"
+        "anyOf": [
+          {
+            "enum": [
+              "email",
+              "sms",
+              "chat"
+            ]
+          },
+          {
+            "type": "object",
+            "required": [
+              "channel",
+              "direction"
+            ],
+            "properties": {
+              "channel": {
+                "enum": [
+                  "email",
+                  "sms",
+                  "chat"
+                ]
+              },
+              "direction": {
+                "enum": [
+                  "inbound",
+                  "outbound",
+                  "both"
+                ]
+              },
+              "replyBy": {
+                "enum": [
+                  "email",
+                  "sms",
+                  "chat"
+                ]
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 160
+              }
+            },
+            "additionalProperties": false
+          }
         ]
       }
     },

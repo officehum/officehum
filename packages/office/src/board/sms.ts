@@ -11,6 +11,8 @@
  * MessageSid, so "already seen" and "now recorded" have to be one decision: a `SELECT` followed by an
  * `INSERT` lets two deliveries interleave, both read as unseen, and the office ends up with two tickets
  * about one text. Letting the primary key answer makes the second delivery a no-op by construction.
+ * The only delete is `forgetInbound`, used when the route recorded a message and then could not hand
+ * it on: that row would otherwise turn the provider's retry into a duplicate of work nobody did.
  *
  * The rate counter is incremented before it is read, and a message that takes the count past the limit
  * is refused while still counting. A flood therefore climbs in the table instead of pinning at the
@@ -25,6 +27,15 @@ export type SmsOptOutState = "stop" | "start";
 export interface SmsStore {
   /** Record the provider's message id; false when it was already recorded. */
   recordInboundOnce(messageSid: string, at: string): boolean;
+  /**
+   * Forget a message id, so the provider's retry is treated as a first delivery.
+   *
+   * This exists for one case: the route recorded the message, then could not hand it to the office.
+   * The record exists to stop a retry creating a second ticket, and a retry after a failed hand-off is
+   * the retry that should create the first one — so the row is removed rather than allowed to swallow
+   * the provider's only second chance. It is not a general delete: nothing else calls it.
+   */
+  forgetInbound(messageSid: string): void;
   /** Replace a number's state with what they just said. */
   setOptOut(number: string, state: SmsOptOutState, at: string): void;
   /** The number's latest state, or `undefined` for a number that never said either word. */
@@ -51,6 +62,7 @@ export function openSmsStore(database: DatabaseSync): SmsStore {
   const insertInbound = database.prepare(
     "INSERT OR IGNORE INTO sms_inbound (message_sid, received_at) VALUES (?, ?)",
   );
+  const deleteInbound = database.prepare("DELETE FROM sms_inbound WHERE message_sid = ?");
   const upsertOptOut = database.prepare(
     `INSERT INTO sms_optouts (number, state, at) VALUES (?, ?, ?)
      ON CONFLICT(number) DO UPDATE SET state = excluded.state, at = excluded.at`,
@@ -81,6 +93,12 @@ export function openSmsStore(database: DatabaseSync): SmsStore {
       const sid = text(messageSid, "A MessageSid");
       const receivedAt = text(at, "A receive time");
       return transact(() => Number(insertInbound.run(sid, receivedAt).changes) > 0);
+    },
+    forgetInbound(messageSid) {
+      const sid = text(messageSid, "A MessageSid");
+      transact(() => {
+        deleteInbound.run(sid);
+      });
     },
     setOptOut(number, state, at) {
       const who = text(number, "A number");

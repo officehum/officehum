@@ -228,6 +228,41 @@ describe("relay routing table", () => {
       await fixture.close();
     }
   });
+
+  it("never delivers a ticket that was created already assigned to a person", async () => {
+    // A callback ticket is filed for a person from the first event: handing its creation to an agent
+    // as well would put the same work in two places, and put a stranger's text in front of a desk that
+    // must not answer it. The creation is the event that would do that, so it is the one skipped.
+    const directory = DIRECTORY();
+    seedPerson(join(directory, "office.sqlite"), "pat", "Pat");
+    const fixture = await openFixture({
+      directory,
+      script: [{ text: "unused" }],
+      roles: (model) => [{ roleKey: ROLE, accepts: [TYPE], model }],
+    });
+    try {
+      const ticket = fixture.board.create(
+        {
+          type: TYPE,
+          title: "Call back a stranger",
+          createdBy: "sms-inbound",
+          provenance: { origin: "external", sourceChannel: "sms", sourceContact: "a number" },
+          assignee: { kind: "person", id: "pat" },
+        },
+        "callback",
+      );
+      await fixture.relay.pollOnce();
+
+      const [row] = fixture.board.relay.deliveriesForTicket(ticket.id);
+      expect(row?.state).toBe("skipped");
+      expect(row?.targetKey).toBe("");
+      expect(fixture.scripted.calls).toBe(0);
+      // The cursor moved past it: a skipped event is accounted for, not left to be retried forever.
+      expect(fixture.board.relay.cursor()).toBeGreaterThan(0);
+    } finally {
+      await fixture.close();
+    }
+  });
 });
 
 describe("relay delivery", () => {

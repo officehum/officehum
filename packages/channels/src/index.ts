@@ -20,6 +20,7 @@ export {
   FAKE_NUMBER,
   FakeNumberProvisioner,
   type NumberProvisioner,
+  type NumberSink,
 } from "./provision.js";
 export {
   admitWithin,

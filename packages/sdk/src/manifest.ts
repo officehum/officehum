@@ -26,6 +26,33 @@ export const DEPARTMENTS = [
 /** Where a role may face the business's own customers. */
 export const CHANNELS = ["email", "sms", "chat"] as const;
 
+/** Which way a channel runs, when it is not symmetrical. */
+export const CHANNEL_DIRECTIONS = ["inbound", "outbound", "both"] as const;
+
+/**
+ * A channel, as either a name or a declaration that says something the name cannot.
+ *
+ * `"email"` is the shorthand, and it means the role can face a customer on it in both directions. The
+ * object form exists because a channel can be one-way: the Front Desk receives texts and answers them
+ * by email, and a bare `"sms"` would tell every reader — a card, an operator, the role's own prompt —
+ * that outbound SMS is a thing this office does. A declaration that names the direction is the
+ * difference between "we use SMS" and "customers can text us", and only the second is true.
+ */
+const ChannelDeclaration = Type.Union([
+  Type.Enum([...CHANNELS]),
+  Type.Object(
+    {
+      channel: Type.Enum([...CHANNELS]),
+      direction: Type.Enum([...CHANNEL_DIRECTIONS]),
+      /** Where a reply goes when this channel cannot carry one. Must be a channel the role declares. */
+      replyBy: Type.Optional(Type.Enum([...CHANNELS])),
+      /** One line a reader sees beside the channel. */
+      note: Type.Optional(Type.String({ maxLength: 160 })),
+    },
+    { additionalProperties: false },
+  ),
+]);
+
 /** Pi Durable thinking levels a manifest may recommend. */
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
@@ -366,7 +393,7 @@ export const ManifestSchema = Type.Object(
     connectors: Type.Array(KebabId),
     approvals: Type.Array(ApprovalDeclaration),
     limits: Type.Optional(Type.Record(Type.String(), LimitDeclaration)),
-    channels: Type.Array(Type.Enum([...CHANNELS])),
+    channels: Type.Array(ChannelDeclaration),
     accepts: Type.Array(AcceptDeclaration),
     /** Ticket types this role hands to other roles, and when. */
     dispatches: Type.Optional(Type.Array(DispatchDeclaration)),
@@ -383,6 +410,8 @@ export const ManifestSchema = Type.Object(
 export type AgentManifest = Static<typeof ManifestSchema>;
 export type Department = (typeof DEPARTMENTS)[number];
 export type Channel = (typeof CHANNELS)[number];
+export type ChannelDirection = (typeof CHANNEL_DIRECTIONS)[number];
+export type ChannelDeclaration = Static<typeof ChannelDeclaration>;
 export type ToolDeclaration = Static<typeof ToolDeclaration>;
 export type ApprovalDeclaration = Static<typeof ApprovalDeclaration>;
 export type LimitDeclaration = Static<typeof LimitDeclaration>;
@@ -430,6 +459,11 @@ export function validateManifest(
     : { ok: true, value: manifest, issues: [] };
 }
 
+/** The channel a declaration names, whether it is the shorthand or the object form. */
+function channelName(declaration: Static<typeof ChannelDeclaration>): string {
+  return typeof declaration === "string" ? declaration : declaration.channel;
+}
+
 function crossFieldIssues(manifest: AgentManifest, source: string): Issue[] {
   const issues: Issue[] = [];
   const add = (path: string, message: string) => issues.push({ source, path, message });
@@ -455,7 +489,27 @@ function crossFieldIssues(manifest: AgentManifest, source: string): Issue[] {
   duplicates(manifest.dispatches ?? [], (dispatch) => dispatch.type, "dispatches", "ticket type");
   duplicates(manifest.skills, (skill) => skill.id, "skills", "skill");
   duplicates(manifest.connectors, (connector) => connector, "connectors", "connector");
-  duplicates(manifest.channels, (channel) => channel, "channels", "channel");
+  duplicates(manifest.channels, channelName, "channels", "channel");
+  // A declaration that says a reply leaves on another channel has to name one this role declares, and
+  // it cannot name itself: a channel that could carry the reply is the shorthand, and saying otherwise
+  // would leave a reader holding two answers to one question.
+  manifest.channels.forEach((declaration, index) => {
+    if (typeof declaration === "string" || declaration.replyBy === undefined) return;
+    const replyBy = declaration.replyBy;
+    if (replyBy === declaration.channel) {
+      add(
+        joinPath(joinPath("channels", index), "replyBy"),
+        `replyBy cannot be ${replyBy} itself; declare the channel without a direction instead`,
+      );
+      return;
+    }
+    if (!manifest.channels.some((candidate) => channelName(candidate) === replyBy)) {
+      add(
+        joinPath(joinPath("channels", index), "replyBy"),
+        `replyBy ${show(replyBy)} is not a channel this role declares`,
+      );
+    }
+  });
   duplicates(
     manifest.contextPlan?.retrieval?.sources ?? [],
     (source) => source.id,

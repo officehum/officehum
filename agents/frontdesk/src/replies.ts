@@ -57,17 +57,46 @@ const InboundConversationMarkerDoc = defineDoc<{ authorityId: string; senders: s
   initial: () => ({ authorityId: "", senders: [] }),
 });
 
+/** The marker `openSmsIntake` writes on a conversation that began as a text (RASF-3162). */
+const SmsConversationMarkerDoc = defineDoc<{
+  agent: string;
+  number: string;
+  contactId: string;
+  provenance: "external";
+}>({
+  kind: "officehum.sms.conversation",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "current",
+  initial: () => ({ agent: "", number: "", contactId: "", provenance: "external" }),
+});
+
 /** Defense in depth for customer conversations, including model calls that were not offered. */
 export function inboundCustomerToolGuard(): HookRegistration {
   return hook(ToolTask, {
     beforeTool: async (call, api, context) => {
       const marker = await api.snapshot(InboundConversationMarkerDoc, api.conversationId, context);
-      if (marker === undefined) return undefined;
-      if (call.name === "check_schedule" || call.name === "reply_message") return undefined;
-      return {
-        block:
-          "Inbound customer conversations may only check availability and reply to their authenticated email receipt.",
-      };
+      if (marker !== undefined) {
+        if (call.name === "check_schedule" || call.name === "reply_message") return undefined;
+        return {
+          block:
+            "Inbound customer conversations may only check availability and reply to their authenticated email receipt.",
+        };
+      }
+      // A conversation that began as a text has no email receipt to answer on, so its reply leaves by
+      // email through `send_message` — where a person's approval gates the first contact. Availability
+      // and that one reply are the whole of what a customer's text may cause; everything else here is
+      // the office's own work, not theirs.
+      const sms = await api.snapshot(SmsConversationMarkerDoc, api.conversationId, context);
+      if (sms !== undefined) {
+        if (call.name === "check_schedule" || call.name === "send_message") return undefined;
+        return {
+          block:
+            "A conversation that began as a text may only check availability and reply by email; the office does not send SMS.",
+        };
+      }
+      return undefined;
     },
   });
 }

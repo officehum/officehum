@@ -32,6 +32,7 @@ import {
   TwilioAdapter,
 } from "@officehum/channels";
 import type { SmsStore } from "./board/sms.js";
+import type { OfficeConfig } from "./office-config.js";
 import type { ResendInbox } from "./resend-inbox.js";
 
 export interface ResendListener {
@@ -54,10 +55,27 @@ const TIMEOUT = 10_000;
 export interface TwilioHookOptions {
   /** The account's auth token. Twilio issues 32 hexadecimal characters. */
   readonly authToken: string;
-  /** The provisioned number this office receives on, in E.164. */
-  readonly businessNumber: string;
+  /**
+   * The number this office receives on, in E.164, when the host knows it directly.
+   *
+   * Usually it does not: the number is provisioned once, by a provisioner, into the office's config,
+   * and this route reads it from there (see `config`). Naming it here as well would be the second copy
+   * that drifts.
+   */
+  readonly businessNumber?: string;
+  /** Where a provisioned number is read from, when `businessNumber` is not given. */
+  readonly config?: OfficeConfig;
   /** The board's SMS intake tables: the duplicate guard, opt-outs and the rate counter. */
   readonly board: SmsStore;
+  /**
+   * Is this sender a number a contact owns?
+   *
+   * The ceiling exists for a stranger, not for a customer with a job in flight, and this route cannot
+   * read the contact list itself — contacts live in the harness, behind the office's own documents.
+   * So the host answers, synchronously, from whatever it already holds. A host with no answer gets
+   * the conservative one: every sender is a stranger, and the ceiling applies to all of them.
+   */
+  readonly isRegistered?: (from: E164) => boolean;
   /**
    * The exact URL Twilio is configured to call. Behind a TLS-terminating proxy the request cannot say
    * its own public URL, so a host passes it here; otherwise it is reconstructed from the request's
@@ -67,11 +85,16 @@ export interface TwilioHookOptions {
   /** The ceiling for a sender this office has not registered. Three messages an hour by default. */
   readonly rateLimit?: RateLimit;
   /**
-   * What the route decided, for a host that counts or logs. The HTTP answer cannot say it: every
-   * accepted, duplicate and refused message gets the same 200, because a provider that is told "no"
-   * retries, and a retry of a rate-limited text is the flood the ceiling exists to stop.
+   * What the route decided, for a host that counts, logs, or routes. The HTTP answer cannot say it:
+   * every accepted, duplicate and refused message gets the same 200, because a provider that is told
+   * "no" retries, and a retry of a rate-limited text is the flood the ceiling exists to stop.
+   *
+   * A host that hands the message to an agent returns a promise, and the route waits for it before
+   * answering. That ordering is what makes a failure recoverable: Twilio has not been told the
+   * delivery succeeded, so it retries, and the duplicate row this route wrote is removed first (see
+   * `forgetInbound`) rather than left to swallow the retry.
    */
-  readonly onInbound?: (outcome: InboundOutcome) => void;
+  readonly onInbound?: (outcome: InboundOutcome) => void | Promise<void>;
 }
 
 /** What became of a verified inbound message. `rate_limited` is stored and refused, in that order. */
@@ -145,15 +168,25 @@ async function readBody(request: IncomingMessage): Promise<Uint8Array> {
 /**
  * The business number, checked once at startup. It is the whole of "is this text ours": a number that is
  * not E.164 would compare unequal to every message and turn the route into a quiet 404.
+ *
+ * The order is: what the host passed, then the office's config. A host that passed neither has not
+ * provisioned a number, and the route refuses to start rather than serving an endpoint that answers
+ * 404 to every real text — that failure looks exactly like a working server from the outside.
  */
 function businessNumberOf(options: TwilioHookOptions): E164 {
-  const parsed = parseE164(options.businessNumber);
-  if (parsed === undefined) {
+  const stated = options.businessNumber;
+  if (stated !== undefined) {
+    const parsed = parseE164(stated);
+    if (parsed !== undefined) return parsed;
     throw new Error(
       "The Twilio route needs a business number in E.164 form, with its country code.",
     );
   }
-  return parsed;
+  const provisioned = options.config?.smsBusinessNumber();
+  if (provisioned !== undefined) return provisioned;
+  throw new Error(
+    "The Twilio route has no business number: provision one into the office config first.",
+  );
 }
 
 /**
@@ -219,26 +252,45 @@ async function deliverTwilio(
 
   const message = result.message;
   if (!options.board.recordInboundOnce(message.messageSid, message.receivedAt)) {
-    options.onInbound?.({ message, disposition: "duplicate" });
+    await options.onInbound?.({ message, disposition: "duplicate" });
     return respondTwiml(response, 200);
   }
 
   const command = optOutCommand(message.body);
   if (command !== undefined) {
     options.board.setOptOut(message.from, command, message.receivedAt);
-    options.onInbound?.({ message, disposition: "opt_out" });
+    await options.onInbound?.({ message, disposition: "opt_out" });
     return respondTwiml(response, 200);
   }
 
-  const { allowed } = admitWithin(
-    options.board,
-    message.from,
-    message.receivedAt,
-    options.rateLimit ?? DEFAULT_SMS_RATE_LIMIT,
-  );
-  options.onInbound?.({ message, disposition: allowed ? "recorded" : "rate_limited" });
-  // A refusal is still a 200 with empty TwiML. The ceiling is the office's, not the provider's, so
-  // telling Twilio to retry would turn one flood into an unbounded stream of retries.
+  // A registered number is a customer, not a stranger: the ceiling exists to stop a flood, and one of
+  // this office's own customers asking three questions in an hour is a conversation, not a flood.
+  const registered = options.isRegistered?.(message.from) === true;
+  const allowed =
+    registered ||
+    admitWithin(
+      options.board,
+      message.from,
+      message.receivedAt,
+      options.rateLimit ?? DEFAULT_SMS_RATE_LIMIT,
+    ).allowed;
+  const outcome: InboundOutcome = { message, disposition: allowed ? "recorded" : "rate_limited" };
+  if (!allowed) {
+    await options.onInbound?.(outcome);
+    // A refusal is still a 200 with empty TwiML. The ceiling is the office's, not the provider's, so
+    // telling Twilio to retry would turn one flood into an unbounded stream of retries.
+    return respondTwiml(response, 200);
+  }
+  try {
+    await options.onInbound?.(outcome);
+  } catch (error) {
+    // The message never reached the office, so the row that says it arrived is now a lie and would
+    // swallow Twilio's retry as a duplicate. Removing it is what makes the retry a second chance;
+    // the routing itself is idempotent (one ticket per MessageSid, one conversation input per
+    // MessageSid), so a redelivery cannot double anything.
+    options.board.forgetInbound(message.messageSid);
+    throw error;
+  }
   return respondTwiml(response, 200);
 }
 

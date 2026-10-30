@@ -22,6 +22,18 @@ describe("FakeNumberProvisioner", () => {
     ]);
   });
 
+  it("writes the number to the office config it was given, once per call", async () => {
+    const written: string[] = [];
+    const provisioner = new FakeNumberProvisioner(FAKE_NUMBER, {
+      setSmsBusinessNumber: (number) => written.push(number),
+    });
+    await provisioner.provision("acme-hvac");
+    expect(written).toEqual([FAKE_NUMBER]);
+    // A company that was refused a number writes nothing: the refusal happens before the sink.
+    expect(() => provisioner.provision(" ")).toThrow();
+    expect(written).toEqual([FAKE_NUMBER]);
+  });
+
   it("accepts another reserved number, and refuses one that is not E.164", () => {
     expect(new FakeNumberProvisioner("+15005550100")).toBeInstanceOf(FakeNumberProvisioner);
     expect(() => new FakeNumberProvisioner("555-0100")).toThrow(/E\.164/);
