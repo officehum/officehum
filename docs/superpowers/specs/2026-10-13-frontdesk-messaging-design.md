@@ -14,6 +14,9 @@ Use explicit destination and transport arguments, rather than resolving a mutabl
 
 Export these Front Desk contracts and `MessagesDoc` from `src/index.ts`; the role never imports Office or CLI:
 
+> **Superseded in part by RASF-3162.** `MessageChannel` is now `'email'`: SMS is inbound only, and a
+> text is answered by email. The shape below is what shipped at the time.
+
 ```ts
 type MessageChannel = 'email' | 'sms';
 type MessageIntent = {to:string; channel:MessageChannel; text:string};

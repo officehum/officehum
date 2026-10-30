@@ -14,7 +14,7 @@ import frontdesk from "@officehum/frontdesk";
 
 const role = frontdesk({
   calendar,        // required: where the desk reads free slots and writes bookings
-  messenger,       // optional: outbound email/SMS ("send_message")
+  messenger,       // optional: outbound email ("send_message")
   replyMessenger,  // optional: threaded inbound email replies ("reply_message")
   approve,         // optional: decides every gated tool except replies
   approveReply,    // optional: decides each inbound reply
@@ -28,7 +28,7 @@ const role = frontdesk({
   reschedules, cancellations, contact writes and first contact are all refused. With no
   `approveReply`, `reply_message` is refused. Office Hum's `officehum run` supplies a terminal
   approver for `approve`; an embedding host supplies `approveReply` (usually backed by the Inbox).
-- **Messaging transports** are documented under "Email and SMS" below.
+- **Messaging transports** are documented under "Email, and inbound SMS" below.
 
 ### The `Calendar` interface
 
@@ -115,11 +115,15 @@ the calls the model *intended*, including ones an approval gate would then block
 the role would choose those calls itself, because the script supplies the judgement. Only a live run
 says how the role behaves.
 
-## Email and SMS
+## Email, and inbound SMS
+
+The role sends email and receives SMS. There is no outbound SMS path: `send_message`'s `channel` is
+`"email"` and nothing else, and the delivery function refuses any other value, so a text is answered
+by email — through the same first-contact approval as any other first message.
 
 Two transports, both optional and both injected by the host:
 
-- **`Messenger`** — outbound email or SMS from `send_message`, sent only to a saved contact's own
+- **`Messenger`** — outbound email from `send_message`, sent only to a saved contact's own
   address. `{ identity: string; send(intent, { requestId }): Promise<{ id, status }> }`. A
   `"recorded"` receipt is a console outbox with no customer delivery; `"accepted"` is the transport's
   acceptance, not proof of delivery. Office Hum ships a console outbox and an opt-in Resend

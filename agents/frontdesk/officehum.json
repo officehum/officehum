@@ -71,7 +71,16 @@
       "description": "Confirm this appointment cancellation"
     }
   ],
-  "channels": ["email", "sms", "chat"],
+  "channels": [
+    "email",
+    {
+      "channel": "sms",
+      "direction": "inbound",
+      "replyBy": "email",
+      "note": "Inbound only: a text is answered by email, and the office never sends SMS."
+    },
+    "chat"
+  ],
   "accepts": [
     {
       "type": "booking.request",

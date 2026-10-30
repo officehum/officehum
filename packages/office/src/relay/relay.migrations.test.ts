@@ -64,6 +64,10 @@ describe("relay migration", () => {
       "relay_cursor",
       "relay_deliveries",
       "relay_waits",
+      // Migration 6, RASF-3162: the inbound SMS intake tables.
+      "sms_inbound",
+      "sms_optouts",
+      "sms_rate",
       // Migration 4, RASF-3141: the spend ledger and the conversation→ticket binding the hooks read.
       "spend_ledger",
       "ticket_conversations",

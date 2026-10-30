@@ -381,4 +381,33 @@ describe("validateManifest", () => {
   it("reports a value that is not an object", () => {
     expect(messages("hello")).toEqual(['officehum.json: must be an object (got "hello")']);
   });
+
+  it("accepts a channel declared one-way, and the shorthand beside it", () => {
+    const channels = ["email", { channel: "sms", direction: "inbound", replyBy: "email" }];
+    const result = validateManifest(withFields({ channels }));
+    expect(result.ok).toBe(true);
+    // The declaration survives validation as itself: a reader sees the direction, not a bare name.
+    expect(result.ok && result.value.channels).toEqual(channels);
+  });
+
+  it("refuses a reply on a channel the role does not declare", () => {
+    const channels = [{ channel: "sms", direction: "inbound", replyBy: "chat" }];
+    expect(messages(withFields({ channels }))).toEqual([
+      'officehum.json › channels[0].replyBy: replyBy "chat" is not a channel this role declares',
+    ]);
+  });
+
+  it("refuses a direction that says a channel replies on itself", () => {
+    const channels = ["email", { channel: "sms", direction: "inbound", replyBy: "sms" }];
+    expect(messages(withFields({ channels }))).toEqual([
+      "officehum.json › channels[1].replyBy: replyBy cannot be sms itself; declare the channel without a direction instead",
+    ]);
+  });
+
+  it("counts a declaration and the shorthand as one channel", () => {
+    const channels = ["email", { channel: "email", direction: "outbound" }];
+    expect(messages(withFields({ channels }))).toEqual([
+      'officehum.json › channels[1]: channel "email" is declared more than once',
+    ]);
+  });
 });
