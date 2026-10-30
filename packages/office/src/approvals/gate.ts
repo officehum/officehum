@@ -13,7 +13,11 @@
  * - no ticket bound to the conversation → allow. There is nothing to record an approval against, and
  *   this is a policy for ticket work, not a tax on every conversation in the harness. It is the same
  *   rule `budgetHooks` follows.
- * - the tool is not declared to need a person → allow.
+ * - no declaration applies to this call → allow, and write nothing. A declaration applies when its
+ *   `tool` is the call's and its `when` holds for the call's arguments; one with no `when` applies to
+ *   every call of its tool. A small invoice and an undiscounted booking are calls the role itself says
+ *   do not need a person, and a gate that gated them anyway would be a stricter policy than the one
+ *   the manifest states (RASF-3439).
  * - covered — a granted decision on the board for this ticket, this tool and this exact arguments hash
  *   → allow.
  * - settled against it — a person declined these arguments, or the ticket was cancelled — block and say
@@ -24,11 +28,14 @@
  *   attempt.
  * - anything throws → block. A check that could not be completed is not a yes.
  *
- * The tool set is passed in rather than guessed. `officehum.json` already says which tools wait for a
- * person — the manifest's `approvals[].tool` — and `registerOfficeHooks` reads that list. A gate that
- * invented its own list would be a second, unstated policy.
+ * The declarations and the limits are passed in rather than guessed. `officehum.json` already says
+ * which tools wait for a person, under which conditions — the manifest's `approvals` and its named
+ * `limits` — and `registerOfficeHooks` reads both. A gate that invented its own policy would be a
+ * second, unstated one.
  */
+
 import { type HookRegistration, hook, ToolTask } from "@earendil-works/pi-durable";
+import { type ApprovalDeclaration, conditionsHold } from "@officehum/sdk";
 import { type Approval, argsHash, type Board, type Person } from "../board/index.js";
 
 /** Why a call was blocked because a person has been asked. Exported so tests assert the sentence. */
@@ -74,16 +81,54 @@ export function approvalSettledText(tool: string, approval: Approval): string {
 export interface ApprovalHookOptions {
   /** The office's workboard: the durable record of what was asked and what a person decided. */
   readonly board: Board;
-  /** The tools that wait for a person. Empty registers a gate that allows everything, so pass what is declared. */
-  readonly gatedTools: readonly string[];
+  /**
+   * What waits for a person: the manifest's `approvals`, id, tool and optional `when` intact. Empty
+   * registers a gate that allows everything, so pass what is declared.
+   */
+  readonly declarations: readonly ApprovalDeclaration[];
+  /**
+   * The role's resolved named limits, e.g. `{ large_invoice: 2500 }`, which a condition written as
+   * `{ "limit": "large_invoice" }` is compared against. Omitted: no limit resolves, and
+   * `conditionsHold`'s fail-safe makes the declaration hold, so the call waits for a person.
+   */
+  readonly limits?: Readonly<Record<string, number>>;
   /** How long a request waits for a decision. Omitted: until someone decides or the ticket is cancelled. */
   readonly ttlMs?: number;
+}
+
+/**
+ * The declaration that puts this call in front of a person, or `undefined` when the role declares
+ * none that applies to it.
+ *
+ * Evaluated in declaration order, and the first that applies is the one reported: a manifest that
+ * declares two approvals on one tool — `confirm_booking` and `discount_booking` on
+ * `book_appointment` — resolves to the one the author wrote first, on every run, rather than to
+ * whichever a sort or a map iteration happened to yield. The order is the manifest's own, which is
+ * why the list is never sorted here.
+ *
+ * A declaration with no `when` applies to every call of its tool: that is the existing, unchanged
+ * meaning of declaring an approval without a condition. A conditional one applies only when
+ * `conditionsHold(declaration.when, args, limits)` — the SDK's one evaluator, the same one the role's
+ * own gate uses, so the office and a bare harness cannot disagree about what a condition means.
+ */
+function applyingDeclaration(
+  declarations: readonly ApprovalDeclaration[],
+  tool: string,
+  args: Readonly<Record<string, unknown>>,
+  limits: Readonly<Record<string, number>>,
+): ApprovalDeclaration | undefined {
+  for (const declaration of declarations) {
+    if (declaration.tool !== tool) continue;
+    if (declaration.when === undefined) return declaration;
+    if (conditionsHold(declaration.when, args, limits)) return declaration;
+  }
+  return undefined;
 }
 
 /** The registration an office installs for the approval gate. One task: only `beforeTool` can refuse. */
 export function approvalHooks(options: ApprovalHookOptions): readonly HookRegistration[] {
   const { board } = options;
-  const gated = new Set(options.gatedTools);
+  const limits = options.limits ?? {};
 
   return [
     hook(ToolTask, {
@@ -91,7 +136,15 @@ export function approvalHooks(options: ApprovalHookOptions): readonly HookRegist
         try {
           const ticket = board.conversationTicket(api.conversationId);
           if (ticket === undefined) return undefined;
-          if (!gated.has(call.name)) return undefined;
+          const declaration = applyingDeclaration(
+            options.declarations,
+            call.name,
+            call.arguments,
+            limits,
+          );
+          // Nothing the role declares applies to these arguments: the call is one it allows itself,
+          // so it runs and leaves no row. This is the path a small invoice takes.
+          if (declaration === undefined) return undefined;
           const hash = argsHash(call.arguments);
           if (board.approvals.approvalCovering(ticket.ticketId, call.name, hash) !== undefined) {
             return undefined;
@@ -113,6 +166,10 @@ export function approvalHooks(options: ApprovalHookOptions): readonly HookRegist
           const person = board.people()[0];
           board.approvals.requestApproval(ticket.ticketId, {
             tool: call.name,
+            // The declaration, not the tool: `approval_id` says which stated policy the row is
+            // about, and the tool is already its own column. Every writer of a row — the gate, the
+            // eval runner's scripted decision — names a declared id, so the column has one meaning.
+            approvalId: declaration.id,
             args: call.arguments,
             requestedBy: ticket.agent,
             ...(person === undefined ? {} : { assignee: person.id }),

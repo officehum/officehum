@@ -27,7 +27,7 @@ import {
   type PromptSection,
   section,
 } from "@earendil-works/pi-durable";
-import type { AgentManifest, Approver, RoleBundle } from "@officehum/sdk";
+import type { AgentManifest, ApprovalDeclaration, Approver, RoleBundle } from "@officehum/sdk";
 import { approvalHooks } from "../approvals/gate.js";
 import type { Board } from "../board/index.js";
 
@@ -181,10 +181,11 @@ export function officeConversation(role: RoleBundle, overlays: OfficeOverlays): 
  * nowhere to record a request would block every gated call forever — and the seam then behaves exactly
  * as it did before this issue, returning the caller's registrations unchanged.
  *
- * `role` and `people` are how the gate learns which tools wait for a person: the installed manifest for
- * this agent declares them in `officehum.json` (`approvals[].tool`). When it declares none, no gate is
- * registered. A hook that allowed every call would be an inert registration dressed as a policy, and
- * that is the shape this issue is meant to end.
+ * `role` and `people` are how the gate learns which calls wait for a person: the installed manifest for
+ * this agent declares them in `officehum.json` (`approvals`, each with its `when`), and the named
+ * `limits` those conditions compare against. When it declares no approval, no gate is registered. A
+ * hook that allowed every call would be an inert registration dressed as a policy, and that is the
+ * shape this issue is meant to end.
  */
 export interface OfficeHookSeam {
   /** RASF-3141's `budgetHooks`. Installed unchanged, after the gate. */
@@ -197,24 +198,39 @@ export interface OfficeHookSeam {
   readonly role?: string;
   /** The office's agents, as installed manifests: the source of the declared approvals. */
   readonly people?: readonly AgentManifest[];
-  /** Gate exactly these tools instead of the ones the manifests declare. */
-  readonly gatedTools?: readonly string[];
+  /** Gate exactly these declarations instead of the ones the agent's manifest declares. */
+  readonly declarations?: readonly ApprovalDeclaration[];
+  /**
+   * The values a condition's `{ "limit": "NAME" }` resolves against. Omitted: the agent's manifest
+   * defaults.
+   */
+  readonly limits?: Readonly<Record<string, number>>;
   /** How long a request waits for a decision. Omitted: until someone decides or the ticket is cancelled. */
   readonly approvalTtlMs?: number;
 }
 
+/** The installed manifest for `role`, when the office knows it. */
+function manifestOf(
+  people: readonly AgentManifest[],
+  role: string | undefined,
+): AgentManifest | undefined {
+  if (role === undefined) return undefined;
+  return people.find((entry) => entry.id === role);
+}
+
 /**
- * The approvals an agent's manifest declares, as the tool names they gate.
+ * The named limits a manifest declares, resolved to their defaults, e.g. `{ large_invoice: 2500 }`.
  *
- * The declaration is the role's own statement — "`issue_refund` waits for a person" — and it is already
- * validated by `@officehum/sdk`'s `checkAgent`. Reading it here rather than inventing a list means the
- * office enforces what the manifest says, and a tool nobody declared is never gated by surprise.
+ * This is the office's reading of the limits: it has the manifest, not the role's live
+ * `ResolvedRole`, so a business's overlay value only reaches the gate if the host passes it. Exported
+ * because the eval runner resolves the same values, so production and eval evaluate a condition
+ * against the same numbers.
  */
-function declaredTools(people: readonly AgentManifest[], role: string | undefined): string[] {
-  if (role === undefined) return [];
-  const manifest = people.find((entry) => entry.id === role);
-  if (manifest === undefined) return [];
-  return [...new Set(manifest.approvals.map((approval) => approval.tool))].sort();
+export function declaredLimits(manifest: AgentManifest): Readonly<Record<string, number>> {
+  const declared = manifest.limits ?? {};
+  return Object.fromEntries(
+    Object.entries(declared).map(([name, declaration]) => [name, declaration.default]),
+  );
 }
 
 /**
@@ -224,16 +240,22 @@ function declaredTools(people: readonly AgentManifest[], role: string | undefine
  * The gate comes first so its refusal is the one the model reads: it names the person who has been
  * asked, and a budget hook's refusal would say the ticket is blocked instead. Ordering does not weaken
  * the budget — a gated call that the gate allows still meets every later hook.
+ *
+ * The gate is given the manifest's own `approvals` and limits, not a derived list of tool names: the
+ * `when` on each declaration is the role's statement of which calls need a person, and a tool list
+ * would throw that away and gate every invoice (RASF-3439).
  */
 export function registerOfficeHooks(seam: OfficeHookSeam): readonly HookRegistration[] {
   const supplied = seam.hooks === undefined ? [] : [...seam.hooks];
   if (seam.board === undefined) return supplied;
-  const gated = seam.gatedTools ?? declaredTools(seam.people ?? [], seam.role);
-  if (gated.length === 0) return supplied;
+  const manifest = manifestOf(seam.people ?? [], seam.role);
+  const declarations = seam.declarations ?? manifest?.approvals ?? [];
+  if (declarations.length === 0) return supplied;
   return [
     ...approvalHooks({
       board: seam.board,
-      gatedTools: gated,
+      declarations,
+      limits: seam.limits ?? (manifest === undefined ? {} : declaredLimits(manifest)),
       ...(seam.approvalTtlMs === undefined ? {} : { ttlMs: seam.approvalTtlMs }),
     }),
     ...supplied,

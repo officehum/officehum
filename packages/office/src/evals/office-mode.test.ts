@@ -68,12 +68,13 @@ describe("piDurableRunner in office mode", () => {
     ]);
     expect(blockTextOf(trace)).toContain("Ada has been asked");
 
-    // The gate asked, once, about exactly these arguments. It names the tool because the ask named
-    // no declaration: the office's gate is keyed by tool, not by the manifest's `when` conditions.
+    // The gate asked, once, about exactly these arguments, and named the declaration it evaluated:
+    // `large_decrease` is the one whose `when` holds for a -50, so `approval_id` says which stated
+    // policy a person is answering (RASF-3439). It reads the same as the id a scenario scripts.
     expect(trace.approvals).toEqual([
       {
         ticketId: expect.any(String),
-        approvalId: "stock_adjust",
+        approvalId: "large_decrease",
         tool: "stock_adjust",
         args: WRITE_OFF,
         argsHash: argsHash(WRITE_OFF),
@@ -81,9 +82,54 @@ describe("piDurableRunner in office mode", () => {
         decidedBy: null,
       },
     ]);
-    expect(trace.approvalsRequested).toEqual(["stock_adjust"]);
+    expect(trace.approvalsRequested).toEqual(["large_decrease"]);
     expect(trace.error).toBe(
-      "the scenario scripts no decision for stock_adjust; its manifest declares large_increase, " +
+      "the scenario scripts no decision for stock_adjust; the declarations that apply are " +
+        "large_decrease",
+    );
+  });
+
+  it("runs an adjustment no declaration applies to, and asks nobody", async () => {
+    // The stockroom allows 10 units up and -10 down without a person. `-4` is inside both limits, so
+    // neither declaration applies and the gate must let the call through with no row — the behaviour
+    // that was missing while the office gated every declared tool.
+    const small = { sku: BOLT, quantity: -4, reason: "damage" };
+    const trace = await runner([
+      { toolCalls: [{ name: "stock_adjust", args: small }] },
+      { text: "Recorded adjustment:1." },
+    ]).run(scenario(), 1);
+
+    expect(trace.calls).toEqual([{ tool: "stock_adjust", args: small }]);
+    expect(trace.executedCalls).toEqual([{ tool: "stock_adjust", args: small, executed: true }]);
+    expect(trace.approvals).toEqual([]);
+    expect(trace.approvalsRequested).toEqual([]);
+    expect(trace.error).toBeUndefined();
+  });
+
+  it("does not apply a scripted decision to a declaration that does not fit the call", async () => {
+    // The scenario answers `large_increase`, but this call removes units: `large_decrease` is the
+    // declaration that applies, so the scripted answer is an answer to a different question. The gate
+    // still asks — and the trace says which declaration it asked about, not which one was scripted.
+    const trace = await runner([adjustTurn, { text: "Nothing was recorded." }]).run(
+      scenario({ approvals: { large_increase: "approve" } }),
+      1,
+    );
+
+    expect(blockedOf(trace)).toEqual([
+      {
+        tool: "stock_adjust",
+        args: WRITE_OFF,
+        executed: false,
+        blockedBy: "office approval gate",
+        blockText: approvalAskedText("stock_adjust", PERSON),
+      },
+    ]);
+    expect(trace.approvals.map((row) => [row.approvalId, row.status])).toEqual([
+      ["large_decrease", "waiting"],
+    ]);
+    expect(trace.approvalsRequested).toEqual(["large_decrease"]);
+    expect(trace.error).toBe(
+      "the scenario scripts no decision for stock_adjust; the declarations that apply are " +
         "large_decrease",
     );
   });

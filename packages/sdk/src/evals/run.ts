@@ -31,7 +31,11 @@ export interface ExecutedCall {
 /** One approval row the office's gate left on the board for the trial's ticket. */
 export interface ApprovalRecord {
   readonly ticketId: string;
-  /** The declared approval's id from `officehum.json`, or the tool's name when the asker named none. */
+  /**
+   * The declared approval's id from `officehum.json` — `large_invoice`, not `create_invoice` — or the
+   * tool's name only when the asker named no declaration. The office's gate always names one, so this
+   * field means the same thing whether the row came from the gate or from a scripted decision.
+   */
   readonly approvalId: string;
   readonly tool: string;
   readonly args: unknown;

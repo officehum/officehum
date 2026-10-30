@@ -14,7 +14,9 @@
  * there says "the office stopped it" about a harness that had nothing to stop it with. Office mode
  * therefore opens a board, creates a ticket of a type the role declares, binds it to the trial's
  * conversation and installs the office's real approval gate, so the refusal a scenario observes is
- * the one production would produce.
+ * the one production would produce. It also evaluates each declaration's `when`, as production does
+ * (RASF-3439), so a call the role allows itself is allowed here rather than refused by a stricter
+ * harness.
  *
  * **Emitted and executed are different facts, and the trace keeps them apart.** `calls` is what the
  * model put in its message, blocked calls included — that has always been its meaning and it does not
@@ -50,18 +52,20 @@ import {
   ToolTask,
   wrapTool,
 } from "@earendil-works/pi-durable";
-import type {
-  AgentRunner,
-  ApprovalRecord,
-  ApprovalRequest,
-  ExecutedCall,
-  Scenario,
-  Trace,
+import {
+  type AgentRunner,
+  type ApprovalRecord,
+  type ApprovalRequest,
+  conditionsHold,
+  type DefinedRole,
+  type ExecutedCall,
+  type Scenario,
+  type Trace,
 } from "@officehum/sdk";
 import { openOffice, ROOT_KEY } from "../adapter/index.js";
 import { argsHash, type Board, type Person } from "../board/index.js";
 import { createWorkboard, seedPerson } from "../board/testing.js";
-import { registerOfficeHooks } from "../extension/office-extension.js";
+import { declaredLimits, registerOfficeHooks } from "../extension/office-extension.js";
 import type { LoadedRole } from "../roles/load-role.js";
 import { loadRole } from "../roles/load-role.js";
 
@@ -435,7 +439,11 @@ function runnerExtension(wiring: {
   if (office !== undefined) {
     // The order is the policy: the layer that writes the decision, then the layer that reads it and
     // refuses, then whatever the role brings.
-    hooks.push(decisionHook(scenario, role, office), ...watchedGate(role, office, execution));
+    const limits = roleLimits(role);
+    hooks.push(
+      decisionHook(scenario, role, office, limits),
+      ...watchedGate(role, office, execution, limits),
+    );
   }
 
   const maxTurns = scenario.limits?.maxTurns;
@@ -479,13 +487,16 @@ function watchedGate(
   role: LoadedRole,
   office: EvalOffice,
   execution: Execution,
+  limits: Readonly<Record<string, number>>,
 ): readonly HookRegistration[] {
-  // The gate learns which tools wait for a person from the installed manifest's `approvals[].tool`,
-  // which is the role's own declaration. Nothing here re-states that list.
+  // The gate learns what waits for a person from the installed manifest's `approvals` — id, tool and
+  // `when` — and the limits those conditions read, which is the role's own declaration. Nothing here
+  // re-states that policy.
   const registrations = registerOfficeHooks({
     board: office.board,
     role: role.manifest.id,
     people: [role.manifest],
+    limits,
   });
   return registrations.map((registration) => {
     const handlers = registration.handlers as Partial<ToolHooks>;
@@ -532,17 +543,28 @@ function noteUnscripted(office: EvalOffice): void {
  * the gate, which records the ask and blocks; the trial then stops with the reason, the same way the
  * bare runner stops when an approver is asked for something unscripted.
  *
- * **One limit, stated rather than hidden.** The office's gate is keyed by tool: `registerOfficeHooks`
- * gates every tool a manifest declares an approval for, and knows nothing about the manifest's `when`
- * conditions, which are the role's own gate's business. So a decision a scenario scripts for a tool
- * applies to every call of that tool, and a scenario that needs a call to go ungated picks a tool the
- * manifest does not declare. The reason a trial stops says which tool and which declarations, rather
- * than naming one declaration that may not have been the one that applied.
+ * **Only a declaration that applies can be answered.** The office's gate now evaluates each
+ * declaration's `when` (RASF-3439), so a decision must be written for the declaration the gate would
+ * have asked about — the first one, in manifest order, whose condition holds for these arguments. A
+ * scripted answer for a declaration that does not apply is not an answer to anything: it is ignored,
+ * and the trial stops naming the declarations that do apply. A call no declaration applies to is one
+ * the role allows itself, so nothing is written for it and the gate lets it run.
  */
-function decisionHook(scenario: Scenario, role: LoadedRole, office: EvalOffice): HookRegistration {
+function decisionHook(
+  scenario: Scenario,
+  role: LoadedRole,
+  office: EvalOffice,
+  limits: Readonly<Record<string, number>>,
+): HookRegistration {
   return hook(ToolTask, {
     beforeTool: (call) => {
-      const declarations = role.manifest.approvals.filter((entry) => entry.tool === call.name);
+      const declared = role.manifest.approvals.filter((entry) => entry.tool === call.name);
+      if (declared.length === 0) return undefined;
+      // The declarations that apply, in the same manifest order, and by the same evaluator the office
+      // gate uses.
+      const declarations = declared.filter(
+        (entry) => entry.when === undefined || conditionsHold(entry.when, call.arguments, limits),
+      );
       if (declarations.length === 0) return undefined;
       const scripted = declarations.flatMap((entry) => {
         const decision = scenario.approvals?.[entry.id];
@@ -551,7 +573,7 @@ function decisionHook(scenario: Scenario, role: LoadedRole, office: EvalOffice):
       const chosen = scripted[0];
       if (chosen === undefined) {
         office.pendingUnscripted =
-          `the scenario scripts no decision for ${call.name}; its manifest declares ` +
+          `the scenario scripts no decision for ${call.name}; the declarations that apply are ` +
           declarations.map((entry) => entry.id).join(", ");
         return undefined;
       }
@@ -645,6 +667,20 @@ function executedCallsOf(
       ...(block === undefined ? {} : { blockedBy: block.hook, blockText: block.text }),
     };
   });
+}
+
+/**
+ * The limits office mode evaluates a declaration's `when` against: the role's own resolved values when
+ * its factory returned `defineRole` — so an overlay's limit change applies here exactly as it does in
+ * production — and otherwise the manifest's declared defaults.
+ *
+ * The same numbers go to the gate and to the scripted decisions, so a scenario's answer is written for
+ * the declaration the gate would have asked about.
+ */
+function roleLimits(role: LoadedRole): Readonly<Record<string, number>> {
+  const defined = role.bundle as Partial<DefinedRole>;
+  if (typeof defined.current === "function") return defined.current().limits;
+  return declaredLimits(role.manifest);
 }
 
 /**
