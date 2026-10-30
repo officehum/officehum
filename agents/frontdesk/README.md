@@ -109,6 +109,12 @@ A script that must branch on a tool result cannot be written as JSON — use `pi
 `@officehum/office` in a test for that, as the package's own `src/index.test.ts` does. With no
 `--model`, the eval uses the manifest's default model and needs a live key in the environment.
 
+A scripted run is a **portability gate**, not evidence of behaviour. It proves the tools, the
+approvals and the harness are wired: every call in the script reaches its tool, and the trace counts
+the calls the model *intended*, including ones an approval gate would then block. It cannot show that
+the role would choose those calls itself, because the script supplies the judgement. Only a live run
+says how the role behaves.
+
 ## Email and SMS
 
 Two transports, both optional and both injected by the host:

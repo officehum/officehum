@@ -265,7 +265,7 @@ export function messagingTools(messenger?: Messenger): ToolRegistration[] {
   const transport = messenger?.identity ?? "unconfigured";
   const send = defineTool({
     name: "send_message",
-    description: `Send an explicit saved-contact message through messenger ${transport}.`,
+    description: `Send an explicit saved-contact message through messenger ${transport}. This call raises the approval request for a person and sends the message when they grant it; the first message to a destination on this transport waits for that person.`,
     parameters: Type.Object(
       {
         contactId: Type.String(),

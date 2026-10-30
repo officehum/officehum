@@ -62,7 +62,13 @@ const Expect = Type.Object(
     delegated: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     reply: Type.Optional(
       Type.Object(
-        { contains: Type.Optional(Words), notContains: Type.Optional(Words) },
+        {
+          contains: Type.Optional(Words),
+          // Each entry is a group of alternatives: the reply must carry at least one phrase from
+          // every group, so a scenario names the facts it needs rather than one sentence.
+          containsAny: Type.Optional(Type.Array(Words, { minItems: 1 })),
+          notContains: Type.Optional(Words),
+        },
         { additionalProperties: false },
       ),
     ),

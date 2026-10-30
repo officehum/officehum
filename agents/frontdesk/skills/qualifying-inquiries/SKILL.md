@@ -4,7 +4,9 @@ description: Qualify a new inquiry and turn it into a booking or a clear hand-of
 ---
 
 1. Greet the person and say, in one line, what you understood they want, so they can correct you.
-2. Ask what they need and when they want it. Read their answers; do not fill a gap with a guess.
+2. Read their answers first. Ask only for what they have not already told you — service, date, time,
+   name, contact — and do not fill a gap with a guess. If they have named the date, the time and
+   themselves, go straight to the diary.
 3. Check the schedule with `check_schedule` for the date they named, and offer only the free slots it
    returns. If none fit, ask for another date instead of inventing one.
 4. Ask how to reach them: a name, and an email or an international phone number. Take no more than you

@@ -163,15 +163,26 @@ export function gradeTrace(scenario: Scenario, trace: Trace): string[] {
       failures.push(`delegated: expected ${show(wanted)}, got ${show(got)}`);
   }
 
+  // A reply assertion matches facts the role must produce, never one sentence that carries them: a
+  // literal-phrase assertion tests a model's vocabulary rather than its behaviour, so "nothing is
+  // free" reads as a failure while being a correct answer. A required fact is `contains` when one
+  // phrase states it and `containsAny` when several do; a prohibition belongs in `notCalled`, naming
+  // the wrong action — never in `notContains`, where the honest answer ("fully booked") is often the
+  // very word being forbidden.
   if (expect.reply !== undefined) {
-    // Case-insensitive: the model may phrase a fact many ways, but the fact itself must be there.
-    const reply = (trace.reply ?? "").toLowerCase();
+    // Case-insensitive, and clock readings compare after `:00` seconds are stripped, so `10:00`
+    // satisfies an expectation of `10:00:00` — the fact is the time, not the format it was printed in.
+    const reply = normaliseReply(trace.reply ?? "");
     for (const words of expect.reply.contains ?? []) {
-      if (!reply.includes(words.toLowerCase()))
+      if (!reply.includes(normaliseReply(words)))
         failures.push(`reply: does not contain ${show(words)}`);
     }
+    for (const alternatives of expect.reply.containsAny ?? []) {
+      if (!alternatives.some((words) => reply.includes(normaliseReply(words))))
+        failures.push(`reply: mentions none of ${show(alternatives)}`);
+    }
     for (const words of expect.reply.notContains ?? []) {
-      if (reply.includes(words.toLowerCase())) failures.push(`reply: contains ${show(words)}`);
+      if (reply.includes(normaliseReply(words))) failures.push(`reply: contains ${show(words)}`);
     }
   }
 
@@ -252,6 +263,15 @@ export function formatReport(report: EvalReport): string {
   const rate = `${Math.round(report.passRate * 100)}% of normal trials passed (threshold ${Math.round(report.threshold * 100)}%)`;
   lines.push(report.passed ? `Evals passed: ${rate}` : `Evals failed: ${rate}`);
   return lines.join("\n");
+}
+
+/**
+ * Lowercases reply text and drops a `:00` seconds suffix from clock readings, so `10:00` and
+ * `10:00:00` compare equal. Nothing else is normalised: a different time is still a different time,
+ * which is what keeps a time assertion able to fail.
+ */
+function normaliseReply(text: string): string {
+  return text.toLowerCase().replace(/(\d{1,2}:\d{2}):00(?!\d)/g, "$1");
 }
 
 /** Partial match: every field `expected` names must equal the actual value; nested objects match the same way. */

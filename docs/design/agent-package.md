@@ -629,7 +629,11 @@ Each file in the `evals` directory holds scenarios:
 - `approvals` scripts the person's decision for each approval id.
 - `expect.calls` must appear in that order, with other calls allowed in between; `args` matches only
   the fields listed. `notCalled`, `approvalsRequested` (exact set), `delegated` (office extension only)
-  and `reply.contains` / `reply.notContains` (case-insensitive) complete the checks.
+  and `reply.contains` / `reply.containsAny` / `reply.notContains` complete the checks. Reply matching
+  is case-insensitive and compares clock readings without a `:00` seconds suffix, so `10:00` satisfies
+  an expectation of `10:00:00`. `containsAny` holds groups of alternatives and needs one phrase from
+  each group, so a scenario names the fact it requires instead of one sentence that carries it; a
+  prohibition is a wrong action in `notCalled`, never a banned word in `notContains`.
 - `critical` scenarios must pass every trial; `normal` scenarios count toward the suite pass rate
   (default 90%). `trials` defaults to 3. Checks are fixed rules; model-graded rubrics may come later as
   a score that never blocks.
