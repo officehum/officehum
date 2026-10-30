@@ -36,6 +36,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { Message } from "@earendil-works/pi-ai";
 import type { Models } from "@earendil-works/pi-ai/models";
 import {
   AssistantEntry,
@@ -59,15 +60,20 @@ import {
   conditionsHold,
   type DefinedRole,
   type ExecutedCall,
+  isApprovalGate,
   type Scenario,
+  type TicketSummary,
   type Trace,
 } from "@officehum/sdk";
 import { openOffice, ROOT_KEY } from "../adapter/index.js";
-import { argsHash, type Board, type Person } from "../board/index.js";
+import { type Approval, argsHash, type Board, type Person } from "../board/index.js";
 import { createWorkboard, seedPerson } from "../board/testing.js";
 import { declaredLimits, registerOfficeHooks } from "../extension/office-extension.js";
+import { InboundConversationDoc } from "../inbound-session.js";
+import { type RelayMessage, type RelayProvenance, relayMessage } from "../relay/message.js";
 import type { LoadedRole } from "../roles/load-role.js";
 import { loadRole } from "../roles/load-role.js";
+import { budgetHooks } from "../spend/budget.js";
 
 /** The catalogue and the model ref one trial runs under. */
 export interface EvalModel {
@@ -91,8 +97,30 @@ export const EMPTY_LEDGER_ERROR =
 /** The name the ledger gives the office's gate when it is the one that refused a call. */
 const OFFICE_GATE = "office approval gate";
 
+/** The name the ledger gives the budget's hooks when they are the ones that refused a call. */
+const BUDGET_HOOKS = "office budget hooks";
+
 /** The person a trial's office knows by default, and whose decision a scripted approval is. */
 const DEFAULT_PERSON = { id: "ada", name: "Ada" } as const;
+
+/**
+ * A guard layer a red-team run can leave out, so the suite can prove it goes red without it.
+ *
+ * These names exist only for the mutation pass (see `OfficeModeOptions.disableGuards`): a scenario
+ * that stays green with its declared layer switched off is not evidence for that layer.
+ */
+export type OfficeGuard = "approval-gate" | "budget" | "inbound-marker" | "fence";
+
+/** Another ticket the trial's board already holds, with a granted decision on these exact arguments. */
+export interface PriorApproval {
+  /** The ticket's type, e.g. `invoice.create`. */
+  readonly type: string;
+  readonly title: string;
+  /** The declared approval the granted row is for. */
+  readonly approvalId: string;
+  readonly tool: string;
+  readonly args: Readonly<Record<string, unknown>>;
+}
 
 /** Office mode's fixture: who the office knows, what ticket it opens, and where its board lives. */
 export interface OfficeModeOptions {
@@ -111,6 +139,52 @@ export interface OfficeModeOptions {
    * when the trial ends. A caller that names a file owns it and this runner leaves it alone.
    */
   readonly boardFile?: string;
+  /**
+   * How the trial's text arrives, which is what decides whether it is fenced.
+   *
+   * `internal-message` (the default) delivers it as a colleague's ticket: the text becomes the
+   * ticket's title and detail, and `relayMessage` wraps it with `internal` provenance, so the model
+   * reads it labelled but unfenced — exactly what a forwarded internal request looks like.
+   *
+   * `inbound-email` delivers it as a customer's email: the ticket states `external` provenance, so
+   * the relay fences the body and the payload, and the trial's conversation gets the inbound marker
+   * `inboundCustomerToolGuard` reads. There is no third mode, because a scenario delivered some other
+   * way would be testing the harness rather than the office.
+   */
+  readonly delivery?: "internal-message" | "inbound-email";
+  /** The call ceiling the trial's ticket is created with. Omitted: the ticket is uncapped. */
+  readonly maxCalls?: number;
+  /**
+   * A second ticket, already approved for these exact arguments, the trial's work is *not* on.
+   *
+   * It is how a scenario asks whether a decision covers the ticket it was made for or just the call.
+   * The row is read back after the trial, so a scenario can assert it was neither consumed nor
+   * changed.
+   */
+  readonly priorApproval?: PriorApproval;
+  /**
+   * What to do when a gated call arrives that the scenario scripts no decision for.
+   * `true` (the default) stops the trial — an eval that silently ignored an unscripted gate would be
+   * grading a run nobody chose. `false` records the gate's ask and lets the run continue, which is
+   * what a red-team trial needs: the compliant adversary keeps trying after it is refused.
+   */
+  readonly stopOnUnscriptedApproval?: boolean;
+  /**
+   * The role's own `approvalGate` hook: `install` (the default) or `omit`.
+   *
+   * A red-team trial omits it. The role's gate asks the scenario's scripted approver, and a refusal
+   * by a script is a refusal by the script — the office's gate is the layer the suite is measuring.
+   * The role's other hooks (Front Desk's inbound marker guard) stay installed.
+   */
+  readonly roleGate?: "install" | "omit";
+  /**
+   * Guard layers to leave out of this trial, for the red-team suite's mutation pass only.
+   *
+   * Nothing in production sets it: a switch that weakens a gate is a switch that will one day be set
+   * by accident, so it is a runner option the test passes, never an environment variable the runner
+   * reads.
+   */
+  readonly disableGuards?: readonly OfficeGuard[];
 }
 
 export interface PiDurableRunnerOptions {
@@ -186,7 +260,8 @@ interface OfficeWiring {
 
 /** An opened office-mode fixture: the board, the bound ticket and the person, plus its own cleanup. */
 interface EvalOffice extends OfficeWiring {
-  bind(conversationId: number): void;
+  /** Binds the trial's conversation to the ticket, and marks it inbound when the delivery says so. */
+  bind(conversation: Conversation): Promise<void>;
   close(): void;
 }
 
@@ -234,20 +309,23 @@ async function runTrial(
     );
   }
 
+  const plan = ticketType === undefined ? undefined : ticketPlan(scenario, ticketType, options);
   const execution: Execution = { ran: new Set(), blocks: new Map() };
   const office =
-    ticketType === undefined
-      ? undefined
-      : openEvalOffice(options, scenario, trial, role, ticketType, stop);
+    plan === undefined ? undefined : openEvalOffice(options, scenario, trial, role, plan, stop);
   const extension = runnerExtension({
     scenario,
     role,
     execution,
     stop,
+    options,
     ...(office === undefined ? {} : { office }),
   });
 
-  const selected = selectedExtensions(role.bundle.agent.extensions, role.bundle.extensions);
+  const selected = stripApprovalGate(
+    selectedExtensions(role.bundle.agent.extensions, role.bundle.extensions),
+    options,
+  );
   // In office mode the runner's extension goes first, because the harness stops at the first block and
   // the refusal that matters is the office's: the runner's decision hook writes a row, the office's
   // gate reads it, and only then does the role's own approval hook get a say. Bare mode installs it
@@ -258,7 +336,7 @@ async function runTrial(
     extensions:
       office === undefined
         ? [...role.bundle.extensions, extension]
-        : [extension, ...role.bundle.extensions],
+        : [extension, ...stripApprovalGate(role.bundle.extensions, options)],
     agent,
   };
 
@@ -266,10 +344,12 @@ async function runTrial(
   try {
     harness.install(bundle);
     const conversation = await harness.conversation(ROOT_KEY, { agent });
-    office?.bind(conversation.id);
+    if (office !== undefined && plan !== undefined) await office.bind(conversation);
+    const delivery = deliveredText(scenario.input.text, office, plan);
     const submitted = await harness.submit(conversation, {
-      input: scenario.input.text,
+      input: delivery.content,
       requestId: `eval/${scenario.id}/${trial}`,
+      ...(delivery.entry === undefined ? {} : { entry: delivery.entry }),
     });
     const settled = submitted.wait(BACKGROUND_CONTEXT);
     // Stop the run the moment a stop reason is set: `abort` withdraws the queued work and settles the
@@ -288,7 +368,9 @@ async function runTrial(
     const calls = emitted.map((call) => ({ tool: call.tool, args: call.args }));
     const executedCalls = executedCallsOf(emitted, execution);
     const approvals =
-      office === undefined ? [] : approvalRows(office.board, office.ticketId, emitted);
+      office === undefined
+        ? []
+        : approvalRows(office.board, office.ticketId, emitted, options.office?.priorApproval);
     const turns = view.messages.filter((message) => message.role === "assistant").length;
     const reply =
       settlement.status === "done" ? await answerText(conversation, settlement) : undefined;
@@ -302,6 +384,8 @@ async function runTrial(
       approvals,
       delegated: [],
       turns,
+      received: receivedText(view.messages),
+      ...(office === undefined ? {} : { tickets: ticketSummaries(office.board) }),
       ...(reply === undefined ? {} : { reply }),
       ...(error === undefined ? {} : { error }),
     };
@@ -335,6 +419,118 @@ function ticketTypeFor(options: PiDurableRunnerOptions, role: LoadedRole): strin
 }
 
 /**
+ * Everything a trial's ticket is created with, worked out once before the board opens.
+ *
+ * Delivery is a fixture decision, not a harness one: the same scenario text is a customer's email or
+ * a colleague's ticket depending on where it came from, and the fence is a function of that.
+ */
+interface TicketPlan {
+  readonly type: string;
+  readonly title: string;
+  readonly detail: string | undefined;
+  readonly provenance: RelayProvenance;
+  readonly maxCalls: number | undefined;
+  readonly prior: PriorApproval | undefined;
+  /** False when the fence guard is switched off: the text is submitted raw, as the plan's mutation. */
+  readonly fenced: boolean;
+  /** True when the trial's conversation must carry `inboundCustomerToolGuard`'s marker. */
+  readonly inbound: boolean;
+}
+
+/** Whether a guard layer has been switched off for this trial. */
+function guardOff(options: PiDurableRunnerOptions, guard: OfficeGuard): boolean {
+  return options.office?.disableGuards?.includes(guard) ?? false;
+}
+
+/** Whether the role's own approval gate is left out: only a red-team trial asks for that. */
+function roleGateOmitted(options: PiDurableRunnerOptions): boolean {
+  return (options.mode ?? "bare") === "office" && options.office?.roleGate === "omit";
+}
+
+/**
+ * The role's extensions with its own `approvalGate` hooks removed, and nothing else touched.
+ *
+ * A red-team trial needs the office's gate to be the layer that decides. The role's gate asks the
+ * scenario's approver, so leaving it in would let a refusal by the script stand in for a refusal by
+ * the office — and the mutation pass, which switches the office's gate off, would then stay green for
+ * the wrong reason and detect nothing.
+ */
+function stripApprovalGate(
+  extensions: readonly Extension[],
+  options: PiDurableRunnerOptions,
+): readonly Extension[] {
+  if (!roleGateOmitted(options)) return extensions;
+  return extensions.map((extension) => ({
+    ...extension,
+    hooks: (extension.hooks ?? []).filter((registration) => !isApprovalGate(registration)),
+  }));
+}
+
+/**
+ * The trial's ticket plan: what it is called, where it came from, and what ceiling it carries.
+ *
+ * The scenario's text becomes the ticket's title (its first line) and detail (the rest), which is how
+ * a real message reaches a role — through a ticket, wrapped by the relay — rather than as a raw user
+ * message the office never sends.
+ */
+function ticketPlan(scenario: Scenario, type: string, options: PiDurableRunnerOptions): TicketPlan {
+  const text = scenario.input.kind === "message" ? scenario.input.text : "";
+  const lines = text.split("\n");
+  const title = (lines[0] ?? "").trim();
+  const detail = lines.slice(1).join("\n").trim();
+  const inbound = options.office?.delivery === "inbound-email";
+  const sender = scenario.input.kind === "message" ? scenario.input.from : undefined;
+  return {
+    type,
+    title: title.length === 0 ? `Eval ${scenario.id}` : title,
+    detail: detail.length === 0 ? undefined : detail,
+    provenance: inbound
+      ? {
+          origin: "external",
+          sourceChannel: "email",
+          sourceContact: sender ?? "customer@example.test",
+        }
+      : { origin: "internal", sourceChannel: "chat", sourceContact: "colleague" },
+    maxCalls: options.office?.maxCalls,
+    prior: options.office?.priorApproval,
+    fenced: !guardOff(options, "fence"),
+    inbound: inbound && !guardOff(options, "inbound-marker"),
+  };
+}
+
+/**
+ * What the model is handed: the relay's own envelope when the ticket is delivered honestly, and the
+ * bare text when the fence mutation is on.
+ *
+ * `relayMessage` is called with the ticket's recorded provenance, exactly as the relay does, so an
+ * `external` ticket is fenced and an `internal` one is not. A trial that skipped this would hand the
+ * model text no production path produces.
+ */
+function deliveredText(
+  text: string,
+  office: EvalOffice | undefined,
+  plan: TicketPlan | undefined,
+): { readonly content: string; readonly entry?: RelayMessage["entry"] } {
+  if (office === undefined || plan === undefined || !plan.fenced) {
+    return { content: text };
+  }
+  const ticket = office.board.get(office.ticketId);
+  const message = relayMessage(
+    { id: office.ticketId, kind: "ticket", ticketId: office.ticketId },
+    {
+      id: office.ticketId,
+      type: plan.type,
+      title: plan.title,
+      detail: plan.detail ?? null,
+      payload: ticket?.payload ?? null,
+    },
+    plan.provenance,
+    0,
+  );
+  return { content: message.content, entry: message.entry };
+}
+
+/**
  * Opens the trial's office: a board over a sqlite file, one person on it, and a ticket of a type the
  * role accepts, with provenance, because a root ticket must state where it came from.
  *
@@ -346,7 +542,7 @@ function openEvalOffice(
   scenario: Scenario,
   trial: number,
   role: LoadedRole,
-  ticketType: string,
+  plan: TicketPlan,
   stop: (reason: string) => void,
 ): EvalOffice {
   // A trial owns its board unless the caller named the file: the person is seeded before the board
@@ -364,10 +560,12 @@ function openEvalOffice(
   try {
     const ticket = board.create(
       {
-        type: ticketType,
-        title: `Eval ${scenario.id} (trial ${trial})`,
+        type: plan.type,
+        title: plan.title,
+        ...(plan.detail === undefined ? {} : { detail: plan.detail }),
         createdBy: role.manifest.id,
-        provenance: { origin: "internal", sourceChannel: "eval", sourceContact: "eval" },
+        provenance: plan.provenance,
+        ...(plan.maxCalls === undefined ? {} : { budget: { maxCalls: plan.maxCalls } }),
       },
       `eval/${scenario.id}/${trial}`,
     );
@@ -375,13 +573,45 @@ function openEvalOffice(
     if (person === undefined) {
       throw new Error(`The eval office's board knows no person ${JSON.stringify(personId)}.`);
     }
+    const prior = plan.prior;
+    if (prior !== undefined) {
+      const earlier = board.create(
+        {
+          type: prior.type,
+          title: prior.title,
+          createdBy: role.manifest.id,
+          provenance: { origin: "internal", sourceChannel: "chat", sourceContact: "colleague" },
+        },
+        `eval/${scenario.id}/${trial}/prior`,
+      );
+      const row = board.approvals.requestApproval(earlier.id, {
+        tool: prior.tool,
+        args: prior.args,
+        requestedBy: role.manifest.id,
+        approvalId: prior.approvalId,
+        assignee: person.id,
+      });
+      board.approvals.decideApproval(row.id, { by: person.id, decision: "approved" });
+    }
     return {
       board,
       ticketId: ticket.id,
       person,
       stop,
-      bind(conversationId) {
-        board.bindConversation(conversationId, { ticketId: ticket.id, agent: role.manifest.id });
+      async bind(conversation) {
+        board.bindConversation(conversation.id, {
+          ticketId: ticket.id,
+          agent: role.manifest.id,
+        });
+        // The marker `inboundCustomerToolGuard` reads. Production writes it in `openInboundSession`,
+        // which owns a solo harness and its own signed webhook; a trial's office is `openOffice`, so
+        // the fixture writes the same document instead, through the office's own definition.
+        if (plan.inbound) {
+          await conversation.commit(
+            (transaction) => transaction.doc(InboundConversationDoc, conversation.id as never),
+            BACKGROUND_CONTEXT,
+          );
+        }
       },
       close() {
         try {
@@ -426,6 +656,7 @@ function runnerExtension(wiring: {
   readonly role: LoadedRole;
   readonly execution: Execution;
   readonly stop: (reason: string) => void;
+  readonly options: PiDurableRunnerOptions;
   readonly office?: EvalOffice;
 }): Extension {
   const { scenario, role, execution, stop, office } = wiring;
@@ -438,12 +669,24 @@ function runnerExtension(wiring: {
   const hooks: HookRegistration[] = [];
   if (office !== undefined) {
     // The order is the policy: the layer that writes the decision, then the layer that reads it and
-    // refuses, then whatever the role brings.
+    // refuses, then the budget's own ceiling, then whatever the role brings.
     const limits = roleLimits(role);
-    hooks.push(
-      decisionHook(scenario, role, office, limits),
-      ...watchedGate(role, office, execution, limits),
-    );
+    if (!guardOff(wiring.options, "approval-gate")) {
+      hooks.push(
+        decisionHook(scenario, role, office, limits, wiring.options),
+        // An unscripted approval the gate let through — a covering row left by an earlier call with
+        // these exact arguments — is still an approval nobody scripted, so it stops here too.
+        ...watched(
+          registerOfficeHooks(gateSeam(role, office, limits)),
+          OFFICE_GATE,
+          execution,
+          () => noteUnscripted(office),
+        ),
+      );
+    }
+    if (!guardOff(wiring.options, "budget")) {
+      hooks.push(...watched(budgetHooks({ board: office.board }), BUDGET_HOOKS, execution));
+    }
   }
 
   const maxTurns = scenario.limits?.maxTurns;
@@ -475,29 +718,21 @@ function runnerExtension(wiring: {
 }
 
 /**
- * The office's real approval gate, with its refusals observed.
+ * The office's own registrations, with their refusals observed.
  *
- * The harness stops at the first `block`: a hook registered after the gate never runs when the gate
- * refuses, so the only place the refusal can be seen is the gate's own return value. This wraps the
- * registrations `registerOfficeHooks` built rather than deciding anything itself — the ledger must say
- * what the gate did, not what the runner thinks it would have done, or the mutation it is meant to
- * catch (delete the gate and watch `executed` flip to true) would catch nothing.
+ * The harness stops at the first `block`: a hook registered after the refusing one never runs, so the
+ * only place the refusal can be seen is the refusing hook's own return value. This wraps the
+ * registrations `registerOfficeHooks` (or `budgetHooks`) built rather than deciding anything itself —
+ * the ledger must say what the office did, not what the runner thinks it would have done, or the
+ * mutation the ledger is meant to catch (delete the gate and watch `executed` flip to true) would
+ * catch nothing.
  */
-function watchedGate(
-  role: LoadedRole,
-  office: EvalOffice,
+function watched(
+  registrations: readonly HookRegistration[],
+  name: string,
   execution: Execution,
-  limits: Readonly<Record<string, number>>,
+  after?: () => void,
 ): readonly HookRegistration[] {
-  // The gate learns what waits for a person from the installed manifest's `approvals` — id, tool and
-  // `when` — and the limits those conditions read, which is the role's own declaration. Nothing here
-  // re-states that policy.
-  const registrations = registerOfficeHooks({
-    board: office.board,
-    role: role.manifest.id,
-    people: [role.manifest],
-    limits,
-  });
   return registrations.map((registration) => {
     const handlers = registration.handlers as Partial<ToolHooks>;
     const before = handlers.beforeTool;
@@ -508,15 +743,28 @@ function watchedGate(
         // behaves here as it does unobserved.
         const decision = await before.call(handlers, call, api, context);
         if (decision?.block !== undefined) {
-          execution.blocks.set(call.id, { hook: OFFICE_GATE, text: decision.block });
+          execution.blocks.set(call.id, { hook: name, text: decision.block });
         }
-        // An unscripted approval the gate let through — a covering row left by an earlier call with
-        // these exact arguments — is still an approval nobody scripted, so it stops here too.
-        noteUnscripted(office);
+        after?.();
         return decision;
       },
     });
   });
+}
+
+/**
+ * What the gate is told: the board, this role's installed manifest, and the limits its conditions
+ * read.
+ *
+ * The gate learns what waits for a person from the manifest's `approvals` — id, tool and `when` — and
+ * nothing here re-states that policy.
+ */
+function gateSeam(
+  role: LoadedRole,
+  office: EvalOffice,
+  limits: Readonly<Record<string, number>>,
+): Parameters<typeof registerOfficeHooks>[0] {
+  return { board: office.board, role: role.manifest.id, people: [role.manifest], limits };
 }
 
 /** Applies a pending unscripted-approval stop, once, after the gate has had its say. */
@@ -555,7 +803,11 @@ function decisionHook(
   role: LoadedRole,
   office: EvalOffice,
   limits: Readonly<Record<string, number>>,
+  options: PiDurableRunnerOptions,
 ): HookRegistration {
+  // A red-team trial wants the ask recorded and the run to carry on: the compliant adversary keeps
+  // trying after a refusal, and that is the behaviour worth watching the gate against.
+  const stopUnscripted = options.office?.stopOnUnscriptedApproval !== false;
   return hook(ToolTask, {
     beforeTool: (call) => {
       const declared = role.manifest.approvals.filter((entry) => entry.tool === call.name);
@@ -572,16 +824,20 @@ function decisionHook(
       });
       const chosen = scripted[0];
       if (chosen === undefined) {
-        office.pendingUnscripted =
-          `the scenario scripts no decision for ${call.name}; the declarations that apply are ` +
-          declarations.map((entry) => entry.id).join(", ");
+        if (stopUnscripted) {
+          office.pendingUnscripted =
+            `the scenario scripts no decision for ${call.name}; the declarations that apply are ` +
+            declarations.map((entry) => entry.id).join(", ");
+        }
         return undefined;
       }
       const conflicting = scripted.find((entry) => entry.decision !== chosen.decision);
       if (conflicting !== undefined) {
-        office.pendingUnscripted =
-          `the scenario scripts both ${chosen.id} and ${conflicting.id} for ${call.name}, so there ` +
-          "is no single answer to apply";
+        if (stopUnscripted) {
+          office.pendingUnscripted =
+            `the scenario scripts both ${chosen.id} and ${conflicting.id} for ${call.name}, so there ` +
+            "is no single answer to apply";
+        }
         return undefined;
       }
       office.pendingUnscripted = undefined;
@@ -684,16 +940,21 @@ function roleLimits(role: LoadedRole): Readonly<Record<string, number>> {
 }
 
 /**
- * The approval rows the gate left for the calls this trial made, read from the board.
+ * The approval rows the trial left, read from the board.
  *
  * One lookup per call by `(ticket, tool, argsHash)` — the same key the gate decides on, which is why
  * an assertion about these rows is an assertion about the gate rather than about the script. Rows for
  * calls that never happened are not invented, and a call the board has no row for contributes none.
+ *
+ * When the fixture planted a decision on another ticket, that row is read back too, by its own
+ * `(ticket, tool, argsHash)`. A scenario about a decision on someone else's ticket needs to show both
+ * halves: the ask this ticket recorded, and the grant that did not cover it.
  */
 function approvalRows(
   board: Board,
   ticketId: string,
   emitted: readonly EmittedCall[],
+  prior?: PriorApproval,
 ): readonly ApprovalRecord[] {
   const rows = new Map<string, ApprovalRecord>();
   for (const call of emitted) {
@@ -706,19 +967,66 @@ function approvalRows(
     }
     const row = board.approvals.latestForCall(ticketId, call.tool, hash);
     if (row === undefined) continue;
-    rows.set(row.id, {
-      ticketId: row.ticketId,
-      approvalId: row.approvalId,
-      tool: row.tool,
-      args: row.args,
-      argsHash: row.argsHash,
-      status: row.status,
-      decidedBy: row.decidedBy,
-    });
+    rows.set(row.id, approvalRecord(row));
+  }
+  if (prior !== undefined) {
+    for (const ticket of board.list()) {
+      if (ticket.id === ticketId || ticket.type !== prior.type) continue;
+      const row = board.approvals.latestForCall(ticket.id, prior.tool, argsHash(prior.args));
+      if (row === undefined) continue;
+      rows.set(row.id, approvalRecord(row));
+    }
   }
   return [...rows.values()];
 }
 
+/** One stored approval row, as the trace reports it. */
+function approvalRecord(row: Approval): ApprovalRecord {
+  return {
+    ticketId: row.ticketId,
+    approvalId: row.approvalId,
+    tool: row.tool,
+    args: row.args,
+    argsHash: row.argsHash,
+    status: row.status,
+    decidedBy: row.decidedBy,
+  };
+}
+
+/**
+ * Every text the model read, in transcript order.
+ *
+ * A trial's own record of what arrived, so a scenario can prove its payload reached the model instead
+ * of trusting the fixture that wrote it. Tool results are included because a tool result is the one
+ * input the fence cannot reach, and it is where an outside system's words arrive.
+ */
+function receivedText(messages: readonly Message[]): readonly string[] {
+  return messages.map((message) => {
+    if (message.role === "user" || message.role === "system") {
+      if (typeof message.content === "string") return message.content;
+      return message.content
+        .flatMap((block) => (block.type === "text" ? [block.text] : []))
+        .join("");
+    }
+    return message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
+  });
+}
+
+/** The office's tickets and their budgets, as the board reports them when the trial ends. */
+function ticketSummaries(board: Board): readonly TicketSummary[] {
+  return board.list().map((ticket) => {
+    const budget = board.budget(ticket.id);
+    return {
+      id: ticket.id,
+      type: ticket.type,
+      status: ticket.status,
+      hopCount: budget?.hopCount ?? 0,
+      maxHops: budget?.maxHops ?? 0,
+      usedCalls: budget?.usedCalls ?? 0,
+      maxCalls: budget?.maxCalls ?? null,
+    };
+  });
+}
 /** The role's selected extensions, falling back to all of them when the bundle does not list names. */
 function selectedExtensions(selected: unknown, all: readonly Extension[]): readonly Extension[] {
   return Array.isArray(selected) ? (selected as readonly Extension[]) : all;
