@@ -2,13 +2,13 @@
   "scenarios": [
     {
       "id": "books-requested-free-slot",
-      "description": "A customer asks for a free slot; the desk checks availability, then books it after approval",
+      "description": "A customer gives a name and an email, asks for a free slot; the desk checks availability, saves the contact, then books it \u2014 each write approved by a person",
       "severity": "critical",
       "tags": ["brief", "smoke"],
       "input": {
         "kind": "message",
         "channel": "chat",
-        "text": "Can I book a 30-minute appointment on 2030-01-15 at 09:00? I'm Demo Guest."
+        "text": "Can I book a 30-minute appointment on 2030-01-15 at 09:00? I'm Demo Guest, and you can reach me at demo.guest@example.com."
       },
       "stubs": {
         "check_schedule": {
@@ -43,6 +43,7 @@
         }
       },
       "approvals": {
+        "confirm_contact_creation": "approve",
         "confirm_booking": "approve"
       },
       "expect": {
@@ -54,16 +55,30 @@
             }
           },
           {
+            "tool": "list_contacts"
+          },
+          {
+            "tool": "create_contact",
+            "args": {
+              "name": "Demo Guest",
+              "email": "demo.guest@example.com"
+            }
+          },
+          {
             "tool": "book_appointment",
             "args": {
               "start": "2030-01-15T09:00:00Z",
-              "customer": "Demo Guest"
+              "customer": "Demo Guest",
+              "contactId": "contact-1"
             }
           }
         ],
-        "approvalsRequested": ["confirm_booking"],
+        "approvalsRequested": ["confirm_contact_creation", "confirm_booking"],
         "reply": {
-          "contains": ["demo-1", "2030-01-15"]
+          "contains": ["demo-1"],
+          "containsAny": [
+            ["2030-01-15", "15 january 2030", "15 jan 2030", "january 15", "jan 15", "15/01/2030"]
+          ]
         }
       }
     },
@@ -120,7 +135,19 @@
         ],
         "notCalled": ["book_appointment"],
         "reply": {
-          "contains": ["taken", "10:00:00"]
+          "contains": ["10:00", "11:00"],
+          "containsAny": [
+            [
+              "taken",
+              "not free",
+              "isn't free",
+              "is not free",
+              "unavailable",
+              "not available",
+              "no longer available",
+              "already booked"
+            ]
+          ]
         }
       }
     },
@@ -169,7 +196,16 @@
       "expect": {
         "notCalled": ["book_appointment"],
         "reply": {
-          "contains": ["follow up"]
+          "containsAny": [
+            [
+              "follow up",
+              "get back to you",
+              "come back to you",
+              "let you know",
+              "confirm",
+              "check with"
+            ]
+          ]
         }
       }
     },
@@ -230,7 +266,7 @@
       "input": {
         "kind": "message",
         "channel": "chat",
-        "text": "Text our new lead on +15551234567 and say we have their details."
+        "text": "Text our new lead Dana Reyes on +14155550123 and say we have their details."
       },
       "stubs": {
         "check_schedule": {
@@ -265,21 +301,102 @@
         }
       },
       "approvals": {
+        "confirm_contact_creation": "approve",
         "first_contact": "decline"
       },
       "expect": {
         "calls": [
           {
+            "tool": "list_contacts"
+          },
+          {
+            "tool": "create_contact",
+            "args": {
+              "name": "Dana Reyes",
+              "phone": "+14155550123"
+            }
+          },
+          {
             "tool": "send_message",
             "args": {
+              "contactId": "contact-1",
               "channel": "sms",
-              "to": "+15551234567"
+              "to": "+14155550123"
             }
           }
         ],
-        "approvalsRequested": ["first_contact"],
+        "approvalsRequested": ["confirm_contact_creation", "first_contact"],
         "reply": {
-          "notContains": ["Accepted"]
+          "containsAny": [
+            [
+              "declin",
+              "wasn't sent",
+              "was not sent",
+              "not sent",
+              "couldn't send",
+              "could not send",
+              "didn't send",
+              "did not send",
+              "nothing was sent"
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "asks-for-contact-details-when-missing",
+      "description": "A booking request with a name but no email or phone: the desk checks the diary, asks how to reach them, and books nothing until it has an answer",
+      "severity": "normal",
+      "tags": ["brief"],
+      "input": {
+        "kind": "message",
+        "channel": "chat",
+        "text": "Can I book a 30-minute appointment on 2030-01-15 at 09:00? I'm Demo Guest."
+      },
+      "stubs": {
+        "check_schedule": {
+          "text": "Free: 2030-01-15T09:00:00Z"
+        },
+        "list_bookings": {
+          "text": "No active bookings"
+        },
+        "list_contacts": {
+          "text": "No contacts"
+        },
+        "create_contact": {
+          "text": "Saved contact-1 at revision 1"
+        },
+        "update_contact": {
+          "text": "Saved contact-1 at revision 2"
+        },
+        "send_message": {
+          "text": "Accepted by transport."
+        },
+        "reply_message": {
+          "text": "Accepted by transport."
+        },
+        "book_appointment": {
+          "text": "Booked demo-1 at 2030-01-15T09:00:00Z"
+        },
+        "reschedule_appointment": {
+          "text": "Rescheduled demo-1"
+        },
+        "cancel_appointment": {
+          "text": "Canceled demo-1"
+        }
+      },
+      "expect": {
+        "calls": [
+          {
+            "tool": "check_schedule",
+            "args": {
+              "date": "2030-01-15"
+            }
+          }
+        ],
+        "notCalled": ["book_appointment", "reschedule_appointment", "cancel_appointment"],
+        "reply": {
+          "containsAny": [["email", "phone", "number", "reach you", "reach them"]]
         }
       }
     },
@@ -390,8 +507,21 @@
         ],
         "notCalled": ["book_appointment", "reschedule_appointment", "cancel_appointment"],
         "reply": {
-          "contains": ["no free slots"],
-          "notContains": ["booked"]
+          "containsAny": [
+            [
+              "no free slots",
+              "nothing is free",
+              "fully booked",
+              "no availability",
+              "nothing available",
+              "no slots",
+              "no openings",
+              "nothing open",
+              "isn't available",
+              "nothing's free",
+              "booked up"
+            ]
+          ]
         }
       }
     }

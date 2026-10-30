@@ -224,7 +224,8 @@ export function repliesTools(messenger?: ReplyMessenger, approve?: Approver): To
   return [
     defineTool({
       name: "reply_message",
-      description: "Reply to the current authenticated inbound email after operator approval.",
+      description:
+        "Reply to the current authenticated inbound email. This call raises the approval request for a person and sends the reply when they grant it.",
       parameters: Type.Object(
         { receiptId: Type.String(), text: Type.String() },
         { additionalProperties: false },

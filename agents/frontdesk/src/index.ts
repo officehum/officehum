@@ -83,7 +83,7 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
   const book = defineTool({
     name: "book_appointment",
     description:
-      "Reserve an available UTC slot after operator approval; a discount above the business's rate also waits for a person.",
+      "Reserve an available UTC slot. This call raises the approval request for a person and performs the booking when they grant it; a discount above the business's rate also waits for a person.",
     parameters: Type.Object(
       {
         start: Type.String(),
@@ -147,7 +147,8 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
   });
   const reschedule = defineTool({
     name: "reschedule_appointment",
-    description: "Move one managed appointment by its exact booking ID after operator approval.",
+    description:
+      "Move one managed appointment by its exact booking ID. This call raises the approval request for a person and performs the move when they grant it.",
     parameters: Type.Object({ id: Type.String(), start: Type.String() }),
     replay: "safe",
     execute: async (args, api) => {
@@ -161,7 +162,8 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
   });
   const cancel = defineTool({
     name: "cancel_appointment",
-    description: "Cancel one managed appointment by its exact booking ID after operator approval.",
+    description:
+      "Cancel one managed appointment by its exact booking ID. This call raises the approval request for a person and performs the cancellation when they grant it.",
     parameters: Type.Object({ id: Type.String() }),
     replay: "safe",
     execute: async (args, api) => {

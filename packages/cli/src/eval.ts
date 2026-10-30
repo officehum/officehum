@@ -1,7 +1,9 @@
 /**
  * The `officehum eval ROLE_DIR` command: run one role package's eval suites on the bare Pi Durable
- * harness and print the SDK's report. It is the release gate and the portability check — the runner
- * loads nothing from Office Hum, so a role that needs it fails here.
+ * harness and print the SDK's report. It is the portability gate — the runner loads nothing from
+ * Office Hum, so a role that needs it fails here. It is not evidence of behaviour: a scripted run
+ * counts the calls the model intended, including ones an approval gate would block, so a green
+ * scripted suite says the wiring holds, and only a live run says how the role acts.
  *
  * The model is a live provider (`paper`, `openai`) or `scripted`, which reads a script file so CI can
  * run a suite with no key. A script file is JSON mapping each scenario id to the turns the scripted

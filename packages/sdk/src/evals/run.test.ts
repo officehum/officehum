@@ -100,6 +100,59 @@ describe("gradeTrace", () => {
       'approvalsRequested: expected ["book_after_hours"], got []',
     ]);
   });
+
+  it("treats a time printed without its seconds as the same time", () => {
+    const offered = scenario({ expect: { reply: { contains: ["10:00:00"] } } });
+    expect(gradeTrace(offered, trace({ reply: "I can offer 10:00 UTC." }))).toEqual([]);
+    expect(gradeTrace(offered, trace({ reply: "Our slot was 2030-01-15T10:00:00Z." }))).toEqual([]);
+    // Only the `:00` seconds suffix is normalised: a different time is still a different time.
+    expect(gradeTrace(offered, trace({ reply: "I can offer 12:00 UTC." }))).toEqual([
+      'reply: does not contain "10:00:00"',
+    ]);
+    expect(gradeTrace(offered, trace({ reply: "I can offer 10:30 UTC." }))).toEqual([
+      'reply: does not contain "10:00:00"',
+    ]);
+  });
+
+  it("accepts any one phrase in a group of alternatives, and fails when none is there", () => {
+    const quiet = scenario({
+      expect: {
+        reply: { containsAny: [["no free slots", "nothing is free", "fully booked"]] },
+      },
+    });
+    expect(gradeTrace(quiet, trace({ reply: "That day is fully booked." }))).toEqual([]);
+    expect(gradeTrace(quiet, trace({ reply: "NOTHING IS FREE that day." }))).toEqual([]);
+    expect(gradeTrace(quiet, trace({ reply: "Shall I book you in at 09:00?" }))).toEqual([
+      'reply: mentions none of ["no free slots","nothing is free","fully booked"]',
+    ]);
+  });
+
+  it("requires one phrase from every group, not one from the whole list", () => {
+    const both = scenario({
+      expect: {
+        reply: {
+          containsAny: [
+            ["isn't free", "is taken", "unavailable"],
+            ["10:00", "11:00"],
+          ],
+        },
+      },
+    });
+    expect(gradeTrace(both, trace({ reply: "09:00 is taken; 10:00 and 11:00 are free." }))).toEqual(
+      [],
+    );
+    expect(gradeTrace(both, trace({ reply: "09:00 is taken." }))).toEqual([
+      'reply: mentions none of ["10:00","11:00"]',
+    ]);
+  });
+
+  it("still fails a reply that names no fact at all", () => {
+    const quiet = scenario({ expect: { reply: { contains: ["10:00", "11:00"] } } });
+    expect(gradeTrace(quiet, trace({ reply: "" }))).toEqual([
+      'reply: does not contain "10:00"',
+      'reply: does not contain "11:00"',
+    ]);
+  });
 });
 
 describe("runEvals", () => {

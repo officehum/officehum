@@ -206,7 +206,8 @@ export function contactTools(): ToolRegistration[] {
 
   const create = defineTool({
     name: "create_contact",
-    description: "Create one session contact after operator approval.",
+    description:
+      "Create one session contact. This call raises the approval request for a person and saves the contact when they grant it.",
     parameters: CREATE_PARAMETERS,
     replay: "safe",
     executionMode: "parallel",
@@ -247,7 +248,8 @@ export function contactTools(): ToolRegistration[] {
 
   const update = defineTool({
     name: "update_contact",
-    description: "Correct one contact at an expected profile revision after operator approval.",
+    description:
+      "Correct one contact at an expected profile revision. This call raises the approval request for a person and saves the correction when they grant it.",
     parameters: UPDATE_PARAMETERS,
     replay: "safe",
     executionMode: "parallel",
