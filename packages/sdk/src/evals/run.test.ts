@@ -8,7 +8,9 @@ import type { EvalSuite, Scenario } from "./suite.js";
 
 const trace = (fields: Partial<Trace>): Trace => ({
   calls: [],
+  executedCalls: [],
   approvalsRequested: [],
+  approvals: [],
   delegated: [],
   turns: 1,
   ...fields,

@@ -22,6 +22,12 @@
  *
  * Every role ships that file beside its `evals/` directory as `evals.smoke.json`, so `--script` is
  * optional: without it the command reads the role's own file, the way `agents/bookkeeper` does.
+ *
+ * `--mode office` runs the same suite on the office-mode harness: a board, a ticket bound to the
+ * conversation and the office's real approval gate. A gated call is then refused by the gate the
+ * building actually uses, which is the only way a scenario's "it did not run" can mean something. It
+ * also makes the executed ledger mandatory: a trial in which nothing executed fails, because "nothing
+ * ran" and "the ledger saw nothing" must not look the same.
  */
 
 import { existsSync } from "node:fs";
@@ -53,10 +59,12 @@ export interface EvalArguments {
   readonly tag?: string;
   readonly trials?: number;
   readonly script?: string;
+  readonly mode?: "bare" | "office";
 }
 
 const EVAL_USAGE =
-  "usage: officehum eval ROLE_DIR [--model provider/model] [--tag TAG] [--trials N] [--script FILE]";
+  "usage: officehum eval ROLE_DIR [--model provider/model] [--tag TAG] [--trials N] [--script FILE] " +
+  "[--mode bare|office]";
 
 /** Parses the eval command's arguments: one positional role directory, then the flags above. */
 export function parseEvalArguments(args: readonly string[]): EvalArguments {
@@ -65,6 +73,7 @@ export function parseEvalArguments(args: readonly string[]): EvalArguments {
   let tag: string | undefined;
   let trials: number | undefined;
   let script: string | undefined;
+  let mode: "bare" | "office" | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
     if (token === undefined) continue;
@@ -82,7 +91,12 @@ export function parseEvalArguments(args: readonly string[]): EvalArguments {
     if (token === "--model") model = value;
     else if (token === "--tag") tag = value;
     else if (token === "--script") script = value;
-    else if (token === "--trials") {
+    else if (token === "--mode") {
+      if (value !== "bare" && value !== "office") {
+        throw new UsageError(`--mode must be bare or office (got ${JSON.stringify(value)}).`);
+      }
+      mode = value;
+    } else if (token === "--trials") {
       const count = Number(value);
       if (!Number.isSafeInteger(count) || count < 1) {
         throw new UsageError(`--trials must be a positive integer (got ${JSON.stringify(value)}).`);
@@ -97,6 +111,7 @@ export function parseEvalArguments(args: readonly string[]): EvalArguments {
     ...(tag === undefined ? {} : { tag }),
     ...(trials === undefined ? {} : { trials }),
     ...(script === undefined ? {} : { script }),
+    ...(mode === undefined ? {} : { mode }),
   };
 }
 
@@ -143,10 +158,18 @@ export async function runEvalCommand(
   const model =
     script === undefined ? liveModel(ref, dependencies) : await scriptedModel(script, scenarios);
 
-  const report = await runEvals(suites, piDurableRunner({ dir: parsed.roleDir, model }), {
-    ...(parsed.tag === undefined ? {} : { tag: parsed.tag }),
-    ...(parsed.trials === undefined ? {} : { trials: parsed.trials }),
-  });
+  const report = await runEvals(
+    suites,
+    piDurableRunner({
+      dir: parsed.roleDir,
+      model,
+      ...(parsed.mode === undefined ? {} : { mode: parsed.mode }),
+    }),
+    {
+      ...(parsed.tag === undefined ? {} : { tag: parsed.tag }),
+      ...(parsed.trials === undefined ? {} : { trials: parsed.trials }),
+    },
+  );
   io.output(
     `Model: ${ref.provider}/${ref.modelId}${script === undefined ? "" : ` (script ${script})`}`,
   );
