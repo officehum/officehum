@@ -10,8 +10,6 @@ import {
   normalizeReceivedEmail,
   parseReceivingEvent,
   type ReceivingEvent,
-  type SignedWebhookHeaders,
-  verifySvixWebhook,
 } from "./resend-inbound.js";
 import { withSoloOwnership } from "./solo.js";
 
@@ -31,8 +29,6 @@ export type InboxSummary = {
   submissionId: number | null;
 };
 
-export type ReceiveResult = { status: 200 | 202 | 204; emailId?: string };
-
 export type ResendInboundOptions = {
   authority: InboundAuthority;
   getApiKey: () => Promise<string>;
@@ -44,7 +40,6 @@ export type ResendInboundOptions = {
 export interface ResendInbox {
   readonly authority: InboundAuthority;
   readonly namespace: string;
-  accept(raw: Uint8Array, headers: SignedWebhookHeaders): Promise<ReceiveResult>;
   summaries(): InboxSummary[];
   close(): Promise<void>;
 }
@@ -91,6 +86,32 @@ export type ReplyOperationRow = {
 
 export interface InternalResendInbox extends ResendInbox {
   abortWork(): void;
+  /**
+   * The store's clock, in milliseconds.
+   *
+   * The signature's timestamp window and the receipt's own times have to be judged on one clock: a
+   * receiver whose clock disagrees with the provider's refuses every delivery, and a host that
+   * injects a clock for its tests injects one, not two.
+   */
+  now(): number;
+  /**
+   * The signing secrets in force at this moment, for the adapter that verifies a request.
+   *
+   * Email's signature is the one fact the inbox cannot answer on its own: it is computed by whoever
+   * holds the request. So the store lends the secrets to the channel's adapter and the adapter owns
+   * the decision, which is why verification happens before `record` and never inside it.
+   */
+  secrets(): Promise<readonly string[]>;
+  /**
+   * Record a signed delivery and the message it carries, once per email id.
+   *
+   * Not a decision about duplicates — that is `channel_inbound('email', email_id)`, the gateway's —
+   * but the channel's own state: the receipt a conversation will hang from, and the raw signed
+   * payload that proves what the provider said. Returns `true` when the email id is new to this inbox;
+   * an identical redelivery returns `false`, and a different payload under the same id throws, because
+   * that is not a retry, it is a second claim about one message.
+   */
+  record(raw: Uint8Array, eventId: string): boolean;
   receipt(emailId: string): StoredInboundReceipt | undefined;
   eligible(limit?: number): StoredInboundReceipt[];
   fetchReceived(
@@ -685,7 +706,8 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
       closeController.abort(new Error("closed"));
       for (const controller of active) controller.abort(new Error("closed"));
     },
-    async accept(raw, headers) {
+    now: () => now(),
+    async secrets() {
       if (closed) throw new Error("Inbound inbox is closed.");
       let secrets: readonly string[];
       try {
@@ -694,8 +716,12 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
         throw new Error("Webhook signing secret is unavailable.");
       }
       if (closed) throw new Error("Inbound inbox is closed.");
-      verifySvixWebhook(raw, headers, secrets, now());
-      let generic: Record<string, unknown>;
+      return secrets;
+    },
+    record(raw, eventId) {
+      if (closed) throw new Error("Inbound inbox is closed.");
+      if (!exact(eventId, 200)) throw new Error("Webhook event identity is invalid.");
+      let canonicalEventJson: string;
       try {
         const decoded = JSON.parse(
           new TextDecoder("utf-8", { fatal: true }).decode(raw),
@@ -703,22 +729,15 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
         if (decoded === null || typeof decoded !== "object" || Array.isArray(decoded)) {
           throw new Error();
         }
-        generic = decoded as Record<string, unknown>;
+        canonicalEventJson = canonicalJson(decoded);
       } catch {
         throw new Error("Receiving event is invalid.");
       }
-      if (generic.type !== "email.received") return { status: 204 };
       const event = parseReceivingEvent(raw);
-      const canonicalEventJson = canonicalJson(generic);
-      const routeMatches = event.data.to
-        .map(canonicalMailbox)
-        .includes(boundAuthority.inboundEmail);
       const rawHash = createHash("sha256").update(raw).digest("hex");
       const verifiedAt = now();
       return inTransaction(database, () => {
-        const priorEvent = database
-          .prepare("SELECT * FROM events WHERE event_id=?")
-          .get(headers.id) as
+        const priorEvent = database.prepare("SELECT * FROM events WHERE event_id=?").get(eventId) as
           | {
               raw_payload: Uint8Array;
               raw_sha256: string;
@@ -735,7 +754,7 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
           ) {
             throw new Error("Webhook event identity conflict.");
           }
-          return { status: 200, emailId: event.data.email_id } as const;
+          return false;
         }
         const receipt = findReceipt.get(event.data.email_id) as ReceiptRow | undefined;
         if (receipt !== undefined && receipt.canonical_event_json !== canonicalEventJson) {
@@ -744,25 +763,20 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
         database
           .prepare("INSERT INTO events VALUES(?,?,?,?,?,?)")
           .run(
-            headers.id,
+            eventId,
             Buffer.from(raw),
             rawHash,
             canonicalEventJson,
             event.data.email_id,
             verifiedAt,
           );
-        if (receipt !== undefined) return { status: 200, emailId: event.data.email_id } as const;
+        if (receipt !== undefined) return false;
         database
           .prepare(
             "INSERT INTO receipts(email_id,canonical_event_json,state,reason) VALUES(?,?,?,?)",
           )
-          .run(
-            event.data.email_id,
-            canonicalEventJson,
-            routeMatches ? "received" : "blocked",
-            routeMatches ? null : "route_mismatch",
-          );
-        return { status: 202, emailId: event.data.email_id } as const;
+          .run(event.data.email_id, canonicalEventJson, "received", null);
+        return true;
       });
     },
     summaries() {

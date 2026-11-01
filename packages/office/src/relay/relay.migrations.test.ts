@@ -58,14 +58,15 @@ describe("relay migration", () => {
     expect(tableNames(database)).toEqual([
       "approvals",
       "budgets",
+      // Migration 7, RASF-3160: one dedupe table for every inbound channel.
+      "channel_inbound",
       "comments",
       "people",
       "provenance",
       "relay_cursor",
       "relay_deliveries",
       "relay_waits",
-      // Migration 6, RASF-3162: the inbound SMS intake tables.
-      "sms_inbound",
+      // Migration 6, RASF-3162: the inbound SMS intake tables (`sms_inbound` is a view now).
       "sms_optouts",
       "sms_rate",
       // Migration 4, RASF-3141: the spend ledger and the conversation→ticket binding the hooks read.

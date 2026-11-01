@@ -66,6 +66,23 @@ describe("SMS intake store", () => {
     }
   });
 
+  it("keys the duplicate guard by channel as well as by id (RASF-3160)", () => {
+    const board = openBoard(boardFile());
+    try {
+      // One id, two channels: two providers can mint the same string, and a coincidence between them
+      // must not swallow a real message.
+      expect(board.sms.inbound.recordInboundOnce("sms", "shared-id", AT)).toBe(true);
+      expect(board.sms.inbound.recordInboundOnce("email", "shared-id", AT)).toBe(true);
+      // The same pair twice is the same delivery.
+      expect(board.sms.inbound.recordInboundOnce("email", "shared-id", AT)).toBe(false);
+      expect(board.sms.inbound.recordInboundOnce("sms", "shared-id", AT)).toBe(false);
+      // The SMS methods are that store bound to `sms`, so they see what it recorded.
+      expect(board.sms.recordInboundOnce("shared-id", AT)).toBe(false);
+    } finally {
+      board.close();
+    }
+  });
+
   it("holds a number's latest word: STOP, then START", () => {
     const board = openBoard(boardFile());
     try {

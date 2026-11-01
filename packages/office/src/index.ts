@@ -35,6 +35,7 @@ export {
   openConsoleMessenger,
 } from "./console-messenger.js";
 export { createDemoModels } from "./demo-model.js";
+export { type EmailGatewayOptions, emailGateway } from "./email-gateway.js";
 export {
   EVAL_EXTENSION_NAME,
   type EvalModel,
@@ -78,6 +79,10 @@ export {
   openOfficeConfig,
 } from "./office-config.js";
 export {
+  ResendInboundAdapter,
+  type ResendInboundAdapterOptions,
+} from "./resend-adapter.js";
+export {
   canonicalJson as canonicalInboundJson,
   canonicalMailbox,
   type InboundAttachment,
@@ -94,7 +99,6 @@ export {
   type InboxSummary,
   type InternalResendInbox,
   openResendInbox,
-  type ReceiveResult,
   type ResendInboundOptions,
   type ResendInbox,
   readInboundAuthority,
@@ -106,6 +110,7 @@ export {
   type InboundOutcome,
   openResendListener,
   type ResendListener,
+  type SmsInboundMessage,
   type TwilioHookOptions,
 } from "./resend-listener.js";
 export {
@@ -115,6 +120,7 @@ export {
   type ResendMessenger,
   type ResendMessengerOptions,
 } from "./resend-messenger.js";
+export { type EmailOutboundIntent, ResendOutbound } from "./resend-outbound.js";
 export {
   createResendReplyMessenger,
   type ReplyMessenger,

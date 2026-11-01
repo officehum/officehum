@@ -2,17 +2,15 @@
  * The inbound SMS intake tables, on the board's own handle (RASF-3162).
  *
  * Same shape as `relay-ledger.ts` and `approvals.ts`: prepared statements over a caller-owned
- * `DatabaseSync`, no second connection, no migration work here (migration 6 created these tables), and
- * every mutating call in its own `BEGIN IMMEDIATE` because the file is shared with the board's own
- * transactions.
+ * `DatabaseSync`, no second connection, no migration work here (migration 6 created the opt-out and
+ * rate tables, migration 7 the dedupe table), and every mutating call in its own `BEGIN IMMEDIATE`
+ * because the file is shared with the board's own transactions.
  *
- * `recordInboundOnce` is the duplicate guard and the whole of it is one `INSERT OR IGNORE` inside one
- * transaction. Twilio retries a delivery it did not get a 2xx for and the retry carries the same
- * MessageSid, so "already seen" and "now recorded" have to be one decision: a `SELECT` followed by an
- * `INSERT` lets two deliveries interleave, both read as unseen, and the office ends up with two tickets
- * about one text. Letting the primary key answer makes the second delivery a no-op by construction.
- * The only delete is `forgetInbound`, used when the route recorded a message and then could not hand
- * it on: that row would otherwise turn the provider's retry into a duplicate of work nobody did.
+ * The duplicate guard is no longer this channel's own table: RASF-3160 moved it to `channel_inbound`,
+ * keyed `(channel, external_id)`, so a second channel reuses one decision instead of writing a second
+ * copy of it. `recordInboundOnce` here is that store bound to `sms`, which is why the provider's id
+ * keeps the name the route has always used for it, and `inbound` is the same store unbounded, for the
+ * gateway.
  *
  * The rate counter is incremented before it is read, and a message that takes the count past the limit
  * is refused while still counting. A flood therefore climbs in the table instead of pinning at the
@@ -20,11 +18,19 @@
  */
 import type { DatabaseSync } from "node:sqlite";
 import { fail } from "./errors.js";
+import { type InboundStore, openInboundStore } from "./inbound.js";
 
 /** A number's latest instruction. `stop` is a legal demand, `start` is the way back. */
 export type SmsOptOutState = "stop" | "start";
 
 export interface SmsStore {
+  /**
+   * The same duplicate guard, keyed by channel as well as by id — for the gateway.
+   *
+   * The methods below are this store bound to `sms`; a second channel calls this one directly with its
+   * own name, so one table answers the question for both.
+   */
+  readonly inbound: InboundStore;
   /** Record the provider's message id; false when it was already recorded. */
   recordInboundOnce(messageSid: string, at: string): boolean;
   /**
@@ -59,10 +65,7 @@ function text(value: string, what: string): string {
 }
 
 export function openSmsStore(database: DatabaseSync): SmsStore {
-  const insertInbound = database.prepare(
-    "INSERT OR IGNORE INTO sms_inbound (message_sid, received_at) VALUES (?, ?)",
-  );
-  const deleteInbound = database.prepare("DELETE FROM sms_inbound WHERE message_sid = ?");
+  const inbound = openInboundStore(database);
   const upsertOptOut = database.prepare(
     `INSERT INTO sms_optouts (number, state, at) VALUES (?, ?, ?)
      ON CONFLICT(number) DO UPDATE SET state = excluded.state, at = excluded.at`,
@@ -89,16 +92,15 @@ export function openSmsStore(database: DatabaseSync): SmsStore {
   };
 
   return {
+    inbound,
     recordInboundOnce(messageSid, at) {
       const sid = text(messageSid, "A MessageSid");
       const receivedAt = text(at, "A receive time");
-      return transact(() => Number(insertInbound.run(sid, receivedAt).changes) > 0);
+      return inbound.recordInboundOnce("sms", sid, receivedAt);
     },
     forgetInbound(messageSid) {
       const sid = text(messageSid, "A MessageSid");
-      transact(() => {
-        deleteInbound.run(sid);
-      });
+      inbound.forgetInbound("sms", sid);
     },
     setOptOut(number, state, at) {
       const who = text(number, "A number");

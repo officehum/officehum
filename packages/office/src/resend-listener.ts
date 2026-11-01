@@ -3,37 +3,48 @@
  *
  * It began as the Resend listener with a single hard-coded path, and it stays one server rather than
  * growing a second: a host publishes one port, terminates TLS in front of it once, and a provider is
- * configured in one place. Routes are entries in a table now, each owning its method, its media type and
- * the shape of its refusals, so adding `/hooks/twilio` needed no new socket and no change to the Resend
- * path's behaviour.
+ * configured in one place. Routes are entries in a table, each owning its method, its media type, the
+ * header its provider signs with, and the shape of its refusals — so adding `/hooks/twilio` needed no
+ * new socket and no change to the Resend path's behaviour.
  *
- * The Resend route is deliberately untouched: same checks, same statuses, same bodies, same error
- * mapping. Its behaviour is a live integration, and a webhook router that "cleaned up" the one route
- * already in production would be the most expensive kind of refactor.
+ * **RASF-3160 made this file a route table rather than a pipeline.** Every inbound channel used to
+ * carry the six facts a message needs — verify, dedupe, opt-out, the stranger's ceiling, resolving the
+ * sender, dispatch — plus the fence around a stranger's words. Each of those is `ChannelGateway`'s
+ * now. So this file reads a body, hands it to the route's gateway, and writes back what the adapter's
+ * `ack` says. There is one `ingest` call, in `deliver`, and it serves both channels: nothing here
+ * knows TwiML, a MessageSid, a svix signature, or how a duplicate is detected.
  *
- * The Twilio route is inbound only. It verifies the signature, parses the message, writes what the board
- * needs to remember, and answers with the empty TwiML that tells Twilio to send nothing. It never sends:
- * no code path in this file calls a provider, and the adapter has no member that would.
+ * What is left is genuinely per-provider and is data in the table, not code: which header carries the
+ * signature, which URL was signed, and what a refusal looks like in that provider's dialect.
+ *
+ * The Twilio route is inbound only. It verifies the signature, parses the message, writes what the
+ * board needs to remember, and answers with the empty TwiML that tells Twilio to send nothing. It
+ * never sends: no code path in this file calls a provider, the adapter has no member that would, and
+ * the outbound registry has no adapter under `sms` at all.
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import {
-  admitWithin,
-  DEFAULT_SMS_RATE_LIMIT,
+  type Ack,
+  type ChannelGateway,
   type E164,
-  EMPTY_TWIML,
-  type InboundMessage,
-  optOutCommand,
+  type GatewayResult,
+  type InboundRefusal,
   parseE164,
   type RateLimit,
   TWILIO_FORM_CONTENT_TYPE,
-  TWIML_CONTENT_TYPE,
   TwilioAdapter,
 } from "@officehum/channels";
+import type { InboundStore } from "./board/inbound.js";
 import type { SmsStore } from "./board/sms.js";
+import { emailGateway } from "./email-gateway.js";
 import type { OfficeConfig } from "./office-config.js";
-import type { ResendInbox } from "./resend-inbox.js";
+import { ResendInboundAdapter } from "./resend-adapter.js";
+import type { InternalResendInbox } from "./resend-inbox.js";
+import { type InboundOutcome, smsGateway } from "./sms-gateway.js";
+
+export type { InboundDisposition, InboundOutcome, SmsInboundMessage } from "./sms-gateway.js";
 
 export interface ResendListener {
   readonly address: string;
@@ -48,9 +59,9 @@ const TIMEOUT = 10_000;
  *
  * Both secrets-shaped options are required and neither has a fallback: a route that ran with an empty
  * auth token would accept every request, and a route that ran with a placeholder number would refuse
- * every real one — both failures look like a quiet, working server. The adapter checks the token's shape
- * as well as its presence, so `authToken: "test"` is refused at startup rather than at the first
- * forgery it lets through.
+ * every real one — both failures look like a quiet, working server. The adapter checks the token's
+ * shape as well as its presence, so `authToken: "test"` is refused at startup rather than at the
+ * first forgery it lets through.
  */
 export interface TwilioHookOptions {
   /** The account's auth token. Twilio issues 32 hexadecimal characters. */
@@ -97,35 +108,60 @@ export interface TwilioHookOptions {
   readonly onInbound?: (outcome: InboundOutcome) => void | Promise<void>;
 }
 
-/** What became of a verified inbound message. `rate_limited` is stored and refused, in that order. */
-export type InboundDisposition = "recorded" | "duplicate" | "opt_out" | "rate_limited";
-
-export interface InboundOutcome {
-  readonly message: InboundMessage;
-  readonly disposition: InboundDisposition;
-}
+/**
+ * The request's headers as `node` gives them without joining: names lowercased, every value kept.
+ *
+ * The values matter as a list, not as a string: a repeated signature header is two claims, and one
+ * joined string is neither of them.
+ */
+type RequestHeaders = Readonly<Record<string, readonly string[] | undefined>>;
 
 type RouteContext = {
   readonly request: IncomingMessage;
   readonly response: ServerResponse;
   readonly target: URL;
+  /** Every header the request carried, read once for the whole request; a repeat keeps its values. */
+  readonly headers: RequestHeaders;
 };
 
+/**
+ * One provider endpoint: which channel it serves, how it signs, and what its refusals look like.
+ *
+ * Everything in here is a fact about a provider, written as data. The pipeline is not in this file,
+ * so a third route is another entry and nothing else.
+ */
 type Route = {
   readonly method: "POST";
   readonly contentType: string;
+  /** The channel the adapter is registered under; the gateway is driven by this name. */
+  readonly channel: string;
+  readonly gateway: ChannelGateway;
+  /** The one header this provider signs with, lowercased. */
+  readonly signature: string;
+  /** The absolute URL the provider signed, when the request cannot say it itself. */
+  readonly url?: (request: IncomingMessage, target: URL, headers: RequestHeaders) => string;
   /** How this route refuses a request it could not read the shape of. */
   readonly refuse: (response: ServerResponse, status: number) => void;
-  handle(context: RouteContext): Promise<void>;
+  /** How this route answers what the gateway decided. */
+  readonly answer: (context: RouteContext, result: GatewayResult) => void;
 };
 
-function headerValues(request: IncomingMessage, name: string): string[] {
-  const result: string[] = [];
-  for (let index = 0; index < request.rawHeaders.length; index += 2) {
-    if (request.rawHeaders[index]?.toLowerCase() === name)
-      result.push(request.rawHeaders[index + 1] ?? "");
-  }
-  return result;
+/**
+ * The one value of a header, or `undefined`.
+ *
+ * `undefined` for zero values and for two: a request with a repeated signature header is not a
+ * request with a signature, it is a request making two claims, and neither of them is checked.
+ */
+function single(headers: RequestHeaders, name: string): string | undefined {
+  const values = headers[name];
+  return values !== undefined && values.length === 1 ? values[0] : undefined;
+}
+
+/** The first value of every header, as an adapter reads a request. */
+function headerBag(headers: RequestHeaders): Readonly<Record<string, string>> {
+  const bag: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const [name, values] of Object.entries(headers)) bag[name] = values?.[0] ?? "";
+  return bag;
 }
 
 function respond(response: ServerResponse, status: number, message: string): void {
@@ -139,18 +175,21 @@ function respond(response: ServerResponse, status: number, message: string): voi
 }
 
 /**
- * A TwiML answer. `text/xml` exactly, because Twilio's parser dispatches on the declared type and an
- * answer it cannot parse is an answer it retries. `EMPTY_TWIML` is imported rather than written here:
- * one string, one place, so no call site can answer with a `<Message>`.
+ * Write a channel's own acknowledgement.
+ *
+ * The route supplies the status (it owns the HTTP vocabulary: a 404 for another office's number, a 400
+ * for a body that could not be read) and the adapter supplies the media type and the body. TwiML is
+ * therefore not a word this file uses, and a second channel's JSON acknowledgement needs no change
+ * here.
  */
-function respondTwiml(response: ServerResponse, status: number, body: string = EMPTY_TWIML): void {
+function respondAck(response: ServerResponse, ack: Ack, status: number): void {
   if (response.headersSent || response.destroyed) return;
   response.writeHead(status, {
-    "content-type": TWIML_CONTENT_TYPE,
-    "content-length": Buffer.byteLength(body),
+    ...ack.headers,
+    "content-length": Buffer.byteLength(ack.body),
     connection: "close",
   });
-  response.end(body);
+  response.end(ack.body);
 }
 
 async function readBody(request: IncomingMessage): Promise<Uint8Array> {
@@ -194,114 +233,65 @@ function businessNumberOf(options: TwilioHookOptions): E164 {
  * arrives through a proxy is checked against the public name the proxy forwards, not against
  * `127.0.0.1`. A host that terminates TLS without forwarding either header passes `signedUrl` instead.
  */
-function signedUrlOf(request: IncomingMessage, target: URL): string {
-  const proto = headerValues(request, "x-forwarded-proto")[0]?.split(",")[0]?.trim() || "http";
+function signedUrlOf(target: URL, headers: RequestHeaders): string {
+  const proto = single(headers, "x-forwarded-proto")?.split(",")[0]?.trim() || "http";
   const host =
-    headerValues(request, "x-forwarded-host")[0]?.split(",")[0]?.trim() ||
-    headerValues(request, "host")[0] ||
+    single(headers, "x-forwarded-host")?.split(",")[0]?.trim() ||
+    single(headers, "host") ||
     "127.0.0.1";
   return `${proto}://${host}${target.pathname}`;
 }
 
-async function deliverResend(context: RouteContext, inbox: ResendInbox): Promise<void> {
-  const { request, response } = context;
-  const ids = headerValues(request, "svix-id");
-  const timestamps = headerValues(request, "svix-timestamp");
-  const signatures = headerValues(request, "svix-signature");
-  if (ids.length !== 1 || timestamps.length !== 1 || signatures.length !== 1) {
-    return respond(response, 400, "invalid webhook headers\n");
-  }
+/**
+ * Hand one webhook to the gateway, and answer the provider in the provider's own dialect.
+ *
+ * This is the whole of the pipeline, for every channel: read the body, name the header that carries
+ * the signature, hand over. The order that matters — verify before anything is believed, the duplicate
+ * guard before the opt-out and the counter, the counter after both — is `ChannelGateway`'s, because
+ * the next channel needs the same order and a second copy of it is a second chance to get it wrong.
+ *
+ * A request's body is handed over as text and as the bytes it arrived as: Twilio signs the parsed
+ * fields, and Resend signs the bytes, so a route cannot decide for both which one its provider meant.
+ */
+async function deliver(context: RouteContext, route: Route): Promise<void> {
+  const { request, target, headers } = context;
   const raw = await readBody(request);
-  const result = await inbox.accept(raw, {
-    id: ids[0] ?? "",
-    timestamp: timestamps[0] ?? "",
-    signature: signatures[0] ?? "",
+  const result = await route.gateway.ingest(route.channel, {
+    url: route.url?.(request, target, headers) ?? `${target.origin}${target.pathname}`,
+    body: new TextDecoder().decode(raw),
+    raw,
+    signature: single(headers, route.signature),
+    headers: headerBag(headers),
   });
-  respond(response, result.status, result.status === 204 ? "" : "accepted\n");
+  route.answer(context, result);
 }
 
 /**
- * Verify, record, answer.
+ * Resend's statuses, and the four the route can answer with.
  *
- * The order matters more than the code length. Verification comes before anything is read as a fact, so
- * a forged request leaves no row. The duplicate guard comes before the opt-out and the counter, so a
- * Twilio retry of a STOP does not count as a second message. The counter comes last, so a keyword a
- * person is entitled to send is never refused for being their fourth text.
+ * `ignored` is a 204 with no body: a delivery this office does not take as a message (Resend's own
+ * `email.sent`, `email.delivered`) is acknowledged so it is not retried, and nothing is written.
  */
-async function deliverTwilio(
-  context: RouteContext,
-  options: TwilioHookOptions,
-  adapter: TwilioAdapter,
-): Promise<void> {
-  const { request, response, target } = context;
-  const signatures = headerValues(request, "x-twilio-signature");
-  const raw = await readBody(request);
-  const result = adapter.accept({
-    url: options.signedUrl ?? signedUrlOf(request, target),
-    body: new TextDecoder().decode(raw),
-    signature: signatures.length === 1 ? signatures[0] : undefined,
-  });
-  if (!result.accepted) {
-    // No body on a refusal, and nothing about the refusal's reason in the response: an attacker who
-    // learns whether a number is provisioned has learned which office they reached. The board was not
-    // touched, and the message body is not logged — it is a stranger's text, and unverified.
-    if (result.reason === "signature") return respond(response, 403, "");
-    if (result.reason === "wrong_number") return respondTwiml(response, 404);
-    return respondTwiml(response, 400);
-  }
-
-  const message = result.message;
-  if (!options.board.recordInboundOnce(message.messageSid, message.receivedAt)) {
-    await options.onInbound?.({ message, disposition: "duplicate" });
-    return respondTwiml(response, 200);
-  }
-
-  const command = optOutCommand(message.body);
-  if (command !== undefined) {
-    options.board.setOptOut(message.from, command, message.receivedAt);
-    await options.onInbound?.({ message, disposition: "opt_out" });
-    return respondTwiml(response, 200);
-  }
-
-  // A registered number is a customer, not a stranger: the ceiling exists to stop a flood, and one of
-  // this office's own customers asking three questions in an hour is a conversation, not a flood.
-  const registered = options.isRegistered?.(message.from) === true;
-  const allowed =
-    registered ||
-    admitWithin(
-      options.board,
-      message.from,
-      message.receivedAt,
-      options.rateLimit ?? DEFAULT_SMS_RATE_LIMIT,
-    ).allowed;
-  const outcome: InboundOutcome = { message, disposition: allowed ? "recorded" : "rate_limited" };
-  if (!allowed) {
-    await options.onInbound?.(outcome);
-    // A refusal is still a 200 with empty TwiML. The ceiling is the office's, not the provider's, so
-    // telling Twilio to retry would turn one flood into an unbounded stream of retries.
-    return respondTwiml(response, 200);
-  }
-  try {
-    await options.onInbound?.(outcome);
-  } catch (error) {
-    // The message never reached the office, so the row that says it arrived is now a lie and would
-    // swallow Twilio's retry as a duplicate. Removing it is what makes the retry a second chance;
-    // the routing itself is idempotent (one ticket per MessageSid, one conversation input per
-    // MessageSid), so a redelivery cannot double anything.
-    options.board.forgetInbound(message.messageSid);
-    throw error;
-  }
-  return respondTwiml(response, 200);
-}
+const EMAIL_REFUSAL: Readonly<Record<InboundRefusal, { status: number; body: string }>> = {
+  ignored: { status: 204, body: "" },
+  signature: { status: 401, body: "webhook unauthorized\n" },
+  malformed: { status: 400, body: "invalid webhook\n" },
+  wrong_number: { status: 404, body: "not found\n" },
+};
 
 /**
  * Opens the loopback listener and serves the route table.
+ *
+ * `board` is the one duplicate table every channel shares; the email route cannot be served without
+ * it, because a webhook that cannot recognise a redelivery is a webhook that hands the office the
+ * same email twice.
  *
  * `twilio` is optional so a host that has not provisioned a number serves only the email webhook; the
  * route does not exist without it, and answers 404 rather than pretending to be misconfigured.
  */
 export async function openResendListener(options: {
-  inbox: ResendInbox;
+  inbox: InternalResendInbox;
+  board: InboundStore;
   port: number;
   twilio?: TwilioHookOptions;
 }): Promise<ResendListener> {
@@ -314,11 +304,20 @@ export async function openResendListener(options: {
   ) {
     throw new Error("Listener configuration is invalid.");
   }
+  if (typeof options.board?.recordInboundOnce !== "function") {
+    throw new Error("The email route needs the board's inbound store.");
+  }
   const twilio = options.twilio;
   const routes = new Map<string, Route>();
+  // Built once, at startup: the adapter holds the mailbox authority, and a route that could not
+  // recognise its own inbox should stop the host rather than fail the first webhook.
+  const email = new ResendInboundAdapter({ inbox: options.inbox });
   routes.set("/webhooks/resend", {
     method: "POST",
     contentType: "application/json",
+    channel: email.name,
+    gateway: emailGateway({ adapter: email, board: options.board }),
+    signature: "svix-signature",
     // The two refusals this route has always answered, with the same bodies.
     refuse: (response, status) =>
       respond(
@@ -326,7 +325,35 @@ export async function openResendListener(options: {
         status,
         status === 405 ? "method not allowed\n" : "unsupported media type\n",
       ),
-    handle: (context) => deliverResend(context, options.inbox),
+    answer: ({ response, headers }, result) => {
+      if (!result.accepted) {
+        if (result.reason === "malformed") {
+          // A delivery carrying none of the three headers svix signs with is not a webhook this
+          // route can read at all, and that has always been answered in those words. The adapter
+          // says `malformed` for both cases; the difference between "not a webhook" and "not a
+          // readable one" is HTTP vocabulary, which is this file's.
+          const signed =
+            single(headers, "svix-id") !== undefined &&
+            single(headers, "svix-timestamp") !== undefined &&
+            single(headers, "svix-signature") !== undefined;
+          return respond(
+            response,
+            400,
+            signed ? EMAIL_REFUSAL.malformed.body : "invalid webhook headers\n",
+          );
+        }
+        const refusal = EMAIL_REFUSAL[result.reason];
+        return respond(response, refusal.status, refusal.body);
+      }
+      // Resend has been told 202 for a first delivery and 200 for one it had already been thanked
+      // for; both mean "we have it", and only the disposition differs. That distinction is the
+      // provider's own and stays here rather than in the gateway.
+      return respondAck(
+        response,
+        result.ack,
+        result.outcome.disposition === "duplicate" ? 200 : 202,
+      );
+    },
   });
   if (twilio !== undefined) {
     if (typeof twilio.board?.recordInboundOnce !== "function") {
@@ -341,8 +368,25 @@ export async function openResendListener(options: {
     routes.set("/hooks/twilio", {
       method: "POST",
       contentType: TWILIO_FORM_CONTENT_TYPE,
-      refuse: (response, status) => respondTwiml(response, status),
-      handle: (context) => deliverTwilio(context, twilio, adapter),
+      channel: adapter.name,
+      gateway: smsGateway({ ...twilio, adapter }),
+      signature: "x-twilio-signature",
+      url: (_request, target, headers) => twilio.signedUrl ?? signedUrlOf(target, headers),
+      // A wrong method or media type is answered in the provider's own dialect too, so the refusal
+      // renderer is the adapter's ack rather than a status-specific body this file invents.
+      refuse: (response, status) => respondAck(response, adapter.ack(), status),
+      answer: ({ response }, result) => {
+        if (!result.accepted) {
+          // No body on a refusal, and nothing about the refusal's reason in the response: an attacker
+          // who learns whether a number is provisioned has learned which office they reached. The
+          // board was not touched, and the message body is not logged — it is a stranger's text, and
+          // unverified.
+          if (result.reason === "signature") return respond(response, 403, "");
+          // The rest answer in TwiML: a provider whose parser rejects the answer retries it.
+          return respondAck(response, result.ack, result.reason === "wrong_number" ? 404 : 400);
+        }
+        return respondAck(response, result.ack, result.ack.status);
+      },
     });
   }
 
@@ -362,14 +406,12 @@ export async function openResendListener(options: {
       const route = routes.get(target.pathname);
       if (route === undefined) return respond(response, 404, "not found\n");
       if (request.method !== route.method) return route.refuse(response, 405);
-      const contentType = headerValues(request, "content-type");
-      if (
-        contentType.length !== 1 ||
-        contentType[0]?.split(";", 1)[0]?.trim().toLowerCase() !== route.contentType
-      ) {
-        return route.refuse(response, 415);
-      }
-      await route.handle({ request, response, target });
+      const headers = request.headersDistinct;
+      // A media type is compared without its parameters (`; charset=…`): the provider declares a
+      // type, and a route that refused a charset it did not ask for would refuse its own provider.
+      const contentType = single(headers, "content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+      if (contentType !== route.contentType) return route.refuse(response, 415);
+      await deliver({ request, response, target, headers }, route);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
       if (message === "too_large") respond(response, 413, "payload too large\n");
