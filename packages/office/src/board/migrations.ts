@@ -352,6 +352,9 @@ function rebuildApprovals(database: DatabaseSync): void {
 /**
  * Migration 6 adds the inbound SMS intake tables (RASF-3162).
  *
+ * Its `sms_inbound` table is superseded by migration 7 (RASF-3160), which folds it into the one
+ * `channel_inbound` table; the rest of this step still stands.
+ *
  * Three facts, and no fourth: a message arrived (once), a number last said STOP or START, and a number
  * has sent N messages in one window. They live in this file rather than in the channel package because
  * the board is the one durable authority about this company's customers — a second SQLite file beside
@@ -392,6 +395,54 @@ function addSmsIntake(database: DatabaseSync): void {
   `);
 }
 
+/**
+ * Migration 7 unifies the inbound dedupe tables (RASF-3160).
+ *
+ * Every channel had its own answer to "have we already seen this delivery?", and a third channel would
+ * have been a third one. `channel_inbound` is the single answer: one row per `(channel, external_id)`,
+ * because a MessageSid and a Resend message id are different namespaces and a coincidence between them
+ * must not swallow a real message.
+ *
+ * The backfill copies `sms_inbound` verbatim into the `sms` namespace before the old table is dropped
+ * in the same step — a message already handled must not become a second ticket after the upgrade. The
+ * email path's own record of handled messages is not back-filled, and cannot be: it lives in the
+ * inbox's own file (`inbound.sqlite`, table `events`), which this database cannot see. A migration that
+ * attached a second file by a path it guessed would be a migration that fails on somebody's machine.
+ *
+ * `sms_inbound` survives as a **view** of the same name, because two pinned SQL reads (`SELECT … FROM
+ * sms_inbound`) are part of the existing suite and of anyone's script against an office database. The
+ * table is gone; the name is a read-only projection of `channel_inbound WHERE channel = 'sms'`.
+ *
+ * Idempotent by construction: re-running it finds the table already dropped, inserts nothing, and the
+ * `CREATE … IF NOT EXISTS` statements are no-ops.
+ */
+function unifyInboundDedupe(database: DatabaseSync): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS channel_inbound (
+      channel TEXT NOT NULL,                -- the adapter's name: 'sms', 'email', …
+      external_id TEXT NOT NULL,            -- the provider's id, in that provider's namespace
+      received_at TEXT NOT NULL,
+      PRIMARY KEY (channel, external_id)
+    );
+  `);
+  const legacy = database
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sms_inbound'")
+    .get() as { name: string } | undefined;
+  if (legacy !== undefined) {
+    database.exec(`
+      INSERT OR IGNORE INTO channel_inbound (channel, external_id, received_at)
+        SELECT 'sms', message_sid, received_at FROM sms_inbound;
+      DROP TABLE sms_inbound;
+    `);
+  }
+  database.exec(`
+    CREATE VIEW IF NOT EXISTS sms_inbound AS
+      SELECT external_id AS message_sid, received_at
+        FROM channel_inbound
+       WHERE channel = 'sms';
+  `);
+}
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: createWorkboard },
   { version: 2, up: createRelay },
@@ -399,6 +450,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 4, up: addSpendAccounting },
   { version: 5, up: rebuildApprovals },
   { version: 6, up: addSmsIntake },
+  { version: 7, up: unifyInboundDedupe },
 ];
 
 for (const [index, migration] of MIGRATIONS.entries()) {

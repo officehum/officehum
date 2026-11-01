@@ -106,6 +106,7 @@ export {
   type InboundOutcome,
   openResendListener,
   type ResendListener,
+  type SmsInboundMessage,
   type TwilioHookOptions,
 } from "./resend-listener.js";
 export {
@@ -115,6 +116,7 @@ export {
   type ResendMessenger,
   type ResendMessengerOptions,
 } from "./resend-messenger.js";
+export { type EmailOutboundIntent, ResendOutbound } from "./resend-outbound.js";
 export {
   createResendReplyMessenger,
   type ReplyMessenger,

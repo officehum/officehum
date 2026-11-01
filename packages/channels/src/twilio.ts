@@ -1,6 +1,8 @@
 import {
+  type Ack,
   type ChannelAdapter,
   type E164,
+  type InboundRefusal,
   type InboundRequest,
   type InboundResult,
   parseE164,
@@ -53,6 +55,27 @@ export function formParams(body: string): Record<string, string> {
 }
 
 /**
+ * The shape this adapter has always answered `accept` with, kept because the package is published.
+ *
+ * The gateway works in `InboundResult`, whose message is keyed by `(channel, externalId)`. `accept` is
+ * the Twilio-specific view of the same two steps and its message keeps the provider's own field name:
+ * a caller written against `@officehum/channels` 0.0.0 keeps working, and `messageSid` stays the word
+ * Twilio's documentation uses.
+ */
+export type TwilioAcceptResult =
+  | {
+      readonly accepted: true;
+      readonly message: {
+        readonly from: E164;
+        readonly to: E164;
+        readonly body: string;
+        readonly messageSid: string;
+        readonly receivedAt: string;
+      };
+    }
+  | { readonly accepted: false; readonly reason: InboundRefusal };
+
+/**
  * Twilio's inbound SMS, verified and parsed.
  *
  * The order is the security story. Parse, then verify, then look at the fields: verification needs the
@@ -61,7 +84,16 @@ export function formParams(body: string): Record<string, string> {
  * HTTP vocabulary and this class owns the provider's.
  */
 export class TwilioAdapter implements ChannelAdapter {
+  readonly name = "sms";
+
+  /**
+   * The same channel under the member name this adapter published before the gateway existed.
+   *
+   * Kept because `@officehum/channels` is a published package and a caller may read either name; the
+   * two are one value, so they cannot disagree.
+   */
   readonly channel = "sms";
+
   readonly #authToken: string;
   readonly #businessNumber: E164;
   readonly #now: () => Date;
@@ -78,15 +110,20 @@ export class TwilioAdapter implements ChannelAdapter {
     this.#now = options.now ?? (() => new Date());
   }
 
-  accept(request: InboundRequest): InboundResult {
+  verify(request: InboundRequest): InboundRefusal | undefined {
     const params = formParams(request.body);
     if (!verifyTwilioSignature(this.#authToken, request.url, params, request.signature)) {
-      return { accepted: false, reason: "signature" };
+      return "signature";
     }
+    return undefined;
+  }
+
+  parse(request: InboundRequest): InboundResult {
+    const params = formParams(request.body);
     const from = parseE164(params.From ?? "");
     const to = parseE164(params.To ?? "");
-    const messageSid = params.MessageSid ?? "";
-    if (from === undefined || to === undefined || messageSid === "") {
+    const externalId = params.MessageSid ?? "";
+    if (from === undefined || to === undefined || externalId === "") {
       return { accepted: false, reason: "malformed" };
     }
     // A verified message to somebody else's number is Twilio misconfiguration or a replay of another
@@ -95,11 +132,43 @@ export class TwilioAdapter implements ChannelAdapter {
     return {
       accepted: true,
       message: {
+        channel: this.name,
+        externalId,
         from,
         to,
         body: params.Body ?? "",
-        messageSid,
         receivedAt: this.#now().toISOString(),
+      },
+    };
+  }
+
+  /** An empty TwiML body, whatever the office did with the message: Twilio must send nothing. */
+  ack(): Ack {
+    return {
+      status: 200,
+      headers: { "content-type": TWIML_CONTENT_TYPE },
+      body: EMPTY_TWIML,
+    };
+  }
+
+  /**
+   * Verify, parse, and answer in the shape this package published before RASF-3160.
+   *
+   * One implementation behind two entry points: the gateway calls `verify` and `parse`, and this calls
+   * the same two, so neither can drift from the other.
+   */
+  accept(request: InboundRequest): TwilioAcceptResult {
+    if (this.verify(request) !== undefined) return { accepted: false, reason: "signature" };
+    const result = this.parse(request);
+    if (!result.accepted) return result;
+    return {
+      accepted: true,
+      message: {
+        from: result.message.from as E164,
+        to: result.message.to as E164,
+        body: result.message.body,
+        messageSid: result.message.externalId,
+        receivedAt: result.message.receivedAt,
       },
     };
   }

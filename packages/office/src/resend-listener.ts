@@ -7,33 +7,41 @@
  * the shape of its refusals, so adding `/hooks/twilio` needed no new socket and no change to the Resend
  * path's behaviour.
  *
+ * **RASF-3160 made this file a route table rather than a pipeline.** The SMS route used to carry the
+ * six facts an inbound channel needs — verify, dedupe, opt-out, the stranger's ceiling, resolving the
+ * sender, dispatch — plus the fence around a stranger's words. All of that is `ChannelGateway` now, so
+ * this route reads a body, hands it over, and writes back what the adapter's `ack` says. Nothing here
+ * knows TwiML, a MessageSid, or how a duplicate is detected.
+ *
  * The Resend route is deliberately untouched: same checks, same statuses, same bodies, same error
- * mapping. Its behaviour is a live integration, and a webhook router that "cleaned up" the one route
- * already in production would be the most expensive kind of refactor.
+ * mapping. Its behaviour is a live integration, and its own receipt machine (verify the svix signature
+ * against secrets fetched per request, then fetch the body from the provider before it can be parsed)
+ * is asynchronous in a way the gateway's synchronous verify/parse is not. Moving it is a ticket of its
+ * own; the fence and provenance it shares with SMS are already the gateway's.
  *
  * The Twilio route is inbound only. It verifies the signature, parses the message, writes what the board
  * needs to remember, and answers with the empty TwiML that tells Twilio to send nothing. It never sends:
- * no code path in this file calls a provider, and the adapter has no member that would.
+ * no code path in this file calls a provider, the adapter has no member that would, and the outbound
+ * registry has no adapter under `sms` at all.
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import {
-  admitWithin,
-  DEFAULT_SMS_RATE_LIMIT,
+  type Ack,
+  type ChannelGateway,
   type E164,
-  EMPTY_TWIML,
-  type InboundMessage,
-  optOutCommand,
   parseE164,
   type RateLimit,
   TWILIO_FORM_CONTENT_TYPE,
-  TWIML_CONTENT_TYPE,
   TwilioAdapter,
 } from "@officehum/channels";
 import type { SmsStore } from "./board/sms.js";
 import type { OfficeConfig } from "./office-config.js";
 import type { ResendInbox } from "./resend-inbox.js";
+import { type InboundOutcome, smsGateway } from "./sms-gateway.js";
+
+export type { InboundDisposition, InboundOutcome, SmsInboundMessage } from "./sms-gateway.js";
 
 export interface ResendListener {
   readonly address: string;
@@ -97,14 +105,6 @@ export interface TwilioHookOptions {
   readonly onInbound?: (outcome: InboundOutcome) => void | Promise<void>;
 }
 
-/** What became of a verified inbound message. `rate_limited` is stored and refused, in that order. */
-export type InboundDisposition = "recorded" | "duplicate" | "opt_out" | "rate_limited";
-
-export interface InboundOutcome {
-  readonly message: InboundMessage;
-  readonly disposition: InboundDisposition;
-}
-
 type RouteContext = {
   readonly request: IncomingMessage;
   readonly response: ServerResponse;
@@ -139,18 +139,21 @@ function respond(response: ServerResponse, status: number, message: string): voi
 }
 
 /**
- * A TwiML answer. `text/xml` exactly, because Twilio's parser dispatches on the declared type and an
- * answer it cannot parse is an answer it retries. `EMPTY_TWIML` is imported rather than written here:
- * one string, one place, so no call site can answer with a `<Message>`.
+ * Write a channel's own acknowledgement.
+ *
+ * The route supplies the status (it owns the HTTP vocabulary: a 404 for another office's number, a 400
+ * for a body that could not be read) and the adapter supplies the media type and the body. TwiML is
+ * therefore not a word this file uses, and a second channel's JSON acknowledgement needs no change
+ * here.
  */
-function respondTwiml(response: ServerResponse, status: number, body: string = EMPTY_TWIML): void {
+function respondAck(response: ServerResponse, ack: Ack, status: number): void {
   if (response.headersSent || response.destroyed) return;
   response.writeHead(status, {
-    "content-type": TWIML_CONTENT_TYPE,
-    "content-length": Buffer.byteLength(body),
+    ...ack.headers,
+    "content-length": Buffer.byteLength(ack.body),
     connection: "close",
   });
-  response.end(body);
+  response.end(ack.body);
 }
 
 async function readBody(request: IncomingMessage): Promise<Uint8Array> {
@@ -221,22 +224,23 @@ async function deliverResend(context: RouteContext, inbox: ResendInbox): Promise
 }
 
 /**
- * Verify, record, answer.
+ * Hand one webhook to the gateway, and answer the provider in the provider's own dialect.
  *
- * The order matters more than the code length. Verification comes before anything is read as a fact, so
- * a forged request leaves no row. The duplicate guard comes before the opt-out and the counter, so a
- * Twilio retry of a STOP does not count as a second message. The counter comes last, so a keyword a
- * person is entitled to send is never refused for being their fourth text.
+ * There is no pipeline here any more. The order that matters — verify before anything is believed, the
+ * duplicate guard before the opt-out and the counter, the counter after both — is `ChannelGateway`'s,
+ * because the next channel needs the same order and a second copy of it is a second chance to get it
+ * wrong. What is left in this function is the part that is genuinely Twilio's: which header carries the
+ * signature, which URL it signed, and what a refusal answers with.
  */
 async function deliverTwilio(
   context: RouteContext,
   options: TwilioHookOptions,
-  adapter: TwilioAdapter,
+  gateway: ChannelGateway,
 ): Promise<void> {
   const { request, response, target } = context;
   const signatures = headerValues(request, "x-twilio-signature");
   const raw = await readBody(request);
-  const result = adapter.accept({
+  const result = await gateway.ingest("sms", {
     url: options.signedUrl ?? signedUrlOf(request, target),
     body: new TextDecoder().decode(raw),
     signature: signatures.length === 1 ? signatures[0] : undefined,
@@ -246,52 +250,10 @@ async function deliverTwilio(
     // learns whether a number is provisioned has learned which office they reached. The board was not
     // touched, and the message body is not logged — it is a stranger's text, and unverified.
     if (result.reason === "signature") return respond(response, 403, "");
-    if (result.reason === "wrong_number") return respondTwiml(response, 404);
-    return respondTwiml(response, 400);
+    // The rest answer in TwiML: a provider whose parser rejects the answer retries it.
+    return respondAck(response, result.ack, result.reason === "wrong_number" ? 404 : 400);
   }
-
-  const message = result.message;
-  if (!options.board.recordInboundOnce(message.messageSid, message.receivedAt)) {
-    await options.onInbound?.({ message, disposition: "duplicate" });
-    return respondTwiml(response, 200);
-  }
-
-  const command = optOutCommand(message.body);
-  if (command !== undefined) {
-    options.board.setOptOut(message.from, command, message.receivedAt);
-    await options.onInbound?.({ message, disposition: "opt_out" });
-    return respondTwiml(response, 200);
-  }
-
-  // A registered number is a customer, not a stranger: the ceiling exists to stop a flood, and one of
-  // this office's own customers asking three questions in an hour is a conversation, not a flood.
-  const registered = options.isRegistered?.(message.from) === true;
-  const allowed =
-    registered ||
-    admitWithin(
-      options.board,
-      message.from,
-      message.receivedAt,
-      options.rateLimit ?? DEFAULT_SMS_RATE_LIMIT,
-    ).allowed;
-  const outcome: InboundOutcome = { message, disposition: allowed ? "recorded" : "rate_limited" };
-  if (!allowed) {
-    await options.onInbound?.(outcome);
-    // A refusal is still a 200 with empty TwiML. The ceiling is the office's, not the provider's, so
-    // telling Twilio to retry would turn one flood into an unbounded stream of retries.
-    return respondTwiml(response, 200);
-  }
-  try {
-    await options.onInbound?.(outcome);
-  } catch (error) {
-    // The message never reached the office, so the row that says it arrived is now a lie and would
-    // swallow Twilio's retry as a duplicate. Removing it is what makes the retry a second chance;
-    // the routing itself is idempotent (one ticket per MessageSid, one conversation input per
-    // MessageSid), so a redelivery cannot double anything.
-    options.board.forgetInbound(message.messageSid);
-    throw error;
-  }
-  return respondTwiml(response, 200);
+  return respondAck(response, result.ack, result.ack.status);
 }
 
 /**
@@ -338,11 +300,14 @@ export async function openResendListener(options: {
       authToken: twilio.authToken,
       businessNumber: businessNumberOf(twilio),
     });
+    const gateway = smsGateway({ ...twilio, adapter });
     routes.set("/hooks/twilio", {
       method: "POST",
       contentType: TWILIO_FORM_CONTENT_TYPE,
-      refuse: (response, status) => respondTwiml(response, status),
-      handle: (context) => deliverTwilio(context, twilio, adapter),
+      // A wrong method or media type is answered in the provider's own dialect too, so the refusal
+      // renderer is the adapter's ack rather than a status-specific body this file invents.
+      refuse: (response, status) => respondAck(response, adapter.ack(), status),
+      handle: (context) => deliverTwilio(context, twilio, gateway),
     });
   }
 

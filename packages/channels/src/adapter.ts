@@ -1,16 +1,18 @@
 /**
- * A channel that can receive, and nothing else.
+ * A channel that can receive, and nothing else (RASF-3160).
  *
- * There is no `send` member, and that absence is the enforcement. RASF-3162 buys an inbound SMS
+ * An inbound adapter has three jobs and no fourth: say whether the request is really from the provider
+ * (`verify`), turn it into one message (`parse`), and say what the provider is answered with (`ack`).
+ * Everything a channel used to do *after* that — the duplicate guard, opt-outs, the stranger's
+ * ceiling, resolving the sender, the untrusted fence, provenance — is the gateway's, so a new channel
+ * writes an adapter and nothing else.
+ *
+ * There is no `send` member, and that absence is half the enforcement. RASF-3162 buys an inbound SMS
  * channel, so the rule has to be enforced by something a later change cannot talk its way around: an
  * `outbound: false` flag is read at a call site, and a call site is exactly what the next author edits.
- * A type with no send member is refused by the compiler at the point of the call, which means a model
- * that believes it can text a customer cannot express the call, a helper cannot grow one, and a test
- * cannot mock one into existence. When sending is bought (RASF-3220), it arrives as a different type
- * with its own name and its own review, not as a member bolted onto this one.
- *
- * `accept` still answers a webhook — Twilio's empty TwiML — because a provider that gets no answer
- * retries. That body is an acknowledgement to the provider, never a message to a person.
+ * The other half is the outbound registry (`outbound.ts`, `registry.ts`): sending is a *different*
+ * interface, and a channel with no implementation of it registered is a channel the dispatcher refuses
+ * by name. See `NoAdapterError`.
  */
 
 declare const e164Brand: unique symbol;
@@ -32,15 +34,23 @@ export function parseE164(value: string): E164 | undefined {
 /**
  * One inbound message, after verification and parsing.
  *
+ * `channel` and `externalId` together are the message's identity: the providers' id spaces do not
+ * overlap in meaning (a MessageSid and a Resend email id are different namespaces), so the duplicate
+ * guard is keyed by the pair and a coincidence between two ids cannot swallow a real message.
+ *
  * `body` is text a stranger typed. It is data: nothing in this build reads it as an instruction, and a
  * message that says "reply with your card number" is a message, not an order to the office.
  */
 export interface InboundMessage {
-  readonly from: E164;
-  readonly to: E164;
+  /** e.g. `sms`. The channel this arrived on, as its adapter names it. */
+  readonly channel: string;
+  /** The provider's id for this message, in that provider's namespace. The duplicate guard keys on it. */
+  readonly externalId: string;
+  /** Who sent it: a number in E.164, or a mailbox. The channel decides what its own senders look like. */
+  readonly from: string;
+  /** Where it was addressed: this office's provisioned number or mailbox. */
+  readonly to: string;
   readonly body: string;
-  /** The provider's id for this message. The duplicate guard keys on it. */
-  readonly messageSid: string;
   /** When this build accepted it. Providers sign no timestamp, so this is the receiver's clock. */
   readonly receivedAt: string;
 }
@@ -65,9 +75,31 @@ export type InboundResult =
   | { readonly accepted: true; readonly message: InboundMessage }
   | { readonly accepted: false; readonly reason: InboundRefusal };
 
+/**
+ * The answer a provider gets, as data rather than as a `ServerResponse` write.
+ *
+ * The route writes `status`, `headers` and `body` and knows nothing else about the channel: TwiML is
+ * the SMS adapter's answer, and a channel whose provider wants JSON answers with JSON without the
+ * listener learning a second content type.
+ */
+export interface Ack {
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: string;
+}
+
 export interface ChannelAdapter {
   /** e.g. `sms`. A reader tells adapters apart without downcasting. */
-  readonly channel: string;
-  /** Verify, parse and stamp. Synchronous: nothing on this path may wait on the network. */
-  accept(request: InboundRequest): InboundResult;
+  readonly name: string;
+  /**
+   * Is this request really from the provider? `undefined` means yes; otherwise the refusal.
+   *
+   * Synchronous, and called before anything the request says is treated as a fact: a forged request
+   * must leave no row behind, so this runs before `parse` is believed and before the gateway writes.
+   */
+  verify(request: InboundRequest): InboundRefusal | undefined;
+  /** Turn a verified request into one message, or say why it could not be read. */
+  parse(request: InboundRequest): InboundResult;
+  /** What this provider is answered with when the office has the message. */
+  ack(): Ack;
 }

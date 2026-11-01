@@ -65,14 +65,15 @@ describe("board migrations", () => {
     expect(names(database, "table")).toEqual([
       "approvals",
       "budgets",
+      // Migration 7, RASF-3160: one dedupe table for every inbound channel.
+      "channel_inbound",
       "comments",
       "people",
       "provenance",
       "relay_cursor",
       "relay_deliveries",
       "relay_waits",
-      // Migration 6's inbound SMS intake tables.
-      "sms_inbound",
+      // Migration 6's inbound SMS intake tables. `sms_inbound` is a view now, not a table.
       "sms_optouts",
       "sms_rate",
       "spend_ledger",
@@ -160,6 +161,10 @@ describe("board migrations", () => {
       "expires_at",
     ]);
     expect(columns(database, "people")).toEqual(["id", "name", "roles"]);
+    expect(columns(database, "channel_inbound")).toEqual(["channel", "external_id", "received_at"]);
+    // The old name survives as a read-only projection of the same rows, so a script that asked
+    // `sms_inbound` for a MessageSid still gets one.
+    expect(names(database, "view")).toEqual(["sms_inbound"]);
     expect(columns(database, "sms_inbound")).toEqual(["message_sid", "received_at"]);
     expect(columns(database, "sms_optouts")).toEqual(["number", "state", "at"]);
     expect(columns(database, "sms_rate")).toEqual(["number", "window_start", "count"]);
@@ -268,6 +273,50 @@ describe("board migrations", () => {
         "INSERT INTO sms_optouts (number, state, at) VALUES (?, ?, ?)",
       );
       expect(() => insert.run("+15551234567", "maybe", at)).toThrow(/CHECK/);
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("unifies the inbound dedupe tables and back-fills SMS rows (migration 7)", () => {
+    const file = boardFile();
+    const at = "2026-10-20T00:00:00.000Z";
+    const old = new DatabaseSync(file);
+    for (const migration of MIGRATIONS.filter((step) => step.version <= 6)) migration.up(old);
+    old.exec("PRAGMA user_version = 6");
+    const insert = old.prepare("INSERT INTO sms_inbound (message_sid, received_at) VALUES (?, ?)");
+    insert.run("SM1", at);
+    insert.run("SM2", "2026-10-20T00:05:00.000Z");
+    old.close();
+
+    const board = openBoard(file);
+    try {
+      // A text handled before the upgrade is still handled: the guard answers "already seen".
+      expect(board.sms.recordInboundOnce("SM1", at)).toBe(false);
+      expect(board.sms.recordInboundOnce("SM3", at)).toBe(true);
+    } finally {
+      board.close();
+    }
+
+    const upgraded = new DatabaseSync(file);
+    try {
+      expect(
+        upgraded
+          .prepare(
+            "SELECT channel, external_id, received_at FROM channel_inbound ORDER BY external_id",
+          )
+          .all(),
+      ).toEqual([
+        { channel: "sms", external_id: "SM1", received_at: at },
+        { channel: "sms", external_id: "SM2", received_at: "2026-10-20T00:05:00.000Z" },
+        { channel: "sms", external_id: "SM3", received_at: at },
+      ]);
+      // Re-running the step is a no-op rather than a second back-fill: the rows it copied are not
+      // doubled, and the table it dropped is already gone.
+      MIGRATIONS[6]?.up(upgraded);
+      expect(upgraded.prepare("SELECT COUNT(*) AS n FROM channel_inbound").get()).toEqual({ n: 3 });
+      // And the old name still reads the same three rows.
+      expect(upgraded.prepare("SELECT COUNT(*) AS n FROM sms_inbound").get()).toEqual({ n: 3 });
     } finally {
       upgraded.close();
     }
