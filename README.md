@@ -163,7 +163,8 @@ exactly 23 hours. Each inbound receipt permits one distinct reply operation. Pre
 `inbound.sqlite`, `email.sqlite`, `messenger.json`, and the Harness directory together. HTML is
 converted locally; attachments remain inert metadata and are never downloaded. Live provider
 send/receive acceptance still requires a human-configured webhook and a separate live verification.
-SMS delivery and provider account setup remain deferred.
+SMS is inbound only: a signed Twilio webhook is accepted, and the office replies by email. There is
+no outbound SMS path, no SMS credential, and no provider account behind it yet.
 
 ```sh
 node packages/cli/dist/index.js bookings --state .officehum/frontdesk-live

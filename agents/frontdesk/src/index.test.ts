@@ -669,6 +669,10 @@ describe("frontdesk brief contract (RASF-3129)", () => {
       // Not one of the brief's six situations: it restores coverage the old booking.json had for a
       // day with no slots at all, where the desk must not offer or promise anything.
       "no-slots-that-day",
+      // Not one of the brief's six either: it is where the brief's "text a new lead" idea went. The
+      // office does not send SMS (RASF-3162), so a text from a number nobody owns is a callback for a
+      // person, and the desk must not try to answer it.
+      "unknown-number-text-becomes-a-callback",
     ]);
 
     const calendar = tempCalendar();
@@ -714,6 +718,7 @@ describe("frontdesk brief contract (RASF-3129)", () => {
         "pass  asks-for-contact-details-when-missing (normal, 3/3 trials)",
         "pass  billing-question-handed-off (normal, 3/3 trials)",
         "pass  no-slots-that-day (normal, 3/3 trials)",
+        "pass  unknown-number-text-becomes-a-callback (normal, 3/3 trials)",
         "Evals passed: 100% of normal trials passed (threshold 90%)",
       ].join("\n"),
     );

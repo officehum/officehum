@@ -266,6 +266,12 @@ export function createRelay(options: RelayOptions): Relay {
   const decide = (event: TicketEvent, ticket: Ticket): Decision => {
     switch (event.kind) {
       case "created":
+        // A ticket that was created already assigned to a person is theirs from its first event.
+        // Delivering the creation to an agent as well would put the same work in two places, and for
+        // a callback ticket it would hand the desk the customer text it is not allowed to answer.
+        if (ticket.assignee !== null && board.people().some(({ id }) => id === ticket.assignee)) {
+          return { kind: "skipped", reason: "assigned to a person, who is outside the harness" };
+        }
         return routeTicket(ticket);
       case "assigned": {
         const assignee = assigneeOfEvent(event);

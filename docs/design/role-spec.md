@@ -154,7 +154,7 @@ the manifest, the evals or the four-layer check refuses the run.
 | `role.engine` | The `command` run from the package root. Its program must be a declared runtime. |
 | `role.tools[]` | `name` in `snake_case`, unique; `replay` is `"safe"` or `"unsafe"`; optional `skill`, `description`, `engine`, `parameters`, `guidelines`, `noApproval`. An unsafe tool states exactly one approval decision — an approval in `wisdom.approvals[]` or a `noApproval` note — and a safe tool states neither. `read_skill`, `agent_dispatch`, `agent_inbox` and `agent_reply` (the office tools that ship today), and the reserved-but-unshipped `board_*`, `delegate` and `ask` are reserved; no role declares a shell or file tool. |
 | `role.connectors[]` | Kebab-case ids of the apps the business must connect. |
-| `role.channels[]` | `email`, `sms` or `chat`: where the role may face the business's customers. |
+| `role.channels[]` | `email`, `sms` or `chat`: where the role may face the business's customers. A name alone means both directions; an object with `channel`, `direction` (`inbound`, `outbound`, `both`) and optional `replyBy` declares a one-way channel. |
 | `role.limits` | Named numbers the business sets: `description` and `default`. This is the one field beyond the manifest's `role` names, and it is here because `business.settings.limits` sets the *value* for a limit the role *declares* — an overlay changes a value, it can never add one. |
 | `context.append_system` | Lines added to the end of the system prompt. No amounts, percentages or thresholds. |
 | `knowledge.skills[].description` | What the skill does and when to use it (≤ 1,024 characters), as Agent Skills wants. |

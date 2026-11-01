@@ -3,7 +3,14 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-export type ConsoleMessageChannel = "email" | "sms";
+/**
+ * The one channel the console outbox records.
+ *
+ * It used to take `sms` as well, because `send_message` did. The Front Desk no longer sends SMS
+ * (RASF-3162), and an outbox that would happily record a text is a door left open behind a rule —
+ * so it refuses the channel and says why, rather than storing a delivery that could never happen.
+ */
+export type ConsoleMessageChannel = "email";
 export type ConsoleMessageIntent = {
   to: string;
   channel: ConsoleMessageChannel;
@@ -55,7 +62,9 @@ function bounded(value: string, label: string, maximum: number): string {
 function validateIntent(value: ConsoleMessageIntent): ConsoleMessageIntent {
   if (value === null || typeof value !== "object") throw new Error("Message intent is invalid.");
   const channel = value.channel;
-  if (channel !== "email" && channel !== "sms") throw new Error("Message channel is invalid.");
+  if (channel !== "email") {
+    throw new Error("The console outbox records email only: the office does not send SMS.");
+  }
   const to = bounded(value.to, "Message destination", 254);
   if (
     value.text.length === 0 ||
@@ -72,7 +81,7 @@ function rowMessage(row: MessageRow): ConsoleMessage {
   if (
     typeof row.request_id !== "string" ||
     typeof row.to_address !== "string" ||
-    (row.channel !== "email" && row.channel !== "sms") ||
+    row.channel !== "email" ||
     typeof row.text !== "string" ||
     typeof row.delivery_id !== "string" ||
     row.delivery_status !== "recorded"

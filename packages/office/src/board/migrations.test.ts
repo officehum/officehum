@@ -71,6 +71,10 @@ describe("board migrations", () => {
       "relay_cursor",
       "relay_deliveries",
       "relay_waits",
+      // Migration 6's inbound SMS intake tables.
+      "sms_inbound",
+      "sms_optouts",
+      "sms_rate",
       "spend_ledger",
       "ticket_conversations",
       "ticket_events",
@@ -156,6 +160,9 @@ describe("board migrations", () => {
       "expires_at",
     ]);
     expect(columns(database, "people")).toEqual(["id", "name", "roles"]);
+    expect(columns(database, "sms_inbound")).toEqual(["message_sid", "received_at"]);
+    expect(columns(database, "sms_optouts")).toEqual(["number", "state", "at"]);
+    expect(columns(database, "sms_rate")).toEqual(["number", "window_start", "count"]);
 
     // Immutability is a schema fact, not an API convention.
     expect(names(database, "trigger")).toEqual([
@@ -219,6 +226,50 @@ describe("board migrations", () => {
       expect(database.prepare("SELECT COUNT(*) AS n FROM ticket_keys").get()).toEqual({ n: 1 });
     } finally {
       database.close();
+    }
+  });
+
+  it("adds the SMS intake tables to a version-5 database, changing nothing else (migration 6)", () => {
+    const file = boardFile();
+    const at = "2026-10-20T00:00:00.000Z";
+    const old = new DatabaseSync(file);
+    for (const migration of MIGRATIONS.filter((step) => step.version <= 5)) migration.up(old);
+    old.exec("PRAGMA user_version = 5");
+    old
+      .prepare(
+        `INSERT INTO tickets (id, type, title, payload, status, assignee, created_by, created_at,
+                              updated_at)
+         VALUES ('t1', 'job.request', 'Leaking sink', '{}', 'open', NULL, 'front-desk', ?, ?)`,
+      )
+      .run(at, at);
+    old.close();
+
+    const board = openBoard(file);
+    let ticketCount = 0;
+    try {
+      // The rows that were there are still there; the new tables are empty rather than back-filled.
+      ticketCount = board.list().length;
+      expect(board.sms.optOutOf("+15551234567")).toBeUndefined();
+    } finally {
+      board.close();
+    }
+    expect(ticketCount).toBe(1);
+
+    const upgraded = new DatabaseSync(file);
+    try {
+      expect(
+        (upgraded.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+      ).toBe(MIGRATIONS.length);
+      expect(upgraded.prepare("SELECT COUNT(*) AS n FROM sms_inbound").get()).toEqual({ n: 0 });
+      expect(upgraded.prepare("SELECT COUNT(*) AS n FROM sms_optouts").get()).toEqual({ n: 0 });
+      expect(upgraded.prepare("SELECT COUNT(*) AS n FROM sms_rate").get()).toEqual({ n: 0 });
+      // The vocabulary is a constraint, so a hand-edited row cannot invent a state.
+      const insert = upgraded.prepare(
+        "INSERT INTO sms_optouts (number, state, at) VALUES (?, ?, ?)",
+      );
+      expect(() => insert.run("+15551234567", "maybe", at)).toThrow(/CHECK/);
+    } finally {
+      upgraded.close();
     }
   });
 

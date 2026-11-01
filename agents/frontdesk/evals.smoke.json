@@ -83,7 +83,7 @@
           "name": "create_contact",
           "args": {
             "name": "Dana Reyes",
-            "phone": "+14155550123"
+            "email": "dana.reyes@example.com"
           }
         }
       ]
@@ -94,8 +94,8 @@
           "name": "send_message",
           "args": {
             "contactId": "contact-1",
-            "channel": "sms",
-            "to": "+14155550123",
+            "channel": "email",
+            "to": "dana.reyes@example.com",
             "text": "Hello from the front desk.",
             "messengerId": "unconfigured"
           }
@@ -103,7 +103,7 @@
       ]
     },
     {
-      "text": "I couldn't send that yet: first contact with a new number needs a person's approval, and it was declined."
+      "text": "I couldn't send that yet: first contact with a new address needs a person's approval, and it was declined."
     }
   ],
   "asks-for-contact-details-when-missing": [
@@ -139,6 +139,11 @@
     },
     {
       "text": "That day is fully booked, I'm afraid. Would another day suit you?"
+    }
+  ],
+  "unknown-number-text-becomes-a-callback": [
+    {
+      "text": "That number isn't one of our contacts and we don't reply to texts from it, so I've passed it to a person to call back today."
     }
   ]
 }

@@ -14,6 +14,10 @@ No inbound processing, threading, HTML, CC/BCC, attachments, scheduling, webhook
 
 The adapter structurally implements the existing portable contract without importing Front Desk:
 
+> **Superseded in part by RASF-3162.** The role's channel is now `'email'` only; SMS is inbound, and a
+> text is answered by email. This transport still refuses `sms` at runtime, which is the boundary
+> check the wider type here was written for.
+
 ```ts
 interface Messenger {
   readonly identity: string;

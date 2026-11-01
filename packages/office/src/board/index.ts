@@ -27,6 +27,7 @@ import { type ApprovalStore, openApprovalStore } from "./approvals.js";
 import { BoardError, type BoardErrorKind, fail } from "./errors.js";
 import { applyMigrations } from "./migrations.js";
 import { openRelayLedger, type RelayLedger } from "./relay-ledger.js";
+import { openSmsStore, type SmsStore } from "./sms.js";
 
 export type TicketStatus = "open" | "claimed" | "waiting" | "blocked" | "done" | "cancelled";
 export type Origin = "internal" | "external";
@@ -42,6 +43,11 @@ export {
   argsHash,
   canonicalArgs,
 } from "./approvals.js";
+/**
+ * The SMS intake store and its vocabulary, re-exported here because the webhook route and a host that
+ * reads the board both import from the board, not from a file inside it.
+ */
+export type { SmsOptOutState, SmsStore } from "./sms.js";
 /**
  * The refusal type lives in `./errors.js` so the approvals store can throw it too; it is re-exported
  * here because every existing caller imports it from the board.
@@ -279,6 +285,12 @@ export interface Board {
   readonly approvals: ApprovalStore;
   /** The relay's cursor, delivery ledger and wait index, over this board's handle. */
   readonly relay: RelayLedger;
+  /**
+   * The inbound SMS intake tables, over this board's handle (RASF-3162): the MessageSid duplicate
+   * guard, each number's latest STOP or START, and the per-window counter behind the rate ceiling. The
+   * webhook route writes them in the same file as everything else the office knows about a customer.
+   */
+  readonly sms: SmsStore;
   close(): void;
 }
 
@@ -687,6 +699,9 @@ export function openBoard(file: string): Board {
   // The approvals store shares this handle, so a decision and the ticket it is about are one history:
   // the gate that reads a decision sees the row the person's screen committed.
   const approvals = openApprovalStore(database);
+  // The SMS intake tables share the handle for the same reason: a text that was accepted and the
+  // board's record of it are one history, and a second connection would be a second writer.
+  const sms = openSmsStore(database);
 
   /**
    * A trigger abort is the ledger refusing a write. Surfacing it as `immutable` keeps a caller from
@@ -1250,6 +1265,7 @@ export function openBoard(file: string): Board {
     },
     relay: ledger,
     approvals,
+    sms,
     close() {
       database.close();
     },

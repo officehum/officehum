@@ -46,12 +46,12 @@ describe("console Messenger", () => {
   it("rejects changed intent under the same request key without another row", async () => {
     const messenger = openConsoleMessenger(file());
     await messenger.send(
-      { to: "+15551234567", channel: "sms", text: "Original" },
+      { to: "guest@example.test", channel: "email", text: "Original" },
       { requestId: "same" },
     );
     await expect(
       messenger.send(
-        { to: "+15551234567", channel: "sms", text: "Changed" },
+        { to: "guest@example.test", channel: "email", text: "Changed" },
         { requestId: "same" },
       ),
     ).rejects.toThrow(/different intent/i);

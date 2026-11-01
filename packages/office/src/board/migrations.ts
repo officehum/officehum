@@ -349,12 +349,56 @@ function rebuildApprovals(database: DatabaseSync): void {
   `);
 }
 
+/**
+ * Migration 6 adds the inbound SMS intake tables (RASF-3162).
+ *
+ * Three facts, and no fourth: a message arrived (once), a number last said STOP or START, and a number
+ * has sent N messages in one window. They live in this file rather than in the channel package because
+ * the board is the one durable authority about this company's customers — a second SQLite file beside
+ * it would be a second record that can disagree with the first, and it would need a second writer.
+ *
+ * `sms_inbound` is keyed by the provider's MessageSid because that is the unit of retry. Twilio
+ * redelivers a webhook it did not get a 2xx for, and the redelivery carries the same id; a primary key
+ * is what makes "the second delivery is the same message" a fact of the file rather than a check some
+ * caller might forget. It is not append-only by trigger: nothing updates it, so the trigger would guard
+ * a write no code makes, and a duplicate arriving is the insert being ignored rather than a refusal.
+ *
+ * `sms_optouts` is a switch, not a ledger: a person may say STOP and later START, and the row holds the
+ * latest word with the time it was said. Append-only triggers would force a latest-per-number read and
+ * a table that grows one row per keyword, for a state that is genuinely one value.
+ *
+ * `sms_rate` is one counter per `(number, window_start)`, so an increment is one upsert and the ceiling
+ * needs no sweep to forget old windows.
+ */
+function addSmsIntake(database: DatabaseSync): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS sms_inbound (
+      message_sid TEXT PRIMARY KEY,         -- the provider's id; the duplicate guard
+      received_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sms_optouts (
+      number TEXT PRIMARY KEY,              -- E.164, as the provider sent it
+      state TEXT NOT NULL CHECK (state IN ('stop','start')),
+      at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sms_rate (
+      number TEXT NOT NULL,
+      window_start TEXT NOT NULL,           -- first instant of the window's bucket
+      count INTEGER NOT NULL,
+      PRIMARY KEY (number, window_start)
+    );
+  `);
+}
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: createWorkboard },
   { version: 2, up: createRelay },
   { version: 3, up: addTicketResult },
   { version: 4, up: addSpendAccounting },
   { version: 5, up: rebuildApprovals },
+  { version: 6, up: addSmsIntake },
 ];
 
 for (const [index, migration] of MIGRATIONS.entries()) {

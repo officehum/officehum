@@ -17,6 +17,7 @@ import type { Calendar } from "./index.js";
 import frontdesk, { MessagesDoc } from "./index.js";
 import {
   type DeliveryReceipt,
+  deliverableChannel,
   firstContactCondition,
   type MessageIntent,
   type Messenger,
@@ -447,5 +448,54 @@ describe("Front Desk messaging", () => {
         BACKGROUND_CONTEXT,
       ),
     ).toBe(true);
+  });
+});
+
+/**
+ * Outbound SMS, and the two layers that make it unreachable (RASF-3162).
+ *
+ * They are in one file because they fail differently and both have to hold. The schema is what a model
+ * sees: a channel it cannot name is a call it cannot make, and that is the layer that keeps the
+ * tempting call out of a transcript in the first place. The delivery function is what a caller does:
+ * a persisted intent from an older build, a host calling a messenger itself, a helper somebody adds
+ * next year. A schema is a promise made at the edge; the function is the one that keeps it.
+ */
+describe("outbound SMS is not a thing this role can do", () => {
+  it("cannot even be expressed: the schema offers email and names sms nowhere", () => {
+    const send = messagingTools().find((tool) => tool.name === "send_message");
+    if (send === undefined) throw new Error("missing send_message");
+    const properties = send.parameters as unknown as {
+      properties: { channel: { const?: string } };
+    };
+    expect(properties.properties.channel).toMatchObject({ const: "email" });
+    // An enum that still listed `sms` would tell a model the call exists, even with a refusal behind
+    // it. The whole point of this layer is that the words are not there to be tried.
+    expect(JSON.stringify(send.parameters)).not.toContain("sms");
+  });
+
+  it("is refused by the delivery function when it is handed in directly", () => {
+    expect(() => deliverableChannel("sms")).toThrow(/inbound/);
+    expect(deliverableChannel("email")).toBe("email");
+  });
+
+  it("never reaches a messenger, even when the call bypasses the schema", async () => {
+    const { messenger, effects } = testMessenger();
+    const send = messagingTools(messenger).find((tool) => tool.name === "send_message");
+    if (send === undefined) throw new Error("missing send_message");
+    const api = { conversationId: 1, taskId: 2, callId: "sms" } as ToolExecutionApi;
+    await expect(
+      send.execute(
+        {
+          contactId: "contact-1",
+          channel: "sms",
+          to: "guest@example.test",
+          text: "Hello",
+          messengerId: messenger.identity,
+        } as never,
+        api,
+        BACKGROUND_CONTEXT,
+      ),
+    ).rejects.toThrow(/email only/);
+    expect(effects).toEqual([]);
   });
 });
