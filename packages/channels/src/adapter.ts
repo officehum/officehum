@@ -55,21 +55,64 @@ export interface InboundMessage {
   readonly receivedAt: string;
 }
 
+/**
+ * A value, or the promise of one.
+ *
+ * This is the whole of the asynchronous question (RASF-3160 stage 2). Two channels disagree about
+ * *when* they can answer, not about what they answer: Twilio can verify a request and read it in the
+ * same tick, and Resend cannot — it fetches the signing secrets for that request, and fetches the
+ * message's own body from the provider before there is a body to read. Making every adapter
+ * `async` would have been the other way to say it, and it would have charged every channel (and every
+ * fake in a test) a promise it does not need — an `async` keyword on a function that never waits is a
+ * claim about the function that is not true. So an adapter may answer with a value or with a promise,
+ * and the gateway awaits whichever it is: `await` on a value is that value.
+ *
+ * A channel that is slow is therefore not a channel the gateway has to know about. That is the same
+ * rule as everywhere else in this package — the gateway asks, and does not care how.
+ */
+export type MaybePromise<T> = T | Promise<T>;
+
 /** A webhook request as an adapter sees it: the URL that was signed, the raw body, the signature. */
 export interface InboundRequest {
   /** The absolute URL the provider signed, which is the one it was configured with. */
   readonly url: string;
-  /** The body as received, before parsing: the signature covers the parsed fields, not these bytes. */
+  /**
+   * The body as text, for the providers that sign the parsed fields rather than the bytes (Twilio
+   * signs `From`, `To`, `Body`; this is where they are read from).
+   */
   readonly body: string;
+  /**
+   * The body as received, before any decoding, for a provider whose signature covers bytes.
+   *
+   * A `string` is not the same value: a body that is not valid UTF-8 decodes to replacement
+   * characters, and an HMAC over those is an HMAC over a different message. A provider that signs
+   * bytes therefore needs the bytes, so the route passes them through untouched.
+   */
+  readonly raw?: Uint8Array;
   /** The signature header, or `undefined` when it was absent. */
   readonly signature: string | undefined;
+  /**
+   * The request's headers, names lowercased, first value per name.
+   *
+   * A provider that signs with more than one header — Resend's `svix-id`, `svix-timestamp` and
+   * `svix-signature` are one signature and cannot be read one at a time — needs all of them, and
+   * `signature` above answers only the single-header case. A channel that does not look at this
+   * field is a channel that never sees it.
+   */
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 /**
  * Why an inbound request was not accepted. The route maps each to a status, so the vocabulary lives
  * here rather than as a set of exceptions a caller has to read strings out of.
+ *
+ * `ignored` is the one refusal that is not a failure: a provider posts more event types than an
+ * office receives messages on (Resend's own webhook carries `email.sent` and `email.delivered` beside
+ * `email.received`), and a delivery this channel does not take as a message is answered with the
+ * provider's own ack and stored nowhere. It is a refusal rather than a message so that a channel
+ * cannot smuggle a non-message into the pipeline as an empty one.
  */
-export type InboundRefusal = "signature" | "malformed" | "wrong_number";
+export type InboundRefusal = "signature" | "malformed" | "wrong_number" | "ignored";
 
 export type InboundResult =
   | { readonly accepted: true; readonly message: InboundMessage }
@@ -94,12 +137,14 @@ export interface ChannelAdapter {
   /**
    * Is this request really from the provider? `undefined` means yes; otherwise the refusal.
    *
-   * Synchronous, and called before anything the request says is treated as a fact: a forged request
-   * must leave no row behind, so this runs before `parse` is believed and before the gateway writes.
+   * Called before anything the request says is treated as a fact: a forged request must leave no row
+   * behind, so this runs before `parse` is believed and before the gateway writes. A promise here is
+   * a channel that cannot answer in the tick — Resend fetches the signing secret for the request
+   * before it can compute anything — and the gateway waits for it rather than guessing.
    */
-  verify(request: InboundRequest): InboundRefusal | undefined;
+  verify(request: InboundRequest): MaybePromise<InboundRefusal | undefined>;
   /** Turn a verified request into one message, or say why it could not be read. */
-  parse(request: InboundRequest): InboundResult;
+  parse(request: InboundRequest): MaybePromise<InboundResult>;
   /** What this provider is answered with when the office has the message. */
   ack(): Ack;
 }

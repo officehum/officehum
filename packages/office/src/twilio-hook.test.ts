@@ -22,7 +22,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Board } from "./board/index.js";
 import { createWorkboard } from "./board/testing.js";
 import { openOfficeConfig } from "./office-config.js";
-import type { ResendInbox } from "./resend-inbox.js";
+import type { InternalResendInbox } from "./resend-inbox.js";
 import type { InboundOutcome, ResendListener, TwilioHookOptions } from "./resend-listener.js";
 import { openResendListener } from "./resend-listener.js";
 
@@ -48,7 +48,15 @@ function officeFile(): string {
 }
 
 /** The Resend half of the listener is not what this file tests; it only has to exist and be typed. */
-function idleInbox(): ResendInbox {
+/**
+ * The email inbox this file never parses through.
+ *
+ * Every request here is either a Twilio webhook or a Resend request refused before anything is
+ * parsed, so the adapter over this inbox stops at `secrets()` at most. The rest of the internal
+ * surface is left out on purpose rather than stubbed member by member: a fake that answers every
+ * method invites a test to believe it.
+ */
+function idleInbox(): InternalResendInbox {
   return {
     authority: {
       version: 1,
@@ -58,10 +66,10 @@ function idleInbox(): ResendInbox {
       inboundEmail: "desk@example.test",
     },
     namespace: "test",
-    accept: () => Promise.resolve({ status: 204 }),
+    secrets: async () => [],
     summaries: () => [],
     close: () => Promise.resolve(),
-  };
+  } as unknown as InternalResendInbox;
 }
 
 /**
@@ -108,6 +116,7 @@ async function harness(
   const outcomes: InboundOutcome[] = [];
   const listener = await openResendListener({
     inbox: idleInbox(),
+    board: board.sms.inbound,
     port: 0,
     twilio: {
       authToken: TOKEN,
@@ -338,7 +347,13 @@ describe("Twilio webhook route", () => {
   });
 
   it("serves no Twilio route when no number is provisioned", async () => {
-    const listener = await openResendListener({ inbox: idleInbox(), port: 0 });
+    const board = createWorkboard(officeFile());
+    cleanups.push(() => board.close());
+    const listener = await openResendListener({
+      inbox: idleInbox(),
+      board: board.sms.inbound,
+      port: 0,
+    });
     cleanups.push(() => listener.close());
     const response = await fetch(`${listener.address}/hooks/twilio`, {
       method: "POST",
@@ -385,6 +400,7 @@ describe("Twilio webhook route", () => {
     const outcomes: InboundOutcome[] = [];
     const listener = await openResendListener({
       inbox: idleInbox(),
+      board: board.sms.inbound,
       port: 0,
       twilio: {
         authToken: TOKEN,
@@ -420,6 +436,7 @@ describe("Twilio webhook route", () => {
     await expect(
       openResendListener({
         inbox: idleInbox(),
+        board: board.sms.inbound,
         port: 0,
         twilio: {
           authToken: TOKEN,
@@ -456,6 +473,7 @@ describe("Twilio webhook route", () => {
     await expect(
       openResendListener({
         inbox: idleInbox(),
+        board: board.sms.inbound,
         port: 0,
         twilio: { authToken: "test", businessNumber: BUSINESS, board: board.sms },
       }),
@@ -464,6 +482,7 @@ describe("Twilio webhook route", () => {
     await expect(
       openResendListener({
         inbox: idleInbox(),
+        board: board.sms.inbound,
         port: 0,
         twilio: { authToken: TOKEN, businessNumber: "555-0100", board: board.sms },
       }),

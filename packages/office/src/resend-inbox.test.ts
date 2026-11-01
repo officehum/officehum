@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
+import type { ReceivingEvent } from "./resend-inbound.js";
 import {
   durableInboundReplyApprover,
+  type InternalResendInbox,
   inboundAuthorityId,
   openResendInbox,
   readInboundInbox,
@@ -24,7 +26,7 @@ const authority = {
 };
 
 function signed(emailId = "11111111-1111-4111-8111-111111111111", eventId = "evt_1") {
-  const event = {
+  const event: ReceivingEvent = {
     type: "email.received",
     created_at: "2030-01-01T00:00:00.000Z",
     data: {
@@ -42,7 +44,12 @@ function signed(emailId = "11111111-1111-4111-8111-111111111111", eventId = "evt
     .update(`${eventId}.${timestamp}.`)
     .update(raw)
     .digest("base64");
-  return { raw, headers: { id: eventId, timestamp, signature: `v1,${signature}` } };
+  return { raw, event, headers: { id: eventId, timestamp, signature: `v1,${signature}` } };
+}
+
+/** What the adapter does once the signature has been checked: record the signed delivery. */
+function record(inbox: InternalResendInbox, fixture: ReturnType<typeof signed>): boolean {
+  return inbox.record(fixture.raw, fixture.headers.id);
 }
 
 afterEach(async () => {
@@ -73,19 +80,10 @@ describe("Resend inbox", () => {
       now: () => NOW,
     });
     const fixture = signed();
-    await expect(inbox.accept(fixture.raw, fixture.headers)).resolves.toEqual({
-      status: 202,
-      emailId: "11111111-1111-4111-8111-111111111111",
-    });
-    await expect(inbox.accept(fixture.raw, fixture.headers)).resolves.toEqual({
-      status: 200,
-      emailId: "11111111-1111-4111-8111-111111111111",
-    });
+    expect(record(inbox, fixture)).toBe(true);
+    expect(record(inbox, fixture)).toBe(false);
     const secondEvent = signed(undefined, "evt_2");
-    await expect(inbox.accept(secondEvent.raw, secondEvent.headers)).resolves.toEqual({
-      status: 200,
-      emailId: "11111111-1111-4111-8111-111111111111",
-    });
+    expect(record(inbox, secondEvent)).toBe(false);
     expect(inbox.summaries()).toEqual([
       {
         emailId: "11111111-1111-4111-8111-111111111111",
@@ -121,7 +119,7 @@ describe("Resend inbox", () => {
     };
     const inbox = openResendInbox(path, options);
     const fixture = signed();
-    await inbox.accept(fixture.raw, fixture.headers);
+    record(inbox, fixture);
     await inbox.close();
 
     const marker = "PRIVATE CUSTOMER CONTENT";
@@ -209,11 +207,9 @@ describe("Resend inbox", () => {
       getWebhookSecrets: async () => [SECRET],
       now: () => NOW,
     });
-    await inbox.accept(signed().raw, signed().headers);
+    record(inbox, signed());
     const changed = signed("22222222-2222-4222-8222-222222222222");
-    await expect(inbox.accept(changed.raw, changed.headers)).rejects.toThrow(
-      "Webhook event identity conflict.",
-    );
+    expect(() => record(inbox, changed)).toThrow("Webhook event identity conflict.");
     await inbox.close();
     expect(() =>
       openResendInbox(path, {
@@ -225,32 +221,6 @@ describe("Resend inbox", () => {
     ).toThrow("Inbound authority does not match this inbox.");
   });
 
-  it("blocks a signed event addressed outside the bound inbound route", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "officehum-inbox-"));
-    directories.push(directory);
-    const inbox = openResendInbox(join(directory, "inbound.sqlite"), {
-      authority,
-      getApiKey: async () => "synthetic",
-      getWebhookSecrets: async () => [SECRET],
-      now: () => NOW,
-    });
-    const fixture = signed();
-    const event = JSON.parse(new TextDecoder().decode(fixture.raw)) as {
-      data: { to: string[] };
-    };
-    event.data.to = ["other@example.test"];
-    const raw = new TextEncoder().encode(JSON.stringify(event));
-    const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-      .update(`evt_1.${fixture.headers.timestamp}.`)
-      .update(raw)
-      .digest("base64");
-    await inbox.accept(raw, { ...fixture.headers, signature: `v1,${signature}` });
-    expect(inbox.summaries()).toEqual([
-      expect.objectContaining({ state: "blocked", reason: "route_mismatch" }),
-    ]);
-    await inbox.close();
-  });
-
   it("rejects a second event that reuses an email identity with changed content", async () => {
     const directory = await mkdtemp(join(tmpdir(), "officehum-inbox-"));
     directories.push(directory);
@@ -260,21 +230,11 @@ describe("Resend inbox", () => {
       getWebhookSecrets: async () => [SECRET],
       now: () => NOW,
     });
-    await inbox.accept(signed().raw, signed().headers);
+    record(inbox, signed());
     const changed = signed(undefined, "evt_2");
-    const parsed = JSON.parse(new TextDecoder().decode(changed.raw)) as {
-      data: { subject: string };
-    };
-    parsed.data.subject = "Changed";
-    const raw = new TextEncoder().encode(JSON.stringify(parsed));
-    const timestamp = String(Math.floor(NOW / 1000));
-    const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-      .update(`evt_2.${timestamp}.`)
-      .update(raw)
-      .digest("base64");
-    await expect(
-      inbox.accept(raw, { id: "evt_2", timestamp, signature: `v1,${signature}` }),
-    ).rejects.toThrow("Inbound email identity conflict.");
+    changed.event.data.subject = "Changed";
+    const raw = new TextEncoder().encode(JSON.stringify(changed.event));
+    expect(() => inbox.record(raw, "evt_2")).toThrow("Inbound email identity conflict.");
     expect(inbox.summaries()).toHaveLength(1);
     await inbox.close();
   });
@@ -291,7 +251,7 @@ describe("Resend inbox", () => {
     };
     let inbox = openResendInbox(path, options);
     const fixture = signed();
-    await inbox.accept(fixture.raw, fixture.headers);
+    record(inbox, fixture);
     const normalized = {
       emailId: "11111111-1111-4111-8111-111111111111",
       from: "guest@example.test",
@@ -391,10 +351,7 @@ describe("Resend inbox", () => {
     let inbox = openResendInbox(path, options);
     for (let index = 1; index <= 21; index += 1) {
       const emailId = id(index);
-      await inbox.accept(
-        signed(emailId, `evt_${index}`).raw,
-        signed(emailId, `evt_${index}`).headers,
-      );
+      record(inbox, signed(emailId, `evt_${index}`));
       const normalized = {
         emailId,
         from: `${index}@example.test`,
@@ -434,10 +391,7 @@ describe("Resend inbox", () => {
     const retryPath = join(directory, "retry.sqlite");
     inbox = openResendInbox(retryPath, options);
     for (let index = 101; index <= 121; index += 1) {
-      await inbox.accept(
-        signed(id(index), `evt_${index}`).raw,
-        signed(id(index), `evt_${index}`).headers,
-      );
+      record(inbox, signed(id(index), `evt_${index}`));
     }
     const firstBatch = inbox.eligible();
     expect(firstBatch).toHaveLength(20);
@@ -473,7 +427,7 @@ describe("Resend inbox", () => {
       },
     });
     const fixture = signed();
-    await inbox.accept(fixture.raw, fixture.headers);
+    record(inbox, fixture);
     const receipt = inbox.receipt("11111111-1111-4111-8111-111111111111");
     if (receipt === undefined) throw new Error("missing receipt");
     const pending = inbox.fetchReceived(receipt.emailId, receipt.event);

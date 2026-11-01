@@ -1,8 +1,8 @@
-import { createHmac } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { ReceivingEvent } from "./resend-inbound.js";
 import { inboundAuthorityId, openResendInbox } from "./resend-inbox.js";
 import { createResendReplyMessenger } from "./resend-replies.js";
 
@@ -29,7 +29,7 @@ async function seeded() {
     getWebhookSecrets: async () => [SECRET],
     now: () => NOW,
   });
-  const event = {
+  const event: ReceivingEvent = {
     type: "email.received",
     created_at: "2030-01-01T00:00:00.000Z",
     data: {
@@ -42,13 +42,7 @@ async function seeded() {
     },
   };
   const raw = new TextEncoder().encode(JSON.stringify(event));
-  const timestamp = String(Math.floor(NOW / 1000));
-  const id = "evt_reply";
-  const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-    .update(`${id}.${timestamp}.`)
-    .update(raw)
-    .digest("base64");
-  await inbox.accept(raw, { id, timestamp, signature: `v1,${signature}` });
+  inbox.record(raw, "evt_reply");
   inbox.savePrepared(
     event.data.email_id,
     { id: event.data.email_id },

@@ -947,16 +947,10 @@ describe("runCli", () => {
       },
     };
     const raw = new TextEncoder().encode(JSON.stringify(event));
-    const timestamp = String(Math.floor(now / 1000));
-    const signature = createHmac("sha256", Buffer.from(secret.slice(6), "base64"))
-      .update(`evt_cli_inbox.${timestamp}.`)
-      .update(raw)
-      .digest("base64");
-    await inbox.accept(raw, {
-      id: "evt_cli_inbox",
-      timestamp,
-      signature: `v1,${signature}`,
-    });
+    // A delivery the office could not take, as a build before the gateway left it in the store: the
+    // route is somebody else's, and the receipt is blocked with the reason the worker gives it.
+    inbox.record(raw, "evt_cli_inbox");
+    inbox.block(event.data.email_id, "route_mismatch");
     expect(inbox.summaries()).toEqual([
       expect.objectContaining({ state: "blocked", reason: "route_mismatch" }),
     ]);
@@ -1226,11 +1220,6 @@ describe("runCli", () => {
       },
     };
     const raw = new TextEncoder().encode(JSON.stringify(event));
-    const timestamp = String(Math.floor(Date.now() / 1000));
-    const signature = createHmac("sha256", Buffer.from(secret.slice(6), "base64"))
-      .update(`${eventId}.${timestamp}.`)
-      .update(raw)
-      .digest("base64");
     const authority = {
       version: 1 as const,
       messengerId: messengerIdentityString({
@@ -1249,7 +1238,7 @@ describe("runCli", () => {
       getApiKey: async () => "synthetic",
       getWebhookSecrets: async () => [secret],
     });
-    await seed.accept(raw, { id: eventId, timestamp, signature: `v1,${signature}` });
+    seed.record(raw, eventId);
     await seed.close();
     const names = [
       "RESEND_ACCOUNT_ID",

@@ -175,9 +175,13 @@ export class ChannelGateway {
       throw new Error(`No inbound adapter is registered for "${channel}".`);
     }
     const ack = adapter.ack();
-    const refusal = adapter.verify(request);
+    // `await` on a value is that value, so an adapter that answers in the tick (Twilio) costs nothing
+    // and an adapter that cannot (Resend: the secrets and the body are both fetched) is waited for.
+    // The order is the same either way, which is the point: verification still happens before
+    // anything the request says is believed, whatever the channel had to do to answer.
+    const refusal = await adapter.verify(request);
     if (refusal !== undefined) return { accepted: false, reason: refusal, ack };
-    const parsed = adapter.parse(request);
+    const parsed = await adapter.parse(request);
     if (!parsed.accepted) return { accepted: false, reason: parsed.reason, ack };
 
     const message = parsed.message;

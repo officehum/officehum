@@ -7,7 +7,6 @@
  * idempotency key it has always used. A guard that could be edited would be a promise; an empty slot is
  * the fact, and this file is the test of the fact.
  */
-import { createHmac } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -56,12 +55,7 @@ async function seeded() {
     },
   };
   const raw = new TextEncoder().encode(JSON.stringify(event));
-  const timestamp = String(Math.floor(NOW / 1000));
-  const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-    .update(`evt_outbound.${timestamp}.`)
-    .update(raw)
-    .digest("base64");
-  await inbox.accept(raw, { id: "evt_outbound", timestamp, signature: `v1,${signature}` });
+  inbox.record(raw, "evt_outbound");
   inbox.savePrepared(
     emailId,
     { id: emailId },

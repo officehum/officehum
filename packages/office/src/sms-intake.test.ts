@@ -40,7 +40,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Board } from "./board/index.js";
 import { createWorkboard, seedPerson } from "./board/testing.js";
 import { openLocalCalendar } from "./local-calendar.js";
-import type { ResendInbox } from "./resend-inbox.js";
+import type { InternalResendInbox } from "./resend-inbox.js";
 import type { InboundOutcome, ResendListener } from "./resend-listener.js";
 import { openResendListener } from "./resend-listener.js";
 import {
@@ -77,7 +77,15 @@ function directory(): string {
 }
 
 /** The Resend half of the listener is not what this file tests; it only has to exist and be typed. */
-function idleInbox(): ResendInbox {
+/**
+ * The email inbox this file never parses through.
+ *
+ * Every request here is either a Twilio webhook or a Resend request refused before anything is
+ * parsed, so the adapter over this inbox stops at `secrets()` at most. The rest of the internal
+ * surface is left out on purpose rather than stubbed member by member: a fake that answers every
+ * method invites a test to believe it.
+ */
+function idleInbox(): InternalResendInbox {
   return {
     authority: {
       version: 1,
@@ -87,10 +95,10 @@ function idleInbox(): ResendInbox {
       inboundEmail: "desk@example.test",
     },
     namespace: "test",
-    accept: () => Promise.resolve({ status: 204 }),
+    secrets: async () => [],
     summaries: () => [],
     close: () => Promise.resolve(),
-  };
+  } as unknown as InternalResendInbox;
 }
 
 function testMessenger(): { messenger: Messenger; effects: MessageIntent[] } {
@@ -198,6 +206,7 @@ async function office(options: {
   });
   const listener = await openResendListener({
     inbox: idleInbox(),
+    board: board.sms.inbound,
     port: 0,
     twilio: {
       authToken: TOKEN,

@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -103,13 +102,8 @@ describe("Inbound session", () => {
       },
     };
     const raw = new TextEncoder().encode(JSON.stringify(event));
-    const timestamp = String(Math.floor(NOW / 1000));
     const id = "evt_session";
-    const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-      .update(`${id}.${timestamp}.`)
-      .update(raw)
-      .digest("base64");
-    await inbox.accept(raw, { id, timestamp, signature: `v1,${signature}` });
+    inbox.record(raw, id);
     await session.tick();
     const routed = inbox.receipt(emailId);
     if (routed?.conversationId === null || routed?.conversationId === undefined) {
@@ -219,12 +213,7 @@ describe("Inbound session", () => {
       },
     };
     const raw = new TextEncoder().encode(JSON.stringify(event));
-    const timestamp = String(Math.floor(NOW / 1000));
-    const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-      .update(`evt_limits.${timestamp}.`)
-      .update(raw)
-      .digest("base64");
-    await inbox.accept(raw, { id: "evt_limits", timestamp, signature: `v1,${signature}` });
+    inbox.record(raw, "evt_limits");
     await session.tick();
     const routed = inbox.receipt(emailId);
     expect(routed?.normalized?.attachments).toHaveLength(50);
@@ -292,13 +281,8 @@ describe("Inbound session", () => {
         },
       };
       const raw = new TextEncoder().encode(JSON.stringify(event));
-      const timestamp = String(Math.floor(NOW / 1000));
       const eventId = `evt_fair_${index}`;
-      const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-        .update(`${eventId}.${timestamp}.`)
-        .update(raw)
-        .digest("base64");
-      await inbox.accept(raw, { id: eventId, timestamp, signature: `v1,${signature}` });
+      inbox.record(raw, eventId);
       return emailId;
     };
     const heldSubmissionIds = new Set<number>();
@@ -436,13 +420,8 @@ describe("Inbound session", () => {
         },
       };
       const raw = new TextEncoder().encode(JSON.stringify(event));
-      const timestamp = String(Math.floor(NOW / 1000));
       const eventId = `evt_retry_${index}`;
-      const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-        .update(`${eventId}.${timestamp}.`)
-        .update(raw)
-        .digest("base64");
-      await inbox.accept(raw, { id: eventId, timestamp, signature: `v1,${signature}` });
+      inbox.record(raw, eventId);
     }
     const calendar = openLocalCalendar(join(directory, "calendar.sqlite"));
     const role = frontdesk({ calendar });
@@ -602,12 +581,7 @@ describe("Inbound session", () => {
       },
     };
     const raw = new TextEncoder().encode(JSON.stringify(event));
-    const timestamp = String(Math.floor(NOW / 1000));
-    const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-      .update(`evt_early.${timestamp}.`)
-      .update(raw)
-      .digest("base64");
-    await inbox.accept(raw, { id: "evt_early", timestamp, signature: `v1,${signature}` });
+    inbox.record(raw, "evt_early");
     await expect(session.tick()).rejects.toThrow("synthetic crash before worker admission update");
     await solo.harness.waitForIdle(BACKGROUND_CONTEXT);
     expect(inbox.receipt(emailId)).toMatchObject({ state: "admitted" });
@@ -744,13 +718,8 @@ describe("Inbound session", () => {
         },
       };
       const raw = new TextEncoder().encode(JSON.stringify(event));
-      const timestamp = String(Math.floor(NOW / 1000));
       const eventId = `evt_steer_${index}`;
-      const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-        .update(`${eventId}.${timestamp}.`)
-        .update(raw)
-        .digest("base64");
-      await inbox.accept(raw, { id: eventId, timestamp, signature: `v1,${signature}` });
+      inbox.record(raw, eventId);
     };
     await accept(ids[0] as string, 0);
     await session.tick();
@@ -965,16 +934,7 @@ describe("Inbound session", () => {
       },
     };
     const raw = new TextEncoder().encode(JSON.stringify(event));
-    const timestamp = String(Math.floor(NOW / 1000));
-    const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-      .update(`evt_recovery.${timestamp}.`)
-      .update(raw)
-      .digest("base64");
-    await firstInbox.accept(raw, {
-      id: "evt_recovery",
-      timestamp,
-      signature: `v1,${signature}`,
-    });
+    firstInbox.record(raw, "evt_recovery");
     await firstSession.tick();
     await providerAccepted;
     const interruptedReceipt = firstInbox.receipt(emailId);
@@ -1310,16 +1270,7 @@ describe("Inbound session", () => {
       },
     };
     const raw = new TextEncoder().encode(JSON.stringify(event));
-    const timestamp = String(Math.floor(NOW / 1000));
-    const signature = createHmac("sha256", Buffer.from(SECRET.slice(6), "base64"))
-      .update(`evt_google_recovery.${timestamp}.`)
-      .update(raw)
-      .digest("base64");
-    await firstInbox.accept(raw, {
-      id: "evt_google_recovery",
-      timestamp,
-      signature: `v1,${signature}`,
-    });
+    firstInbox.record(raw, "evt_google_recovery");
     await firstSession.tick();
     await acceptedBarrier;
     const interrupted = firstInbox.receipt(emailId);

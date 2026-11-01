@@ -49,6 +49,7 @@ import {
   type SoloResult,
   type SoloSession,
 } from "@officehum/office";
+import { type Board, openOfficeBoard } from "@officehum/office/board";
 import { PAPER_MODEL_REF, paperProvider } from "@officehum/provider-paper";
 import type { ApprovalDecision, ApprovalRequest, Approver, HookContext } from "@officehum/sdk";
 import { localVersionedFileStore } from "@officehum/sdk";
@@ -850,6 +851,7 @@ async function runListen(
   let attachedHarness: SoloSession["harness"] | undefined;
   let hosted: InboundHosted | undefined;
   let listener: ResendListener | undefined;
+  let board: Board | undefined;
   let session: InboundSession | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
   let stopped = false;
@@ -866,6 +868,12 @@ async function runListen(
         async () => listener?.close(),
         async () => session?.close(),
         async () => solo?.close(),
+        async () => {
+          // The board is the one handle here that is not idempotent on close, and this shutdown can
+          // run twice (an interrupt, then the `finally`), so it is taken rather than closed twice.
+          board?.close();
+          board = undefined;
+        },
       ]);
       stop();
       if (failed) throw new Error("Inbound shutdown failed.");
@@ -986,7 +994,14 @@ async function runListen(
     await ensureRunning();
     await session.tick();
     await ensureRunning();
-    listener = await openResendListener({ inbox: hosted.inbox, port: parsed.port });
+    // The one duplicate table both routes share (RASF-3160). The office owns one board beside the
+    // harness store, and `officehum board` opens the same file by the same name.
+    board = openOfficeBoard(join(parsed.state, "office.sqlite"));
+    listener = await openResendListener({
+      inbox: hosted.inbox,
+      board: board.sms.inbound,
+      port: parsed.port,
+    });
     await ensureRunning();
     timer = setInterval(() => {
       void session?.tick().catch(() => io.error("Inbound worker tick failed."));
