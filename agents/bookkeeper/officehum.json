@@ -67,7 +67,15 @@
       "id": "large_invoice",
       "tool": "create_invoice",
       "description": "Confirm an invoice whose lines come to more than the business's set amount",
-      "when": [{ "arg": "total", "op": "gt", "value": { "limit": "large_invoice" } }]
+      "when": [
+        {
+          "arg": "lines",
+          "op": "gt",
+          "field": "unitPriceCents",
+          "times": "quantity",
+          "value": { "limit": "large_invoice" }
+        }
+      ]
     },
     {
       "id": "new_recipient",

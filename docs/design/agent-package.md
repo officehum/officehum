@@ -83,6 +83,23 @@ gates every call, including the ones that carry no discount. Write the pair inst
 mirror. Neither takes a value. Absence with no presence operator still holds, so a malformed call
 cannot skip a gate by leaving a field out.
 
+A condition can also total an argument instead of comparing it. `field` names a numeric field of each
+element of an array argument, and `times` an optional second field to multiply it by:
+
+```json
+"when": [
+  { "arg": "lines", "op": "gt", "field": "unitPriceCents", "times": "quantity",
+    "value": { "limit": "large_invoice" } }
+]
+```
+
+That is "the lines come to more than the business's limit" with no invoice knowledge in the SDK or in
+the office. `op` stays the comparison, so `gt` means the same thing on a total as on one number. The
+sum fails safe on every element: a missing, non-numeric or negative field, or a `times` that is not a
+positive number, refuses the whole total rather than skipping that element — a skipped element reports
+a smaller total than the call's own numbers, which is the one direction that slips a call past a
+limit. An empty array is not a total of zero; there is nothing to compare.
+
 
 It guards against three habits:
 - pasting policy manuals into `AGENTS.md`
@@ -306,9 +323,13 @@ tests and evals.
   keys and connector tokens never reach it.
 - **Guardrails from data.** An approval's `when` conditions (`gt`, `gte`, `lt`, `lte`, `eq`, `ne`, `in`
   over the call's arguments) decide which calls wait for a person. A threshold may be a named limit,
-  `{ "limit": "large_invoice" }`, that the business sets in its overlay. They fail safe: a condition on
-  a missing or unreadable argument, or on a limit that does not resolve, counts as met. A condition
-  written in code takes precedence.
+  `{ "limit": "large_invoice" }`, that the business sets in its overlay. `field` (with optional
+  `times`) compares against the sum of a field across an array argument instead of one argument, so
+  "the lines come to more than the limit" is data rather than code. They fail safe: a condition on
+  a missing or unreadable argument, on an element the sum cannot read, or on a limit that does not
+  resolve, counts as met. A condition written in code takes precedence — and note that the office's
+  gate reads the manifest only, never the role's code, so an approval written as code is
+  unconditional there.
 - **Operator commands** are engine views with no model involved: `runOperatorCommand(manifest, engine,
   name)`. Studio and Teams show them in Office Hum; other hosts show them their own way.
 
@@ -502,7 +523,7 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
 | `tools[]` | `name` in `snake_case`, unique; `replay` required, `"safe"` or `"unsafe"`; optional `skill` puts the tool in that skill's extension; optional `noApproval` (at most 300 characters) says why an unsafe tool needs no approval, e.g. `"internal note; no outside effect"`. An unsafe tool states exactly one of the two — an approval in `approvals[]` or `noApproval`, never both, never neither — and a safe tool states neither. Engine tools add `engine` (the subcommand), `description`, `parameters` and `guidelines`. `read_skill` (the SDK's), `agent_dispatch`, `agent_inbox` and `agent_reply` (the office tools that ship today), and the reserved-but-unshipped `board_*`, `delegate` and `ask` are reserved — the last group so a role published now cannot take a name the office may use later. |
 | `commands[]` | Operator views: `name`, `description`, and the `engine` subcommand they run. |
 | `connectors` | Kebab-case ids of the apps the business must connect, e.g. `quickbooks`. |
-| `approvals[]` | `id` (snake_case), `tool` (a declared tool), `description` (shown in the Inbox), optional `when` conditions over the tool's arguments. A numeric comparison may take a named limit as its value, `{ "limit": "large_invoice" }`, instead of a number. Conditions too complex to declare go in the entry point's `when`, keyed by `id`. |
+| `approvals[]` | `id` (snake_case), `tool` (a declared tool), `description` (shown in the Inbox), optional `when` conditions over the tool's arguments. A numeric comparison may take a named limit as its value, `{ "limit": "large_invoice" }`, instead of a number. `field` names a numeric field of each element of an array argument, so the comparison is against their sum; `times` multiplies it by a second field per element. Conditions too complex to declare go in the entry point's `when`, keyed by `id` — but the office gate cannot see those, and takes such an approval as unconditional. |
 | `limits` | Named amounts the business sets, e.g. `large_invoice`: each has a `description` and a `default`. An approval compares against a limit with `{ "limit": "NAME" }` for `gt`, `gte`, `lt` or `lte`. An overlay changes a value, never removes it. |
 | `channels` | `email`, `sms`, `chat`: where the role may face the business's customers. |
 | `accepts[]` | Dotted ticket types (`invoice.create`) with a description shown to delegating agents, and `done`: the completion evidence for that type. Every entry must pass, and the host runs it, never the model: `{ "engine": ["subcommand", …], "args": {…} }` (the engine answers `ok` with at least one finding), `{ "tool": "NAME", "args": {…}, "expect": "found" }` (a declared **safe** tool whose result reports `found`), `{ "file": "NAME" }` (the result attaches a file), or `{ "person": true }`. Args may interpolate `{ticket.id}` and `{ticket.data.<path>}`, and nothing else. |

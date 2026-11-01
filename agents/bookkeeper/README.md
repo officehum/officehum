@@ -106,22 +106,39 @@ key in the environment.
 ## The three approvals
 
 Creating an invoice, sending one and sending a reminder are the role's writes, and each has a
-decision. Two are code conditions, because the manifest's conditions can only compare a tool's own
-arguments:
+decision:
 
-- **`large_invoice`** (`create_invoice`) — the draft's lines are summed in integer cents, exactly as
-  QuickBooks sums them (quantity × unit price, rounded to whole cents, then added), and the total is
-  compared with the business's resolved `large_invoice` limit. A small invoice is created with no
-  approval at all.
-- **`new_recipient`** (`send_invoice`) — the address on file is read through the client, from the
-  invoice's own customer, and the send waits for a person only when `to` is a *different* address. A
-  send with no `to` goes to the customer's own address and is not gated.
+- **`large_invoice`** (`create_invoice`) — `officehum.json`'s own condition. It sums each line's
+  `unitPriceCents` times its `quantity` and compares that total with the business's resolved
+  `large_invoice` limit: a draft under the limit, or exactly at it, is created with no approval at
+  all. The sum is the SDK's, not the role's — `field` and `times` on a condition, which know nothing
+  about invoices. `src/index.ts` also states the same rule as a code condition, which is what the
+  role's own gate has always decided by; one policy with two readers, and `src/gates.test.ts` drives
+  both with the same call and fails if they disagree.
+- **`new_recipient`** (`send_invoice`) — code, because the address on file is read through the
+  client, from the invoice's own customer; the send waits for a person only when `to` is a
+  *different* address. A send with no `to` goes to the customer's own address and is not gated.
 - **`final_notice`** (`send_reminder`) — the manifest's own condition: a reminder whose `tone` is
   `final` waits for a person; `friendly` and `firm` do not.
 
-Both code conditions fail safe: a draft they cannot sum, an invoice or customer the client cannot
-answer for, or a limit that did not resolve all wait for a person rather than passing silently. A
-device with no approver blocks every gated action.
+### `new_recipient` over-blocks in Office Hum, on purpose
+
+The office's gate reads `officehum.json` and never runs the role's code, so it cannot know what
+address an invoice's customer has on file. An approval with no `when` applies to every call of its
+tool — that is what the format means — and there is nowhere in the manifest to say "this is a
+stand-in for a rule the office cannot see". The manifest is JSON, so it carries no comments, and an
+approval's only prose field, `description`, is the sentence a person reads in the Inbox; it is not a
+place for a caveat about the gate. So in Office Hum `new_recipient` asks a person about **every**
+send, including the no-`to` send the role's own gate allows.
+
+That is deliberate, and it is the safe direction: it over-asks, never over-sends. It ends when the
+gateway supplies a customer's address history that the office gate can read, at which point the rule
+becomes a condition the office can evaluate. Until then this section is the record.
+
+Every one of the three fails safe: a draft whose lines the SDK's sum cannot read (it refuses the whole
+total rather than skipping an element), an invoice or customer the client cannot answer for, or a
+limit that did not resolve all wait for a person rather than passing silently. A device with no
+approver blocks every gated action.
 
 ### Changing the limits
 

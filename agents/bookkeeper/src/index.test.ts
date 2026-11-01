@@ -119,6 +119,25 @@ const SMALL_DRAFT = {
   jobReference: "JOB-1042",
 };
 
+/** Exactly the manifest's 5,000.00 limit: five days at 1,000.00. */
+const AT_LIMIT_DRAFT = {
+  customer: "customer-1",
+  lines: [{ description: "Consulting", quantity: 5, unitPriceCents: 100000 }],
+  dueInDays: 30,
+  jobReference: "JOB-1042",
+};
+
+/** One cent over it, and the cent is its own line: the total spans the lines, not one of them. */
+const OVER_LIMIT_DRAFT = {
+  customer: "customer-1",
+  lines: [
+    { description: "Consulting", quantity: 5, unitPriceCents: 100000 },
+    { description: "Rounding", quantity: 1, unitPriceCents: 1 },
+  ],
+  dueInDays: 30,
+  jobReference: "JOB-1042",
+};
+
 const tools = (extensions: readonly Extension[]): ToolRegistration[] =>
   extensions.flatMap((extension) => extension.tools ?? []);
 
@@ -330,6 +349,54 @@ describe("bookkeeper approval gates", () => {
     });
     expect(await small.listInvoices()).toHaveLength(2);
     expect(lastToolText(run.messages)).toContain("total 360.00 USD");
+  });
+
+  it("creates an invoice exactly at the limit with no approval asked for", async () => {
+    const atLimit = books();
+    const decisions: string[] = [];
+    const run = await attempt({
+      prompt: "Invoice the retainer",
+      turns: [
+        { toolCalls: [{ name: "create_invoice", args: AT_LIMIT_DRAFT }] },
+        { text: "Created it." },
+      ],
+      quickbooks: atLimit,
+      approver: recording(decisions, true),
+    });
+    // `large_invoice` is "more than the limit": 5,000.00 is not more than 5,000.00, so nobody is asked.
+    expect(decisions).toEqual([]);
+    expect(await atLimit.listInvoices()).toHaveLength(2);
+    expect(lastToolText(run.messages)).toContain("total 5000.00 USD");
+  });
+
+  it("waits at one cent over the limit, naming large_invoice, and creates it once a person agrees", async () => {
+    const blocked = books();
+    await attempt({
+      prompt: "Invoice the consulting month",
+      turns: [
+        { toolCalls: [{ name: "create_invoice", args: OVER_LIMIT_DRAFT }] },
+        { text: "I could not create it." },
+      ],
+      quickbooks: blocked,
+    });
+    expect(await blocked.listInvoices()).toHaveLength(1);
+
+    const approved = books();
+    const decisions: string[] = [];
+    const run = await attempt({
+      prompt: "Invoice the consulting month",
+      turns: [
+        { toolCalls: [{ name: "create_invoice", args: OVER_LIMIT_DRAFT }] },
+        { text: "Created it." },
+      ],
+      quickbooks: approved,
+      approver: recording(decisions, true),
+    });
+    expect(decisions).toEqual(["large_invoice"]);
+    const invoices = await approved.listInvoices();
+    expect(invoices).toHaveLength(2);
+    expect(invoices[1]?.total.cents).toBe(500001);
+    expect(lastToolText(run.messages)).toContain("Created invoice JOB-1042");
   });
 
   it("asks for approval only when an invoice goes to an address other than the one on file", async () => {

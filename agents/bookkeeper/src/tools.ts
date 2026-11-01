@@ -824,6 +824,11 @@ export function bookkeeperTools(
  * It returns `true` (the invoice waits for a person) for anything it cannot compare: a draft whose
  * lines are missing or malformed, or a limit that did not resolve. `false` — no approval — is only
  * ever returned for a total that is genuinely within the business's own amount.
+ *
+ * The manifest states this same rule as data — `field: "unitPriceCents"` with `times: "quantity"` on
+ * the `large_invoice` condition — because the office's gate reads the manifest and never runs this
+ * code. One policy, two readers; `gates.test.ts` drives both with the same call and fails when they
+ * disagree, which is what keeps the two from drifting apart again.
  */
 export const largeInvoiceCondition: ApprovalCondition = (args, environment) => {
   const lines = args.lines;

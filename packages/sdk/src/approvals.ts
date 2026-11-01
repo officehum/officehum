@@ -239,6 +239,12 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
  * `limits`. Fails safe: a condition on an argument that is missing or of a type it cannot compare, or
  * a named limit that does not resolve to a number, counts as holding, so the action waits for a person.
  *
+ * A condition with `field` compares a total instead of one argument:
+ * `{ "arg": "lines", "op": "gt", "field": "unitPriceCents", "times": "quantity", "value": { "limit":
+ * "large_invoice" } }` sums that field across the array `arg` names — each element's field times its
+ * `times` field when one is given — and compares the sum with the value, the same way `gt` compares
+ * one number. It fails safe on every element: see `summedField`.
+ *
  * That fail-safe is wrong for an *optional* argument, where absent means the condition does not apply:
  * "a discount above the rate waits for a person" should not gate a booking with no discount at all.
  * `present` and `absent` are the opt-in answer — `when` is a conjunction, so `[{arg, op: "present"},
@@ -251,33 +257,82 @@ export function conditionsHold(
   args: ToolArguments,
   limits: Readonly<Record<string, number>> = {},
 ): boolean {
-  return conditions.every((condition) => {
-    const actual = args[condition.arg];
-    const missing = actual === undefined || actual === null;
-    if (condition.op === "present") return !missing;
-    if (condition.op === "absent") return missing;
-    // The schema refuses these without a value; a value-less condition cannot be evaluated, so it holds.
-    if (condition.value === undefined) return true;
-    const name = limitName(condition.value);
-    const expected = name === undefined ? condition.value : limits[name];
-    // An unknown limit leaves nothing to compare against, so the action needs approval rather than passing.
-    if (name !== undefined && typeof expected !== "number") return true;
-    if (missing) return true;
-    switch (condition.op) {
-      case "eq":
-        return actual === expected;
-      case "ne":
-        return actual !== expected;
-      case "in":
-        return Array.isArray(expected) && (expected as readonly unknown[]).includes(actual);
-      default: {
-        const number = typeof actual === "number" ? actual : Number(actual);
-        if (Number.isNaN(number) || typeof expected !== "number") return true;
-        if (condition.op === "gt") return number > expected;
-        if (condition.op === "gte") return number >= expected;
-        if (condition.op === "lt") return number < expected;
-        return number <= expected;
-      }
+  return conditions.every((condition) => holds(condition, args, limits));
+}
+
+/** Whether one condition holds; see `conditionsHold` for the rules every branch follows. */
+function holds(
+  condition: ConditionDeclaration,
+  args: ToolArguments,
+  limits: Readonly<Record<string, number>>,
+): boolean {
+  const actual = args[condition.arg];
+  const missing = actual === undefined || actual === null;
+  if (condition.op === "present") return !missing;
+  if (condition.op === "absent") return missing;
+  // The schema refuses these without a value; a value-less condition cannot be evaluated, so it holds.
+  if (condition.value === undefined) return true;
+  const name = limitName(condition.value);
+  const expected = name === undefined ? condition.value : limits[name];
+  // An unknown limit leaves nothing to compare against, so the action needs approval rather than passing.
+  if (name !== undefined && typeof expected !== "number") return true;
+  if (missing) return true;
+  switch (condition.op) {
+    case "eq":
+      return actual === expected;
+    case "ne":
+      return actual !== expected;
+    case "in":
+      return Array.isArray(expected) && (expected as readonly unknown[]).includes(actual);
+    default: {
+      const number =
+        condition.field === undefined
+          ? asNumber(actual)
+          : summedField(actual, condition.field, condition.times);
+      if (number === undefined || Number.isNaN(number) || typeof expected !== "number") return true;
+      if (condition.op === "gt") return number > expected;
+      if (condition.op === "gte") return number >= expected;
+      if (condition.op === "lt") return number < expected;
+      return number <= expected;
     }
-  });
+  }
+}
+
+/** One argument as the number to compare, or `undefined` when it is not one. */
+function asNumber(value: unknown): number | undefined {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isNaN(number) ? undefined : number;
+}
+
+/**
+ * The sum of one numeric field across an array's elements, multiplied by a second field per element
+ * when `times` is given, or `undefined` when the array cannot be summed.
+ *
+ * A sum must never come out smaller than the call's own numbers, because a smaller total is the one
+ * direction that slips a call past a limit. So an element this cannot read — not an object, a field
+ * that is missing or not a finite number, a negative amount, or a `times` that is not a positive
+ * number — makes the whole sum `undefined`, and `holds` turns that into "needs approval". Skipping
+ * the element instead would total the rest and quietly under-report the call.
+ *
+ * With `times`, an element contributes `field × times` rounded to a whole number: a line is written
+ * as a price and a count, and the amount a billing system adds up is that product in whole cents. An
+ * empty array has nothing to add up and is not a total of zero — there is no call to compare.
+ */
+function summedField(value: unknown, field: string, times: string | undefined): number | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  let total = 0;
+  for (const element of value) {
+    if (element === null || typeof element !== "object" || Array.isArray(element)) return undefined;
+    const record = element as Record<string, unknown>;
+    const amount = record[field];
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0) return undefined;
+    if (times === undefined) {
+      total += amount;
+      continue;
+    }
+    const count = record[times];
+    if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) return undefined;
+    total += Math.round(amount * count);
+  }
+  return total;
 }
