@@ -124,6 +124,82 @@ describe("validateManifest", () => {
     ]);
   });
 
+  it("checks a summed condition's field, and the comparison a sum needs", () => {
+    const limits = { large_invoice: { description: "Invoices over the amount", default: 5000 } };
+    const summed = [
+      {
+        id: "large_invoice",
+        tool: "book_appointment",
+        description: "Invoices over the amount",
+        when: [
+          {
+            arg: "lines",
+            op: "gt",
+            field: "unitPriceCents",
+            times: "quantity",
+            value: { limit: "large_invoice" },
+          },
+        ],
+      },
+    ];
+    // The Bookkeeper's declaration, on a tool whose parameters are defined in code: `lines` is an
+    // array, which a manifest cannot describe, so nothing objects.
+    expect(messages(withFields({ limits, approvals: summed }))).toEqual([]);
+
+    const equality = [
+      {
+        id: "large_invoice",
+        tool: "book_appointment",
+        description: "Invoices over the amount",
+        when: [{ arg: "lines", op: "eq", field: "amountCents", value: 2500 }],
+      },
+    ];
+    expect(messages(withFields({ approvals: equality }))).toEqual([
+      'officehum.json › approvals[0].when[0].field: sums an argument\'s elements, which needs a numeric comparison — "gt", "gte", "lt" or "lte" (op is "eq")',
+    ]);
+
+    const timesOnly = [
+      {
+        id: "large_invoice",
+        tool: "book_appointment",
+        description: "Invoices over the amount",
+        when: [{ arg: "lines", op: "gt", times: "quantity", value: 2500 }],
+      },
+    ];
+    expect(messages(withFields({ approvals: timesOnly }))).toEqual([
+      'officehum.json › approvals[0].when[0].times: needs "field": it multiplies the summed field, so on its own it has nothing to multiply',
+    ]);
+  });
+
+  it("refuses a summed condition on a declared scalar parameter", () => {
+    // A manifest parameter is one string, number, integer or boolean: it has no elements to add up, so
+    // a summed condition can only name an argument of a tool whose parameters are defined in code.
+    const tools = [
+      ...sample.tools,
+      {
+        name: "stock_adjust",
+        replay: "unsafe",
+        engine: ["adjust"],
+        description: "Adjust a stock level",
+        parameters: { quantity: { type: "number", description: "Units to add" } },
+      },
+    ];
+    const approvals = [
+      ...sample.approvals,
+      {
+        id: "large_adjust",
+        tool: "stock_adjust",
+        description: "Large adjustments",
+        when: [{ arg: "quantity", op: "gt", field: "amountCents", value: 10 }],
+      },
+    ];
+    expect(
+      messages(withFields({ tools, approvals, engine: { command: ["bin/stock", "adjust"] } })),
+    ).toEqual([
+      'officehum.json › approvals[1].when[0].field: sums the elements of an array argument, and "quantity" is one declared "number" parameter; a manifest cannot declare an array, so a summed condition names a tool whose parameters are defined in code',
+    ]);
+  });
+
   it("takes no value with a presence condition, and needs one otherwise", () => {
     const presence = [
       {

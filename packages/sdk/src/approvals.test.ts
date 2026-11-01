@@ -10,6 +10,7 @@ import {
   isApprovalGate,
 } from "./approvals.js";
 import { stubEngine } from "./engine.js";
+import type { ConditionDeclaration } from "./manifest.js";
 import type { DefinedRole } from "./role.js";
 import { STOCKROOM_OVERLAY } from "./test-helpers.js";
 
@@ -376,6 +377,80 @@ describe("approval conditions from officehum.json", () => {
     // `absent` is the mirror, and takes no value either.
     expect(conditionsHold([{ arg: "x", op: "absent" }], {}, {})).toBe(true);
     expect(conditionsHold([{ arg: "x", op: "absent" }], { x: 1 }, {})).toBe(false);
+  });
+});
+
+/**
+ * The sum: an array of objects, one numeric field of each, and a threshold. Nothing here knows what
+ * the array is — the invoice it is used for lives in the Bookkeeper's manifest.
+ */
+describe("a condition that sums a field over an array argument", () => {
+  const LIMIT = { large_invoice: 2500 };
+
+  /** The rule the Bookkeeper declares: each line's price times its quantity, over the limit. */
+  const invoiceWhen: ConditionDeclaration[] = [
+    {
+      arg: "lines",
+      op: "gt",
+      field: "unitPriceCents",
+      times: "quantity",
+      value: { limit: "large_invoice" },
+    },
+  ];
+
+  const line = (quantity: number, unitPriceCents: number) => ({
+    description: "Work",
+    quantity,
+    unitPriceCents,
+  });
+
+  const holds = (lines: unknown, limits: Readonly<Record<string, number>> = LIMIT) =>
+    conditionsHold(invoiceWhen, { lines }, limits);
+
+  it("compares the total: exactly at the limit it does not hold, one cent over it does", () => {
+    // 10 × 250 = 2,500: exactly the limit, and `gt` is strict, so the call runs.
+    expect(holds([line(10, 250)])).toBe(false);
+    expect(holds([line(10, 250), line(1, 1)])).toBe(true);
+    // The sum spans the lines, not one of them: 3 × 500 + 1 × 1,000 = 2,500.
+    expect(holds([line(3, 500), line(1, 1000)])).toBe(false);
+    expect(holds([line(3, 500), line(1, 1001)])).toBe(true);
+    // A limit that does not resolve still asks for a person.
+    expect(holds([line(1, 1)], {})).toBe(true);
+  });
+
+  it("rounds each line's price times its quantity, then adds", () => {
+    // 1.5 hours at 3.33 is 4.995, which the billing system totals as 5.00; two such lines are 10.00.
+    const term = line(1.5, 333);
+    expect(holds([term], { large_invoice: 500 })).toBe(false);
+    expect(holds([term, term], { large_invoice: 1000 })).toBe(false);
+    expect(holds([term, term], { large_invoice: 999 })).toBe(true);
+  });
+
+  it("fails closed on an element it cannot read instead of skipping it", () => {
+    // The documented rule: a missing or non-numeric field refuses the whole total, so the condition
+    // holds and a person is asked. Skipping the element would total the rest and report less than the
+    // call's own numbers — the one direction that lets a large call through a limit.
+    expect(holds([line(1, 100), { quantity: 1 }])).toBe(true);
+    expect(holds([line(1, 100), { quantity: 1, unitPriceCents: "4400" }])).toBe(true);
+    expect(holds([line(1, 100), { unitPriceCents: 4400 }])).toBe(true);
+    expect(holds([line(1, 100), { quantity: 0, unitPriceCents: 4400 }])).toBe(true);
+    expect(holds([line(1, 100), { quantity: 1, unitPriceCents: -4400 }])).toBe(true);
+    // A total that nothing can be summed from is not a total of zero.
+    expect(holds([])).toBe(true);
+    expect(holds("nothing")).toBe(true);
+    expect(holds([line(1, 100), null])).toBe(true);
+    expect(conditionsHold(invoiceWhen, {}, LIMIT)).toBe(true);
+  });
+
+  it("is generic: one field, a literal threshold, and every numeric comparison", () => {
+    const when = (op: "gt" | "gte" | "lt" | "lte", amount: number): ConditionDeclaration[] => [
+      { arg: "items", op, field: "amountCents", value: amount },
+    ];
+    const draft = { items: [{ amountCents: 60 }, { amountCents: 40 }] };
+    expect(conditionsHold(when("gt", 100), draft)).toBe(false);
+    expect(conditionsHold(when("gte", 100), draft)).toBe(true);
+    expect(conditionsHold(when("lt", 101), draft)).toBe(true);
+    expect(conditionsHold(when("lte", 99), draft)).toBe(false);
   });
 });
 

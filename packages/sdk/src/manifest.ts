@@ -143,8 +143,28 @@ const LimitDeclaration = Type.Object(
  */
 const LimitReference = Type.Object({ limit: SnakeName }, { additionalProperties: false });
 
+/** A field of an array's elements, e.g. `amountCents`, that a summed condition reads. */
+const ElementField = (hint: string) =>
+  Type.String({
+    pattern: "^[A-Za-z_][A-Za-z0-9_]*$",
+    maxLength: 64,
+    "x-hint": hint,
+  });
+
 /**
  * A condition on a tool call's arguments, e.g. `{ "arg": "amount", "op": "gt", "value": 2500 }`.
+ *
+ * `field` makes the left-hand side a sum instead of the argument itself: `{ "arg": "lines", "op":
+ * "gt", "field": "unitPriceCents", "times": "quantity", "value": { "limit": "large_invoice" } }`
+ * compares the limit with the total of a price times a quantity over every line. `op` stays the
+ * comparison, so `gt`, `gte`, `lt` and `lte` mean here exactly what they mean on one number — a
+ * business rule about a total reads like every other threshold, and there is no second operator to
+ * learn. `times` is optional and multiplies each element's field by another field first, because a
+ * priced line is written as a price and a count, not as an amount.
+ *
+ * Nothing here is about invoices: it is an array of objects, one numeric field of each, and a
+ * threshold that is a literal or a named limit. A manifest cannot declare an array parameter, so a
+ * summed condition names an argument of a tool whose parameters are defined in code.
  *
  * `present` and `absent` take no value. They are the opt-in way to say what an absent argument means,
  * because a comparison on a missing argument fails safe (it holds) and would gate every call.
@@ -153,6 +173,8 @@ const ConditionDeclaration = Type.Object(
   {
     arg: Type.String({ minLength: 1 }),
     op: Type.Enum(["gt", "gte", "lt", "lte", "eq", "ne", "in", "present", "absent"]),
+    field: Type.Optional(ElementField('a field of each element, like "amountCents"')),
+    times: Type.Optional(ElementField('the field to multiply it by, like "quantity"')),
     value: Type.Optional(
       Type.Union([
         Type.Number(),
@@ -661,6 +683,30 @@ function engineIssues(manifest: AgentManifest, add: (path: string, message: stri
       const at = `approvals[${index}].when[${conditionIndex}]`;
       if (parameters !== undefined && !(condition.arg in parameters)) {
         add(`${at}.arg`, `${show(condition.arg)} is not a parameter of ${show(approval.tool)}`);
+      }
+      // `field` turns a scalar comparison into a sum over an array's elements, so it needs a numeric
+      // comparison to compare the total with, and `times` has nothing to multiply without a `field`.
+      if (condition.field === undefined) {
+        if (condition.times !== undefined) {
+          add(
+            `${at}.times`,
+            'needs "field": it multiplies the summed field, so on its own it has nothing to multiply',
+          );
+        }
+      } else {
+        if (!["gt", "gte", "lt", "lte"].includes(condition.op)) {
+          add(
+            `${at}.field`,
+            `sums an argument's elements, which needs a numeric comparison — "gt", "gte", "lt" or "lte" (op is ${show(condition.op)})`,
+          );
+        }
+        const parameter = parameters?.[condition.arg];
+        if (parameter !== undefined) {
+          add(
+            `${at}.field`,
+            `sums the elements of an array argument, and ${show(condition.arg)} is one declared ${show(parameter.type)} parameter; a manifest cannot declare an array, so a summed condition names a tool whose parameters are defined in code`,
+          );
+        }
       }
       if (condition.op === "present" || condition.op === "absent") {
         if (condition.value !== undefined) {

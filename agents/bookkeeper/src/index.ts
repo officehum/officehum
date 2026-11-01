@@ -88,9 +88,15 @@ export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
     ],
     // The reminder belongs to the collections skill, which is where its instructions live.
     skillTools: { collections: [tools.sendReminder] },
-    // Two of the three approvals need code: `large_invoice` sums the draft's lines against the
-    // business's resolved limit, and `new_recipient` looks the customer up through the client. The
-    // third, `final_notice`, is already a manifest condition on the tone and stays there.
+    // `large_invoice` is stated in `officehum.json` as the SDK's summed condition (a line's price
+    // times its quantity), and stated again here as the code this role has always gated on, so the
+    // role's own gate keeps deciding exactly as it did. Two readers of one policy: the role's gate
+    // runs this code, the office gate reads the declaration and never runs it, and `gates.test.ts`
+    // fails if the two reach different answers. `new_recipient` is code only: the address on file
+    // comes from the client, which no manifest condition can read, so its declaration has no `when`
+    // and the office gate asks a person about every send. That over-blocking is deliberate; the
+    // README records why the manifest cannot. `final_notice` needs nothing but the tone and stays a
+    // manifest condition.
     when: {
       large_invoice: largeInvoiceCondition,
       new_recipient: newRecipientCondition(options.quickbooks),

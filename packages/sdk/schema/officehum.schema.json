@@ -326,6 +326,18 @@
                     "absent"
                   ]
                 },
+                "field": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "maxLength": 64,
+                  "x-hint": "a field of each element, like \"amountCents\""
+                },
+                "times": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                  "maxLength": 64,
+                  "x-hint": "the field to multiply it by, like \"quantity\""
+                },
                 "value": {
                   "anyOf": [
                     {
