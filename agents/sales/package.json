@@ -1,0 +1,41 @@
+{
+  "name": "@officehum/sales",
+  "version": "0.0.0",
+  "description": "Portable Sales / Account Manager role: qualifies leads, quotes from the company's price book, follows up and keeps the pipeline.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "officehum.json",
+    "AGENTS.md",
+    "APPEND_SYSTEM.md",
+    "skills",
+    "evals"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "1.3.x",
+    "@earendil-works/pi-durable": "1.3.x"
+  },
+  "dependencies": {
+    "@officehum/sdk": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.3.0",
+    "@earendil-works/pi-durable": "1.3.0"
+  }
+}

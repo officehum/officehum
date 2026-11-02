@@ -108,7 +108,8 @@
   ],
   "skills": [
     { "id": "qualifying-inquiries", "enabledByDefault": true },
-    { "id": "rescheduling", "enabledByDefault": true }
+    { "id": "rescheduling", "enabledByDefault": true },
+    { "id": "company-handbook", "enabledByDefault": true }
   ],
   "evals": "evals"
 }

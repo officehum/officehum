@@ -137,7 +137,8 @@
   "skills": [
     { "id": "collections", "enabledByDefault": true },
     { "id": "invoicing", "enabledByDefault": true },
-    { "id": "billing-questions", "enabledByDefault": true }
+    { "id": "billing-questions", "enabledByDefault": true },
+    { "id": "company-handbook", "enabledByDefault": true }
   ],
   "evals": "evals"
 }

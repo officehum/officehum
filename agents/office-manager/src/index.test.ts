@@ -48,14 +48,18 @@ describe("office manager role", () => {
     });
   });
 
-  it("brings both skills and declares no tools of its own beyond read_skill", () => {
+  it("brings its skills and declares no tools of its own beyond read_skill", () => {
     const role = officeManager({});
     expect(role.extensions.map((extension) => extension.name)).toEqual(["office-manager"]);
     expect(tools([role.extensions[0] as Extension]).map((tool) => tool.name)).toEqual([
       "read_skill",
     ]);
     // Skills resolve sorted by name, whatever order the manifest lists them in.
-    expect(role.current().skills.map((skill) => skill.name)).toEqual(["daily-digest", "triage"]);
+    expect(role.current().skills.map((skill) => skill.name)).toEqual([
+      "company-handbook",
+      "daily-digest",
+      "triage",
+    ]);
   });
 
   it("is a valid portable package and role, with no tools and no approvals of its own", async () => {

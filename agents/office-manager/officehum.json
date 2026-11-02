@@ -42,7 +42,8 @@
   ],
   "skills": [
     { "id": "triage", "enabledByDefault": true },
-    { "id": "daily-digest", "enabledByDefault": true }
+    { "id": "daily-digest", "enabledByDefault": true },
+    { "id": "company-handbook", "enabledByDefault": true }
   ],
   "evals": "evals"
 }
