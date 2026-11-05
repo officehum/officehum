@@ -1,6 +1,6 @@
 ---
 name: following-up
-description: Keep a lead moving after a quote or a conversation, with a cadence that ends rather than nags. Use when a quote has gone out, when a decision is due, or when a lead has gone quiet.
+description: Keep a lead moving after a quote or a conversation, with a cadence that ends rather than nags. Use when a quote has gone out, when a decision is due, when a client pushes back on a quoted price, or when a lead has gone quiet.
 ---
 
 A follow-up is a reason to answer, not a reminder that you exist. Every message carries something the
@@ -24,8 +24,13 @@ client did not have before: an answer to their question, a measured figure, a da
 
 ## When the answer is not a follow-up
 
-- A client who wants a **lower price** is asking for a discount: a person's decision, and the reply
-  says the request has gone to them.
+- A client who says the price is **too high**, without asking for anything off, has raised a price
+  objection. Read the quote with `get_quote` and answer with its value: what each line covers, in
+  the receipt's figures, the total, and what it leaves out. Offer no discount and raise no
+  approval. Log the touch first; the reply that follows is what the client reads, so the lines and
+  the total go in it.
+- A client who wants a **lower price** — a percentage or an amount off — is asking for a discount: a
+  person's decision, and the reply says the request has gone to them.
 - A client who wants a **start date** or a **different schedule** is asking operations.
 - A client who **disagrees with an invoice** is asking finance.
 - A client who says the **work was short** is making a complaint: Tom Becker hears it, and the reply

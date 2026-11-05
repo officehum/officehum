@@ -1,0 +1,839 @@
+{
+  "schema": 1,
+  "role": "sales",
+  "researchedOn": "2026-11-05",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/41-3091.00",
+      "title": "O*NET OnLine: Sales Representatives of Services, Except Advertising, Insurance, Financial Services, and Travel (41-3091.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/summary/11-2022.00",
+      "title": "O*NET OnLine: Sales Managers (11-2022.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.bls.gov/ooh/sales/wholesale-and-manufacturing-sales-representatives.htm",
+      "title": "BLS Occupational Outlook Handbook: Wholesale and Manufacturing Sales Representatives",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.bls.gov/ooh/management/sales-managers.htm",
+      "title": "BLS Occupational Outlook Handbook: Sales Managers",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.sba.gov/business-guide/manage-your-business/marketing-sales",
+      "title": "U.S. Small Business Administration: Marketing and sales",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S6",
+      "url": "https://saylordotorg.github.io/text_the-power-of-selling/s10-01-it-s-a-process-seven-steps-to-.html",
+      "title": "The Power of Selling (Saylor Academy), 7.1 It's a Process: Seven Steps to Successful Selling",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S7",
+      "url": "https://saylordotorg.github.io/text_the-power-of-selling/s10-02-prospecting-a-vital-role-in-th.html",
+      "title": "The Power of Selling (Saylor Academy), 7.2 Prospecting: A Vital Role in the Selling Process",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S8",
+      "url": "https://saylordotorg.github.io/text_the-power-of-selling/s06-01-the-power-of-relationship-sell.html",
+      "title": "The Power of Selling (Saylor Academy), 3.1 The Power of Relationship Selling",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S9",
+      "url": "https://saylordotorg.github.io/text_the-power-of-selling/s13-04-how-to-use-spin-selling-in-you.html",
+      "title": "The Power of Selling (Saylor Academy), 10.4 How to Use SPIN Selling in Your Sales Call",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S10",
+      "url": "https://saylordotorg.github.io/text_the-power-of-selling/s14-02-types-of-objections-and-how-to.html",
+      "title": "The Power of Selling (Saylor Academy), 11.2 Types of Objections and How to Handle Them",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S11",
+      "url": "https://saylordotorg.github.io/text_the-power-of-selling/s15-01-closing-starts-at-the-beginnin.html",
+      "title": "The Power of Selling (Saylor Academy), 12.1 Closing Starts at the Beginning",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S12",
+      "url": "https://saylordotorg.github.io/text_the-power-of-selling/s15-02-collaborate-to-negotiate.html",
+      "title": "The Power of Selling (Saylor Academy), 12.2 Collaborate to Negotiate",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S13",
+      "url": "https://saylordotorg.github.io/text_the-power-of-selling/s16-01-follow-up-the-lasting-impressi.html",
+      "title": "The Power of Selling (Saylor Academy), 13.1 Follow-Up: The Lasting Impression",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S14",
+      "url": "https://saylordotorg.github.io/text_the-power-of-selling/s07-01-business-ethics-guiding-princi.html",
+      "title": "The Power of Selling (Saylor Academy), 4.1 Business Ethics: Guiding Principles in Selling and in Life",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S15",
+      "url": "https://saylordotorg.github.io/text_the-power-of-selling/s17-01-managing-yourself-your-income-.html",
+      "title": "The Power of Selling (Saylor Academy), 14.1 Managing Yourself, Your Income, and Your Results",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S16",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/sales/qualify-lead-convert-opportunity-sales",
+      "title": "Microsoft Learn: Qualify and convert a lead to opportunity (Dynamics 365 Sales)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S17",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/sales/create-edit-quote-sales",
+      "title": "Microsoft Learn: Create or edit quotes in Dynamics 365 Sales",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S18",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/sales/close-opportunity-won-lost-sales",
+      "title": "Microsoft Learn: Close opportunities as won or lost (Dynamics 365 Sales)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S19",
+      "url": "https://learn.microsoft.com/en-us/training/modules/manage-opportunities-dynamics-365-sales/4-opportunity-management-lifecycle",
+      "title": "Microsoft Learn: Opportunity management lifecycle (Dynamics 365 Sales training)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S20",
+      "url": "https://knowledge.hubspot.com/object-settings/set-up-and-customize-pipelines",
+      "title": "HubSpot Knowledge Base: Set up and manage object pipelines",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Sell services to individuals or businesses. May describe options or resolve client problems."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Communicating with People Outside the Organization - Communicating with people outside the organization, representing the organization to customers, the public, government, and other external sources."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Establishing and Maintaining Interpersonal Relationships - Developing constructive and cooperative working relationships with others, and maintaining them over time."
+        },
+        {
+          "source": "S13",
+          "passage": "The relationship really begins with the close of the sale; follow-up is what makes a relationship grow and prosper."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "most of these managers direct the selling of goods and services by assigning territories, setting goals, and establishing training programs for the organization's sales representatives."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Identify prospective customers using business directories, leads from clients, or information from conferences or trade shows."
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Contact prospective or existing customers to discuss how services can meet their needs."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Answer customers' questions about services, prices, availability, or credit terms."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Develop sales presentations or proposals to explain service specifications."
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Quote prices, credit terms, contract terms, or fulfillment dates for services."
+        },
+        {
+          "source": "S1",
+          "passage": "Compute and compare costs of services."
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Negotiate prices or terms of sales or service agreements."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Create forms or agreements to complete sales."
+        },
+        {
+          "source": "S3",
+          "passage": "Prepare sales contracts and submit orders for processing"
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Maintain customer records using automated systems."
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Consult with clients after sales or contract signings to resolve problems and provide ongoing support."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Monitor market conditions, innovations, and competitors' services, prices, and sales."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Wholesale and manufacturing sales representatives who lack expertise about a given product frequently team with a technical expert."
+        },
+        {
+          "source": "S3",
+          "passage": "Collaborate with colleagues to exchange information, such as information on selling strategies and marketing information"
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "A potential buyer for a product or service that has not yet been qualified."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "is a lead that is qualified or determined to be ready, willing, and able to buy."
+        },
+        {
+          "source": "S6",
+          "passage": "Determining whether a lead has the desire and ability to buy your product or service."
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Identifying potential buyers for a product or service."
+        },
+        {
+          "source": "S6",
+          "passage": "The preparation and research a salesperson does before making the sales call."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "When you qualify a lead, you validate that it's a genuine sales opportunity and associate an account and contact, and create the corresponding opportunity record to track the deal."
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Pipelines help visualize your processes through stages, which are steps that signal where a record is in a process."
+        },
+        {
+          "source": "S20",
+          "passage": "Deals: a default Sales Pipeline for which each stage has an associated probability that indicates the likelihood of closing deals in that stage."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Closed won (100%, Won), Closed lost (0%, Lost)."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Quotes include the pricing details of products that your potential customer is interested in."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "A concern voiced by the prospect about the perceived value of a product or service."
+        },
+        {
+          "source": "S10",
+          "passage": "Many prospects use the price objection as a negotiating ploy to determine how much flexibility there is in the pricing, while others use it as a way to object due to budget constraints."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "A point on which you are willing to compromise."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "SPIN stands for the four kinds of questions successful salespeople ask their customers: Situation, Problem, Implication, and Need-payoff."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "The process a company uses to organize and track their current and potential customer information."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Prospect and qualify Preapproach Approach Presentation Overcome objections Close the sale Follow-up"
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "What happens if the customer is not interested in the salesperson's product, or he's interested but his business is struggling financially and doesn't have the resources for a big purchase?"
+        },
+        {
+          "source": "S6",
+          "passage": "Perhaps he is only an employee, not the manager, and he doesn't have the authority to make the purchasing decision."
+        },
+        {
+          "source": "S16",
+          "passage": "For example, if a prospect provides a budget and a clear decision timeline, you'd qualify them to generate an opportunity you can actively work toward closing."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "For leads that don't meet your criteria, you can disqualify them while maintaining an audit trail."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "The salesperson reviews the CRM system to see if there have been any previous contacts with the customer and if there is any information about the customer and his business."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "During each of these phases, it's important to identify all the decision makers and their positions in the process."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Initially, you create a draft, and then you need to activate it when it's ready to go to a customer."
+        },
+        {
+          "source": "S17",
+          "passage": "When the customer accepts the quote, you create an order."
+        },
+        {
+          "source": "S17",
+          "passage": "Otherwise, you close the quote as revised, canceled, or lost."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "The bottom line on the price objection is that people buy when they see the value"
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Most of the work required to move an opportunity forward happens through customer interactions, which you record in Dynamics 365 as activities."
+        },
+        {
+          "source": "S8",
+          "passage": "The salesperson makes a note in the CRM system about the phone call and the date of the meeting and sets a follow-up reminder for himself for the meeting and for three days after the meeting."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Close the opportunity when you've won or lost the deal."
+        },
+        {
+          "source": "S19",
+          "passage": "When you select Close as Lost, you can specify the Competitor you lost to, the reason for the loss, and the close date."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Closed opportunities can be reopened if circumstances change."
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Follow up to be sure everything is delivered as promised."
+        },
+        {
+          "source": "S13",
+          "passage": "Take the time to follow up internally to be sure all the i's are dotted and t's are crossed so that your customer's delivery is flawless."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Don't lie to a customer."
+        },
+        {
+          "source": "S10",
+          "passage": "Long-term relationships are built on trust and honesty."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Either withholding or falsifying information is lying and therefore unethical."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "When people make promises that they don't keep, you lose trust in them."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "be honest about timing and resolution of issues."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Emphasize or recommend service features based on knowledge of customers' needs and vendor capabilities and limitations."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "must be able to listen to the customer's needs and concerns before and after the sale."
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Qualifying is the key; it's virtually impossible to close a sale with the wrong prospect."
+        },
+        {
+          "source": "S7",
+          "passage": "Most importantly, it means that you should never write off a lead until you are certain he can't be qualified as a prospect."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "The bottom line is that it's best not to make a concession without getting a concession."
+        },
+        {
+          "source": "S12",
+          "passage": "A successful negotiation can be measured by its ability to deliver a mutually beneficial solution to all parties."
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Dependability - A tendency to be reliable, responsible, and consistent in meeting work-related obligations."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Simple operations elements like your staff uniform, where your product is made, or the product return process contribute to your customer's experience."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "In other words, CRM is a customer database that holds all the information regarding a transaction (e.g., date; products purchased; salesperson who sold the products; and name, address, and contact information of the customer)."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "The salesperson makes a note in the CRM system so everyone from the company who comes in contact with the prospect, such as other salespeople or customer service, know this information about the prospect."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Customer relationship management CRM software - Salesforce software"
+        },
+        {
+          "source": "S1",
+          "passage": "Sales and marketing software - HubSpot software"
+        },
+        {
+          "source": "S1",
+          "passage": "Spreadsheet software - Microsoft Excel"
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Price List and Currency: The price list that will be used to calculate the product prices and currency."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "The Sales funnel chart shows how your deals are distributed across all stages of the sales cycle, revealing where opportunities are clustering or where bottlenecks might exist."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "E-Mail - 88% responded \"Every day.\""
+        },
+        {
+          "source": "S1",
+          "passage": "Telephone Conversations - 89% responded \"Every day.\""
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Determine price schedules and discount rates."
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Resolve customer complaints, especially those escalated by sales staff"
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Set sales goals for staff and monitor staff progress toward those goals"
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "They also may assist staff members with presentations, with closing sales, and on ways to improve performance to meet their goals."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Monitor customer preferences to determine the focus of sales efforts"
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Most companies establish annual sales goals or quotas, expectations of sales for a specific time frame, by salesperson, and then break down the goals by month and sometimes by week."
+        },
+        {
+          "source": "S15",
+          "passage": "Sales generated compared to the sales goal or quota by the salesperson during the designated time frame"
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Percentage of times a salesperson converts a prospect to a customer by making a sale."
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Measures of productivity that include outcomes, such as sales, new accounts, units sold, or gross profit percent."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Stage probability is used to determine the weighted amount shown in board view, which is calculated by multiplying the total amount in each stage by the stage probability."
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Closing the opportunity helps you track the sales pipeline and forecast future sales."
+        },
+        {
+          "source": "S19",
+          "passage": "This data helps Contoso track quota attainment and forecast accuracy."
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "This information is valuable for sales managers analyzing why deals are lost and which competitors are winning."
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Contoso managers use the Sales funnel section of the Pipeline view during weekly team meetings to identify which stages have too many stalled deals, prompting coaching conversations with sellers."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Plan to compare your marketing and sales costs to the revenue it generates."
+        },
+        {
+          "source": "S4",
+          "passage": "Project sales and determine the profitability of products and services"
+        }
+      ]
+    }
+  ]
+}

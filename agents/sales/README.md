@@ -206,14 +206,15 @@ arguments before it waits for `y`/`n`.
 | --- | --- |
 | `officehum.json` | The manifest: six tools, two approvals, one limit, dispatches, skills, evals |
 | `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
+| `role.md`, `role.sources.json` | The researched description of the job, every item cited; `officehum verify-role agents/sales --online` re-checks the sources |
 | `src/index.ts` | The factory: the tools, the skill placement, the desk and company defaults |
 | `src/tools.ts` | The six tools, and the receipts they return |
 | `src/company.ts` | The company facts as the role reads them, and the price book search |
 | `src/desk.ts` | The `SalesDesk` interface, `fakeSalesDesk`, the demo pipeline and the quote arithmetic |
 | `src/tools.test.ts` | One test per tool, on the fake desk and the real facts |
-| `src/index.test.ts` | The factory, both approval gates on a real harness, and the nine scenarios |
+| `src/index.test.ts` | The factory, both approval gates on a real harness, and the ten scenarios |
 | `src/package.test.ts` | The package, the manifest, and the company's numbers against the role's |
-| `evals/situations.json` | The nine eval scenarios |
+| `evals/situations.json` | The ten eval scenarios |
 | `evals.smoke.json` | The turns `--model scripted` plays back for them |
 | `skills/` | `qualifying-a-lead`, `quoting-from-the-price-book`, `following-up`, and the generated `company-handbook` |
 

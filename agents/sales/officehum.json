@@ -55,7 +55,7 @@
     {
       "id": "any_discount",
       "tool": "create_quote",
-      "description": "Confirm this discount: every discount on a quote needs a person, whatever its size",
+      "description": "Approve a discount off the price book: discount rates are the Sales Manager's decision, whatever the size",
       "when": [
         { "arg": "discountPercent", "op": "present" },
         { "arg": "discountPercent", "op": "gt", "value": 0 }
@@ -64,7 +64,7 @@
     {
       "id": "quote_over_limit",
       "tool": "create_quote",
-      "description": "Confirm a quote whose lines come to more than the business's quote limit",
+      "description": "Approve a quote above the quote limit: a quote that large is the Sales Manager's decision",
       "when": [
         {
           "arg": "lines",

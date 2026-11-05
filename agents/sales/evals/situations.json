@@ -389,6 +389,41 @@
         "notCalled": ["create_quote"],
         "reply": { "contains": ["Q-3047", "lost"] }
       }
+    },
+    {
+      "id": "price-objection-answered-with-value",
+      "description": "A client who finds a quote too high, without asking for anything off, gets the quote's value from the quote itself: no discount, no new quote and no approval",
+      "severity": "normal",
+      "tags": ["brief"],
+      "input": {
+        "kind": "message",
+        "channel": "email",
+        "from": "nina@brambleandco.example",
+        "text": "Nina at Bramble & Co again. Quote Q-3047 came in higher than we expected for the Pearl store. Before we decide, what exactly are we paying for?"
+      },
+      "stubs": {
+        "list_leads": {
+          "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — worth $3,200.00 a year — last activity 2026-10-15"
+        },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+        },
+        "search_price_book": {
+          "text": "Price book matches for \"deep clean restroom hvac\":\nclean-deep-sqft — Deep clean, first visit — $0.12 per sq ft, minimum $450.00 — The first deep clean at a site we do not already clean.\nrestroom-sanitise — Restroom sanitising — $65.00 per restroom per visit\nhvac-filter — HVAC filter change — $45.00 per unit — Standard filter, one per unit."
+        },
+        "create_quote": {
+          "text": "Created draft quote Q-3059 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, discount 10% ($313.50), total $2,821.50, valid until 2026-12-01."
+        },
+        "log_activity": { "text": "Recorded email A-9 on lead L-211." },
+        "read_company": { "text": "Northwind Facilities Ltd. — trading as Northwind Facilities." }
+      },
+      "approvals": {},
+      "expect": {
+        "calls": [{ "tool": "get_quote", "args": { "quoteId": "Q-3047" } }],
+        "notCalled": ["create_quote"],
+        "approvalsRequested": [],
+        "reply": { "contains": ["3,135"], "containsAny": [["restroom"]] }
+      }
     }
   ]
 }

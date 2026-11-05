@@ -190,5 +190,23 @@
     {
       "text": "Bramble & Co is still at the quoted stage: Q-3047 went out on 12 October and nobody has answered it. More than three weeks of silence is where our cadence ends, so I've noted it as lost — the total was above their budget for the year — and left the door open to re-open it when their timing changes. Nothing about it is waiting on a person."
     }
+  ],
+  "price-objection-answered-with-value": [
+    { "toolCalls": [{ "name": "get_quote", "args": { "quoteId": "Q-3047" } }] },
+    {
+      "toolCalls": [
+        {
+          "name": "log_activity",
+          "args": {
+            "leadId": "L-211",
+            "kind": "email",
+            "summary": "Nina found Q-3047 higher than expected for the Pearl store; explained what each line covers. No discount asked or offered. Next: her decision, follow up before the quote's validity ends on 2026-11-14."
+          }
+        }
+      ]
+    },
+    {
+      "text": "Nina, quote Q-3047 comes to $3,135.00 and covers three things: the first deep clean of the 12,000 sq ft across the sites at $1,440.00, restroom sanitising for 24 restrooms at $1,560.00, and 3 HVAC filter changes at $135.00. It does not include recurring nightly cleaning or any window work. The quote is valid until 14 November; if you'd like to talk through the scope, I'm here."
+    }
   ]
 }
