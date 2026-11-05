@@ -1,5 +1,19 @@
 # Office Hum — handoff brief for the next agent
 
+> **Corrections, 2026-11-05 (the agent that took over).** Read these first.
+>
+> * The vision and order of work are now in
+>   `docs/superpowers/specs/2026-11-03-departmental-agents-vision-design.md`. Where the two disagree,
+>   that document wins. In particular, approvals and limits are defaults a customer may lower, not a
+>   floor (decision 10), and roles may move money once a customer configures them to.
+> * §8 step 3 ("pick the first ticket from Stream A or B") is outdated. Departmental agents come first
+>   (§9, decision 5).
+> * §10: the price book did have a `unit` on every item. The `quote-inside-the-limit` failure was the
+>   model choosing the wrong item or quantity, not a missing field. See
+>   `docs/superpowers/plans/2026-11-05-sales-template-and-role-md.md`.
+> * Worktrees: this repo's own `AGENTS.md` applies. Any worktree of your own is fine, including
+>   `.claude/worktrees/`.
+
 Written 2026-10-31 by the previous agent. Owner: Azmat (RASF LLC).
 Read this whole document before touching the repository. It is meant to be complete enough that you do not need to
 guess, and plain enough that you do not need prior context.
