@@ -129,7 +129,8 @@
               "turned down",
               "wasn't approved"
             ]
-          ]
+          ],
+          "notContains": ["with him now", "still with", "with his answer"]
         }
       }
     },
