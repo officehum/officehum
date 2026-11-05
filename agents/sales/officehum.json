@@ -17,6 +17,11 @@
       "description": "List the leads in the pipeline, optionally filtered by stage or by a search on the company, contact or site."
     },
     {
+      "name": "get_quote",
+      "replay": "safe",
+      "description": "Read one quote by its id: its lead, lines, subtotal, discount, total and validity"
+    },
+    {
       "name": "search_price_book",
       "replay": "safe",
       "description": "Search the company's price book for a service or item, by the words a client would use. Returns each match's unit, price and minimum."

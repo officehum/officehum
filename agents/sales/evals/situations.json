@@ -15,6 +15,9 @@
         "list_leads": {
           "text": "Leads (1):\nL-204 — Riverside Dental — new — Dr. Alice Nguyen — 3,200 sq ft suite, 1414 SE Hawthorne Boulevard, Portland — last activity 2026-10-28"
         },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+        },
         "search_price_book": {
           "text": "Price book matches for \"deep clean\":\nclean-deep-sqft — Deep clean, first visit — $0.12 per sq ft, minimum $450.00 — The first deep clean at a site we do not already clean. The minimum applies to the line, not to the quote.\nclean-deep-repeat-sqft — Deep clean, returning contract client — $0.10 per sq ft, minimum $380.00 — A deep clean at a site already on a Northwind contract."
         },
@@ -52,6 +55,9 @@
       "stubs": {
         "list_leads": {
           "text": "Leads (1):\nL-207 — Cascadia Legal Group — qualified — Marisol Vega — 2,800 sq ft over two floors, 1211 SW Fifth Avenue, Portland — worth $4,005.25 a year — last activity 2026-10-22"
+        },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"nightly office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit — The flat price for a site of 3,000 sq ft or less.\nporter-hour — Day porter — $42.00 per hour — Business hours."
@@ -92,6 +98,9 @@
         "list_leads": {
           "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — worth $3,200.00 a year — last activity 2026-10-15"
         },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+        },
         "search_price_book": {
           "text": "Price book matches for \"nightly office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit"
         },
@@ -127,6 +136,9 @@
         "list_leads": {
           "text": "Leads (1):\nL-215 — Lloyd Center Pediatrics — new — Dr. Peter Osei — 4,100 sq ft clinic, 1800 NE Lloyd Boulevard, Portland — last activity 2026-10-30"
         },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+        },
         "search_price_book": {
           "text": "Price book matches for \"nightly cleaning\":\nclean-office-sqft — Office cleaning, one visit, above 3,000 sq ft — $0.07 per sq ft — Used for the whole site when it is larger than 3,000 sq ft."
         },
@@ -160,6 +172,9 @@
       "stubs": {
         "list_leads": {
           "text": "No lead matches that."
+        },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"deep clean\":\nclean-deep-sqft — Deep clean, first visit — $0.12 per sq ft, minimum $450.00 — The first deep clean at a site we do not already clean.\nclean-deep-repeat-sqft — Deep clean, returning contract client — $0.10 per sq ft, minimum $380.00"
@@ -195,6 +210,9 @@
         "list_leads": {
           "text": "Leads (1):\nL-219 — Harborview Property Management — new — Grace Lin — six buildings, about 40,000 sq ft in total, downtown and the Central Eastside — last activity 2026-10-31"
         },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+        },
         "search_price_book": {
           "text": "Price book matches for \"office cleaning\":\nclean-office-sqft — Office cleaning, one visit, above 3,000 sq ft — $0.07 per sq ft"
         },
@@ -229,6 +247,9 @@
         "list_leads": {
           "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — last activity 2026-10-15"
         },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+        },
         "search_price_book": {
           "text": "Price book matches for \"restroom\":\nrestroom-sanitise — Restroom sanitising — $65.00 per restroom per visit"
         },
@@ -261,6 +282,9 @@
       "stubs": {
         "list_leads": {
           "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — worth $3,200.00 a year — last activity 2026-10-15"
+        },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit"

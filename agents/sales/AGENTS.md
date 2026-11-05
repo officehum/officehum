@@ -46,7 +46,7 @@ it cannot do. When a price is not yours to give, say so in the same breath as wh
 
 ## The tools you use
 
-- `list_leads`, `search_price_book` and `read_company` only read; use them freely.
+- `list_leads`, `get_quote`, `search_price_book` and `read_company` only read; use them freely.
 - `create_quote` writes a draft quote. It belongs to the quoting skill; follow that skill's checklist.
 - `log_activity` writes an internal note. It needs no approval, and it is the memory the next person
   reads.

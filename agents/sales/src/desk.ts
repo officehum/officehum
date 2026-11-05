@@ -122,6 +122,8 @@ export interface Activity {
 /** What the role needs from whatever system holds its leads and quotes. */
 export interface SalesDesk {
   listLeads(filter?: LeadFilter): Promise<readonly Lead[]>;
+  /** One quote by its id, or a `SalesDeskError` naming the id when there is none. */
+  getQuote(id: string): Promise<Quote>;
   createQuote(draft: QuoteDraft, options: { readonly requestId: string }): Promise<Quote>;
   logActivity(entry: ActivityDraft, options: { readonly requestId: string }): Promise<Activity>;
 }
@@ -137,6 +139,8 @@ export class SalesDeskError extends Error {
 export interface FakeSalesDeskOptions {
   /** The pipeline; the demo one when omitted. */
   readonly leads?: readonly Lead[];
+  /** The quotes already made; the demo one when omitted. */
+  readonly quotes?: readonly Quote[];
   /** The price book quotes are validated against; the company's own when omitted. */
   readonly priceBook?: readonly PriceBookItem[];
   /** The clock, so a receipt's dates are reproducible in a test. */
@@ -225,6 +229,58 @@ export function demoLeads(): readonly Lead[] {
   ];
 }
 
+/**
+ * The one quote the demo pipeline already holds: Q-3047, sent to Bramble & Co three weeks before the
+ * demo date. Each line is a real price book item, so the amounts are what `createQuote` would make:
+ * 12,000 sq ft of first-visit deep clean, 24 restroom sanitises, and three HVAC filters.
+ */
+export function demoQuotes(): readonly Quote[] {
+  const lines: QuoteLine[] = [
+    {
+      priceBookItemId: "clean-deep-sqft",
+      description: "Deep clean, first visit",
+      quantity: 12000,
+      unitPriceCents: 12,
+      amountCents: 144000,
+      minimumApplied: false,
+    },
+    {
+      priceBookItemId: "restroom-sanitise",
+      description: "Restroom sanitising",
+      quantity: 24,
+      unitPriceCents: 6500,
+      amountCents: 156000,
+      minimumApplied: false,
+    },
+    {
+      priceBookItemId: "hvac-filter",
+      description: "HVAC filter change",
+      quantity: 3,
+      unitPriceCents: 4500,
+      amountCents: 13500,
+      minimumApplied: false,
+    },
+  ];
+  const subtotalCents = lines.reduce((total, line) => total + line.amountCents, 0);
+  return [
+    {
+      id: "Q-3047",
+      leadId: "L-211",
+      leadName: "Bramble & Co",
+      status: "draft",
+      currency: "USD",
+      lines,
+      subtotalCents,
+      discountPercent: 0,
+      discountCents: 0,
+      totalCents: subtotalCents,
+      issuedOn: "2026-10-15",
+      validUntil: "2026-11-14",
+      notes: null,
+    },
+  ];
+}
+
 const DAY_MS = 86_400_000;
 
 /** `YYYY-MM-DD` of a date, in UTC: the only date form a receipt carries. */
@@ -250,6 +306,7 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
   const clock = options.now ?? (() => new Date());
   const leads: Lead[] = (options.leads ?? demoLeads()).map((lead) => ({ ...lead }));
   const quoteByRequest = new Map<string, Quote>();
+  const quotesById = new Map<string, Quote>((options.quotes ?? demoQuotes()).map((q) => [q.id, q]));
   const activityByRequest = new Map<string, Activity>();
   let quoteNumber = 3050;
   let activityNumber = 0;
@@ -313,6 +370,17 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
         .map((lead) => ({ ...lead }));
     },
 
+    async getQuote(id: string): Promise<Quote> {
+      const quote = quotesById.get(id.trim());
+      if (quote === undefined) {
+        const known = [...quotesById.keys()].join(", ");
+        throw new SalesDeskError(
+          `No quote has the id ${JSON.stringify(id)}. The desk holds: ${known === "" ? "no quotes" : known}.`,
+        );
+      }
+      return quote;
+    },
+
     async createQuote(
       draft: QuoteDraft,
       { requestId }: { readonly requestId: string },
@@ -358,6 +426,7 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
         notes: draft.notes ?? null,
       };
       quoteByRequest.set(requestId, quote);
+      quotesById.set(quote.id, quote);
       lead.stage = "quoted";
       lead.lastActivityAt = quote.issuedOn;
       lead.estimatedValueCents ??= quote.totalCents;

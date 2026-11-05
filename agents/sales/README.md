@@ -62,6 +62,7 @@ office's real gate, so a refused call is refused by the gate production uses.
 | Tool | Replay | What it is for |
 | --- | --- | --- |
 | `list_leads` | safe | The pipeline, filtered by stage or by a search on the company, contact or site |
+| `get_quote` | safe | One existing quote by its id: lead, lines, subtotal, discount, total and validity |
 | `search_price_book` | safe | The price book item a quote line is built from, with its unit, price and minimum |
 | `create_quote` | unsafe | A draft quote the desk prices, one line per service (this one belongs to the quoting skill) |
 | `log_activity` | unsafe | An internal note on a lead: what was decided and what happens next |
@@ -202,10 +203,10 @@ arguments before it waits for `y`/`n`.
 
 | Path | What it holds |
 | --- | --- |
-| `officehum.json` | The manifest: five tools, two approvals, one limit, dispatches, skills, evals |
+| `officehum.json` | The manifest: six tools, two approvals, one limit, dispatches, skills, evals |
 | `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
 | `src/index.ts` | The factory: the tools, the skill placement, the desk and company defaults |
-| `src/tools.ts` | The five tools, and the receipts they return |
+| `src/tools.ts` | The six tools, and the receipts they return |
 | `src/company.ts` | The company facts as the role reads them, and the price book search |
 | `src/desk.ts` | The `SalesDesk` interface, `fakeSalesDesk`, the demo pipeline and the quote arithmetic |
 | `src/tools.test.ts` | One test per tool, on the fake desk and the real facts |

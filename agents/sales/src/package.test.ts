@@ -17,10 +17,17 @@ const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
 const roleManifest = manifest as unknown as AgentManifest;
 const company = loadCompanyFacts();
 
-const TOOLS = ["list_leads", "search_price_book", "create_quote", "log_activity", "read_company"];
+const TOOLS = [
+  "list_leads",
+  "get_quote",
+  "search_price_book",
+  "create_quote",
+  "log_activity",
+  "read_company",
+];
 
 describe("sales package", () => {
-  it("validates strictly as a package under agents/, with all five tools stubbed in every scenario", async () => {
+  it("validates strictly as a package under agents/, with all six tools stubbed in every scenario", async () => {
     const validated = await validatePackage(packageDirectory);
     expect(validated.issues).toEqual([]);
     expect(validated.ok).toBe(true);
@@ -35,12 +42,15 @@ describe("sales package", () => {
     }
   });
 
-  it("declares five tools, two approvals and the one limit they read", () => {
+  it("declares six tools, two approvals and the one limit they read", () => {
     expect(roleManifest.tools.map((tool) => tool.name)).toEqual(TOOLS);
     expect(
       roleManifest.tools.filter((tool) => tool.replay === "unsafe").map((tool) => tool.name),
     ).toEqual(["create_quote", "log_activity"]);
     expect(validateManifest(roleManifest).ok).toBe(true);
+
+    // Reading a quote changes nothing, so a replayed call is harmless.
+    expect(roleManifest.tools.find((tool) => tool.name === "get_quote")?.replay).toBe("safe");
 
     // An internal note states why it needs no approval; the quote states two approvals.
     const note = roleManifest.tools.find((tool) => tool.name === "log_activity");

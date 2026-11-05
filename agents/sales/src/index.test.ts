@@ -40,8 +40,15 @@ const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
 /** The JSON import's inferred type is widened; the checks want the SDK's manifest type. */
 const roleManifest = manifest as unknown as AgentManifest;
 
-/** The five tools the role declares, in manifest order. Every eval scenario must stub all of them. */
-const TOOLS = ["list_leads", "search_price_book", "create_quote", "log_activity", "read_company"];
+/** The six tools the role declares, in manifest order. Every eval scenario must stub all of them. */
+const TOOLS = [
+  "list_leads",
+  "get_quote",
+  "search_price_book",
+  "create_quote",
+  "log_activity",
+  "read_company",
+];
 
 /** The eight situations the package ships, in suite order. */
 const SCENARIOS = [
@@ -157,7 +164,7 @@ describe("sales role", () => {
     });
   });
 
-  it("provides the five declared tools, with the quote in the quoting skill", () => {
+  it("provides the six declared tools, with the quote in the quoting skill", () => {
     const role = sales({});
     expect(role.extensions.map((extension) => extension.name)).toEqual([
       "sales",
@@ -165,6 +172,7 @@ describe("sales role", () => {
     ]);
     expect(tools([role.extensions[0] as Extension]).map((tool) => tool.name)).toEqual([
       "list_leads",
+      "get_quote",
       "search_price_book",
       "log_activity",
       "read_company",

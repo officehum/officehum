@@ -10,7 +10,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { describe, expect, it } from "vitest";
 import { loadCompanyFacts, money, priceText, searchPriceBook, searchWords } from "./company.js";
-import { fakeSalesDesk, type SalesDesk } from "./desk.js";
+import { fakeSalesDesk, type SalesDesk, SalesDeskError } from "./desk.js";
 import { type SalesToolset, salesTools } from "./tools.js";
 
 const company = loadCompanyFacts();
@@ -75,6 +75,58 @@ describe("list_leads", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(result)).toContain("No lead matches that");
+    expect(details(result).found).toBe(false);
+  });
+});
+
+describe("get_quote", () => {
+  it("getQuote returns the seeded Q-3047 with its lines", async () => {
+    const quote = await desk().getQuote("Q-3047");
+    expect(quote.leadId).toBe("L-211");
+    expect(quote.issuedOn).toBe("2026-10-15");
+    expect(quote.validUntil).toBe("2026-11-14");
+    expect(quote.discountPercent).toBe(0);
+    expect(quote.lines.length).toBeGreaterThan(0);
+    const sum = quote.lines.reduce((total, line) => total + line.amountCents, 0);
+    expect(quote.totalCents).toBe(sum);
+    expect(quote.totalCents).toBeLessThanOrEqual(320000);
+    // Every line is priced from the book, so the amounts match what create_quote would have made.
+    for (const line of quote.lines) {
+      const item = company.priceBook.find((candidate) => candidate.id === line.priceBookItemId);
+      expect(item?.unitPriceCents).toBe(line.unitPriceCents);
+    }
+  });
+
+  it("getQuote refuses an unknown id", async () => {
+    await expect(desk().getQuote("Q-9999")).rejects.toThrow(SalesDeskError);
+    await expect(desk().getQuote("Q-9999")).rejects.toThrow(/Q-9999/);
+  });
+
+  it("get_quote's output text lists each line", async () => {
+    const result = await tools(desk()).getQuote.execute(
+      { quoteId: "Q-3047" },
+      call("call-q1"),
+      BACKGROUND_CONTEXT,
+    );
+    const quote = await desk().getQuote("Q-3047");
+    for (const line of quote.lines) {
+      expect(text(result)).toContain(String(line.priceBookItemId));
+      expect(text(result)).toContain(String(line.quantity));
+      expect(text(result)).toContain(money(line.unitPriceCents));
+      expect(text(result)).toContain(money(line.amountCents));
+    }
+    expect(text(result)).toContain(money(quote.totalCents));
+    expect(details(result).found).toBe(true);
+  });
+
+  it("get_quote says plainly when there is no such quote", async () => {
+    const result = await tools(desk()).getQuote.execute(
+      { quoteId: "Q-9999" },
+      call("call-q2"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain("Q-9999");
+    expect((result as { isError?: boolean }).isError).toBe(true);
     expect(details(result).found).toBe(false);
   });
 });

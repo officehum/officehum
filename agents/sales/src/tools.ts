@@ -1,7 +1,7 @@
 /**
- * The Sales / Account Manager's five tools.
+ * The Sales / Account Manager's six tools.
  *
- * `list_leads`, `search_price_book` and `read_company` only read; `create_quote` and `log_activity`
+ * `list_leads`, `get_quote`, `search_price_book` and `read_company` only read; `create_quote` and `log_activity`
  * write through the desk. No tool decides an approval: the discount and the quote limit are
  * `officehum.json`'s, evaluated by the SDK's gate before the tool runs, which is why this file has no
  * threshold in it at all.
@@ -32,9 +32,10 @@ export interface SalesToolDependencies {
   readonly company: CompanyFacts;
 }
 
-/** The five tools, named, so the factory places each one where the manifest declares it. */
+/** The six tools, named, so the factory places each one where the manifest declares it. */
 export interface SalesToolset {
   readonly listLeads: ToolRegistration;
+  readonly getQuote: ToolRegistration;
   readonly searchPriceBook: ToolRegistration;
   readonly createQuote: ToolRegistration;
   readonly logActivity: ToolRegistration;
@@ -132,6 +133,23 @@ function quoteDetails(quote: Quote) {
       minimumApplied: line.minimumApplied,
     })),
   };
+}
+
+/** A quote read back, line by line, so a re-quote can start from its quantities. */
+function quoteDetail(quote: Quote): string {
+  const discount =
+    quote.discountPercent === 0
+      ? "no discount"
+      : `discount ${quote.discountPercent}% (${money(quote.discountCents)})`;
+  return [
+    `Quote ${quote.id} for ${quote.leadName} (${quote.leadId}), ${quote.status}, issued ${quote.issuedOn}, valid until ${quote.validUntil}:`,
+    ...quote.lines.map(
+      (line) =>
+        `- ${line.priceBookItemId ?? "no price book item"} — ${line.description} — ${line.quantity} × ${money(line.unitPriceCents)} = ${money(line.amountCents)}${line.minimumApplied ? " (minimum applied)" : ""}`,
+    ),
+    `Subtotal ${money(quote.subtotalCents)}, ${discount}, total ${money(quote.totalCents)}.`,
+    ...(quote.notes === null ? [] : [`Notes: ${quote.notes}`]),
+  ].join("\n");
 }
 
 /** The receipt for a quote: what it says, and every minimum that changed a line's price. */
@@ -238,7 +256,7 @@ function companySection(company: CompanyFacts, section: CompanySection): string 
 }
 
 /**
- * Builds the five tools over one desk and one company. Every one is plain Pi Durable: they install
+ * Builds the six tools over one desk and one company. Every one is plain Pi Durable: they install
  * into any harness, and a bare harness with no desk builds the same tools and refuses at the point of
  * use rather than reaching for a system it does not have.
  */
@@ -285,6 +303,30 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
         ...textResult([`Leads (${leads.length}):`, ...leads.map(leadLine)].join("\n")),
         details,
       };
+    },
+  });
+
+  const getQuoteTool = defineTool({
+    name: "get_quote",
+    description:
+      "Read one quote by its id: its lead, lines, subtotal, discount, total and validity. Use it to re-quote an existing quote, for example with a discount, instead of guessing its quantities.",
+    parameters: Type.Object(
+      { quoteId: Type.String({ description: "The quote's id, e.g. Q-3047" }) },
+      { additionalProperties: false },
+    ),
+    replay: "safe",
+    execute: async (args) => {
+      const desk = requireDesk(dependencies);
+      try {
+        const quote = await desk.getQuote(args.quoteId);
+        return {
+          ...textResult(quoteDetail(quote)),
+          details: { found: true, ...quoteDetails(quote) },
+        };
+      } catch (error) {
+        if (!(error instanceof SalesDeskError)) throw error;
+        return refusal(error.message, { found: false, id: args.quoteId });
+      }
     },
   });
 
@@ -478,6 +520,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
 
   return {
     listLeads,
+    getQuote: getQuoteTool,
     searchPriceBook: searchPriceBookTool,
     createQuote,
     logActivity,

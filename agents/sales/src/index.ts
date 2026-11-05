@@ -106,7 +106,13 @@ export default function sales(options: SalesOptions = {}): DefinedRole {
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
-    tools: [tools.listLeads, tools.searchPriceBook, tools.logActivity, tools.readCompany],
+    tools: [
+      tools.listLeads,
+      tools.getQuote,
+      tools.searchPriceBook,
+      tools.logActivity,
+      tools.readCompany,
+    ],
     // The quote belongs to the quoting skill, which is where its checklist lives. `officehum.json`
     // declares it the same way, and `checkAgent` holds the two together.
     skillTools: { "quoting-from-the-price-book": [tools.createQuote] },
