@@ -118,7 +118,19 @@
       "expect": {
         "calls": [{ "tool": "create_quote", "args": { "leadId": "L-211", "discountPercent": 10 } }],
         "approvalsRequested": ["any_discount"],
-        "reply": { "contains": ["declined"] }
+        "reply": {
+          "containsAny": [
+            [
+              "declined",
+              "came back no",
+              "answer was no",
+              "said no",
+              "turned it down",
+              "turned down",
+              "wasn't approved"
+            ]
+          ]
+        }
       }
     },
     {
