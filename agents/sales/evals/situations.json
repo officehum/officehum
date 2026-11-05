@@ -197,11 +197,19 @@
             "rejected it",
             "rejected your",
             "already decided",
-            "decided against",
             "it's a no",
             "with a no",
             "said no",
-            "the answer is no"
+            "the answer is no",
+            "replying to",
+            "receipt",
+            "twenty-four",
+            "five percent",
+            " 5%",
+            " 5 percent",
+            "ten percent",
+            " 10%",
+            " 10 percent"
           ]
         }
       }
@@ -428,7 +436,17 @@
         "reply": {
           "contains": ["3,135"],
           "containsAny": [["restroom"]],
-          "notContains": ["2,821.50", "313.50"]
+          "notContains": [
+            "2,821.50",
+            "313.50",
+            "twenty-four",
+            "five percent",
+            " 5%",
+            " 5 percent",
+            "ten percent",
+            " 10%",
+            " 10 percent"
+          ]
         }
       }
     }
