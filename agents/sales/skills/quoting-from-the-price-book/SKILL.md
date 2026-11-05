@@ -12,8 +12,8 @@ on the quote — a person prices it instead.
    them. Never carry a price in your head from an earlier conversation.
 2. **One line per service, and every service on one quote.** Everything the client asked for in one
    request goes into a single `create_quote` call; never split a request across quotes. A line is a
-   price book item, a quantity in that item's unit, and its unit price. The description says what is included, in the client's terms, so they can argue with the
-   scope instead of the arithmetic.
+   price book item, a quantity in that item's unit, and its unit price. The description says what is
+   included, in the client's terms, so they can argue with the scope instead of the arithmetic.
 3. **Quantities are measured, not guessed.** Square footage from the walkthrough or the client, a count
    of restrooms, panes, units or mats, hours from the scope, visits from the frequency.
 4. **A recurring quote counts the visits.** A standard month is four and a third weeks: five nights a

@@ -157,18 +157,51 @@
         "notCalled": ["create_quote"],
         "approvalsRequested": [],
         "reply": {
-          "contains": ["Marcus"],
+          "containsAny": [
+            [
+              "to Marcus",
+              "with Marcus",
+              "Marcus's decision",
+              "Marcus Oyelaran's decision",
+              "Marcus's call",
+              "Marcus Oyelaran's call",
+              "decided by Marcus",
+              "decided by a person",
+              "a person's decision"
+            ]
+          ],
           "notContains": [
             "Marcus declined",
+            "Marcus Oyelaran declined",
             "Marcus has declined",
+            "Marcus Oyelaran has declined",
+            "Marcus already declined",
+            "Marcus has already declined",
+            "Marcus Oyelaran has already declined",
             "he declined",
             "he has declined",
+            "he's declined",
+            "he already declined",
+            "he has already declined",
+            "declined it",
+            "declined your",
+            "declined this",
+            "declined the",
+            "is declined",
             "was declined",
-            "has been declined",
+            "been declined",
+            "turned it down",
+            "turned down",
+            "turned your",
+            "has rejected",
+            "rejected it",
+            "rejected your",
             "already decided",
+            "decided against",
             "it's a no",
             "with a no",
-            "said no"
+            "said no",
+            "the answer is no"
           ]
         }
       }

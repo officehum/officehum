@@ -297,12 +297,18 @@ export function formatReport(report: EvalReport): string {
 }
 
 /**
- * Lowercases reply text and drops a `:00` seconds suffix from clock readings, so `10:00` and
- * `10:00:00` compare equal. Nothing else is normalised: a different time is still a different time,
- * which is what keeps a time assertion able to fail.
+ * Lowercases reply text, maps typographic apostrophes and quotation marks to their ASCII forms, and
+ * drops a `:00` seconds suffix from clock readings, so `10:00` and `10:00:00` compare equal. A model
+ * picks curly or straight marks at random, and a `notContains` of "it's a no" must not miss "it’s a
+ * no". Nothing else is normalised: a different time is still a different time, which is what keeps a
+ * time assertion able to fail.
  */
 function normaliseReply(text: string): string {
-  return text.toLowerCase().replace(/(\d{1,2}:\d{2}):00(?!\d)/g, "$1");
+  return text
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/(\d{1,2}:\d{2}):00(?!\d)/g, "$1");
 }
 
 /** Partial match: every field `expected` names must equal the actual value; nested objects match the same way. */

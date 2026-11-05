@@ -114,6 +114,19 @@ describe("gradeTrace", () => {
     ]);
   });
 
+  it("treats typographic apostrophes and quotes as their ASCII forms, in replies and expectations", () => {
+    const claim = scenario({ expect: { reply: { notContains: ["it's a no"] } } });
+    expect(gradeTrace(claim, trace({ reply: "Marcus looked at it, and it’s a no." }))).toEqual([
+      'reply: contains "it\'s a no"',
+    ]);
+    const curly = scenario({ expect: { reply: { contains: ["“Marcus’s call”"] } } });
+    expect(gradeTrace(curly, trace({ reply: 'That is "Marcus\'s call".' }))).toEqual([]);
+    // Only the marks are mapped: a missing quotation is still missing.
+    expect(gradeTrace(curly, trace({ reply: "That is Marcus’s call." }))).toEqual([
+      'reply: does not contain "“Marcus’s call”"',
+    ]);
+  });
+
   it("accepts any one phrase in a group of alternatives, and fails when none is there", () => {
     const quiet = scenario({
       expect: {
