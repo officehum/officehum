@@ -2076,6 +2076,23 @@ describe("verify-role", () => {
     expect(capture.output.join("\n")).toContain("claim C4: passage not found");
   });
 
+  it("--online still fetches when the offline check found issues", async () => {
+    const directory = state();
+    copyFileSync(join(validRole, "role.sources.json"), join(directory, "role.sources.json"));
+    copyFileSync(join(validRole, "../uncited-item.md"), join(directory, "role.md"));
+    const capture = io();
+    const fetched: string[] = [];
+    const fetchText = async (url: string) => {
+      fetched.push(url);
+      return (pages[url] ?? "").replace("Discounts need sign-off.", "");
+    };
+    expect(await runCli(["verify-role", directory, "--online"], capture.io, { fetchText })).toBe(1);
+    expect(fetched.length).toBe(2);
+    const text = capture.output.join("\n");
+    expect(text).toContain("Responsibilities and actions › line 9");
+    expect(text).toContain("claim C4: passage not found");
+  });
+
   it("exits 1 with the offline issues for a broken role.md", async () => {
     const directory = state();
     copyFileSync(join(validRole, "role.sources.json"), join(directory, "role.sources.json"));

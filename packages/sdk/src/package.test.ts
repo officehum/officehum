@@ -82,6 +82,20 @@ describe("validatePackage and role.md", () => {
     ]);
   });
 
+  it("a malformed role.sources.json is refused, not thrown on", async () => {
+    const dir = await copyOf();
+    await cp(join(roleMdDir, "valid/role.md"), join(dir, "role.md"));
+    await writeFile(
+      join(dir, "role.sources.json"),
+      JSON.stringify({ sources: [null], claims: [{ id: "C1" }] }),
+    );
+    const result = await validatePackage(dir);
+    expect(result.ok).toBe(false);
+    expect(result.issues.map(formatIssue)).toEqual(
+      expect.arrayContaining([expect.stringContaining("sources[0]: must be an object")]),
+    );
+  });
+
   it("a role.md without role.sources.json is refused", async () => {
     const dir = await copyOf();
     await cp(join(roleMdDir, "valid/role.md"), join(dir, "role.md"));

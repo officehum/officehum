@@ -59,19 +59,30 @@ export function checkRoleMd(markdown: string, sources: RoleSources): Issue[] {
     issues.push({ source: ROLE_SOURCES_FILE, path, message });
 
   // A file of the wrong shape would crash the checks below, so say so first.
-  const shape = ["sources", "claims"].filter(
-    (key) => !Array.isArray((sources as unknown as Record<string, unknown>)?.[key]),
-  );
-  if (shape.length > 0) {
-    return shape.map((key) => ({
-      source: ROLE_SOURCES_FILE,
-      path: key,
-      message: `must be an array (see docs/design/agent-package.md, role.md); add "${key}": []`,
-    }));
-  }
+  const shape = sourcesShapeIssues(sources);
+  if (shape.length > 0) return shape;
 
   const sourceIds = new Set(sources.sources.map((source) => source.id));
   const claimIds = new Set(sources.claims.map((claim) => claim.id));
+
+  const duplicates = (kind: string, key: string, ids: string[]) => {
+    const seen = new Set<string>();
+    ids.forEach((id, index) => {
+      if (seen.has(id))
+        json(`${key}[${index}].id`, `${kind} id ${id} is used twice; ids must be unique`);
+      seen.add(id);
+    });
+  };
+  duplicates(
+    "source",
+    "sources",
+    sources.sources.map((source) => source.id),
+  );
+  duplicates(
+    "claim",
+    "claims",
+    sources.claims.map((claim) => claim.id),
+  );
 
   // The role.sources.json rules: claims have sources, sources exist, passages are short quotes.
   sources.claims.forEach((claim, claimIndex) => {
@@ -120,7 +131,12 @@ export function checkRoleMd(markdown: string, sources: RoleSources): Issue[] {
     }
   });
   let highest = -1;
+  const seenSections = new Set<string>();
   for (const { name, line } of found) {
+    if (seenSections.has(name)) {
+      md(`line ${line}`, `section "${name}" appears twice; keep one "## ${name}" heading`);
+    }
+    seenSections.add(name);
     const position = ROLE_MD_SECTIONS.indexOf(name as (typeof ROLE_MD_SECTIONS)[number]);
     if (position < highest) {
       md(
@@ -158,7 +174,7 @@ export function checkRoleMd(markdown: string, sources: RoleSources): Issue[] {
         );
         return;
       }
-      listed.push({ id: match[1]!, title: match[2]!, url: match[3]!, line });
+      listed.push({ id: match[1] ?? "", title: match[2] ?? "", url: match[3] ?? "", line });
       return;
     }
     const where = `${section} › line ${line}`;
@@ -166,7 +182,7 @@ export function checkRoleMd(markdown: string, sources: RoleSources): Issue[] {
       md(where, "list item has no claim marker at its end; add one such as [C1] or cite it");
     }
     for (const group of item.matchAll(MARKER_GROUP)) {
-      for (const id of group[1]!.split(",").map((part) => part.trim())) {
+      for (const id of (group[1] ?? "").split(",").map((part) => part.trim())) {
         if (!claimIds.has(id)) {
           md(where, `claim marker "${id}" is not a claim in ${ROLE_SOURCES_FILE}; add the claim`);
         }
@@ -201,7 +217,128 @@ export function checkRoleMd(markdown: string, sources: RoleSources): Issue[] {
   return issues;
 }
 
-const normalise = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase();
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Checks that `role.sources.json` has the shape the other checks rely on, reporting every element
+ * that does not instead of throwing. An empty result means `checkRoleMd` and `verifyRoleOnline` can
+ * read the file safely.
+ */
+export function sourcesShapeIssues(value: unknown): Issue[] {
+  const issues: Issue[] = [];
+  const bad = (path: string, message: string) =>
+    issues.push({ source: ROLE_SOURCES_FILE, path, message });
+  if (!isRecord(value)) {
+    bad("", 'must be a JSON object with "sources" and "claims" arrays');
+    return issues;
+  }
+  for (const key of ["sources", "claims"]) {
+    if (!Array.isArray(value[key])) bad(key, `must be an array; add "${key}": []`);
+  }
+  if (Array.isArray(value.sources)) {
+    value.sources.forEach((source: unknown, index) => {
+      if (!isRecord(source)) {
+        bad(`sources[${index}]`, "must be an object");
+        return;
+      }
+      for (const key of ["id", "url", "title"]) {
+        if (typeof source[key] !== "string" || source[key] === "") {
+          bad(`sources[${index}].${key}`, "must be a non-empty string");
+        }
+      }
+      if (!(SOURCE_KINDS as readonly unknown[]).includes(source.kind)) {
+        bad(`sources[${index}].kind`, `must be one of ${SOURCE_KINDS.join(", ")}`);
+      }
+    });
+  }
+  if (Array.isArray(value.claims)) {
+    value.claims.forEach((claim: unknown, index) => {
+      if (!isRecord(claim)) {
+        bad(`claims[${index}]`, "must be an object");
+        return;
+      }
+      if (typeof claim.id !== "string" || claim.id === "") {
+        bad(`claims[${index}].id`, "must be a non-empty string");
+      }
+      if (!Array.isArray(claim.sources)) {
+        bad(`claims[${index}].sources`, "must be an array of { source, passage }");
+        return;
+      }
+      claim.sources.forEach((entry: unknown, entryIndex) => {
+        const at = `claims[${index}].sources[${entryIndex}]`;
+        if (!isRecord(entry)) {
+          bad(at, "must be an object with source and passage");
+          return;
+        }
+        if (typeof entry.source !== "string") bad(`${at}.source`, "must be a source id string");
+        if (typeof entry.passage !== "string") bad(`${at}.passage`, "must be a string");
+      });
+    });
+  }
+  return issues;
+}
+
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  rsquo: "'",
+  lsquo: "'",
+  ldquo: '"',
+  rdquo: '"',
+  ndash: "-",
+  mdash: "-",
+  hellip: "...",
+};
+
+/** Folds typographic quotes and dashes to ASCII so a passage matches however the page spells them. */
+function asciiPunctuation(text: string): string {
+  return text
+    .replace(/[\u2018\u2019\u201B]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/\u00A0/g, " ");
+}
+
+function decodeEntities(text: string): string {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, body: string) => {
+    if (body.startsWith("#")) {
+      const code =
+        body[1]?.toLowerCase() === "x" ? parseInt(body.slice(2), 16) : Number(body.slice(1));
+      return Number.isInteger(code) && code > 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : whole;
+    }
+    return NAMED_ENTITIES[body.toLowerCase()] ?? whole;
+  });
+}
+
+const BLOCK_TAGS =
+  "address|article|aside|blockquote|br|dd|div|dl|dt|figcaption|figure|footer|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|table|td|th|tr|ul";
+
+/**
+ * Reduces a fetched page to comparable text: script and style contents are dropped, block-level
+ * tags become spaces and inline tags vanish (so a sentence split by `<em>` stays whole), entities
+ * are decoded, and typographic punctuation is folded to ASCII. Plain text passes through unchanged
+ * apart from that folding.
+ */
+export function htmlToText(html: string): string {
+  const withoutCode = html
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ");
+  const spaced = withoutCode
+    .replace(new RegExp(`</?(?:${BLOCK_TAGS})\\b[^>]*>`, "gi"), " ")
+    .replace(/<\/?[a-z][^>]*>/gi, "");
+  return asciiPunctuation(decodeEntities(spaced));
+}
+
+const normalise = (text: string) =>
+  asciiPunctuation(decodeEntities(text)).replace(/\s+/g, " ").trim().toLowerCase();
 
 /**
  * Fetches each source once and reports every claim whose passage is not in its source's text, after
@@ -212,11 +349,13 @@ export async function verifyRoleOnline(
   sources: RoleSources,
   fetchText: (url: string) => Promise<string>,
 ): Promise<Issue[]> {
+  const shape = sourcesShapeIssues(sources);
+  if (shape.length > 0) return shape;
   const issues: Issue[] = [];
   const pages = new Map<string, { text: string } | { error: string }>();
   for (const source of sources.sources) {
     try {
-      pages.set(source.id, { text: normalise(await fetchText(source.url)) });
+      pages.set(source.id, { text: normalise(htmlToText(await fetchText(source.url))) });
     } catch (error) {
       pages.set(source.id, { error: error instanceof Error ? error.message : String(error) });
     }

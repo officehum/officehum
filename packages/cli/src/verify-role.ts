@@ -13,6 +13,7 @@ import {
   ROLE_MD_FILE,
   ROLE_SOURCES_FILE,
   type RoleSources,
+  sourcesShapeIssues,
   verifyRoleOnline,
 } from "@officehum/sdk";
 import type { CliDependencies, CliIo } from "./cli.js";
@@ -66,7 +67,8 @@ export async function runVerifyRoleCommand(
   }
   if (markdown !== undefined && sources !== undefined) {
     issues.push(...checkRoleMd(markdown, sources));
-    if (online && issues.length === 0) {
+    // Source pages can be wrong whatever else is: fetch whenever the file is readable.
+    if (online && sourcesShapeIssues(sources).length === 0) {
       issues.push(...(await verifyRoleOnline(sources, dependencies.fetchText ?? fetchText)));
     }
   }
