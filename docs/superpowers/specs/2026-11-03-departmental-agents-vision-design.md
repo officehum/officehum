@@ -29,6 +29,9 @@ learn by building it. **(owner)**
 ## Order of work
 
 1. **Phase one: the departmental agents, open source.** Build them, publish them, build awareness.
+1.5. **Phase one and a half: the Role Factory as a web form.** A customer describes an agent in a form
+   and downloads a generated Pi Durable agent. Built after phase one; exposed to customers when the
+   owner decides, possibly not until phase two is done. **(owner)**
 2. **Phase two: the officehum.com platform.** The Office Hum agent, tenants and hosting, credits, the
    portal.
 
@@ -207,6 +210,35 @@ takes over PR #78 and merges it once it meets the "offered" bar. **(owner)** Bef
 3. Re-run live at three trials; read every failing trace before changing a scenario.
 
 Then the other six roles follow the template, each with its own research, review and live run.
+
+## Phase one and a half: the Role Factory as a web form (sketch, not designed here)
+
+A simple app: inputs in, a working agent package out. No tenant, no hosting, no ongoing chat. **(owner)**
+
+- **The form collects the role as the customer sees it (owner):** role metadata (name, department, who
+  it reports to), an explanation of the role, its instructions, its skills, the tools it needs, and any
+  researched knowledge or "wisdom" the customer brings.
+- **Only what the customer provides (owner).** No research on our side. Customer-supplied knowledge goes
+  in the generated `role.md`. Where it carries no sources, `role.md` says it was supplied by the customer,
+  not researched, so the "grounded" promise for our own agents stays honest. **(builder's call.)**
+- **The generator builds the whole package (owner).** From the customer's descriptions it:
+  - writes each tool's schema;
+  - writes the code in the right places: `defineTool` with `replay` stated, output in `output`, wired
+    into the role's extension;
+  - writes the configuration (`officehum.json`, approvals, agent configuration);
+  - creates the extensions and skills folders and files;
+  - makes the repository;
+  - offers the customized Pi Durable agent as a download.
+- **What a generated tool's body does (builder's call; owner to correct).** Where the customer describes
+  behaviour that needs a system we cannot reach at generation time (their ERP, their bank), the body is
+  a clearly marked placeholder that refuses with "not connected yet". The agent still runs, and nobody
+  is misled into thinking it acts. Where the behaviour is self-contained (a calculation, a lookup in
+  data the customer supplied), the generator writes it.
+- **Checked before download (builder's call).** The generated package must pass the SDK's package
+  validator, typecheck, and its scripted evals. A package that fails is not offered.
+- **What it reuses:** the role package format, `role.md`, and the Role Factory's spec and generator,
+  extended with a model step that turns plain-language tool descriptions into schemas and code. The
+  departmental agents can be starting points on the form.
 
 ## Phase two: officehum.com (sketch, not designed here)
 
