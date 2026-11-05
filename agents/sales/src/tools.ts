@@ -14,7 +14,14 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
-import { type CompanyFacts, money, person, priceText, searchPriceBook } from "./company.js";
+import {
+  type CompanyFacts,
+  escalationRule,
+  money,
+  person,
+  priceText,
+  searchPriceBook,
+} from "./company.js";
 import {
   ACTIVITY_KINDS,
   type ActivityKind,
@@ -176,13 +183,19 @@ function companySection(company: CompanyFacts, section: CompanySection): string 
   switch (section) {
     case "profile": {
       const { profile } = company;
+      // Certificates sit with contract terms (insurance above ours is one): whoever the company's
+      // escalation path names for them, never a name fixed in this package.
+      const certificates = person(
+        company,
+        escalationRule(company, "contract-terms")?.toPersonId ?? "",
+      );
       return [
         `${profile.legalName} — trading as ${profile.tradingName}. ${profile.tagline}`,
         `Founded ${profile.founded}. ${profile.headcount} people: ${profile.field.cleaningCrews} cleaning crews of ${profile.field.cleanersPerCrew}, ${profile.field.maintenanceTechnicians} maintenance technicians, ${profile.field.office} in the office.`,
         `${profile.address.street}, ${profile.address.city}, ${profile.address.region} ${profile.address.postalCode}, ${profile.address.country}.`,
         `Phone ${profile.phone}. Email ${profile.email}. Web ${profile.website}. ${profile.registration}.`,
         `Service area: ${profile.serviceArea}`,
-        `Insurance: ${profile.insurance.map((cover) => `${cover.kind} ${money(cover.limitCents)}`).join("; ")}. Certificates come from Dana Whitfield.`,
+        `Insurance: ${profile.insurance.map((cover) => `${cover.kind} ${money(cover.limitCents)}`).join("; ")}.${certificates === undefined ? "" : ` Certificates come from ${certificates.name}.`}`,
         `Clients: ${profile.clients}`,
       ].join("\n");
     }
@@ -216,7 +229,6 @@ function companySection(company: CompanyFacts, section: CompanySection): string 
         ...company.priceBook.map(
           (item) => `${item.id} — ${item.name} — ${priceText(item)} — ${item.category}`,
         ),
-        `A quote whose lines come to more than ${money(company.approvalLimits.quoteOverCents)} waits for a person.`,
       ].join("\n");
     case "policies": {
       const { refunds, discounts } = company.policies;
@@ -387,12 +399,10 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
         lines: Type.Array(
           Type.Object(
             {
-              priceBookItemId: Type.Optional(
-                Type.String({
-                  description:
-                    "The price book item the line is priced from, from search_price_book; its price and minimum then apply",
-                }),
-              ),
+              priceBookItemId: Type.String({
+                description:
+                  "The price book item the line is priced from, from search_price_book; its price and minimum then apply. Every line needs one: work the book does not cover is priced by a person",
+              }),
               description: Type.Optional(
                 Type.String({
                   description: "What the line says; the item's name when it is left out",

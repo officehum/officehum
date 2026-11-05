@@ -151,12 +151,15 @@ The role ships no CRM connection. `fakeSalesDesk` is the demonstration one; a ho
 ```ts
 export interface SalesDesk {
   listLeads(filter?: { stage?: LeadStage; query?: string }): Promise<readonly Lead[]>;
+  getQuote(id: string): Promise<Quote>;
   createQuote(draft: QuoteDraft, options: { requestId: string }): Promise<Quote>;
   logActivity(entry: ActivityDraft, options: { requestId: string }): Promise<Activity>;
 }
 ```
 
-The desk owns the arithmetic: a quote's line amounts, the price book's minimums, any discount and the
+The desk owns the arithmetic and the price book: every quote line names a price book item and carries
+that item's own unit price, and a line with no item is refused, because work the book does not cover is
+priced by a person. A quote's line amounts, the price book's minimums, any discount and the
 total come back in the receipt, so the model never computes a figure. Every write carries a
 `requestId` derived from the durable call identity, so a retried call returns the quote it already
 made instead of a second draft.
@@ -199,6 +202,13 @@ const root = await harness.root(context, { agent: role.agent });
 
 Office Hum's `officehum run` supplies a terminal approver and prints a gated action's description and
 arguments before it waits for `y`/`n`.
+
+## Known limits
+
+- The `quote_over_limit` approval sums quantity × unit price over a quote's lines, before the desk
+  applies the price book's per-line minimums. A quote made of several lines that the minimums raise
+  (each small job priced at its minimum) can come to more than the limit without asking for approval.
+  The receipt still shows the desk's true total.
 
 ## The files
 

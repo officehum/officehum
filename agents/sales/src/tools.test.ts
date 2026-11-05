@@ -266,13 +266,66 @@ describe("create_quote", () => {
 
   it("refuses a lead that does not exist, naming what the pipeline holds", async () => {
     const result = await tools(desk()).createQuote.execute(
-      { leadId: "L-999", lines: [{ description: "Cleaning", quantity: 1, unitPriceCents: 18500 }] },
+      {
+        leadId: "L-999",
+        lines: [{ priceBookItemId: "clean-office-visit", quantity: 1, unitPriceCents: 18500 }],
+      },
       call("quote-5"),
       BACKGROUND_CONTEXT,
     );
     expect((result as { isError?: boolean }).isError).toBe(true);
     expect(text(result)).toContain('No lead has the id "L-999"');
     expect(text(result)).toContain("L-204 (Riverside Dental)");
+  });
+
+  it("states every line's price book item as required, so an off-book line never validates", () => {
+    const schema = tools(desk()).createQuote.parameters as unknown as {
+      properties: { lines: { items: { required?: string[] } } };
+    };
+    expect(schema.properties.lines.items.required).toContain("priceBookItemId");
+  });
+
+  it("refuses a line priced off the book, at the desk and through the tool, and a replay makes nothing", async () => {
+    const one = desk();
+    const offBook = {
+      leadId: "L-204",
+      lines: [{ description: "Window cleaning, our rate", quantity: 1, unitPriceCents: 99 }],
+    };
+    // The desk refuses it whoever calls, so a host that skips the schema cannot price off the book.
+    await expect(one.createQuote(offBook as never, { requestId: "direct-1" })).rejects.toThrow(
+      SalesDeskError,
+    );
+    await expect(one.createQuote(offBook as never, { requestId: "direct-1" })).rejects.toThrow(
+      "a person prices work the price book does not cover",
+    );
+
+    const first = await tools(one).createQuote.execute(
+      offBook as never,
+      call("off-book"),
+      BACKGROUND_CONTEXT,
+    );
+    const replayed = await tools(one).createQuote.execute(
+      offBook as never,
+      call("off-book"),
+      BACKGROUND_CONTEXT,
+    );
+    for (const result of [first, replayed]) {
+      expect((result as { isError?: boolean }).isError).toBe(true);
+      expect(text(result)).toContain("Line 1 has no price book item");
+      expect(details(result).id).toBeNull();
+    }
+    // Nothing was made: the lead is where it was, and the next quote takes the first number.
+    const [lead] = await one.listLeads({ query: "L-204" });
+    expect(lead?.stage).toBe("new");
+    const next = await tools(one).createQuote.execute(
+      {
+        leadId: "L-204",
+        lines: [{ priceBookItemId: "porter-hour", quantity: 4, unitPriceCents: 4200 }],
+      },
+      call("after-off-book"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(next).id).toBe("Q-3051");
   });
 
   it("answers a retried call with the quote it already made", async () => {
@@ -354,6 +407,29 @@ describe("read_company", () => {
     expect(text(escalation)).toContain("discount-request — Marcus Oyelaran");
   });
 
+  it("names the certificate owner from the escalation path, not from this package", async () => {
+    const theirs = await tools(desk()).readCompany.execute(
+      { section: "profile" },
+      call("c"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(theirs)).toContain("Certificates come from Dana Whitfield.");
+
+    const moved = {
+      ...company,
+      escalation: company.escalation.map((rule) =>
+        rule.topic === "contract-terms" ? { ...rule, toPersonId: "priya-raman" } : rule,
+      ),
+    };
+    const result = await salesTools({ desk: desk(), company: moved }).readCompany.execute(
+      { section: "profile" },
+      call("c"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain("Certificates come from Priya Raman.");
+    expect(text(result)).not.toContain("Dana Whitfield");
+  });
+
   it("gives the price book and the quote limit from the company record", async () => {
     const result = await tools(desk()).readCompany.execute(
       { section: "pricing" },
@@ -361,7 +437,10 @@ describe("read_company", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(result)).toContain("clean-deep-sqft — Deep clean, first visit — $0.12 per sq ft");
-    expect(text(result)).toContain("$5,000.00 waits for a person");
+    // The threshold is the gate's (the manifest limit, which an overlay may change), and a client is
+    // never told it, so the model is never shown one to repeat.
+    expect(text(result)).not.toContain("waits for a person");
+    expect(text(result)).not.toContain("$5,000.00");
   });
 
   it("gives the policies, with the people who decide them named", async () => {

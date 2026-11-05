@@ -49,8 +49,11 @@ export interface LeadFilter {
 
 /** One line of a quote as the caller asks for it. */
 export interface QuoteLineDraft {
-  /** The price book item the line is priced from; the desk applies its price and its minimum. */
-  readonly priceBookItemId?: string;
+  /**
+   * The price book item the line is priced from; the desk applies its price and its minimum. Required:
+   * a line the book does not cover is priced by a person, never by the caller.
+   */
+  readonly priceBookItemId: string;
   /** What the line says; the item's name when it is omitted. */
   readonly description?: string;
   /** How many units, which may be fractional for hours and months. */
@@ -329,31 +332,29 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
     if (!Number.isSafeInteger(line.unitPriceCents) || line.unitPriceCents < 0) {
       throw new SalesDeskError(`${where} needs a unit price in whole cents.`);
     }
-    const item =
-      line.priceBookItemId === undefined
-        ? undefined
-        : priceBook.find((candidate) => candidate.id === line.priceBookItemId);
-    if (line.priceBookItemId !== undefined && item === undefined) {
+    // Checked here as well as in the tool's schema, so no caller can price a line off the book.
+    if (typeof line.priceBookItemId !== "string" || line.priceBookItemId.trim() === "") {
       throw new SalesDeskError(
-        `${where} names ${JSON.stringify(line.priceBookItemId)}, which is not in the price book.`,
+        `${where} has no price book item, and a person prices work the price book does not cover. Find the item with search_price_book, or tell the client a person will price it.`,
       );
     }
-    if (item !== undefined && item.unitPriceCents !== line.unitPriceCents) {
+    const item = priceBook.find((candidate) => candidate.id === line.priceBookItemId);
+    if (item === undefined) {
+      throw new SalesDeskError(
+        `${where} names ${JSON.stringify(line.priceBookItemId)}, which is not in the price book. A person prices work the book does not cover.`,
+      );
+    }
+    if (item.unitPriceCents !== line.unitPriceCents) {
       throw new SalesDeskError(
         `The price book prices ${item.name} at ${money(item.unitPriceCents)} per ${item.unit}; ${where} says ${money(line.unitPriceCents)}. Quote the book's price.`,
       );
     }
-    if (line.description === undefined && item === undefined) {
-      throw new SalesDeskError(
-        `${where} needs a description, or a price book item to take one from.`,
-      );
-    }
     const priced = Math.round(line.quantity * line.unitPriceCents);
-    const minimum = item?.minimumCents ?? null;
+    const minimum = item.minimumCents;
     const applies = minimum !== null && priced < minimum;
     return {
-      priceBookItemId: item?.id ?? null,
-      description: line.description ?? item?.name ?? "",
+      priceBookItemId: item.id,
+      description: line.description ?? item.name,
       quantity: line.quantity,
       unitPriceCents: line.unitPriceCents,
       amountCents: applies ? minimum : priced,
