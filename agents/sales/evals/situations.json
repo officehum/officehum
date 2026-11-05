@@ -50,11 +50,11 @@
         "kind": "message",
         "channel": "email",
         "from": "marisol@cascadialegal.example",
-        "text": "Marisol Vega here, Cascadia Legal Group. We're at 2,800 square feet over two floors on SW Fifth. We want five nights a week, and 40 hours of a day porter while we move floors in December. Can you price both?"
+        "text": "Marisol Vega here, Cascadia Legal Group. We're at 2,800 square feet over two floors on SW Fifth. We want five nights a week, plus a day porter for 40 hours in total, spread across our floor move in December. Can you price both?"
       },
       "stubs": {
         "list_leads": {
-          "text": "Leads (1):\nL-207 — Cascadia Legal Group — qualified — Marisol Vega — 2,800 sq ft over two floors, 1211 SW Fifth Avenue, Portland — worth $4,005.25 a year — last activity 2026-10-22"
+          "text": "Leads (1):\nL-207 — Cascadia Legal Group — qualified — Marisol Vega — 2,800 sq ft over two floors, 1211 SW Fifth Avenue, Portland — worth $48,063.00 a year — last activity 2026-10-22"
         },
         "get_quote": {
           "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
@@ -419,10 +419,17 @@
       },
       "approvals": {},
       "expect": {
-        "calls": [{ "tool": "get_quote", "args": { "quoteId": "Q-3047" } }],
+        "calls": [
+          { "tool": "get_quote", "args": { "quoteId": "Q-3047" } },
+          { "tool": "log_activity", "args": { "leadId": "L-211" } }
+        ],
         "notCalled": ["create_quote"],
         "approvalsRequested": [],
-        "reply": { "contains": ["3,135"], "containsAny": [["restroom"]] }
+        "reply": {
+          "contains": ["3,135"],
+          "containsAny": [["restroom"]],
+          "notContains": ["2,821.50", "313.50"]
+        }
       }
     }
   ]

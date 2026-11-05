@@ -16,9 +16,11 @@ on the quote — a person prices it instead.
    included, in the client's terms, so they can argue with the scope instead of the arithmetic.
 3. **Quantities are measured, not guessed.** Square footage from the walkthrough or the client, a count
    of restrooms, panes, units or mats, hours from the scope, visits from the frequency.
-4. **A recurring quote counts the visits.** A standard month is four and a third weeks: five nights a
-   week is 21.65 visits, two nights a week is 8.65, and a weekly visit is 4.33. The count goes on the
-   line so the client can check it.
+4. **A recurring quote counts the visits.** The visits in a month is an input quantity for
+   `create_quote`, taken from this list, not worked out: five nights a week is 21.65 visits, two
+   nights a week is 8.65, and a weekly visit is 4.33. The count goes on the line so the client can
+   check it; the line amount and the total come back on the receipt, and only those are told to the
+   client.
 5. **A site over the flat-cleaning size** is priced per square foot for the whole site, not the flat
    price plus an extra.
 6. **Let the desk apply the minimums.** A small deep clean still costs the minimum; `create_quote`

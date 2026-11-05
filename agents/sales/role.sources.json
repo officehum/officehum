@@ -142,6 +142,13 @@
       "title": "HubSpot Knowledge Base: Set up and manage object pipelines",
       "kind": "vendor-docs",
       "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S21",
+      "url": "https://www.onetonline.org/link/details/41-3091.00",
+      "title": "O*NET OnLine (details): Sales Representatives of Services, Except Advertising, Insurance, Financial Services, and Travel (41-3091.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
     }
   ],
   "claims": [
@@ -461,6 +468,10 @@
         {
           "source": "S11",
           "passage": "During each of these phases, it's important to identify all the decision makers and their positions in the process."
+        },
+        {
+          "source": "S19",
+          "passage": "Adding stakeholders to the opportunity ensures that you account for all decision-makers in your engagement plan."
         }
       ]
     },
@@ -498,8 +509,8 @@
           "passage": "Most of the work required to move an opportunity forward happens through customer interactions, which you record in Dynamics 365 as activities."
         },
         {
-          "source": "S8",
-          "passage": "The salesperson makes a note in the CRM system about the phone call and the date of the meeting and sets a follow-up reminder for himself for the meeting and for three days after the meeting."
+          "source": "S19",
+          "passage": "Activities represent tasks, phone calls, emails, or appointments that have been completed or need to be done."
         }
       ]
     },
@@ -529,6 +540,10 @@
       "id": "C37",
       "sources": [
         {
+          "source": "S3",
+          "passage": "Follow up with customers to make sure that they are satisfied with their purchases and to answer any questions or concerns they might have"
+        },
+        {
           "source": "S13",
           "passage": "Follow up to be sure everything is delivered as promised."
         },
@@ -541,6 +556,10 @@
     {
       "id": "C38",
       "sources": [
+        {
+          "source": "S21",
+          "passage": "Integrity - A tendency to be honest and ethical at work."
+        },
         {
           "source": "S10",
           "passage": "Don't lie to a customer."
@@ -653,6 +672,10 @@
       "id": "C49",
       "sources": [
         {
+          "source": "S19",
+          "passage": "The Timeline pane displays all related activities in chronological order, including phone calls, appointments, emails, notes, and internal posts from colleagues."
+        },
+        {
           "source": "S8",
           "passage": "The salesperson makes a note in the CRM system so everyone from the company who comes in contact with the prospect, such as other salespeople or customer service, know this information about the prospect."
         }
@@ -755,6 +778,10 @@
       "id": "C59",
       "sources": [
         {
+          "source": "S4",
+          "passage": "Set sales goals for staff and monitor staff progress toward those goals"
+        },
+        {
           "source": "S15",
           "passage": "Most companies establish annual sales goals or quotas, expectations of sales for a specific time frame, by salesperson, and then break down the goals by month and sometimes by week."
         },
@@ -797,10 +824,6 @@
         {
           "source": "S18",
           "passage": "Closing the opportunity helps you track the sales pipeline and forecast future sales."
-        },
-        {
-          "source": "S19",
-          "passage": "This data helps Contoso track quota attainment and forecast accuracy."
         }
       ]
     },
@@ -815,15 +838,6 @@
     },
     {
       "id": "C65",
-      "sources": [
-        {
-          "source": "S19",
-          "passage": "Contoso managers use the Sales funnel section of the Pipeline view during weekly team meetings to identify which stages have too many stalled deals, prompting coaching conversations with sellers."
-        }
-      ]
-    },
-    {
-      "id": "C66",
       "sources": [
         {
           "source": "S5",
