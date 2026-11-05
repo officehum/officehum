@@ -5,7 +5,8 @@
  * between the company and this role is caught here rather than in a client's inbox.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type AgentManifest, validateManifest, validatePackage } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
@@ -158,5 +159,48 @@ describe("sales package", () => {
       "finance.review",
       "operations.schedule",
     ]);
+  });
+
+  it("names no company fact outside the generated handbook, so another company can run it", () => {
+    // The company's names reach the model only through the generated handbook and `read_company`.
+    // Evals, the smoke script, the README's description of the demo and the demo pipeline in the
+    // fake desk are demonstration data by design; everything else must read the same for any company.
+    const skipped = new Set(["dist", "node_modules", "evals", "evals.smoke.json", "README.md"]);
+    const files: string[] = [];
+    const walk = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        const local = relative(packageDirectory, path);
+        if (skipped.has(entry.name) || local === join("skills", "company-handbook")) continue;
+        if (entry.isDirectory()) walk(path);
+        else if (!entry.name.endsWith(".test.ts")) files.push(path);
+      }
+    };
+    walk(packageDirectory);
+    expect(files.length).toBeGreaterThan(10);
+
+    const facts = [
+      company.profile.legalName,
+      company.profile.tradingName,
+      company.profile.address.city,
+      ...company.people.flatMap((worker) => [worker.name, worker.name.split(" ")[0] ?? ""]),
+    ].filter((fact) => fact !== "");
+    const found: string[] = [];
+    for (const file of files) {
+      let text = readFileSync(file, "utf8");
+      if (file.endsWith(join("src", "desk.ts"))) {
+        // The demo pipeline and its quotes are demonstration data; the desk's logic is not.
+        const start = text.indexOf("export function demoLeads");
+        const end = text.indexOf("const DAY_MS");
+        expect(start).toBeGreaterThan(0);
+        expect(end).toBeGreaterThan(start);
+        text = text.slice(0, start) + text.slice(end);
+      }
+      for (const fact of facts) {
+        const pattern = new RegExp(`\\b${fact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+        if (pattern.test(text)) found.push(`${relative(packageDirectory, file)}: ${fact}`);
+      }
+    }
+    expect(found).toEqual([]);
   });
 });

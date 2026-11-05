@@ -45,7 +45,7 @@ Ask these in the client's own language, and stop when you have the answer. Never
 
 ## What disqualifies an enquiry
 
-- Outside the Portland service area.
+- Outside the service area the handbook sets out.
 - Residential, construction clean-up, or a service the company does not offer.
 - A building nobody can measure or walk, and a client who will not give a size.
 - Work above the ground floor on glass or on a roof, without a specialist subcontract.

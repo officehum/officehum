@@ -23,6 +23,7 @@ import {
   renderFacts,
   roleDirectories,
   syncCompany,
+  unexpectedFiles,
 } from "./company.ts";
 
 const temps: string[] = [];
@@ -91,6 +92,10 @@ describe("the generated company copies", () => {
       ).toBe(file.content);
     }
     expect(drift(root), "run `npm run sync-company` and commit the result").toEqual([]);
+    expect(
+      unexpectedFiles(root),
+      "the handbook folder holds only generated files: delete these, and put the facts in company/default/",
+    ).toEqual([]);
   });
 
   it("says a generated file is generated, and how to regenerate it", () => {
@@ -177,6 +182,21 @@ describe("a hand-edited copy", () => {
     expect(synced.written).toEqual([path]);
     expect(drift(directory)).toEqual([]);
     expect(readFileSync(join(directory, path), "utf8")).toContain("Northwind Facilities");
+  });
+
+  it("reports a file added by hand beside the generated ones, which syncing would never remove", () => {
+    const directory = catalogue();
+    syncCompany(directory);
+    expect(unexpectedFiles(directory)).toEqual([]);
+    const extra = "agents/sales/skills/company-handbook/references/discounts.md";
+    writeFileSync(join(directory, extra), "Partners get 30% off.\n");
+    const nested = "agents/sales/skills/company-handbook/notes/extra.md";
+    mkdirSync(join(directory, dirname(nested)), { recursive: true });
+    writeFileSync(join(directory, nested), "More.\n");
+
+    // Every generated copy is still byte for byte, so only this check sees the extra files.
+    expect(drift(directory)).toEqual([]);
+    expect(unexpectedFiles(directory)).toEqual([nested, extra]);
   });
 
   it("refuses a role that does not declare the skill it is about to be given", () => {

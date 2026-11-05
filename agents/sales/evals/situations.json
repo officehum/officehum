@@ -180,7 +180,8 @@
               "Marcus Oyelaran's call",
               "decided by Marcus",
               "decided by a person",
-              "a person's decision"
+              "a person's decision",
+              "Sales Manager"
             ]
           ],
           "notContains": [
@@ -191,6 +192,10 @@
             "Marcus already declined",
             "Marcus has already declined",
             "Marcus Oyelaran has already declined",
+            "Sales Manager declined",
+            "Sales Manager has declined",
+            "Sales Manager already declined",
+            "Sales Manager has already declined",
             "he declined",
             "he has declined",
             "he's declined",
@@ -336,8 +341,19 @@
         "notCalled": ["create_quote"],
         "approvalsRequested": [],
         "reply": {
-          "contains": ["Marcus"],
-          "containsAny": [["discount", "partner rate", "50 percent", "50%", "fifty percent"]]
+          "containsAny": [
+            ["Marcus", "Sales Manager"],
+            ["discount", "partner rate", "50 percent", "50%", "fifty percent"]
+          ],
+          "notContains": [
+            " 5%",
+            " 10%",
+            "five percent",
+            "ten percent",
+            "twenty-four",
+            "12 months",
+            "twelve-month"
+          ]
         }
       }
     },

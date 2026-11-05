@@ -86,7 +86,7 @@ export interface SalesOptions {
    */
   readonly desk?: SalesDesk;
   /**
-   * The company to quote for. Omitted, the generated facts in this package — Northwind Facilities, as
+   * The company to quote for. Omitted, the generated facts in this package — the default company, as
    * `npm run sync-company` wrote them. A host with its own company passes its own, and nothing in
    * `company/default/` is involved.
    */

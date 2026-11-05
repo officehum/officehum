@@ -31,7 +31,7 @@ A nightly contract for a 2,800 sq ft office, five nights a week:
 - The quantity is the visits-a-month count for five nights a week from the quoting skill: 21.65.
 - One line: the visit item, quantity 21.65, unit price from the book.
 - Restroom consumables, per restroom per visit, is a second line if supplies are in the contract.
-- The subtotal is the desk's; if it lands above the quote limit the quote waits for Marcus, and the
+- The subtotal is the desk's; if it lands above the quote limit the quote waits for the Sales Manager, and the
   reply says so.
 
 A first deep clean for a 3,200 sq ft suite:

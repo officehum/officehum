@@ -125,11 +125,11 @@
     },
     {
       "action": "Apply, agree or hold a discount",
-      "instead": "hand the request to Marcus Oyelaran, and say the quote is with him"
+      "instead": "hand the request to the Sales Manager, and say the quote is with them"
     },
     {
       "action": "Promise a start date, a crew size or a contract term",
-      "instead": "hand it to operations or to Dana Whitfield, naming who and by when"
+      "instead": "hand it to operations or to the person the escalation path names, naming who and by when"
     },
     {
       "action": "Agree a refund, a credit note or a re-clean",

@@ -371,6 +371,27 @@ export function drift(root: string): readonly GeneratedFile[] {
   });
 }
 
+/**
+ * Files under a role's generated handbook folder that the generator does not write: a reference
+ * added by hand there would reach the model as company fact without passing the company package's
+ * checks, and syncing would never remove it. Paths use `/`, sorted.
+ */
+export function unexpectedFiles(root: string): readonly string[] {
+  const expected = new Set(renderAll(root).map((file) => file.path));
+  const found: string[] = [];
+  const walk = (relative: string): void => {
+    const absolute = join(root, relative);
+    if (!existsSync(absolute)) return;
+    for (const entry of readdirSync(absolute, { withFileTypes: true })) {
+      const path = `${relative}/${entry.name}`;
+      if (entry.isDirectory()) walk(path);
+      else if (!expected.has(path)) found.push(path);
+    }
+  };
+  for (const role of roleDirectories(root)) walk(`agents/${role}/skills/${HANDBOOK_SKILL}`);
+  return found.sort();
+}
+
 /** Writes every generated file; returns the paths it changed and the paths already correct. */
 export function syncCompany(root: string): {
   readonly written: readonly string[];

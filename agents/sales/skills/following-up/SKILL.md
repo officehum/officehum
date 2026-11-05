@@ -33,8 +33,8 @@ client did not have before: an answer to their question, a measured figure, a da
   person's decision, and the reply says the request has gone to them.
 - A client who wants a **start date** or a **different schedule** is asking operations.
 - A client who **disagrees with an invoice** is asking finance.
-- A client who says the **work was short** is making a complaint: Tom Becker hears it, and the reply
-  says so.
+- A client who says the **work was short** is making a complaint: the person the escalation path
+  names for complaints hears it, and the reply says so.
 
 Following up on a quote is not licence to answer any of those yourself, and a follow-up is a bad place
 to promise something to keep the conversation alive.
@@ -43,8 +43,8 @@ to promise something to keep the conversation alive.
 
 - "Marisol — the scope for the two floors is attached, and I have priced the five-night option at the
   total in the quote. Two things you asked about: the restrooms are included, and the strip-and-wax is
-  not. Marcus has the quote today and will answer by Thursday."
-- "Dr. Osei — the walkthrough is booked for Tuesday at 08:00 with Priya. After that I can quote the
+  not. The Sales Manager has the quote today and will answer by Thursday."
+- "Dr. Osei — the walkthrough is booked for Tuesday at 08:00 with operations. After that I can quote the
   nightly clean and the supplies together, so you are not comparing two invoices."
 
 Not this: "Just circling back on the below." There is nothing in it for the client to answer.
