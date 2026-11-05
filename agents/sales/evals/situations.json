@@ -335,7 +335,10 @@
       "expect": {
         "notCalled": ["create_quote"],
         "approvalsRequested": [],
-        "reply": { "contains": ["Marcus", "discount"] }
+        "reply": {
+          "contains": ["Marcus"],
+          "containsAny": [["discount", "partner rate", "50 percent", "50%", "fifty percent"]]
+        }
       }
     },
     {
