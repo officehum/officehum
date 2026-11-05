@@ -192,6 +192,16 @@ export {
   RoleFilesError,
 } from "./role.js";
 export {
+  checkRoleMd,
+  ROLE_MD_FILE,
+  ROLE_MD_SECTIONS,
+  ROLE_SOURCES_FILE,
+  type RoleSources,
+  SOURCE_KINDS,
+  type SourceKind,
+  verifyRoleOnline,
+} from "./role-md.js";
+export {
   INSTRUCTION_FILE_TYPES,
   type ReadSkillOptions,
   readSkill,

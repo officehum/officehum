@@ -73,6 +73,7 @@ import {
   terminalUser,
 } from "./run.js";
 import { UsageError } from "./usage-error.js";
+import { runVerifyRoleCommand } from "./verify-role.js";
 
 export interface CliIo {
   output(line: string): void;
@@ -124,11 +125,14 @@ export interface CliDependencies {
    * exactly one place, here, so a rendered board is reproducible.
    */
   readonly now?: () => Date;
+  /** Fetches a page's text for `verify-role --online`; tests inject it so none touch the network. */
+  readonly fetchText?: (url: string) => Promise<string>;
 }
 
 const USAGE = `Usage:
   officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE]
   officehum eval ROLE_DIR [--model provider/model] [--tag TAG] [--trials N] [--script FILE] [--mode bare|office]
+  officehum verify-role ROLE_DIR [--online]
   officehum demo [--state DIR] [--approval allow|deny] [--calendar local] [--messenger console]
   officehum start --message TEXT --request-id ID [--state DIR] [--provider paper|openai] [--model ID] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
   officehum resume [--state DIR] [--approval allow|deny] [--calendar local|google] [--messenger console|resend]
@@ -1402,6 +1406,8 @@ export async function runCli(
     if (args[0] === "board") return await runBoardCommand(args.slice(1), io, dependencies);
     if (args[0] === "review") return await runReview(args.slice(1), io);
     if (args[0] === "eval") return await runEvalCommand(args.slice(1), io, dependencies);
+    if (args[0] === "verify-role")
+      return await runVerifyRoleCommand(args.slice(1), io, dependencies);
     const parsed = parse(args);
     if (
       !new Set(["demo", "start", "resume", "listen", "inbox", "bookings", "contacts"]).has(

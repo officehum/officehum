@@ -57,6 +57,40 @@ afterEach(async () => {
   await Promise.all(temps.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
+describe("validatePackage and role.md", () => {
+  const roleMdDir = fileURLToPath(new URL("./fixtures/role-md/", import.meta.url));
+
+  it("a package without role.md still validates", async () => {
+    const result = await validatePackage(sampleDir);
+    expect(result.ok).toBe(true);
+  });
+
+  it("a package with a valid role.md validates", async () => {
+    const dir = await copyOf();
+    await cp(join(roleMdDir, "valid"), dir, { recursive: true });
+    expect((await validatePackage(dir)).issues).toEqual([]);
+  });
+
+  it("a package with a broken role.md is refused", async () => {
+    const dir = await copyOf();
+    await cp(join(roleMdDir, "valid/role.sources.json"), join(dir, "role.sources.json"));
+    await cp(join(roleMdDir, "uncited-item.md"), join(dir, "role.md"));
+    const result = await validatePackage(dir);
+    expect(result.ok).toBe(false);
+    expect(result.issues.map(formatIssue)).toEqual([
+      expect.stringContaining("role.md › Responsibilities and actions › line 9"),
+    ]);
+  });
+
+  it("a role.md without role.sources.json is refused", async () => {
+    const dir = await copyOf();
+    await cp(join(roleMdDir, "valid/role.md"), join(dir, "role.md"));
+    const result = await validatePackage(dir);
+    expect(result.ok).toBe(false);
+    expect(result.issues.map(formatIssue)).toEqual(["role.sources.json: file not found"]);
+  });
+});
+
 describe("validatePackage", () => {
   it("accepts the sample role", async () => {
     const result = await validatePackage(sampleDir);
