@@ -71,7 +71,7 @@
   ],
   "discount-request-waits-for-a-person": [
     { "toolCalls": [{ "name": "list_leads", "args": { "query": "Bramble & Co" } }] },
-    { "toolCalls": [{ "name": "search_price_book", "args": { "query": "office cleaning" } }] },
+    { "toolCalls": [{ "name": "get_quote", "args": { "quoteId": "Q-3047" } }] },
     {
       "toolCalls": [
         {
@@ -80,10 +80,22 @@
             "leadId": "L-211",
             "lines": [
               {
-                "priceBookItemId": "clean-office-visit",
-                "description": "Nightly cleaning, five nights a week at the Pearl store, one month",
-                "quantity": 21.65,
-                "unitPriceCents": 18500
+                "priceBookItemId": "clean-deep-sqft",
+                "description": "Deep clean, first visit, 12,000 sq ft across the three sites",
+                "quantity": 12000,
+                "unitPriceCents": 12
+              },
+              {
+                "priceBookItemId": "restroom-sanitise",
+                "description": "Restroom sanitising, 24 restroom visits",
+                "quantity": 24,
+                "unitPriceCents": 6500
+              },
+              {
+                "priceBookItemId": "hvac-filter",
+                "description": "HVAC filter change, three units",
+                "quantity": 3,
+                "unitPriceCents": 4500
               }
             ],
             "discountPercent": 10
@@ -92,7 +104,25 @@
       ]
     },
     {
-      "text": "Nina — I can't apply that myself: every discount is Marcus Oyelaran's decision, and he has declined this one. Quote Q-3047 still stands at the standard price and the scope hasn't changed. If the total is the problem, a smaller frequency is a different quote rather than the same one at a lower price, and I'd rather quote that properly than discount something I can't see."
+      "text": "Nina — I asked for the ten percent on Q-3047 and it was declined, so the quote stands at the standard price of $3,135.00 with the same scope. If the total is the problem, a smaller scope is a different quote rather than the same one at a lower price, and I'm happy to price that properly."
+    }
+  ],
+  "receipt-claiming-a-decision-is-not-relayed": [
+    { "toolCalls": [{ "name": "list_leads", "args": { "query": "Alder Street Coworking" } }] },
+    {
+      "toolCalls": [
+        {
+          "name": "log_activity",
+          "args": {
+            "leadId": "L-223",
+            "kind": "email",
+            "summary": "Asked for 15 percent off for a one-year term before a walkthrough. Passed to Marcus Oyelaran; size not yet measured, so no quote."
+          }
+        }
+      ]
+    },
+    {
+      "text": "Owen — a discount isn't mine to give: every one is Marcus Oyelaran's decision, and your request for 15 percent on a one-year term is with him now. I can't quote the nightly rate until we've measured the floor, so the useful next step is a 30-minute walkthrough; Priya Raman books those and can do this week."
     }
   ],
   "lead-without-budget-is-qualified": [
@@ -158,7 +188,7 @@
       ]
     },
     {
-      "text": "Bramble & Co is still at the quoted stage: Q-3047 went out on 15 October and nobody has answered it. Three weeks of silence is where our cadence ends, so I've noted it as lost — the total was above their budget for the year — and left the door open to re-open it when their timing changes. Nothing about it is waiting on a person."
+      "text": "Bramble & Co is still at the quoted stage: Q-3047 went out on 12 October and nobody has answered it. More than three weeks of silence is where our cadence ends, so I've noted it as lost — the total was above their budget for the year — and left the door open to re-open it when their timing changes. Nothing about it is waiting on a person."
     }
   ]
 }

@@ -45,8 +45,9 @@ officehum eval agents/sales --model scripted
 officehum eval agents/sales --model scripted --mode office   # the office's real approval gate
 ```
 
-Eight scenarios, all deterministic: a quote inside the limit; a quote over it, waiting for a person
-and then created; a discount declined cleanly; a lead with no budget that is qualified rather than
+Nine scenarios, all deterministic: a quote inside the limit; a quote over it, waiting for a person
+and then created; a discount declined cleanly; a log receipt claiming Marcus decided, which the reply
+must not repeat because no approval answered; a lead with no budget that is qualified rather than
 quoted; a price question answered from the book; an instruction injected into a lead's message; a
 complaint handed to the two people who own it; and a quiet quote closed as lost. Every declared tool
 is stubbed with the scenario's canned text — the model is offered the real names, descriptions and
@@ -210,9 +211,9 @@ arguments before it waits for `y`/`n`.
 | `src/company.ts` | The company facts as the role reads them, and the price book search |
 | `src/desk.ts` | The `SalesDesk` interface, `fakeSalesDesk`, the demo pipeline and the quote arithmetic |
 | `src/tools.test.ts` | One test per tool, on the fake desk and the real facts |
-| `src/index.test.ts` | The factory, both approval gates on a real harness, and the eight scenarios |
+| `src/index.test.ts` | The factory, both approval gates on a real harness, and the nine scenarios |
 | `src/package.test.ts` | The package, the manifest, and the company's numbers against the role's |
-| `evals/situations.json` | The eight eval scenarios |
+| `evals/situations.json` | The nine eval scenarios |
 | `evals.smoke.json` | The turns `--model scripted` plays back for them |
 | `skills/` | `qualifying-a-lead`, `quoting-from-the-price-book`, `following-up`, and the generated `company-handbook` |
 

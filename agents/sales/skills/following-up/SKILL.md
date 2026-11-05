@@ -15,7 +15,10 @@ client did not have before: an answer to their question, a measured figure, a da
    see is a cadence that gets repeated by the next person.
 4. **Change the channel once.** A quote answered by silence on email may get an answer by phone. One
    call, not a series of them.
-5. **Close it properly.** When the period runs out, log the lead as lost with the reason — the price,
+5. **Count from the quote, not from the touches.** A lead at stage `quoted` has the quote; the desk
+   keeps every quote as a draft, so its status says nothing about whether it went out. Once the close
+   day has passed, close the lead even if earlier touches were never logged, and say so in the note.
+6. **Close it properly.** When the period runs out, log the lead as lost with the reason — the price,
    the timing, a competitor, a contract they renewed. A pipeline full of leads that are neither alive
    nor dead is a pipeline nobody can plan from.
 
