@@ -37,7 +37,7 @@ that may apply, not legal advice, and the handbook or a person says what applies
 - **Disqualified** candidate: one found not to fit the company or the job. [C20]
 - **Onboarding**: bringing a new employee into the company. [C21, C10]
 - **Leave plan** and **accrual**: a leave plan is set up for each type of leave the company offers; accruals decide when and how often an employee earns time off under it. [C22]
-- **Leave balance** and **time-off request**: employees can see their vacation and leave balances and the status of their requests; a request names the leave type, a reason, a start date and an end date, and shows as pending until it is approved. [C23]
+- **Leave balance** and **time-off request**: employees can see their vacation and leave balances and the status of their requests; a request names the leave type, a start date and an end date, may name a reason, and shows as pending until it is approved. [C23]
 - **Reasonable accommodation**: a change in the workplace, or in how things are usually done, that helps a person with a disability apply for a job, do it, or enjoy the same benefits and privileges of employment. [C24]
 - **Job-protected leave**: leave the law protects for qualifying family and medical reasons. In the US, the Family and Medical Leave Act is an example; it covers private employers above a size threshold, and some states have their own leave laws. [C25]
 - **Medical file**: medical records and information, kept confidential and separate from the ordinary personnel file. [C26]
@@ -68,14 +68,14 @@ that may apply, not legal advice, and the handbook or a person says what applies
 - Apply and enforce policies consistently, with no discrimination even in small decisions such as approving leave. [C43]
 - Be detailed, organised and thorough, especially with applicants' qualifications and employee records. [C44]
 - Explain policies and procedures clearly. [C45]
-- HR work must follow federal, state and local rules, and more than one law may apply to a business. [C46]
+- HR work must follow national and local rules (in the US, federal, state and local), and more than one law may apply to a business. [C46]
 
 ## Systems
 
 - A human resource management system (HRMS) holds employee records and employment events. [C47, C12]
 - A hiring tool tracks each job's candidates by stage, and moves one candidate or several at once to another stage. [C48, C19]
 - An employee self-service page lets employees request time off, see their balances and follow their requests; requests are managed through workflows. [C49, C23]
-- Leave set-up includes a working-time calendar, a leave request workflow and an absence manager role. [C50]
+- In HR systems, for example, leave set-up can include a working-time calendar, a leave request workflow and an absence manager role. [C50]
 
 ## Decisions that go to a manager
 
@@ -83,10 +83,11 @@ that may apply, not legal advice, and the handbook or a person says what applies
 - Pay: compensation policies, pay for a new worker, and reviewing and approving any compensation change. [C52]
 - Who is hired: HR staff refer qualified applicants to the managers doing the hiring, with recommendations where appropriate. [C53, C6]
 - Approving, changing or turning down a time-off request: managers answer leave requests, through the company's leave request workflow. [C13, C28, C31, C50]
-- Leave or accommodation for a medical, family or religious reason: reviewed individually by the employer, who provides an effective accommodation unless it would cause significant difficulty or expense, change fundamental job duties, lower performance standards or mean tolerating misconduct. [C30, C33, C54]
-- Employee relations issues, such as harassment allegations and work complaints. [C55]
+- Leave or accommodation for a medical, family or religious reason: reviewed individually by a person, never refused automatically. [C30, C33]
+- A disability accommodation in particular: in the US, for example, the employer provides an effective accommodation unless it would cause significant difficulty or expense, change fundamental job duties, lower performance standards or mean tolerating misconduct; that judgement is a person's. [C33, C54]
+- Employee relations issues, such as harassment allegations and work complaints, are handled by an HR specialist or a manager, not the assistant. [C2, C55]
 - Personnel policies and procedures, which management develops. [C56]
-- Releasing information from an employee's file to anyone outside those authorised. [C14]
+- A request for file information from anyone not shown to be authorised goes to a person. [C14, C34]
 
 ## Measures
 
