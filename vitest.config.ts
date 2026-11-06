@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["packages/*/src/**/*.test.ts", "agents/*/src/**/*.test.ts"],
+    include: ["packages/*/src/**/*.test.ts", "agents/*/src/**/*.test.ts", "scripts/*.test.ts"],
     // The Paper Office suites spawn a Python worker per test. Left to the default worker count they
     // thrash: single tests ran for 30-60 s, hit their caps, and failed as timeouts while passing
     // alone — a flaky gate is still a broken gate. Capping the pool removes the contention and is

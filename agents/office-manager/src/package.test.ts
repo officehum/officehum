@@ -70,7 +70,11 @@ describe("office manager package (RASF-3131)", () => {
     expect(roleManifest.approvals).toEqual([]);
     expect(roleManifest.connectors).toEqual([]);
     expect(roleManifest.channels).toEqual(["chat"]);
-    expect(roleManifest.skills.map((skill) => skill.id)).toEqual(["triage", "daily-digest"]);
+    expect(roleManifest.skills.map((skill) => skill.id)).toEqual([
+      "triage",
+      "daily-digest",
+      "company-handbook",
+    ]);
     expect(roleManifest.skills.every((skill) => skill.enabledByDefault)).toBe(true);
 
     // Both accepted types, with the only evidence this role can honestly offer: nothing runs a tool,

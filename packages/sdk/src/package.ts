@@ -11,6 +11,7 @@ import { type Issue, show, type Validation } from "./issues.js";
 import { checkFourLayers } from "./layers.js";
 import { type AgentManifest, MANIFEST_FILE, validateManifest } from "./manifest.js";
 import { resolveRoleFiles } from "./resources.js";
+import { checkRoleMd, ROLE_MD_FILE, ROLE_SOURCES_FILE, type RoleSources } from "./role-md.js";
 
 /** The Pi Durable package a role must take as a peer dependency. */
 export const PI_DURABLE_PACKAGE = "@earendil-works/pi-durable";
@@ -70,6 +71,13 @@ export async function validatePackage(dir: string): Promise<Validation<RolePacka
     if (!files.ok) issues.push(...files.issues);
     const strict = strictForPackage(dir, pkg as PackageJson | undefined);
     issues.push(...checkFourLayers(dir, manifest, { strict }));
+  }
+
+  // A role.md is optional; when present it must cite a source for every claim.
+  const roleMd = await readText(join(dir, ROLE_MD_FILE));
+  if (roleMd !== undefined) {
+    const sources = await readJson(join(dir, ROLE_SOURCES_FILE), ROLE_SOURCES_FILE, issues);
+    if (sources !== undefined) issues.push(...checkRoleMd(roleMd, sources as RoleSources));
   }
 
   const suites: Record<string, EvalSuite> = {};
@@ -191,6 +199,15 @@ async function readJson(path: string, source: string, issues: Issue[]): Promise<
       path: "",
       message: `is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
     });
+    return undefined;
+  }
+}
+
+/** The text of a file, or undefined when it does not exist. */
+async function readText(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch {
     return undefined;
   }
 }

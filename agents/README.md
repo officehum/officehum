@@ -30,6 +30,28 @@ const root = await harness.root(context, { agent: role.agent });
 Customize a role without changing it with an **overlay**: a directory with your own `AGENTS.md`
 additions, `APPEND_SYSTEM.md`, skills and `settings.json` (model; skills and tools on or off).
 
+## The company every role works for
+
+`company/default/` at the root of the repository is the business the catalogue's roles work for:
+Northwind Facilities, a fictitious commercial cleaning and facilities company in Portland, Oregon.
+`company.json` holds the record a program reads (people, services, price book in integer cents,
+policies, escalation, glossary); `handbook.md`, `policies.md` and `pricing.md` are written for an agent
+to read.
+
+A published role has to be self-contained, so the facts reach each role as generated copies inside it:
+
+```
+skills/company-handbook/SKILL.md                    the handbook, and the entry point
+skills/company-handbook/references/pricing.md       every price and minimum
+skills/company-handbook/references/policies.md      the rules and who decides
+skills/company-handbook/references/facts.json       the same facts, for the role's own code
+```
+
+`npm run sync-company` writes them for every role folder here; `scripts/sync-company.ts` refuses a
+company package that disagrees with itself, and `scripts/company.test.ts` regenerates the whole
+catalogue in memory and fails when a copy has drifted. One source, many readers — the same rule as the
+JSON Schema. Do not edit a generated copy.
+
 Rules, enforced by `@officehum/sdk` (`validatePackage`, `checkAgent`, `checkFourLayers`,
 `resolveRoleFiles`):
 
@@ -62,6 +84,9 @@ First roles, in milestone M1:
 | `frontdesk` | `@officehum/frontdesk` | Front office | Built (solo) |
 | `bookkeeper` | `@officehum/bookkeeper` (reference agent for accounting) | Finance | Built (RASF-3127) |
 | `office-manager` | `@officehum/office-manager` | Operations | Planned (RASF-3071) |
+| `sales` | `@officehum/sales` (the template for the catalogue) | Sales | Built (RASF-3295) |
 
-`frontdesk/` and `bookkeeper/` exist today. The roster grows into a free catalog of roles for every
-department of a company (RASF-3293), starting with a Sales agent (RASF-3295).
+`frontdesk/`, `bookkeeper/`, `office-manager/` and `sales/` exist today. The roster grows into a free
+catalog of roles for every department of a company (RASF-3293), and `sales/` is the shape the rest of
+it is built to: a manifest, a system prompt, five tools behind a fake-backed seam, skills, evals and a
+README a stranger can follow.

@@ -129,6 +129,8 @@ agent learns can change the wisdom layer.
   officehum.json        Office Hum metadata: tools, approvals, accepts, connectors, skills, evals
   AGENTS.md             the role: who it is, what it does, how it works, house style
   APPEND_SYSTEM.md      rules appended to the end of the system prompt (boundaries)
+  role.md               optional: the researched description of the job, every claim cited
+  role.sources.json     the sources and the supporting passages behind role.md's claims
   skills/
     collections/
       SKILL.md          Agent Skills format: name, description, instructions
@@ -151,6 +153,25 @@ not load these files (Pi's coding agent does), so `defineRole` brings them to Pi
 
 A role gets no shell or file-editing tools. Pi Durable's own `instructions` stay free for the host's
 per-conversation notes.
+
+### `role.md` and `role.sources.json`
+
+A departmental role may ship `role.md`: its function, responsibilities and actions, terminology,
+workflows, principles, systems, decisions that go to a manager, measures and sources, as `##`
+sections in that order. `role.sources.json` holds `sources` (`S1`, `S2`, … with `url`, `title`,
+`kind` and `fetchedOn`) and `claims` (`C1`, `C2`, … each with one or more `{ source, passage }`).
+`validatePackage` runs `checkRoleMd` when `role.md` exists, offline, and enforces six rules:
+
+1. Every required section is present, in order.
+2. Every list item in the eight content sections ends with claim markers such as `[C12]` or `[C3, C4]`.
+3. Every marker names a claim in `role.sources.json`.
+4. Every claim has at least one source, each source id exists, and each passage is 1 to 400 characters.
+5. `Sources` lists exactly the sources in `role.sources.json`, as `- [S1] Title — URL`.
+6. Every source is cited by at least one claim.
+
+`officehum verify-role ROLE_DIR [--online]` prints the same issues and exits 1 on any error.
+`--online` also fetches each source and reports every claim whose passage is not in the page text,
+ignoring whitespace and case. That check needs the network, so CI does not run it.
 
 ## The entry point
 
@@ -593,7 +614,7 @@ Each issue carries a **severity**: `error` unless it says `warning:`, and a warn
   ticket type. `strict` makes every issue an error; otherwise context, knowledge and workflow issues
   are warnings and wisdom issues stay errors.
 - `validatePackage(dir)`: `package.json` against the portability boundary, `officehum.json`, the
-  role's files, the four layers (strict for a package under `agents/` or one its `package.json`
+  role's files, `role.md` against `role.sources.json` when present, the four layers (strict for a package under `agents/` or one its `package.json`
   marks `"officehum": { "generated": true }`), and every eval file.
 - `checkAgent(bundle, manifest, { strict })`: the entry point's output, with no overlays, against the
   manifest. It also renders the role's stable prompt — its own sections, without any host extension's

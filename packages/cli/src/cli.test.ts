@@ -1,10 +1,11 @@
 import { createHmac } from "node:crypto";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { PassThrough } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { awaitWithContext, BACKGROUND_CONTEXT, withCancel } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
@@ -2040,5 +2041,64 @@ describe("runCli", () => {
     const after = openLocalCalendar(join(directory, "calendar.sqlite"));
     expect(after.bookings()).toHaveLength(1);
     after.close();
+  });
+});
+
+describe("verify-role", () => {
+  const validRole = fileURLToPath(new URL("../../sdk/src/fixtures/role-md/valid", import.meta.url));
+  const pages: Record<string, string> = {
+    "https://example.com/selling":
+      "Selling turns interest into agreed deals. A lead is qualified once need, budget, authority and timing are known. Do not overpromise.",
+    "https://example.com/quoting":
+      "A quote states price, scope and validity. Discounts need sign-off.",
+  };
+
+  it("accepts a valid role.md offline without fetching", async () => {
+    const capture = io();
+    const fetchText = async () => {
+      throw new Error("offline mode must not fetch");
+    };
+    expect(await runCli(["verify-role", validRole], capture.io, { fetchText })).toBe(0);
+    expect(capture.output).toEqual(["role.md OK"]);
+  });
+
+  it("--online passes when every passage is found", async () => {
+    const capture = io();
+    const fetchText = async (url: string) => pages[url] ?? "";
+    expect(await runCli(["verify-role", validRole, "--online"], capture.io, { fetchText })).toBe(0);
+  });
+
+  it("--online exits 1 and names the claim whose passage is gone", async () => {
+    const capture = io();
+    const fetchText = async (url: string) =>
+      (pages[url] ?? "").replace("Discounts need sign-off.", "");
+    expect(await runCli(["verify-role", validRole, "--online"], capture.io, { fetchText })).toBe(1);
+    expect(capture.output.join("\n")).toContain("claim C4: passage not found");
+  });
+
+  it("--online still fetches when the offline check found issues", async () => {
+    const directory = state();
+    copyFileSync(join(validRole, "role.sources.json"), join(directory, "role.sources.json"));
+    copyFileSync(join(validRole, "../uncited-item.md"), join(directory, "role.md"));
+    const capture = io();
+    const fetched: string[] = [];
+    const fetchText = async (url: string) => {
+      fetched.push(url);
+      return (pages[url] ?? "").replace("Discounts need sign-off.", "");
+    };
+    expect(await runCli(["verify-role", directory, "--online"], capture.io, { fetchText })).toBe(1);
+    expect(fetched.length).toBe(2);
+    const text = capture.output.join("\n");
+    expect(text).toContain("Responsibilities and actions › line 9");
+    expect(text).toContain("claim C4: passage not found");
+  });
+
+  it("exits 1 with the offline issues for a broken role.md", async () => {
+    const directory = state();
+    copyFileSync(join(validRole, "role.sources.json"), join(directory, "role.sources.json"));
+    copyFileSync(join(validRole, "../uncited-item.md"), join(directory, "role.md"));
+    const capture = io();
+    expect(await runCli(["verify-role", directory], capture.io)).toBe(1);
+    expect(capture.output.join("\n")).toContain("Responsibilities and actions › line 9");
   });
 });
