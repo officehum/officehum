@@ -2093,6 +2093,22 @@ describe("verify-role", () => {
     expect(text).toContain("claim C4: passage not found");
   });
 
+  it("checks a directory holding only role.md and role.sources.json, with no package", async () => {
+    // A role is researched before its package exists (RASF-3293): no package.json, no officehum.json.
+    const directory = state();
+    copyFileSync(join(validRole, "role.md"), join(directory, "role.md"));
+    copyFileSync(join(validRole, "role.sources.json"), join(directory, "role.sources.json"));
+    expect(existsSync(join(directory, "package.json"))).toBe(false);
+    expect(existsSync(join(directory, "officehum.json"))).toBe(false);
+    const offline = io();
+    expect(await runCli(["verify-role", directory], offline.io)).toBe(0);
+    expect(offline.output).toEqual(["role.md OK"]);
+    const online = io();
+    const fetchText = async (url: string) => pages[url] ?? "";
+    expect(await runCli(["verify-role", directory, "--online"], online.io, { fetchText })).toBe(0);
+    expect(online.output).toEqual(["role.md OK (online)"]);
+  });
+
   it("exits 1 with the offline issues for a broken role.md", async () => {
     const directory = state();
     copyFileSync(join(validRole, "role.sources.json"), join(directory, "role.sources.json"));

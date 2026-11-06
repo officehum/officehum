@@ -170,6 +170,9 @@ sections in that order. `role.sources.json` holds `sources` (`S1`, `S2`, … wit
 6. Every source is cited by at least one claim.
 
 `officehum verify-role ROLE_DIR [--online]` prints the same issues and exits 1 on any error.
+`ROLE_DIR` may be a role package or a folder holding only `role.md` and `role.sources.json`, so a
+role can be researched before its package exists; `npm run sync-company` skips such a folder until it
+has an `officehum.json`.
 `--online` also fetches each source and reports every claim whose passage is not in the page text,
 ignoring whitespace and case. That check needs the network, so CI does not run it.
 

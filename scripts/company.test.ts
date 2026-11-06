@@ -312,6 +312,20 @@ describe("a hand-edited copy", () => {
     expect(unexpectedFiles(directory)).toEqual([nested, extra]);
   });
 
+  it("skips a role directory that holds only researched role files and no officehum.json", () => {
+    // Roles are researched before they are packaged (RASF-3293): such a folder gets no handbook yet.
+    const directory = catalogue();
+    const researched = join(directory, "agents", "support");
+    mkdirSync(researched, { recursive: true });
+    writeFileSync(join(researched, "role.md"), "# Customer Support\n");
+    writeFileSync(join(researched, "role.sources.json"), "{}");
+    expect(roleDirectories(directory)).toEqual(["sales"]);
+    expect(renderAll(directory).some((file) => file.path.startsWith("agents/support/"))).toBe(
+      false,
+    );
+    expect(unexpectedFiles(directory)).toEqual([]);
+  });
+
   it("refuses a role that does not declare the skill it is about to be given", () => {
     const directory = catalogue();
     writeFileSync(join(directory, "agents", "sales", "officehum.json"), '{"skills": []}');
