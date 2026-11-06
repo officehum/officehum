@@ -1,0 +1,1086 @@
+{
+  "schema": 1,
+  "role": "bookkeeper",
+  "researchedOn": "2026-11-05",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/43-3031.00",
+      "title": "O*NET OnLine: Bookkeeping, Accounting, and Auditing Clerks (43-3031.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/summary/43-3021.00",
+      "title": "O*NET OnLine: Billing and Posting Clerks (43-3021.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.onetonline.org/link/summary/43-3011.00",
+      "title": "O*NET OnLine: Bill and Account Collectors (43-3011.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.onetonline.org/link/summary/13-2011.00",
+      "title": "O*NET OnLine: Accountants and Auditors (13-2011.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.bls.gov/ooh/office-and-administrative-support/bookkeeping-accounting-and-auditing-clerks.htm",
+      "title": "BLS Occupational Outlook Handbook: Bookkeeping, Accounting, and Auditing Clerks",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S6",
+      "url": "https://www.bls.gov/ooh/office-and-administrative-support/bill-and-account-collectors.htm",
+      "title": "BLS Occupational Outlook Handbook: Bill and Account Collectors",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.bls.gov/ooh/business-and-financial/accountants-and-auditors.htm",
+      "title": "BLS Occupational Outlook Handbook: Accountants and Auditors",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.irs.gov/publications/p583",
+      "title": "IRS Publication 583: Starting a Business and Keeping Records",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S9",
+      "url": "https://www.irs.gov/businesses/small-businesses-self-employed/recordkeeping",
+      "title": "IRS: Recordkeeping",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.irs.gov/businesses/small-businesses-self-employed/how-long-should-i-keep-records",
+      "title": "IRS: How long should I keep records?",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.irs.gov/businesses/small-businesses-self-employed/forms-and-associated-taxes-for-independent-contractors",
+      "title": "IRS: Forms and associated taxes for independent contractors",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.sba.gov/business-guide/manage-your-business/manage-your-finances",
+      "title": "SBA Business Guide: Manage your finances",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S13",
+      "url": "https://www.ic3.gov/CrimeInfo/BEC",
+      "title": "FBI Internet Crime Complaint Center (IC3): Business Email Compromise",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S14",
+      "url": "https://sao.wa.gov/resource-library-cash-receipting",
+      "title": "Washington State Auditor's Office: Resource Library, Cash Receipting",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S15",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/purchasing-how-record-purchases",
+      "title": "Microsoft Learn: Record purchases (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S16",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/purchasing-how-register-new-vendors",
+      "title": "Microsoft Learn: Register new vendors (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S17",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/finance/accounts-payable/accounts-payable-invoice-matching",
+      "title": "Microsoft Learn: Accounts payable invoice matching overview (Dynamics 365 Finance)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S18",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/payables-manage-payables",
+      "title": "Microsoft Learn: Managing payables (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S19",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/payables-make-payments",
+      "title": "Microsoft Learn: Making payments (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S20",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/payables-how-suggest-vendor-payments",
+      "title": "Microsoft Learn: Suggest vendor payments (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S21",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/receivables-manage-receivables",
+      "title": "Microsoft Learn: Managing receivables (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S22",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/receivables-collect-outstanding-balances",
+      "title": "Microsoft Learn: Collect outstanding balances (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S23",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/bank-how-reconcile-bank-accounts-separately",
+      "title": "Microsoft Learn: Reconcile bank accounts (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S24",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/receivables-apply-payments-auto-reconcile-bank-accounts",
+      "title": "Microsoft Learn: Apply payments automatically and reconcile bank accounts (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S25",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/year-close-years-periods",
+      "title": "Microsoft Learn: Closing years and periods (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S26",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/year-close-books",
+      "title": "Microsoft Learn: Close the books (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S27",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/finance/general-ledger/financial-period-close-workspace",
+      "title": "Microsoft Learn: Financial period close workspace (Dynamics 365 Finance)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S28",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/across-how-to-set-up-approval-users",
+      "title": "Microsoft Learn: Set up approval users (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S29",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/sysadmin/tasks/set-up-segregation-duties",
+      "title": "Microsoft Learn: Set up segregation of duties (Dynamics 365 finance and operations apps)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Bookkeeping, accounting, and auditing clerks compute, classify, and record data to help organizations keep complete and accurate financial records."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "The records that bookkeeping, accounting, and auditing clerks work with include expenditures (money spent) and receipts (money that comes in). They also work with accounts payable (bills to be paid) and receivable (invoices, or what other people owe the organization), and they may produce profit and loss statements (reports that show the organization's financial health)."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Some are full-charge bookkeeping clerks who maintain an entire organization's books. Others are accounting clerks who handle specific tasks."
+        },
+        {
+          "source": "S5",
+          "passage": "Their titles, such as accounts payable clerk or accounts receivable clerk, often reflect the type of accounting they do."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "These workers also may take on additional tasks, such as payroll, billing, purchasing, and keeping track of overdue bills. Many of these functions require clerks to communicate with clients."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "A bookkeeper can provide basic day-to-day functions at a lower cost, but won't possess the formal accounting education of a CPA. Ensure that someone can manage the following: Accounts receivable Accounts payable Available cash Bank reconciliation Payroll"
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Prepare itemized statements, bills, or invoices and record amounts due for items purchased or services rendered."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Prepare, examine, or analyze accounting records, financial statements, or other financial reports to assess accuracy, completeness, and conformance to reporting and procedural standards."
+        },
+        {
+          "source": "S4",
+          "passage": "Report to management regarding the finances of establishment."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Enter (post) financial transactions into the appropriate computer software Receive and record cash, checks, and vouchers Put costs (debits) and income (credits) into the software, assigning each to an appropriate account"
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Code documents according to company procedures."
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Check figures, postings, and documents for correct entry, mathematical accuracy, and proper codes."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Verify accuracy of billing data and revise any errors."
+        },
+        {
+          "source": "S2",
+          "passage": "Keep records of invoices and support documents."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Match order forms with invoices, and record the necessary information."
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Process invoices for payment."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Prepare bank deposits by compiling data from cashiers, verifying and balancing receipts, and sending cash, checks, or other forms of payment to banks."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Reconcile or note and report discrepancies found in records."
+        },
+        {
+          "source": "S1",
+          "passage": "Reconcile records of bank transactions."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Monitor status of loans and accounts to ensure that payments are up to date."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Access computerized financial information to answer general questions as well as those related to specific accounts."
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Contact customers to obtain or relay account information."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Locate and notify customers of delinquent accounts by mail, telephone, or personal visits to solicit payment."
+        },
+        {
+          "source": "S3",
+          "passage": "Locate and monitor overdue accounts, using computers and a variety of automated systems."
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Confer with customers by telephone or in person to determine reasons for overdue payments and to review the terms of sales, service, or credit contracts."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Receive payments and post amounts paid to customer accounts."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Record information about financial status of customers and status of collection efforts."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Produce reports, such as balance sheets (costs compared with income), income statements, and totals by account"
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Compile statistical, financial, accounting, or auditing reports and tables pertaining to such matters as cash receipts, expenditures, accounts payable and receivable, and profits and losses."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Prepare trial balances of books."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Prepare adjusting journal entries."
+        },
+        {
+          "source": "S26",
+          "passage": "When you close a fiscal year, you must enter a number of administrative transactions (such as prepaid and accrued items). These transactions are called adjusting entries."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Bookkeeping clerks, also known as bookkeepers, often are responsible for some or all of an organization's accounts, known as the general ledger. They record all transactions and post debits and credits."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "A journal is a book where you record each business transaction shown on your supporting documents."
+        },
+        {
+          "source": "S8",
+          "passage": "A ledger is a book that contains the totals from all of your journals. It is organized into different accounts."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "It is self-balancing because you record every transaction as a debit entry in one account and as a credit entry in another. Under this system, the total debits must equal the total credits after you post the journal entries to the ledger accounts. If the amounts do not balance, you have made an error and you must find and correct it."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Supporting documents include sales slips, paid bills, invoices, receipts, deposit slips, and canceled checks."
+        },
+        {
+          "source": "S8",
+          "passage": "It is important to keep these documents because they support the entries in your books and on your tax return."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "The accrual method puts transactions on the books immediately upon completing the sale. The cash method only records this once payment has been received."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "When you receive your bank statement, make sure the statement, your checkbook, and your books agree."
+        },
+        {
+          "source": "S23",
+          "passage": "Bank reconciliation helps ensure that what's in your books matches the statements you receive from your bank."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "After accounting for all checks returned by the bank, those not marked in your checkbook are your outstanding checks."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "Send reminders (also known as dunning letters or payment requests) to customers to inform them of overdue balances."
+        },
+        {
+          "source": "S22",
+          "passage": "Reminder levels include rules about when the reminder will be issued, what fees to charge, and whether to calculate interest. Reminder levels also include a grace period setting that ensures you don't send a reminder for a bill that a customer already paid."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "Send statements to inform customers about their balances, overdue balances, and the relevant transactions."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Three-way matching - Match the price information on the invoice to the price information on the purchase order. Also match the quantity information on the invoice to the quantity information on the product receipts that are selected for the invoice."
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Segregation of duties, or separating conflicting duty assignments, can help you protect your government's assets."
+        },
+        {
+          "source": "S29",
+          "passage": "For example, you might not want the same person to acknowledge the receipt of goods and to process payment to the vendor."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Business Email Compromise (BEC) is a sophisticated scam targeting both businesses and individuals performing a transfer of funds."
+        },
+        {
+          "source": "S13",
+          "passage": "The scam is frequently carried out when a subject compromises legitimate business e-mail accounts through social engineering or computer intrusion techniques resulting in an unauthorized transfer of funds."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "the first step is to have the contractor complete Form W-9, Request for Taxpayer Identification Number and Certification. This form can be used to request the correct name and taxpayer identification number, or TIN, of the payee."
+        },
+        {
+          "source": "S11",
+          "passage": "You must use Form 1099-NEC, Nonemployee Compensation, to report payments made during the tax year totaling or exceeding the reportable payment threshold amount to persons not treated as employees (for example, independent contractors) for services performed for your trade or business."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "You create a purchase invoice or purchase order to record the cost of purchases and to track accounts payable."
+        },
+        {
+          "source": "S15",
+          "passage": "When you receive the inventory items or the purchased service is complete, post the purchase invoice to update inventory and financial records and to activate payment to the vendor according to the payment terms."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Each vendor you purchase from must be registered with a vendor card."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Matching discrepancies are compared with the tolerances that are specified. If a matching discrepancy exceeds the tolerance percentage or amount, match variance icons are displayed on the Vendor invoice page and on the Invoice history and matching details page."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Based on your settings, Business Central suggests lines for: Payments that are due soon. Payments where a payment discount is available."
+        },
+        {
+          "source": "S20",
+          "passage": "The batch job excludes vendor ledger entries that are On Hold or that are already applied and have a value in the Applies-to ID field."
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "After the payments are made at your bank, you must apply them to their related open vendor or employee ledger entries."
+        },
+        {
+          "source": "S18",
+          "passage": "Another typical task is to apply outgoing payments to their related vendor or employee ledger entries to close purchase invoices, purchase credit memos, or employee accounts as paid."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "The W-9 should be kept in your files for four years for future reference in case of any questions from the worker or the IRS."
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "To close sales invoices and purchase credit memos as paid, you apply incoming payments to customer or vendor ledger entries."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "Communicate with customers over the phone or by e-mail regarding overdue balances and manage potential misunderstandings and disputes, or simply to remind customers to balance their accounts in a more direct manner."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Learn the reasons for the overdue bills, which can help with the negotiations"
+        },
+        {
+          "source": "S6",
+          "passage": "They update contact information and record past collection attempts. Keeping these records can help collectors with future negotiations."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "You should reconcile your checking account each month."
+        },
+        {
+          "source": "S8",
+          "passage": "Verify how much money you have in the account, Make sure that your checkbook and books reflect all bank charges and the correct balance in the checking account, and Correct any errors in your bank statement, checkbook, and books."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Compare the deposits listed on the bank statement with the deposits shown in your checkbook. Note all differences in the dollar amounts."
+        },
+        {
+          "source": "S8",
+          "passage": "Update your checkbook and journals for items shown on the reconciliation as not recorded (such as service charges) or recorded incorrectly."
+        },
+        {
+          "source": "S8",
+          "passage": "At this point, the adjusted bank statement balance should equal your adjusted checkbook balance. If you still have differences, check the previous steps to find the errors."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S23",
+          "passage": "Unmatched bank account ledger entries remain on the page, indicating discrepancies that you should resolve to reconcile the bank account."
+        },
+        {
+          "source": "S23",
+          "passage": "Bank reconciliation is also a practical way to discover missing payments and resolve bookkeeping errors."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S25",
+          "passage": "Get an overview of activities commonly performed at the end of a period, such as posting all documents and journals or running financial reports."
+        },
+        {
+          "source": "S25",
+          "passage": "Depending on your business needs, you might want to restrict user posting date ranges at the start of the period-end process or after it."
+        },
+        {
+          "source": "S25",
+          "passage": "Print reports to verify general ledger, customer, vendor, and bank account balances before closing a period."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S27",
+          "passage": "You can see tasks that are past due, remaining tasks for today, tasks that are due today but are blocked because of dependencies, and all remaining tasks for the process."
+        },
+        {
+          "source": "S27",
+          "passage": "A task that is blocked by dependencies can't be marked as completed."
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Bookkeeping, accounting, and auditing clerks may work longer hours to meet deadlines at the end of the fiscal year, during tax time, or when monthly or yearly accounting audits are performed."
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "You close income and expense accounts at the end of each tax year. You keep asset, liability, and net worth accounts open on a permanent basis."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Detail oriented. Bookkeeping, accounting, and auditing clerks are responsible for producing accurate financial records, which requires them to pay close attention in order to recognize and avoid making errors."
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Integrity. Bookkeeping, accounting, and auditing clerks have control of an organization's financial documentation, which they must use properly and keep confidential. It is vital that they keep records transparent and guard against misusing an organization's funds."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Comply with federal, state, and company policies, procedures, and regulations."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Keep them in an orderly fashion and in a safe place. For instance, organize them by year and type of income or expense."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "For example, record expenses when they occur, and identify the source of recorded receipts. Generally, it is best to record transactions on a daily basis."
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "You should keep your business account separate from your personal checking account."
+        },
+        {
+          "source": "S8",
+          "passage": "If you cannot get a receipt for a cash payment, you should make an adequate explanation in your records at the time of payment."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Generally, you must keep your records that support an item of income, deduction or credit shown on your tax return until the period of limitations for that tax return runs out."
+        },
+        {
+          "source": "S10",
+          "passage": "Keep employment tax records for at least 4 years after the date that the tax becomes due or is paid, whichever is later."
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Good records will help you monitor the progress of your business, prepare your financial statements, identify sources of income, keep track of deductible expenses, keep track of your basis in property, prepare your tax returns, and support items reported on your tax returns."
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "These records must provide enough detail to identify the underlying source documents."
+        },
+        {
+          "source": "S8",
+          "passage": "Controls used to prevent the unauthorized addition, alteration, or deletion of retained records."
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S29",
+          "passage": "Segregation of duties helps you reduce the risk of fraud, and it also helps you detect errors or irregularities."
+        },
+        {
+          "source": "S29",
+          "passage": "For example, you can mitigate the risk by conducting more detailed reviews of the process, by conducting a monthly managerial review, or by sharing resources with other departments."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S28",
+          "passage": "When you set up users for approval workflows, it's important that the same user isn't both a requestor and an approver in a workflow user group. When a user is both a requestor and an approver, approvals work for them as follows: Their requests are always approved automatically."
+        }
+      ]
+    },
+    {
+      "id": "C67",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Use secondary channels or two-factor authentication to verify requests for changes in account information with the intended recipient."
+        },
+        {
+          "source": "S13",
+          "passage": "Verify the email address used to send emails, especially when using a mobile or handheld device, by ensuring the sender's address appears to match who it is coming from."
+        }
+      ]
+    },
+    {
+      "id": "C68",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Inspect account books and accounting systems for efficiency and use of accepted accounting procedures and identify potential risks for fraud"
+        }
+      ]
+    },
+    {
+      "id": "C69",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Bookkeeping, accounting, and auditing clerks use specialized computer accounting software, spreadsheets, and databases to enter information from receipts or bills."
+        }
+      ]
+    },
+    {
+      "id": "C70",
+      "sources": [
+        {
+          "source": "S24",
+          "passage": "You can perform this task on the Payment Reconciliation Journal page, for example, by importing a bank statement file or feed to quickly register the payments."
+        },
+        {
+          "source": "S24",
+          "passage": "You can review and change automatic applications before you post the journal."
+        }
+      ]
+    },
+    {
+      "id": "C71",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "For example, the Suggest Vendor Payments action that finds vendor payments that are due, and the Vendor - Summary Aging report that shows an overview of due vendor payments."
+        }
+      ]
+    },
+    {
+      "id": "C72",
+      "sources": [
+        {
+          "source": "S28",
+          "passage": "You can also set amount limits for different types of requests, define substitute approvers, and set up notifications."
+        },
+        {
+          "source": "S28",
+          "passage": "Purchase Amount Approval Limit Specify the maximum purchase amount in LCY that the person identified in the User ID field can approve."
+        }
+      ]
+    },
+    {
+      "id": "C73",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "A customer ledger entry with the On Hold field filled in will not prompt the creation of a reminder."
+        }
+      ]
+    },
+    {
+      "id": "C74",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "For small errors, such as those in transcriptions, they may make corrections themselves. For major discrepancies, they typically notify senior staff, including accountants and auditors."
+        }
+      ]
+    },
+    {
+      "id": "C75",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Arrange for debt repayment or establish repayment schedules, based on customers' financial situations."
+        },
+        {
+          "source": "S3",
+          "passage": "Negotiate credit extensions when necessary."
+        }
+      ]
+    },
+    {
+      "id": "C76",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Notify credit departments, order merchandise repossession or service disconnection, and turn over account records to attorneys when customers fail to respond to collection attempts."
+        },
+        {
+          "source": "S6",
+          "passage": "If the debtor does not pay, the collector submits a statement to the creditor, who may take legal action."
+        }
+      ]
+    },
+    {
+      "id": "C77",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "You can also use reminders to calculate finance charges, such as interest or fees and include them on the reminder."
+        }
+      ]
+    },
+    {
+      "id": "C78",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Compute taxes owed and prepare tax returns, ensuring compliance with payment, reporting, or other tax requirements."
+        },
+        {
+          "source": "S7",
+          "passage": "Compute taxes owed, prepare tax returns, and ensure that taxes are paid properly and on time"
+        }
+      ]
+    },
+    {
+      "id": "C79",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Assess financial operations, identify risks and challenges, and make best-practices recommendations to management"
+        }
+      ]
+    },
+    {
+      "id": "C80",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Contact the originating Financial Institution as soon as fraud is recognized to request a recall or reversal as well as a Hold Harmless Letter or Letter of Indemnity."
+        }
+      ]
+    },
+    {
+      "id": "C81",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Develop, maintain, or analyze budgets, preparing periodic reports that compare budgeted costs to actual costs."
+        }
+      ]
+    },
+    {
+      "id": "C82",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Collectors usually have goals they are expected to meet. Typically, these include a daily quota of calls and success rates."
+        }
+      ]
+    }
+  ]
+}

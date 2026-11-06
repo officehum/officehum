@@ -48,6 +48,8 @@ export interface RoleSources {
 const MARKER_GROUP = /\[(C\d+(?:\s*,\s*C\d+)*)\]/g;
 const TRAILING_MARKERS = /(?:\s*\[C\d+(?:\s*,\s*C\d+)*\])+\s*$/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/;
+/** The one paragraph allowed under `## Sources` besides the entries: who owns each source. */
+const LICENCE_NOTE = "Source licences.";
 const SOURCE_ITEM = /^\[(S\d+)\]\s+(.*?)\s+—\s+(\S+)\s*$/;
 
 /** Checks `role.md` against `role.sources.json` without the network; reports every problem. */
@@ -154,6 +156,7 @@ export function checkRoleMd(markdown: string, sources: RoleSources): Issue[] {
 
   // List items, section by section.
   let section: string | undefined;
+  let inLicenceNote = false;
   const listed: { id: string; title: string; url: string; line: number }[] = [];
   rows.forEach((row, index) => {
     const line = index + 1;
@@ -164,6 +167,20 @@ export function checkRoleMd(markdown: string, sources: RoleSources): Issue[] {
     }
     if (section === undefined || !(ROLE_MD_SECTIONS as readonly string[]).includes(section)) return;
     const item = LIST_ITEM.exec(row)?.[1];
+    if (section === "Sources" && item === undefined) {
+      // Only source entries and one closing licence note may sit here, so stray text (such as
+      // pasted script output) cannot hide in a file people read.
+      if (row.trim() === "" || inLicenceNote) return;
+      if (row.startsWith(LICENCE_NOTE)) {
+        inLicenceNote = true;
+        return;
+      }
+      md(
+        `Sources › line ${line}`,
+        `only "- [S1] Title — URL" entries and a closing paragraph starting "${LICENCE_NOTE}" may appear here; remove the line`,
+      );
+      return;
+    }
     if (item === undefined) return;
     if (section === "Sources") {
       const match = SOURCE_ITEM.exec(item);

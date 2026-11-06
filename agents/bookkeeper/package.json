@@ -17,6 +17,8 @@
     "officehum.json",
     "AGENTS.md",
     "APPEND_SYSTEM.md",
+    "role.md",
+    "role.sources.json",
     "skills",
     "evals"
   ],

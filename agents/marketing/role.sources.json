@@ -1,0 +1,879 @@
+{
+  "schema": 1,
+  "role": "marketing",
+  "researchedOn": "2026-11-05",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/27-3031.00",
+      "title": "O*NET OnLine: Public Relations Specialists (27-3031.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/summary/11-2011.00",
+      "title": "O*NET OnLine: Advertising and Promotions Managers (11-2011.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.onetonline.org/link/summary/11-2021.00",
+      "title": "O*NET OnLine: Marketing Managers (11-2021.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.onetonline.org/link/summary/13-1161.01",
+      "title": "O*NET OnLine: Search Marketing Strategists (13-1161.01)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.onetonline.org/link/summary/13-1161.00",
+      "title": "O*NET OnLine: Market Research Analysts and Marketing Specialists (13-1161.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S6",
+      "url": "https://www.bls.gov/ooh/management/advertising-promotions-and-marketing-managers.htm",
+      "title": "BLS Occupational Outlook Handbook: Advertising, Promotions, and Marketing Managers",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.bls.gov/ooh/media-and-communication/public-relations-specialists.htm",
+      "title": "BLS Occupational Outlook Handbook: Public Relations Specialists",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.sba.gov/business-guide/manage-your-business/marketing-sales",
+      "title": "SBA Business Guide: Manage your business, marketing and sales",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S9",
+      "url": "https://www.ftc.gov/business-guidance/resources/advertising-faqs-guide-small-business",
+      "title": "FTC: Advertising FAQ's, a guide for small business",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.ftc.gov/legal-library/browse/ftc-policy-statement-regarding-advertising-substantiation",
+      "title": "FTC Policy Statement Regarding Advertising Substantiation",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.ftc.gov/business-guidance/resources/ftcs-endorsement-guides-what-people-are-asking",
+      "title": "FTC: FTC's Endorsement Guides, what people are asking",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.ftc.gov/business-guidance/resources/soliciting-paying-online-reviews-guide-marketers",
+      "title": "FTC: Soliciting and paying for online reviews, a guide for marketers",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S13",
+      "url": "https://www.ftc.gov/business-guidance/resources/disclosures-101-social-media-influencers",
+      "title": "FTC: Disclosures 101 for social media influencers",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S14",
+      "url": "https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business",
+      "title": "FTC: CAN-SPAM Act, a compliance guide for business",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S15",
+      "url": "https://www.ftc.gov/business-guidance/resources/environmental-claims-summary-green-guides",
+      "title": "FTC: Environmental claims, summary of the Green Guides",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S16",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/customer-insights/journeys/email-check-golive",
+      "title": "Microsoft Learn: Check your message for errors and prepare it for delivery (Dynamics 365 Customer Insights - Journeys)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S17",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/customer-insights/journeys/real-time-marketing-email-text-consent",
+      "title": "Microsoft Learn: Manage consent for email, SMS, voice and custom channel messages (Dynamics 365 Customer Insights - Journeys)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S18",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/customer-insights/journeys/email-insights",
+      "title": "Microsoft Learn: Email insights (Dynamics 365 Customer Insights - Journeys)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Brand Manager, Market Development Executive, Market Development Manager, Marketing Communications Manager, Marketing Coordinator, Marketing Director"
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Post and update content on the company's Web site and social media outlets."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Advertising, promotions, and marketing managers plan programs to generate interest in products or services. They work with art directors, advertising sales agents, financial staff, and others to develop strategies and materials."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "They craft media releases and develop social media programs to shape public perception of their clients and to increase awareness of each client's work and goals."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "It describes the actions you'll take to persuade potential customers to buy your products or services. Your business plan should contain the central elements of your marketing strategy. Your marketing plan turns your strategy into action."
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Plan and prepare advertising and promotional material to increase sales of products or services, working with customers, company officials, sales departments, and advertising agencies."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Plan promotional campaigns, such as contests or giveaways, to boost brand loyalty and reach new customers"
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Plan advertising campaigns, including in which media-such as radio, television, or email-to advertise"
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Conduct online marketing initiatives, such as paid ad placement, affiliate programs, sponsorship programs, email promotions, or viral marketing campaigns on social media Web sites."
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Press releases often are adapted for announcements on social media, in addition to publication through traditional media outlets."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Write press releases and prepare information for the media Respond to information requests from the media"
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Public relations specialists are usually in charge of monitoring and responding to social media questions and concerns."
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Inspect layouts and advertising copy, and edit scripts, audio, video, and other promotional material for adherence to specifications."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Review and edit content for marketing materials."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Coordinate with marketing team members, graphic artists, and other workers to develop and implement marketing programs."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Prepare budgets and submit estimates for program costs as part of campaign plan development."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Compile lists describing product or service offerings."
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Prepare or edit organizational publications, such as employee newsletters or stockholders' reports, for internal or external audiences."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Gather data on competitors and analyze their prices, sales, and method of marketing and distribution."
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Evaluate advertising and promotion programs to determine whether they are compatible with their organization's public relations efforts"
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Evaluate the look and feel of displays or websites in advertising or marketing campaigns"
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Help maintain their organization's image and identity"
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Keep abreast of government regulations and emerging Web technology to ensure regulatory compliance"
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "An express claim is literally made in the ad. For example, \"ABC Mouthwash prevents colds\" is an express claim that the product will prevent colds. An implied claim is one made indirectly or by inference."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Before a company runs an ad, it has to have a \"reasonable basis\" for the claims. A \"reasonable basis\" means objective evidence that supports the claim. The kind of evidence depends on the claim."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "an endorsement is an advertising message that consumers are likely to believe reflects the opinions or beliefs of someone other than the sponsoring advertiser."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "A \"material connection\" to the brand includes a personal, family, or employment relationship or a financial relationship - such as the brand paying you or giving you free or discounted products or services."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "It covers all commercial messages, which the law defines as \"any electronic mail message the primary purpose of which is the commercial advertisement or promotion of a commercial product or service,\" including email that promotes content on commercial websites."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Transactional or relationship content - which facilitates an already agreed-upon transaction or updates a customer about an ongoing transaction"
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Promotions managers direct programs that combine advertising with purchasing incentives and target them to customers in media, in displays, or at events to increase sales. Purchasing incentives may include discounts, rebates, contests, and other programs to strengthen brand loyalty."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Plan to compare your marketing and sales costs to the revenue it generates. You want to make sure you're getting a positive return on investment, or ROI."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Target market Describe your audience in detail. Look at the market's size, demographics, unique traits, and trends that relate to demand for your business."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "If the purpose uses a \"Restrictive\" enforcement model, the app sends the email only if the email address explicitly opts in. If the purpose uses a \"Nonrestrictive\" enforcement model, the app sends the email as long as the email address hasn't opted out."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Marketing takes time, money, and preparation. One of the best ways to stay on schedule and on budget is to make a marketing plan."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Competitive advantage Describe what gives your product or service an advantage over the competition. It might be a better product, a lower price, or an excellent customer experience."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Describe your marketing and sales goals for the next year. Common marketing and sales goals are to increase email subscribers, grow market share, or increase sales by a certain percent."
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "List marketing channels you'll use, like online advertising, radio ads, or billboards. Explain your pricing strategy and how you'll use promotions."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Include a complete breakdown of the costs of your marketing plan. Try to be as accurate as possible. You'll want to keep tracking your costs once you put your plan into action."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "The FTC looks at whether the advertiser has sufficient evidence to support the claims in the ad. The law requires that advertisers have proof before the ad runs."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "When the substantiation claim is express (e.g.., \"tests prove\", \"doctors recommend\", and \"studies show\"), the Commission expects the firm to have at least the advertised level of substantiation."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "To ensure that disclosures are effective, advertisers should use clear and unambiguous language, place any qualifying information close to the claim being qualified, and avoid using small type or any distracting elements that could undercut the disclosure."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Starting a post with \"Ad:\" or \"Paid ad\" or \"#ad\" or \"Advertising:\" or \"Advertisement\" would likely be effective."
+        },
+        {
+          "source": "S13",
+          "passage": "The disclosure should be placed with the endorsement message itself. Disclosures are likely to be missed if they appear only on an ABOUT ME or profile page, at the end of posts or videos, or anywhere that requires a person to click MORE."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Whether there should be any disclosure depends upon whether the \"shares\" could be viewed as promoting one of your company's products or services. If so, employees endorsing the post should disclose their relationship to the company."
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Don't ask for reviews from people who haven't used or experienced the product or service. Don't ask your staff to write reviews of your business, at least not without ensuring that they disclose in their review that you employ them and asked them to write it."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Don't ask for reviews only from customers you think will leave positive ones."
+        },
+        {
+          "source": "S12",
+          "passage": "If you offer an incentive for a review, don't condition it, explicitly or implicitly, on the review being positive."
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Endorsements claiming specific results usually will be interpreted to mean that the endorser's experience reflects what others can also expect. Statements like \"Results not typical\" or \"Individual results may vary\" won't change that interpretation."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Don't use deceptive subject lines. The subject line must accurately reflect the content of the message. Identify the message as an ad."
+        },
+        {
+          "source": "S14",
+          "passage": "Tell recipients where you're located. Your message must include your valid physical postal address."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Your message must include a clear and conspicuous explanation of how the recipient can opt out of getting marketing email from you in the future."
+        },
+        {
+          "source": "S14",
+          "passage": "Any opt-out mechanism you offer must be able to process opt-out requests for at least 30 days after you send your message. You must honor a recipient's opt-out request within 10 business days."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "If the message is marked as Commercial purpose, then it must also include the following additional content: An Unsubscribe link obtained from the Compliance profile. A Company address obtained from the Compliance profile."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Immediately before sending, the service applies the purpose, optional topic, consent records, and enforcement model configured by your organization to determine the technical send result. This approach makes sure the app doesn't mistakenly send a message to someone who opted out, even if they're included in a journey segment by mistake."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "If your company pre-approves your influencers' paid social media posts, you should review the posts for truth-in-advertising compliance, including any disclosure responsibilities."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Marketing plans should be maintained on an annual basis, at minimum. Measuring ROI will help you know which part of the plan is working and which part needs to be updated."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Under the Federal Trade Commission Act: Advertising must be truthful and non-deceptive; Advertisers must have evidence to back up their claims; and Advertisements cannot be unfair."
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Statements from satisfied customers usually are not sufficient to support a health or safety claim or any other claim that requires objective evaluation."
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Marketers should not make broad, unqualified general environmental benefit claims like \"green\" or \"eco-friendly.\" Broad claims are difficult to substantiate, if not impossible."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "The law makes clear that even if you hire another company to handle your email marketing, you can't contract away your legal responsibility to comply with the law."
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Public relations specialists must be able to write well-organized and clear press releases, speeches, and social media posts. They must be able to grasp key messages and write them in a succinct but engaging way."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Public relations specialists sometimes must explain how a company or client is handling sensitive issues. They must use good judgment in what they report and how they report it."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "The federal government regulates advertising and labeling for a number of consumer products, so make sure your advertising is legally compliant."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Creativity. Advertising, promotions, and marketing managers must be able to generate new and imaginative ideas."
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Public relations specialists are often in charge of managing several events or communications at the same time, which requires excellent skills in coordinating arrangements."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Simple operations elements like your staff uniform, where your product is made, or the product return process contribute to your customer's experience. That experience shapes how your customers view your company"
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Customer relationship management CRM software - Constant Contact; MarketSharp; Oracle Eloqua; Salesforce software"
+        },
+        {
+          "source": "S2",
+          "passage": "Electronic mail software - Email software; IBM Lotus Notes; MailChimp; Microsoft Outlook"
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Analytical or scientific software - Business analysis software; Data visualization software; Google Analytics"
+        },
+        {
+          "source": "S1",
+          "passage": "Graphics or photo imaging software - Adobe Creative Cloud software"
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Before you can go live with or test-send your message, it must pass a validation check."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "The app shows warnings if, for example, you accidentally delete the company address or the link to the preference center, but it doesn't block you from sending the email."
+        }
+      ]
+    },
+    {
+      "id": "C67",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "That's why you should require that paid posts aren't made without you approving them in advance."
+        }
+      ]
+    },
+    {
+      "id": "C68",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "These workers often must choose between competing advertising and marketing strategies put forward by staff."
+        }
+      ]
+    },
+    {
+      "id": "C69",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Work with department heads or staff to discuss topics such as budgets and contracts, creative vision, marketing plans, and media buying"
+        }
+      ]
+    },
+    {
+      "id": "C70",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Negotiate advertising contracts with clients and partners"
+        }
+      ]
+    },
+    {
+      "id": "C71",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Develop pricing strategies, balancing firm objectives and customer satisfaction."
+        }
+      ]
+    },
+    {
+      "id": "C72",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Confer with legal staff to resolve problems, such as copyright infringement or royalty sharing with outside producers or distributors."
+        }
+      ]
+    },
+    {
+      "id": "C73",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Respond to requests for information from the media or designate an appropriate spokesperson or information source."
+        }
+      ]
+    },
+    {
+      "id": "C74",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Track program budgets, expenses, and campaign response rates to evaluate each campaign, based on program objectives and industry norms."
+        }
+      ]
+    },
+    {
+      "id": "C75",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Measure the effectiveness of marketing, advertising, and communications programs and strategies."
+        }
+      ]
+    },
+    {
+      "id": "C76",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Identify appropriate Key Performance Indicators (KPIs) and report key metrics from digital campaigns."
+        }
+      ]
+    },
+    {
+      "id": "C77",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Some tactics are hard to measure - like print advertising or word-of-mouth campaigns. Get creative and use others' advice, but be consistent in how you measure the effectiveness of your marketing efforts."
+        }
+      ]
+    },
+    {
+      "id": "C78",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Interactions KPIs: Check the open rate, click rate, click-to-open rate, number of messages marked as spam, and count of unsubscriptions for the selected message."
+        }
+      ]
+    },
+    {
+      "id": "C79",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Evaluate public opinion of clients through social media"
+        }
+      ]
+    },
+    {
+      "id": "C80",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Measure and assess customer and employee satisfaction."
+        }
+      ]
+    }
+  ]
+}
