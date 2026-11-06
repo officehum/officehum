@@ -217,6 +217,27 @@ describe("the company package's own consistency", () => {
       expect(issues).toContain("crews[3].leadPersonId names nobody");
     });
 
+    it("accepts overtimeNeedsApproval false when the policies say so, and refuses a mismatch", () => {
+      const edit = (c: Loose): void => {
+        c.staffPolicies.overtimeNeedsApproval = false;
+      };
+      expect(issuesAfter(edit)).toContain("overtimeNeedsApproval");
+      const directory = copyCompany();
+      const json = join(directory, COMPANY_DIRECTORY, "company.json");
+      const company = JSON.parse(readFileSync(json, "utf8")) as Loose;
+      edit(company);
+      writeFileSync(json, JSON.stringify(company, null, 2));
+      const md = join(directory, COMPANY_DIRECTORY, "policies.md");
+      writeFileSync(
+        md,
+        readFileSync(md, "utf8").replace(
+          "Overtime needs a person's approval before it is worked.",
+          "Overtime does not need a person's approval before it is worked.",
+        ),
+      );
+      expect(companyIssues(readSource(directory))).toEqual([]);
+    });
+
     it("refuses a staff-policy contact who is not a person", () => {
       const issues = issuesAfter((c) => {
         c.staffPolicies.payQuestionsTo = "nobody";

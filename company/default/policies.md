@@ -65,7 +65,7 @@ decides, the answer is that person, not a judgement call.
 
 - Time off is requested at least 14 days ahead. Jules Okafor records it and Priya Raman confirms the
   schedule still works.
-- Overtime is approved by Priya before it is worked, never afterwards.
+- Overtime needs a person's approval before it is worked. Priya gives it, never afterwards.
 - Questions about a person's pay go to Jules Okafor. Discipline goes to Priya Raman. Nobody else
   answers either, and a message about one is passed on, not discussed.
 

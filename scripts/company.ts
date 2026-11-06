@@ -232,6 +232,11 @@ export function companyIssues(source: CompanySource): readonly string[] {
   return issues;
 }
 
+/** The sentences policies.md uses for each value of staffPolicies.overtimeNeedsApproval. */
+const OVERTIME_NEEDS_APPROVAL = "Overtime needs a person's approval before it is worked.";
+const OVERTIME_NEEDS_NO_APPROVAL =
+  "Overtime does not need a person's approval before it is worked.";
+
 /**
  * The sections the departmental agents read: suppliers and the supply catalog, crews, staff policies,
  * the approved marketing claims and the purchase-order limit. Each is held to the same promises as
@@ -335,6 +340,7 @@ function departmentIssues(
       add("handbook.md", `does not name the crew ${name}; the handbook must describe every crew`);
     }
   }
+  // Convention: crews' members are crew staff not listed in people; the people are counted once, here.
   // The crews count the field staff who are not listed as people; the people are counted once, here.
   const headcount = asRecord(company.profile)?.headcount;
   if (crews !== undefined && Number.isSafeInteger(headcount)) {
@@ -354,8 +360,19 @@ function departmentIssues(
     if (!whole(staff.timeOffNoticeDays, 0)) {
       add("company.json", "staffPolicies.timeOffNoticeDays must be a whole number of days");
     }
-    if (staff.overtimeNeedsApproval !== true) {
-      add("company.json", "staffPolicies.overtimeNeedsApproval must be true");
+    // A default, not a lock: the customer may set it false, but the policies must say so too.
+    if (typeof staff.overtimeNeedsApproval !== "boolean") {
+      add("company.json", "staffPolicies.overtimeNeedsApproval must be true or false");
+    } else {
+      const [stated, other] = staff.overtimeNeedsApproval
+        ? [OVERTIME_NEEDS_APPROVAL, OVERTIME_NEEDS_NO_APPROVAL]
+        : [OVERTIME_NEEDS_NO_APPROVAL, OVERTIME_NEEDS_APPROVAL];
+      if (!source.policies.includes(stated) || source.policies.includes(other)) {
+        add(
+          "policies.md",
+          `must say "${stated}" (and not "${other}") to agree with staffPolicies.overtimeNeedsApproval`,
+        );
+      }
     }
     for (const [key, value] of Object.entries(staff)) {
       if (!key.endsWith("To")) continue;
