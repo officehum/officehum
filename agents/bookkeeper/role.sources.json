@@ -973,6 +973,10 @@
         {
           "source": "S28",
           "passage": "You can also set amount limits for different types of requests, define substitute approvers, and set up notifications."
+        },
+        {
+          "source": "S28",
+          "passage": "Purchase Amount Approval Limit Specify the maximum purchase amount in LCY that the person identified in the User ID field can approve."
         }
       ]
     },
