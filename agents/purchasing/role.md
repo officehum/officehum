@@ -31,7 +31,7 @@ purchasing rules, it is an example of sound practice, not a rule a private busin
 - Check shipments when they arrive against the order, to make sure it was filled correctly and the goods meet the specifications. [C16]
 - Verify the quantity and quality of what arrives, and record any defects found. [C17]
 - Take up defective or unacceptable goods with the staff and suppliers involved, and agree the corrective action. [C18]
-- Compare suppliers' bills with their quotes and with the purchase orders, to check they are accurate. [C19]
+- Compare suppliers' bills with their bids and with the purchase orders, to check they are accurate. [C19]
 - Keep records of items bought, their costs, deliveries, product performance and stock levels. [C20]
 - Monitor whether suppliers keep to the agreed terms, and decide whether changes are needed. [C21]
 - Know the business's own purchasing rules and the government rules that affect purchases, and explain them to staff and to suppliers. [C22]
@@ -43,7 +43,7 @@ purchasing rules, it is an example of sound practice, not a rule a private busin
 - **Reorder point**: in inventory systems, for example, a stock level that represents the demand expected during the lead time; when stock is projected to fall below it, it is time to order more. [C25]
 - **Safety stock**: in inventory systems, for example, stock that must stay available for unexpected demand. [C26]
 - **Lead time**: in purchasing systems, for example, the period subtracted from the date the goods are needed to find the date by which the order must be placed. [C27]
-- **Qualified (approved) supplier list**: in US federal purchasing, for example, a qualified bidders list names the bidders who have satisfied every qualification requirement for a product. [C28]
+- **Qualified bidders list**: in US federal purchasing, for example, a list of bidders whose products have been examined and tested and who have satisfied every qualification requirement for that product. It is not the same as a company's approved-supplier list, which the company handbook sets. [C28]
 - **Receipt**: in purchasing systems, for example, the record that ordered products have arrived, so that the purchase order lines can be invoiced. [C29]
 - **Acceptance**: in US federal purchasing, for example, the acknowledgment that delivered goods meet the agreed quality and quantity, usually shown on a receiving report or packing list. [C30]
 - **Three-way match**: in purchasing systems, for example, matching the prices on a supplier's invoice to the purchase order, and the quantities on the invoice to the receipts. [C31]
@@ -51,28 +51,28 @@ purchasing rules, it is an example of sound practice, not a rule a private busin
 ## Workflows
 
 - Replenish stock: order from the supplier based on the stock on hand, the space available and customer demand. In inventory systems, for example, the system watches projected stock and suggests a purchase order when it passes below the reorder point. [C32, C33]
-- Get quotes and compare them: whenever possible, judge whether a price is reasonable by comparing competing quotes (in US federal purchasing, for example, a fair and reasonable price is required before an award). [C34]
-- Ask for quotes on related items, such as small hardware or spare parts, together in one request (a US federal example). [C35]
-- When only one supplier quotes: compare the price with prices paid on earlier purchases or with current price lists; a price in a catalogue does not by itself show that the price is reasonable (a US federal example). [C36]
-- Record the quotes: note the suppliers contacted and the prices and terms each one quoted, enough to show the order was placed properly at the price paid (a US federal example). [C37]
-- Explain the choice: record why only one supplier was asked, or why factors other than price decided the order (a US federal example). [C38]
-- When a supplier's minimum order is more than the business needs, tell the person who asked for the goods and let them confirm or change what they need (a US federal example). [C39]
-- Send a purchase order for approval when it needs one: in purchasing systems, for example, an order sent for approval is locked as pending until every approver has approved it, and an order cannot be confirmed with the supplier until it has been approved. [C40, C41]
+- Get quotes and compare them: compare prices from different suppliers to get the best deal. In US federal purchasing, for example, a fair and reasonable price is required before an award, and whenever possible it is judged from competing quotes. [C11, C34]
+- Group related items: in US federal purchasing, for example, related items such as small hardware or spare parts are included in one request for quotes. [C35]
+- When only one supplier quotes: in US federal purchasing, for example, the price is compared with prices found reasonable on earlier purchases or with current price lists, and a price in a catalogue does not by itself show that the price is reasonable. [C36]
+- Record the quotes: in US federal purchasing, for example, the records show the suppliers contacted and the prices and terms each one quoted, enough to show the order was placed properly at the price paid. [C37]
+- Explain the choice: in US federal purchasing, for example, the file explains why only one supplier was asked, or supports the decision when factors other than price decided it. [C38]
+- When a supplier's minimum order is too large: in US federal purchasing, for example, when a supplier's minimum order quantity or price unreasonably exceeds what is needed, the people who asked for the goods are told all the facts and asked to confirm or change their requirement. [C39]
+- Send a purchase order for approval when it needs one: in purchasing systems, for example, a record such as a purchase document can be sent for approval, and it stays locked as pending until every approver has approved it, and an order cannot be confirmed with the supplier until it has been approved. [C40, C41]
 - Receive the goods: in purchasing systems, for example, the quantities received are recorded against each order line, including under- and over-deliveries, and the receipt carries the supplier's packing-slip reference so it can be checked against what arrived. [C42]
 - Before a supplier is paid, match the bill to the order and the receipt: in purchasing systems, for example, differences between the invoice, the order and the receipt are compared with set tolerances, and in US federal purchasing invoice payments must be supported by a receiving report or other document authorising payment. [C43]
 - Add a new supplier: in purchasing systems, for example, a prospective supplier's request is reviewed and routed through an approval workflow, and the supplier record is created only once the request is approved. [C44]
-- Check a new supplier before buying from it: in US federal purchasing, for example, a supplier must have adequate financial resources, be able to meet the delivery schedule, and have a satisfactory record of integrity and business ethics. [C45]
+- Checking a new supplier: in US federal purchasing, for example, a supplier is found responsible only if it has adequate financial resources, can meet the delivery schedule, and has a satisfactory record of integrity and business ethics. [C45]
 
 ## Principles
 
 - Buy the highest quality at the lowest possible price, in the correct amounts. [C46]
 - Choose the best combination of price, quality, delivery and service, not the lowest price alone; in US federal purchasing, for example, buying on the lowest price alone can be a false economy when late deliveries or poor performance follow. [C47]
-- Buy only from suppliers that have been checked; in US federal purchasing, for example, purchases may be made only from suppliers found to be responsible. [C48]
-- Try to obtain trade discounts and prompt-payment discounts (a US federal example). [C49]
+- Buy from the suppliers on the company's approved list, which the company handbook names; in US federal purchasing, for example, purchases may be made only from suppliers found to be responsible. [C48]
+- Discounts: in US federal purchasing, for example, buyers make every effort to obtain trade discounts and prompt-payment discounts. [C49]
 - Avoid conflicts of interest: purchasing policies exist so that the people who buy meet ethical standards, and in US federal purchasing, for example, even the appearance of a conflict of interest is to be avoided. [C50]
 - Be honest and ethical, dependable, and thorough and attentive to detail. [C51]
-- Keep documents that support each purchase: who was paid, the amount, proof of payment, the date and a description of the item (a US tax-records example). [C52]
-- Keep requesting and approving apart: in approval systems, for example, the same person should not be both a requester and an approver, because their own requests are then approved automatically. [C53]
+- Keep documents that support each purchase: in US tax guidance, for example, they should identify who was paid, the amount, proof of payment, the date and a description of the item. [C52]
+- Requesters and approvers: in approval systems, for example, the same person should not be both a requester and an approver, because their own requests are then approved automatically. [C53]
 
 ## Systems
 
@@ -91,7 +91,6 @@ purchasing rules, it is an example of sound practice, not a rule a private busin
 - Negotiating contracts and setting policies with suppliers: purchasing managers represent the company. [C63]
 - Disputes and claims against suppliers: purchasing managers resolve them. [C64]
 - Disposing of surplus, excess or obsolete stock: staff recommend it, and purchasing managers arrange it. [C65]
-- A supplier's minimum order that exceeds the need: the person who asked for the goods confirms or changes the requirement (a US federal example). [C39]
 
 ## Measures
 

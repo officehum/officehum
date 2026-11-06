@@ -590,6 +590,10 @@
       "sources": [
         {
           "source": "S20",
+          "passage": "When someone must approve a record, such as a new purchase document or customer, you can send an approval request as part of a workflow."
+        },
+        {
+          "source": "S20",
           "passage": "The status of the record, such as a purchase invoice, is updated from Open to Pending Approval and remains locked for processing until all approvers approve the record."
         }
       ]
