@@ -1,0 +1,830 @@
+{
+  "schema": 1,
+  "role": "operations",
+  "researchedOn": "2026-11-05",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/43-5032.00",
+      "title": "O*NET OnLine: Dispatchers, Except Police, Fire, and Ambulance (43-5032.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/summary/43-5061.00",
+      "title": "O*NET OnLine: Production, Planning, and Expediting Clerks (43-5061.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.onetonline.org/link/summary/37-1011.00",
+      "title": "O*NET OnLine: First-Line Supervisors of Housekeeping and Janitorial Workers (37-1011.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.onetonline.org/link/summary/49-1011.00",
+      "title": "O*NET OnLine: First-Line Supervisors of Mechanics, Installers, and Repairers (49-1011.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.onetonline.org/link/summary/11-1021.00",
+      "title": "O*NET OnLine: General and Operations Managers (11-1021.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S6",
+      "url": "https://www.bls.gov/ooh/office-and-administrative-support/material-recording-clerks.htm",
+      "title": "BLS Occupational Outlook Handbook: Material Recording Clerks",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.bls.gov/ooh/building-and-grounds-cleaning/janitors-and-building-cleaners.htm",
+      "title": "BLS Occupational Outlook Handbook: Janitors and Building Cleaners",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.dol.gov/agencies/whd/overtime",
+      "title": "U.S. Department of Labor, Wage and Hour Division: Overtime Pay",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S9",
+      "url": "https://www.dol.gov/agencies/whd/fact-sheets/23-flsa-overtime-pay",
+      "title": "U.S. Department of Labor, Wage and Hour Division: Fact Sheet #23, Overtime Pay Requirements of the FLSA",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.dol.gov/agencies/whd/fact-sheets/22-flsa-hours-worked",
+      "title": "U.S. Department of Labor, Wage and Hour Division: Fact Sheet #22, Hours Worked Under the FLSA",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.dol.gov/agencies/whd/fact-sheets/21-flsa-recordkeeping",
+      "title": "U.S. Department of Labor, Wage and Hour Division: Fact Sheet #21, Recordkeeping Requirements under the FLSA",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.dol.gov/agencies/whd/flsa/misclassification",
+      "title": "U.S. Department of Labor, Wage and Hour Division: Misclassification of Employees as Independent Contractors",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S13",
+      "url": "https://www.irs.gov/businesses/small-businesses-self-employed/independent-contractor-self-employed-or-employee",
+      "title": "IRS: Independent contractor (self-employed) or employee?",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S14",
+      "url": "https://www.sba.gov/business-guide/manage-your-business/hire-manage-employees",
+      "title": "SBA: Hire and manage employees",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S15",
+      "url": "https://www.cdc.gov/niosh/fatigue/about/index.html",
+      "title": "CDC NIOSH: Fatigue and Work",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S16",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/field-service/overview",
+      "title": "Microsoft Learn: Overview of Dynamics 365 Field Service",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S17",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/field-service/work-order-status-booking-status",
+      "title": "Microsoft Learn: Work order lifecycle and system statuses (Dynamics 365 Field Service)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S18",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/field-service/resource-crews",
+      "title": "Microsoft Learn: Set up and schedule crews (Dynamics 365 Field Service)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S19",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/field-service/set-up-customer-agreements",
+      "title": "Microsoft Learn: Set up customer agreements (Dynamics 365 Field Service)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S20",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/field-service/schedule-assistant",
+      "title": "Microsoft Learn: Schedule assistant (Dynamics 365 Field Service)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S21",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/field-service/rso-overview",
+      "title": "Microsoft Learn: Resource Scheduling Optimization overview (Dynamics 365 Field Service)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S22",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/field-service/set-up-bookable-resources",
+      "title": "Microsoft Learn: Set up bookable resources (Dynamics 365 Field Service)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Schedule and dispatch workers, work crews, equipment, or service vehicles for conveyance of materials, freight, or passengers, or for normal installation, service, or emergency repairs rendered outside the place of business."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Production, planning, and expediting clerks manage the flow of information, work, and materials within or among offices in a business. They compile reports on the progress of work and on any production problems that arise."
+        },
+        {
+          "source": "S6",
+          "passage": "They ensure proper scheduling, recordkeeping, and inventory control."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Confer with customers or supervising personnel to address questions, problems, or requests for service or equipment."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Directly supervise and coordinate work activities of cleaning personnel in hotels, hospitals, offices, and other establishments."
+        },
+        {
+          "source": "S4",
+          "passage": "Determine schedules, sequences, and assignments for work activities, based on work priority, quantity of equipment, and skill of personnel."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Because office buildings are often cleaned while they are empty, many cleaners work evening hours."
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Receive or prepare work orders."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Prepare daily work and run schedules."
+        },
+        {
+          "source": "S3",
+          "passage": "Plan and prepare employee work schedules."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Determine types or amounts of equipment, vehicles, materials, or personnel required, according to work orders or specifications."
+        },
+        {
+          "source": "S2",
+          "passage": "Review documents, such as production schedules, work orders, or staffing tables, to determine personnel or materials requirements or material priorities."
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Schedule or dispatch workers, work crews, equipment, or service vehicles to appropriate locations, according to customer requests, specifications, or needs, using radios or telephones."
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Relay work orders, messages, or information to or from work crews, supervisors, or field inspectors, using telephones or two-way radios."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Monitor personnel or equipment locations and utilization to coordinate service and schedules."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Revise production schedules when required due to design changes, labor or material shortages, backlogs, or other interruptions, collaborating with management, marketing, sales, production, or engineering."
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Arrange for necessary repairs to restore service and schedules."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Record and maintain files or records of customer requests, work or services performed, charges, expenses, inventory, or other dispatch information."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Provide documentation and information to account for delays, difficulties, or changes to cost estimates."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Coordinate activities with other departments to ensure that services are provided in an efficient and timely manner."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Investigate complaints about service and equipment, and take corrective action."
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Maintain required records of work hours, budgets, payrolls, and other information."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Forecast necessary levels of staffing and stock at different times to facilitate effective scheduling and ordering."
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Compile information, such as production rates and progress, materials inventories, materials used, or customer information, so that status reports can be completed."
+        },
+        {
+          "source": "S3",
+          "passage": "Prepare reports on activity, personnel, and information, such as occupancy, hours worked, facility usage, work performed, and departmental expenses."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Recommend or arrange for additional services, such as painting, repair work, renovations, and the replacement of furnishings and equipment."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Work orders use system statuses, work order substatuses, and booking statuses to track the status of a work order in the lifecycle."
+        },
+        {
+          "source": "S17",
+          "passage": "Work order system statuses are: Unscheduled Scheduled In Progress Completed Posted Canceled"
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "Schedules and bookings are used interchangeably and refer to the appointment time slot when a resource is assigned to a job."
+        },
+        {
+          "source": "S21",
+          "passage": "Resources: Anyone or anything that needs to be scheduled to a job, including people, equipment, and facilities."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Crews group resources that regularly work together - for example, a two-person installation team or a technician paired with specialized equipment. When you schedule a crew, all members are booked together automatically."
+        },
+        {
+          "source": "S18",
+          "passage": "A crew meets at a location in the morning, shares a vehicle, and is together all day from job to job."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Organizations commonly use agreements for maintenance schedules, inspections, or other services that require regular jobs."
+        },
+        {
+          "source": "S16",
+          "passage": "Preventive (agreement-based): Scheduled maintenance happens on a recurring basis through agreements."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Reactive (break-fix): A customer reports an issue, a customer service agent creates a work order, and a dispatcher schedules a technician to resolve the problem. This model handles unplanned repairs and on-demand service requests."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "An employee's workweek is a fixed and regularly recurring period of 168 hours - seven consecutive 24-hour periods. It need not coincide with the calendar week, but may begin on any day and at any hour of the day."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Unless exempt, employees covered by the Act must receive overtime pay for hours worked over 40 in a workweek at a rate not less than time and one-half their regular rates of pay."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "An employee who is required to remain on call on the employer's premises is working while \"on call.\" An employee who is required to remain on call at home, or who is allowed to leave a message where he/she can be reached, is not working (in most cases) while on call."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "An independent contractor operates under a separate business name from your company and invoices for the work they've completed."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Schedule: The work order is scheduled. Dispatch: The work order is dispatched. Service: The work order is performed and details are updated. Review/Approval: A supervisor reviews and approves the work order."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "The schedule assistant helps dispatchers assign requirements to ideal resources. It recommends resources that match criteria like availability, skills, and location. The system also estimates travel time for the recommended resources, which helps dispatchers plan work accordingly."
+        },
+        {
+          "source": "S20",
+          "passage": "The schedule assistant is best suited for semi-automated scheduling where a dispatcher reviews suggestions and makes the final decision."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "If a resource is temporarily unavailable (for example, during a leave of absence), update their work hours instead of deactivating the record"
+        },
+        {
+          "source": "S22",
+          "passage": "Review and reassign any upcoming bookings before you deactivate the resource to avoid unattended work orders."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Use the Crew Allocation tool to swap members for a single day. For longer changes, edit the crew resource directly."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Keep customers updated with the status of their service call and the resolution."
+        },
+        {
+          "source": "S16",
+          "passage": "Communicate an accurate arrival time to customers."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Weekly work orders where the agreement assigns the same resource each time at a defined start time."
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Review, evaluate, accept, and coordinate completion of work bid from contractors."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "If you are a business owner hiring or contracting with other individuals to provide services, then you must determine whether the individuals providing services are employees or independent contractors."
+        },
+        {
+          "source": "S12",
+          "passage": "Employers are responsible for determining whether a worker is an employee under the FLSA."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "An announcement by the employer that no overtime work will be permitted, or that overtime work will not be paid for unless authorized in advance, also will not impair the employee's right to compensation for compensable overtime hours that are worked."
+        },
+        {
+          "source": "S10",
+          "passage": "Work not requested but suffered or permitted to be performed is work time that must be paid for by the employer."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Time spent by an employee in travel as part of their principal activity, such as travel from job site to job site during the workday, is work time and must be counted as hours worked."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Averaging of hours over two or more weeks is not permitted."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "In workplace settings, fatigue is commonly associated with nonstandard schedules which disrupt or shorten sleep. Examples of nonstandard schedules include night shift work and extended work hours."
+        },
+        {
+          "source": "S15",
+          "passage": "Employers and workers should work together to reduce fatigue risks and manage fatigue."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "By giving preference to higher-priority work orders, the add-in helps avoid service level agreement penalties and helps you meet customer service commitments."
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Schedule onsite visits when it's convenient for the customer."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Dependability - A tendency to be reliable, responsible, and consistent in meeting work-related obligations."
+        },
+        {
+          "source": "S1",
+          "passage": "Attention to Detail - A tendency to be detail-oriented, organized, and thorough in completing work."
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Independent contractors can sometimes qualify as employees in a legal sense."
+        },
+        {
+          "source": "S12",
+          "passage": "Misclassification occurs when an employer treats a worker who is an employee under the FLSA as an independent contractor."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "If you book outside the schedule assistant's recommended slots, constraints such as capacity, work hours, and time windows aren't verified or enforced."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Helpdesk or call center software - Computer aided dispatch software"
+        },
+        {
+          "source": "S1",
+          "passage": "Route navigation software - Routing software"
+        },
+        {
+          "source": "S1",
+          "passage": "Global positioning system GPS software"
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "Configure each resource's work hours, location, skills, territories, and availability so dispatchers can assign the appropriate resource to each job."
+        },
+        {
+          "source": "S22",
+          "passage": "The schedule assistant returns only resources that have capacity in their designated work hours."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "A time off request blocks the configured time frame and you can't book the resource during that time."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "The Booking Statuses available out of the box are: Scheduled Traveling In Progress On Break Completed Canceled"
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Employers may use any timekeeping method they choose."
+        },
+        {
+          "source": "S11",
+          "passage": "Any timekeeping plan is acceptable as long as it is complete and accurate."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "The Act requires no particular form for the records, but does require that the records include certain identifying information about the employee and data about the hours worked and the wages earned. The law requires this information to be accurate."
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Field Service agreements let organizations automatically generate work orders and invoices with predefined details, frequencies, and date ranges."
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "An employer who requires or permits an employee to work overtime is generally required to pay the employee premium pay for such overtime work."
+        },
+        {
+          "source": "S4",
+          "passage": "Participate in budget preparation and administration, coordinating purchasing and documentation and monitoring departmental expenditures."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Evaluate employee performance and recommend personnel actions, such as promotions, transfers, and dismissals."
+        },
+        {
+          "source": "S4",
+          "passage": "Recommend or initiate personnel actions, such as hires, promotions, transfers, discharges, or disciplinary measures."
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Establish and implement operational standards and procedures for the departments supervised."
+        },
+        {
+          "source": "S5",
+          "passage": "Establish or implement departmental policies, goals, objectives, or procedures in conjunction with board members, organization officials, or staff members."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "For Time Off Approval Required, choose if someone needs to approve a resource's time off."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Improve first-time fix rate."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Complete more service calls per technician per week."
+        },
+        {
+          "source": "S16",
+          "passage": "Reduce travel time, mileage, and vehicle wear and tear."
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "By improving efficiency, the add-in drives more predictable arrival and completion times and seamlessly schedules technicians for urgent situations."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "By fitting more appointments into working hours, the add-in drives revenue and reduces overtime costs."
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Review financial statements, sales or activity reports, or other performance data to measure productivity or goal achievement or to identify areas needing cost reduction or program improvement."
+        }
+      ]
+    }
+  ]
+}
