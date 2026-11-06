@@ -33,7 +33,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ModelRef } from "@earendil-works/pi-durable";
 import { type EvalModel, piDurableRunner } from "@officehum/office";
@@ -44,6 +44,7 @@ import {
   scriptedProvider,
 } from "@officehum/office/testing";
 import {
+  type EvalReport,
   type EvalSuite,
   formatIssue,
   formatReport,
@@ -62,11 +63,12 @@ export interface EvalArguments {
   readonly trials?: number;
   readonly script?: string;
   readonly mode?: "bare" | "office";
+  readonly report?: string;
 }
 
 const EVAL_USAGE =
   "usage: officehum eval ROLE_DIR [--model provider/model] [--tag TAG] [--trials N] [--script FILE] " +
-  "[--mode bare|office]";
+  "[--mode bare|office] [--report FILE]";
 
 /** Parses the eval command's arguments: one positional role directory, then the flags above. */
 export function parseEvalArguments(args: readonly string[]): EvalArguments {
@@ -76,6 +78,7 @@ export function parseEvalArguments(args: readonly string[]): EvalArguments {
   let trials: number | undefined;
   let script: string | undefined;
   let mode: "bare" | "office" | undefined;
+  let report: string | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
     if (token === undefined) continue;
@@ -93,6 +96,7 @@ export function parseEvalArguments(args: readonly string[]): EvalArguments {
     if (token === "--model") model = value;
     else if (token === "--tag") tag = value;
     else if (token === "--script") script = value;
+    else if (token === "--report") report = value;
     else if (token === "--mode") {
       if (value !== "bare" && value !== "office") {
         throw new UsageError(`--mode must be bare or office (got ${JSON.stringify(value)}).`);
@@ -114,6 +118,7 @@ export function parseEvalArguments(args: readonly string[]): EvalArguments {
     ...(trials === undefined ? {} : { trials }),
     ...(script === undefined ? {} : { script }),
     ...(mode === undefined ? {} : { mode }),
+    ...(report === undefined ? {} : { report }),
   };
 }
 
@@ -176,7 +181,32 @@ export async function runEvalCommand(
     `Model: ${ref.provider}/${ref.modelId}${script === undefined ? "" : ` (script ${script})`}`,
   );
   io.output(formatReport(report));
+  for (const line of failingTrialLines(report)) io.output(line);
+  if (parsed.report !== undefined) {
+    // The SDK report as is: traces carry calls, approvals and replies, and nothing reads the environment.
+    try {
+      await writeFile(parsed.report, `${JSON.stringify(report, null, 2)}\n`);
+    } catch (error) {
+      throw new Error(
+        `Could not write the --report file ${parsed.report}: ${String(error)}. Check that its directory exists and is writable.`,
+      );
+    }
+    io.output(`Report written to ${parsed.report}`);
+  }
   return report.passed ? 0 : 1;
+}
+
+/** One line per failing trial: the tools it called and the start of its reply, for a quick look. */
+function failingTrialLines(report: EvalReport): string[] {
+  return report.scenarios.flatMap((scenario) =>
+    scenario.trials
+      .filter((trial) => !trial.passed)
+      .map((trial) => {
+        const calls = trial.trace.calls.map((call) => call.tool).join(", ") || "none";
+        const reply = (trial.trace.reply ?? "").replace(/\s+/g, " ").slice(0, 200);
+        return `trial ${scenario.id} #${trial.trial}: calls [${calls}]; reply: ${reply === "" ? "(none)" : reply}`;
+      }),
+  );
 }
 
 /** The live provider the eval runs under; the credential is required before any trial starts. */

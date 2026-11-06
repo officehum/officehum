@@ -322,6 +322,7 @@ Flags:
 | `--tag TAG` | Run only the scenarios tagged `TAG` |
 | `--trials N` | Trials per scenario, overriding each scenario's own `trials` |
 | `--script FILE` | The script file `--model scripted` plays back |
+| `--report FILE` | Write the SDK's full report as JSON, with every trial's tool calls and arguments, approvals and reply; a failing trial also prints one line with its calls and the first 200 characters of its reply |
 | `--mode bare\|office` | Which harness a trial runs on; `bare` (the default) is the portability check above, `office` binds a board and a ticket and installs the office's real approval gate |
 
 `--mode office` is for scenarios whose point is that something did not happen. On the bare harness

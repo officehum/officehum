@@ -3,7 +3,7 @@
  * with no key, and a failing script exits non-zero. No network, no real model.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,6 +98,58 @@ describe("officehum eval", () => {
     expect(code).toBe(1);
     expect(capture.output.join("\n")).toContain('reply: contains "adjustment:1"');
     expect(capture.output.join("\n")).toContain("Evals failed:");
+  });
+
+  it("writes the full report with --report and prints a line per failing trial", async () => {
+    const failing = {
+      ...passingScript(),
+      "large-adjustment-waits": [
+        {
+          toolCalls: [
+            { name: "stock_adjust", args: { sku: BOLT, quantity: -50, reason: "damage" } },
+          ],
+        },
+        { text: "Done: recorded adjustment:1." },
+      ],
+    };
+    const capture = io();
+    const reportFile = join(mkdtempSync(join(tmpdir(), "officehum-report-")), "report.json");
+    temps.push(join(reportFile, ".."));
+    const code = await runCli(
+      [
+        "eval",
+        stockroom,
+        "--model",
+        "scripted",
+        "--script",
+        scriptFile(failing),
+        "--trials",
+        "1",
+        "--report",
+        reportFile,
+      ],
+      capture.io,
+    );
+    expect(code).toBe(1);
+    const report = JSON.parse(readFileSync(reportFile, "utf8")) as {
+      scenarios: { id: string; trials: { trace: { calls: unknown[]; reply: string } }[] }[];
+    };
+    expect(report.scenarios.map((scenario) => scenario.id)).toEqual([
+      "reports-cited-levels",
+      "large-adjustment-waits",
+    ]);
+    const trace = report.scenarios[1]?.trials[0]?.trace;
+    expect(trace?.calls).toEqual([
+      { tool: "stock_adjust", args: { sku: BOLT, quantity: -50, reason: "damage" } },
+    ]);
+    expect(trace?.reply).toBe("Done: recorded adjustment:1.");
+    expect(report.scenarios[0]?.trials[0]?.trace.calls).toHaveLength(1);
+    const lines = capture.output;
+    expect(lines).toContain(
+      "trial large-adjustment-waits #1: calls [stock_adjust]; reply: Done: recorded adjustment:1.",
+    );
+    expect(lines.some((line) => line.startsWith("trial reports-cited-levels"))).toBe(false);
+    expect(lines).toContain(`Report written to ${reportFile}`);
   });
 
   it("runs the tagged suite on the office harness with --mode office", async () => {
