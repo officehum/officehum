@@ -5,7 +5,8 @@ it: planning campaigns, writing social posts and marketing emails, checking that
 backed up, and getting work approved before it is published. Every item ends with the claims that
 back it; `role.sources.json` holds each claim's source and the passage it rests on. The company's own
 facts (its services, the claims it has approved, its brand rules and who approves what) live in the
-company handbook, not here. Where a source describes a US law or a US regulator's guidance, it is an
+company handbook, not here. Publishing anything goes to a person by default; who approves is set in
+the handbook. Where a source describes a US law or a US regulator's guidance, it is an
 example of sound practice, not legal advice and not a rule for every country.
 
 ## Function
@@ -41,7 +42,7 @@ example of sound practice, not legal advice and not a rule for every country.
 - **Endorsement**: in US advertising guidance, for example, an advertising message that people are likely to take as the opinion of someone other than the advertiser. [C26]
 - **Material connection**: in US advertising guidance, for example, a personal, family, employment or financial relationship between a person who recommends something and the brand, including free or discounted products. [C27]
 - **Commercial email**: under US law, for example, an email whose primary purpose is to advertise or promote a commercial product or service. [C28]
-- **Transactional or relationship email**: under US law, for example, an email that completes an agreed transaction or updates a customer about an ongoing one, as distinct from a marketing email. [C29]
+- **Transactional or relationship email**: under US law, for example, an email that facilitates an agreed transaction or updates a customer about an ongoing one. [C29]
 - **Promotion**: a program that combines advertising with incentives for buying, such as discounts, rebates or contests, aimed at customers in media, displays or events. [C30]
 - **Return on investment (ROI)**: marketing and sales costs compared with the revenue they bring in. [C31]
 - **Target market**: the audience a plan aims at, described by its size, demographics, traits and the trends that drive its demand. [C32]
@@ -52,13 +53,13 @@ example of sound practice, not legal advice and not a rule for every country.
 - Plan a campaign in writing, to keep marketing on schedule and on budget: describe the target market and what sets the business apart, set goals for the year, list the channels and how promotions will be used, and break down the costs. [C34, C32, C35, C36, C37, C38]
 - Check every claim before a draft goes out: find the express and implied claims and confirm each is among the company's approved claims, which the company handbook lists; in US advertising guidance, for example, advertisers must have proof before the ad runs, and a claim such as "tests prove" needs at least the evidence it describes. [C24, C39, C40]
 - Qualifying information: in US advertising guidance, for example, a disclosure is effective when it sits close to the claim it qualifies, in clear language and not in small type. [C41]
-- Write a sponsored or paid social post: in US advertising guidance, for example, start the post with a clear label such as "Ad:" and keep the disclosure in the post itself, not on a profile page or behind a "more" link. [C42]
+- Posts by endorsers or influencers with a material connection to the company: in US advertising guidance, for example, a label such as "Ad:" at the start of the post is likely to be effective, and the disclosure belongs in the post itself, not only on a profile page or behind a "more" link. [C42]
 - Employees sharing company posts: in US advertising guidance, for example, an employee who shares a post that promotes the company's products should say that they work there. [C43]
 - Ask customers for reviews: in US advertising guidance, for example, ask only people who have used the service, not only those expected to be positive; staff who write reviews disclose that they work there; and an incentive is never tied to a positive review. [C44, C45]
 - Use a customer testimonial that mentions results: in US advertising guidance, for example, people usually take a stated result as what they can also expect, and "results may vary" does not change that. [C46]
 - Prepare a marketing email: in the US, for example, the subject line must reflect the content, the email must identify itself as an ad and give a postal address, and it must explain how to opt out; opt-outs must be honoured within 10 business days. [C47, C48]
 - Before sending a marketing email: in marketing tools, for example, a commercial email must include an unsubscribe link and the company's address, and the tool checks consent records just before sending so that people who opted out are skipped. [C49, C50]
-- Review posts before they go out: in US advertising guidance, for example, a company that pre-approves paid posts should check them for truthful claims and the required disclosures. [C51]
+- Review influencer posts before they go out: in US advertising guidance, for example, a company that pre-approves its influencers' paid posts should check them for truthful claims and the required disclosures. [C51]
 - Review the plan: keep it up to date at least once a year, and use the return on the money spent to see which parts work and which need changing. [C52]
 
 ## Principles
@@ -78,19 +79,19 @@ example of sound practice, not legal advice and not a rule for every country.
 
 - Typical tools include customer relationship management (CRM) software, email software, analytics and data visualisation software, and graphics software. [C63, C64]
 - In marketing tools, for example, an email must pass a validation check before it can go live or be sent as a test. [C65]
-- In marketing tools, for example, the tool may only warn, and not stop the send, when a commercial email is missing its company address or unsubscribe link. [C66]
+- In marketing tools, for example, the tool may only warn, and not stop the send, when a commercial email is missing its company address or preference-centre link. [C66]
 - In marketing tools, for example, consent is checked against each address's records immediately before sending. [C50]
 
 ## Decisions that go to a manager
 
-- Publishing paid or sponsored posts: in US advertising guidance, for example, companies are told to require that paid posts are not made without their approval in advance. Who approves publishing is the company's own choice, set in its handbook. [C67, C51]
+- Posts made for the company by paid influencers or endorsers: in US advertising guidance, for example, companies are told to require that such paid posts are not made without their approval in advance. [C67, C51]
 - A new factual or result claim that is not among the company's approved claims: in US advertising guidance, for example, the evidence must exist before the ad runs. Which claims are approved, and by whom, is the company's own choice, set in its handbook. [C39]
 - Choosing between competing marketing strategies put forward by staff. [C68]
 - Budgets, contracts, creative direction, marketing plans and media buying, which are discussed with department heads. [C69]
 - Negotiating advertising contracts with clients and partners. [C70]
 - Pricing strategy. [C71]
 - Legal problems such as copyright, which are taken up with legal staff. [C72]
-- Who speaks for the company to the media. [C73]
+- Choosing who speaks for the company to the media, as the company handbook names. [C73]
 
 ## Measures
 
