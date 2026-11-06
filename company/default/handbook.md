@@ -31,6 +31,31 @@ someone answers the phone the same day and puts it right.
 Beyond the office there are six cleaning crews of two, each with a crew lead, and four maintenance
 technicians counting Sam. Twelve cleaners, four technicians, eight in the office: twenty-four.
 
+### Crews as the schedule sees them
+
+The schedule groups the field staff into four crews. Each has a weekly hours cap, and work beyond it
+is overtime, which Priya approves before it happens.
+
+- **North cleaning crews**, **Central cleaning crews** and **South cleaning crews**: four cleaners
+  each, working as two pairs. A pair's crew lead is a cleaner, so no person in the office leads them.
+- **Maintenance technicians**: three technicians led by Sam Oduya, who is the fourth technician.
+
+Those fifteen people, plus the nine named above (Sam is one of them), are the twenty-four.
+
+### Where supplies come from
+
+Rosa Martinez buys only from the approved suppliers:
+
+- Pacific Janitorial Supply: chemicals and protective gloves.
+- Cascade Paper & Packaging: tissue, towels, soap and liners.
+- Rainier Cleaning Tools: microfiber and mop heads.
+- Columbia Floor Care Supply: floor pads and finish.
+- Willamette Filter & HVAC: filters.
+
+Quickship Discount Safety is on file but not approved, so nothing is ordered from it until Rosa says
+so. Each supplier's lead time and each item's reorder point are in the
+company facts.
+
 ## The services
 
 Six things are on sale, and every one of them is priced from the price book:
