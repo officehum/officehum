@@ -166,7 +166,8 @@ sections in that order. `role.sources.json` holds `sources` (`S1`, `S2`, … wit
 2. Every list item in the eight content sections ends with claim markers such as `[C12]` or `[C3, C4]`.
 3. Every marker names a claim in `role.sources.json`.
 4. Every claim has at least one source, each source id exists, and each passage is 1 to 400 characters.
-5. `Sources` lists exactly the sources in `role.sources.json`, as `- [S1] Title — URL`.
+5. `Sources` lists exactly the sources in `role.sources.json`, as `- [S1] Title — URL`. Besides those entries it
+   may hold only one closing paragraph that starts `Source licences.`; any other line is reported.
 6. Every source is cited by at least one claim.
 
 `officehum verify-role ROLE_DIR [--online]` prints the same issues and exits 1 on any error.
