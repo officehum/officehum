@@ -196,6 +196,8 @@ export function companyIssues(source: CompanySource): readonly string[] {
     }
   }
 
+  departmentIssues(source, personIds, add);
+
   for (const [file, body] of [
     ["pricing.md", source.pricing],
     ["policies.md", source.policies],
@@ -228,6 +230,165 @@ export function companyIssues(source: CompanySource): readonly string[] {
   }
 
   return issues;
+}
+
+/**
+ * The sections the departmental agents read: suppliers and the supply catalog, crews, staff policies,
+ * the approved marketing claims and the purchase-order limit. Each is held to the same promises as
+ * the rest: ids are unique, every reference is to something that exists, every crew lead and contact
+ * is a person, the crews account for the headcount, and the prose says what the record says.
+ */
+function departmentIssues(
+  source: CompanySource,
+  personIds: ReadonlySet<string>,
+  add: (where: string, message: string) => void,
+): void {
+  const { company } = source;
+  const unique = (section: string, entries: readonly unknown[] | undefined): Set<string> => {
+    const ids = new Set<string>();
+    if (entries === undefined) {
+      add("company.json", `${section} is missing`);
+      return ids;
+    }
+    for (const [index, entry] of entries.entries()) {
+      const id = text(asRecord(entry)?.id);
+      if (id === undefined) add("company.json", `${section}[${index}] has no id`);
+      else if (ids.has(id)) add("company.json", `${section}[${index}] repeats the id ${id}`);
+      else ids.add(id);
+    }
+    return ids;
+  };
+  const whole = (value: unknown, minimum: number): boolean =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= minimum;
+
+  const suppliers = asArray(company.suppliers);
+  const supplierIds = unique("suppliers", suppliers);
+  for (const [index, entry] of (suppliers ?? []).entries()) {
+    const supplier = asRecord(entry);
+    if (supplier === undefined) continue;
+    const id = text(supplier.id) ?? `suppliers[${index}]`;
+    if (typeof supplier.approved !== "boolean") {
+      add("company.json", `suppliers[${index}] (${id}) needs approved to be true or false`);
+    }
+    if (!whole(supplier.leadTimeDays, 1)) {
+      add("company.json", `suppliers[${index}] (${id}) needs a whole leadTimeDays of at least 1`);
+    }
+    if (text(supplier.name) === undefined || text(supplier.contactEmail) === undefined) {
+      add("company.json", `suppliers[${index}] (${id}) needs a name and a contactEmail`);
+    }
+    const name = text(supplier.name);
+    if (name !== undefined && !source.handbook.includes(name)) {
+      add(
+        "handbook.md",
+        `does not name the supplier ${name}; the handbook must say who we buy from`,
+      );
+    }
+  }
+
+  const catalog = asArray(company.supplyCatalog);
+  unique("supplyCatalog", catalog);
+  for (const [index, entry] of (catalog ?? []).entries()) {
+    const item = asRecord(entry);
+    if (item === undefined) continue;
+    const id = text(item.id) ?? `supplyCatalog[${index}]`;
+    const supplier = text(item.supplierId);
+    if (supplier === undefined || !supplierIds.has(supplier)) {
+      add(
+        "company.json",
+        `supplyCatalog[${index}] (${id}) names the supplier ${String(item.supplierId)}, who is not one of the suppliers`,
+      );
+    }
+    if (!whole(item.unitCostCents, 1)) {
+      add("company.json", `supplyCatalog[${index}] (${id}) needs a whole, positive unitCostCents`);
+    }
+    for (const key of ["reorderPoint", "reorderQuantity"] as const) {
+      if (!whole(item[key], key === "reorderQuantity" ? 1 : 0)) {
+        add("company.json", `supplyCatalog[${index}] (${id}) needs a whole ${key}`);
+      }
+    }
+    if (text(item.name) === undefined || text(item.unit) === undefined) {
+      add("company.json", `supplyCatalog[${index}] (${id}) needs a name and a unit`);
+    }
+  }
+
+  const crews = asArray(company.crews);
+  unique("crews", crews);
+  let crewMembers = 0;
+  for (const [index, entry] of (crews ?? []).entries()) {
+    const crew = asRecord(entry);
+    if (crew === undefined) continue;
+    const id = text(crew.id) ?? `crews[${index}]`;
+    const lead = crew.leadPersonId;
+    if (lead !== null && (typeof lead !== "string" || !personIds.has(lead))) {
+      add(
+        "company.json",
+        `crews[${index}].leadPersonId names ${String(lead)}, who is not one of the people; use a person id, or null when a cleaner leads`,
+      );
+    }
+    if (whole(crew.members, 1)) crewMembers += crew.members as number;
+    else add("company.json", `crews[${index}] (${id}) needs a whole members of at least 1`);
+    if (!whole(crew.weeklyHoursCap, 1)) {
+      add("company.json", `crews[${index}] (${id}) needs a whole weeklyHoursCap of at least 1`);
+    }
+    const name = text(crew.name);
+    if (name !== undefined && !source.handbook.includes(name)) {
+      add("handbook.md", `does not name the crew ${name}; the handbook must describe every crew`);
+    }
+  }
+  // The crews count the field staff who are not listed as people; the people are counted once, here.
+  const headcount = asRecord(company.profile)?.headcount;
+  if (crews !== undefined && Number.isSafeInteger(headcount)) {
+    const total = crewMembers + personIds.size;
+    if (total !== headcount) {
+      add(
+        "company.json",
+        `crews plus the people add up to ${total} (${crewMembers} crew members and ${personIds.size} people) but profile.headcount is ${String(headcount)}`,
+      );
+    }
+  }
+
+  const staff = asRecord(company.staffPolicies);
+  if (staff === undefined) {
+    add("company.json", "staffPolicies is missing");
+  } else {
+    if (!whole(staff.timeOffNoticeDays, 0)) {
+      add("company.json", "staffPolicies.timeOffNoticeDays must be a whole number of days");
+    }
+    if (staff.overtimeNeedsApproval !== true) {
+      add("company.json", "staffPolicies.overtimeNeedsApproval must be true");
+    }
+    for (const [key, value] of Object.entries(staff)) {
+      if (!key.endsWith("To")) continue;
+      if (typeof value !== "string" || !personIds.has(value)) {
+        add(
+          "company.json",
+          `staffPolicies.${key} names ${String(value)}, who is not one of the people`,
+        );
+      }
+    }
+  }
+
+  const claims = asArray(asRecord(company.marketing)?.approvedClaims);
+  if (claims === undefined || claims.length === 0) {
+    add("company.json", "marketing.approvedClaims is missing or empty");
+  }
+  for (const [index, claim] of (claims ?? []).entries()) {
+    const statement = text(claim);
+    if (statement === undefined) add("company.json", `marketing.approvedClaims[${index}] is empty`);
+    else if (!source.policies.includes(statement)) {
+      add(
+        "policies.md",
+        `does not state the approved claim "${statement}"; the policies must list every claim marketing may make`,
+      );
+    }
+  }
+
+  if (!whole(asRecord(company.approvalLimits)?.purchaseOrderOverCents, 1)) {
+    add(
+      "company.json",
+      "approvalLimits.purchaseOrderOverCents must be a whole, positive number of cents",
+    );
+  }
 }
 
 /** Every money amount in a markdown document, as written and in cents. */

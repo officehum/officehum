@@ -118,6 +118,9 @@ describe("the generated company copies", () => {
   });
 });
 
+// biome-ignore lint/suspicious/noExplicitAny: the tests edit arbitrary parts of the company JSON
+type Loose = Record<string, any>;
+
 describe("the company package's own consistency", () => {
   it("agrees with itself: people, prices, services, escalation and headcount", () => {
     expect(companyIssues(readSource(root))).toEqual([]);
@@ -158,6 +161,95 @@ describe("the company package's own consistency", () => {
     expect(companyIssues(readSource(directory)).join("\n")).toContain(
       "the field structure adds up to 24",
     );
+  });
+
+  describe("the departments' sections", () => {
+    /** Edits the parsed company.json of a temporary copy and returns the issues that result. */
+    function issuesAfter(edit: (company: Loose) => void): string {
+      const directory = withFile("company.json", (body) => {
+        const company = JSON.parse(body) as Loose;
+        edit(company);
+        return JSON.stringify(company, null, 2);
+      });
+      return companyIssues(readSource(directory)).join("\n");
+    }
+
+    it("carries suppliers, supplies, crews, staff policies and claims into the facts", () => {
+      const facts = JSON.parse(renderFacts(readSource(root))) as Loose;
+      expect(facts.suppliers).toHaveLength(6);
+      expect(facts.suppliers.filter((s: { approved: boolean }) => s.approved)).toHaveLength(5);
+      expect(facts.supplyCatalog.length).toBeGreaterThanOrEqual(12);
+      expect(facts.crews).toHaveLength(4);
+      expect(facts.staffPolicies.overtimeNeedsApproval).toBe(true);
+      expect(facts.marketing.approvedClaims.length).toBeGreaterThan(3);
+      expect(facts.approvalLimits.purchaseOrderOverCents).toBe(150000);
+    });
+
+    it("refuses a catalog item whose supplier is unknown", () => {
+      const issues = issuesAfter((c) => {
+        c.supplyCatalog[0].supplierId = "sup-ghost";
+      });
+      expect(issues).toContain("supplyCatalog[0]");
+      expect(issues).toContain("sup-ghost");
+    });
+
+    it("refuses a repeated supplier id and a supplier with no lead time", () => {
+      const issues = issuesAfter((c) => {
+        c.suppliers[1].id = c.suppliers[0].id;
+        c.suppliers[2].leadTimeDays = 0;
+      });
+      expect(issues).toContain("suppliers[1] repeats the id");
+      expect(issues).toContain("suppliers[2]");
+    });
+
+    it("refuses crews that do not add up to the headcount", () => {
+      const issues = issuesAfter((c) => {
+        c.crews[0].members += 1;
+      });
+      expect(issues).toContain("crews plus the people add up to 25");
+      expect(issues).toContain("profile.headcount is 24");
+    });
+
+    it("refuses a crew lead who is not a person", () => {
+      const issues = issuesAfter((c) => {
+        c.crews[3].leadPersonId = "nobody";
+      });
+      expect(issues).toContain("crews[3].leadPersonId names nobody");
+    });
+
+    it("refuses a staff-policy contact who is not a person", () => {
+      const issues = issuesAfter((c) => {
+        c.staffPolicies.payQuestionsTo = "nobody";
+        c.staffPolicies.disciplineTo = "ghost";
+      });
+      expect(issues).toContain("staffPolicies.payQuestionsTo names nobody");
+      expect(issues).toContain("staffPolicies.disciplineTo names ghost");
+    });
+
+    it("refuses an approved claim that the policies do not state", () => {
+      const issues = issuesAfter((c) => {
+        c.marketing.approvedClaims.push("We are the cheapest cleaner in Oregon.");
+      });
+      expect(issues).toContain("policies.md");
+      expect(issues).toContain("We are the cheapest cleaner in Oregon.");
+    });
+
+    it("refuses a handbook that never names a supplier or a crew", () => {
+      const directory = withFile("handbook.md", (body) =>
+        body.replaceAll("Pacific Janitorial Supply", "the chemical vendor"),
+      );
+      expect(companyIssues(readSource(directory)).join("\n")).toContain(
+        "does not name the supplier Pacific Janitorial Supply",
+      );
+    });
+
+    it("refuses a purchase-order limit the policies do not state", () => {
+      const issues = issuesAfter((c) => {
+        c.approvalLimits.purchaseOrderOverCents = 175000;
+      });
+      expect(issues).toContain("policies.md");
+      expect(issues).toContain("$1,500.00");
+    });
   });
 
   it("reads a figure as cents whether or not it carries a decimal point", () => {

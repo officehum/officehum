@@ -523,6 +523,221 @@
     }
   ],
   "approvalLimits": {
-    "quoteOverCents": 500000
+    "quoteOverCents": 500000,
+    "purchaseOrderOverCents": 150000
+  },
+  "suppliers": [
+    {
+      "id": "sup-pacific-janitorial",
+      "name": "Pacific Janitorial Supply",
+      "category": "chemicals and PPE",
+      "approved": true,
+      "leadTimeDays": 3,
+      "contactEmail": "orders@pacificjanitorial.example"
+    },
+    {
+      "id": "sup-cascade-paper",
+      "name": "Cascade Paper & Packaging",
+      "category": "paper goods and liners",
+      "approved": true,
+      "leadTimeDays": 4,
+      "contactEmail": "accounts@cascadepaper.example"
+    },
+    {
+      "id": "sup-rainier-tools",
+      "name": "Rainier Cleaning Tools",
+      "category": "microfiber and tools",
+      "approved": true,
+      "leadTimeDays": 5,
+      "contactEmail": "sales@rainiertools.example"
+    },
+    {
+      "id": "sup-columbia-floor",
+      "name": "Columbia Floor Care Supply",
+      "category": "floor pads and finish",
+      "approved": true,
+      "leadTimeDays": 5,
+      "contactEmail": "orders@columbiafloor.example"
+    },
+    {
+      "id": "sup-willamette-filters",
+      "name": "Willamette Filter & HVAC",
+      "category": "filters",
+      "approved": true,
+      "leadTimeDays": 7,
+      "contactEmail": "orders@willamettefilter.example"
+    },
+    {
+      "id": "sup-quickship-safety",
+      "name": "Quickship Discount Safety",
+      "category": "PPE",
+      "approved": false,
+      "leadTimeDays": 2,
+      "contactEmail": "hello@quickshipsafety.example"
+    }
+  ],
+  "supplyCatalog": [
+    {
+      "id": "neutral-cleaner",
+      "name": "Neutral floor and surface cleaner",
+      "supplierId": "sup-pacific-janitorial",
+      "unit": "5 gal pail",
+      "unitCostCents": 4200,
+      "reorderPoint": 4,
+      "reorderQuantity": 6
+    },
+    {
+      "id": "disinfectant",
+      "name": "Hospital-grade disinfectant concentrate",
+      "supplierId": "sup-pacific-janitorial",
+      "unit": "gallon",
+      "unitCostCents": 2400,
+      "reorderPoint": 6,
+      "reorderQuantity": 12
+    },
+    {
+      "id": "glass-cleaner",
+      "name": "Glass cleaner",
+      "supplierId": "sup-pacific-janitorial",
+      "unit": "gallon",
+      "unitCostCents": 1100,
+      "reorderPoint": 6,
+      "reorderQuantity": 12
+    },
+    {
+      "id": "nitrile-gloves",
+      "name": "Nitrile gloves, medium and large",
+      "supplierId": "sup-pacific-janitorial",
+      "unit": "case of 1,000",
+      "unitCostCents": 6800,
+      "reorderPoint": 3,
+      "reorderQuantity": 5
+    },
+    {
+      "id": "toilet-tissue",
+      "name": "Toilet tissue",
+      "supplierId": "sup-cascade-paper",
+      "unit": "case of 96 rolls",
+      "unitCostCents": 5400,
+      "reorderPoint": 8,
+      "reorderQuantity": 16
+    },
+    {
+      "id": "hand-towel",
+      "name": "Roll hand towels",
+      "supplierId": "sup-cascade-paper",
+      "unit": "case of 12 rolls",
+      "unitCostCents": 4900,
+      "reorderPoint": 6,
+      "reorderQuantity": 12
+    },
+    {
+      "id": "hand-soap",
+      "name": "Foaming hand soap refill",
+      "supplierId": "sup-cascade-paper",
+      "unit": "case of 4 gallons",
+      "unitCostCents": 5200,
+      "reorderPoint": 4,
+      "reorderQuantity": 8
+    },
+    {
+      "id": "trash-liners",
+      "name": "Trash liners, 33 gallon",
+      "supplierId": "sup-cascade-paper",
+      "unit": "case of 250",
+      "unitCostCents": 3600,
+      "reorderPoint": 10,
+      "reorderQuantity": 20
+    },
+    {
+      "id": "microfiber-cloth",
+      "name": "Microfiber cloths",
+      "supplierId": "sup-rainier-tools",
+      "unit": "pack of 12",
+      "unitCostCents": 1800,
+      "reorderPoint": 10,
+      "reorderQuantity": 20
+    },
+    {
+      "id": "mop-head",
+      "name": "Microfiber flat mop heads",
+      "supplierId": "sup-rainier-tools",
+      "unit": "pack of 6",
+      "unitCostCents": 2400,
+      "reorderPoint": 6,
+      "reorderQuantity": 12
+    },
+    {
+      "id": "floor-pad",
+      "name": "Floor pads, 17 inch",
+      "supplierId": "sup-columbia-floor",
+      "unit": "case of 5",
+      "unitCostCents": 7500,
+      "reorderPoint": 3,
+      "reorderQuantity": 6
+    },
+    {
+      "id": "floor-finish",
+      "name": "Floor finish",
+      "supplierId": "sup-columbia-floor",
+      "unit": "5 gal pail",
+      "unitCostCents": 11500,
+      "reorderPoint": 3,
+      "reorderQuantity": 6
+    },
+    {
+      "id": "hvac-filter-stock",
+      "name": "Standard HVAC filters",
+      "supplierId": "sup-willamette-filters",
+      "unit": "case of 12",
+      "unitCostCents": 9600,
+      "reorderPoint": 2,
+      "reorderQuantity": 4
+    }
+  ],
+  "crews": [
+    {
+      "id": "cleaning-north",
+      "name": "North cleaning crews",
+      "leadPersonId": null,
+      "members": 4,
+      "weeklyHoursCap": 140
+    },
+    {
+      "id": "cleaning-central",
+      "name": "Central cleaning crews",
+      "leadPersonId": null,
+      "members": 4,
+      "weeklyHoursCap": 140
+    },
+    {
+      "id": "cleaning-south",
+      "name": "South cleaning crews",
+      "leadPersonId": null,
+      "members": 4,
+      "weeklyHoursCap": 140
+    },
+    {
+      "id": "maintenance",
+      "name": "Maintenance technicians",
+      "leadPersonId": "sam-oduya",
+      "members": 3,
+      "weeklyHoursCap": 120
+    }
+  ],
+  "staffPolicies": {
+    "timeOffNoticeDays": 14,
+    "overtimeNeedsApproval": true,
+    "payQuestionsTo": "jules-okafor",
+    "disciplineTo": "priya-raman"
+  },
+  "marketing": {
+    "approvedClaims": [
+      "Northwind Facilities has cleaned and maintained Portland buildings since 2011.",
+      "Northwind is licensed in Oregon (CCB #204118) and carries general liability, commercial auto and umbrella insurance.",
+      "Northwind serves the Portland metro within about 30 miles of downtown, including Clark County in Washington.",
+      "The office is open Monday to Friday, 07:00 to 17:00, and contracted clients reach an on-call supervisor 24 hours a day.",
+      "Northwind looks after about 90 buildings on recurring contracts."
+    ]
   }
 }
