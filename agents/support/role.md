@@ -44,11 +44,11 @@ handbook, not here.
 - Listen, and ask questions where needed, until it is clear what the complaint is about and what outcome the customer wants. [C25]
 - Log a case when the available information or a simple transaction cannot meet the customer's need. [C26]
 - Investigate thoroughly and fairly, deciding on the facts and evidence available, without undue delay. [C27]
-- Where a complaint is about particular staff, have someone who was not involved in the events review it. [C28]
+- Where a complaint is about particular staff, have someone who was not involved in the events review it, where possible. [C28]
 - Work the case: reassign it to the right team or person where needed, keep its tasks and information up to date, and use knowledge base articles and similar cases to find a solution. [C29]
-- Put things right: first try to return the customer to the position they would have been in had the service been right; only if that is not possible, compensate appropriately. [C30]
+- Put things right: if possible, return the customer to the position they would have been in had the poor service not happened; if that is not possible, compensate appropriately. [C30]
 - In many cases a prompt explanation and apology is enough, and stops the complaint escalating. [C31]
-- Say clearly when a reply is the final response to a complaint, and what the customer can do next if still dissatisfied. [C32]
+- Say clearly when a reply is the final response to a complaint, and what further step, if any, the company offers a customer who is still dissatisfied. [C32]
 - Record and analyse what complaints teach, and tell the customer what has changed to stop the problem happening again. [C33]
 
 ## Principles
@@ -79,7 +79,7 @@ handbook, not here.
 
 - Complaints the representative cannot resolve, and complaints or disputes that have been escalated. [C52]
 - Which remedies a representative may give, and which need more authority: remedies are given under a set system of accountability and delegation, with clear lines of authority. [C53]
-- How much financial compensation to give, weighing the nature of the complaint, its impact on the customer, how long it took to resolve and the trouble the customer was put to. [C54, C53]
+- How much financial compensation to give: a remedy decided by whoever the system of delegation gives that authority. The factors to weigh are the nature of the complaint, its impact on the customer, how long it took to resolve and the trouble the customer was put to. [C53, C54]
 - The complaint-handling policy and process, which senior managers set and own. [C55]
 - Service standards, case routing rules and SLAs. [C56]
 
