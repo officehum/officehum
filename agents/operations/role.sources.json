@@ -526,22 +526,13 @@
       "id": "C36",
       "sources": [
         {
-          "source": "S19",
-          "passage": "Weekly work orders where the agreement assigns the same resource each time at a defined start time."
-        }
-      ]
-    },
-    {
-      "id": "C37",
-      "sources": [
-        {
           "source": "S4",
           "passage": "Review, evaluate, accept, and coordinate completion of work bid from contractors."
         }
       ]
     },
     {
-      "id": "C38",
+      "id": "C37",
       "sources": [
         {
           "source": "S13",
@@ -554,7 +545,7 @@
       ]
     },
     {
-      "id": "C39",
+      "id": "C38",
       "sources": [
         {
           "source": "S9",
@@ -567,7 +558,7 @@
       ]
     },
     {
-      "id": "C40",
+      "id": "C39",
       "sources": [
         {
           "source": "S10",
@@ -576,7 +567,7 @@
       ]
     },
     {
-      "id": "C41",
+      "id": "C40",
       "sources": [
         {
           "source": "S8",
@@ -585,7 +576,7 @@
       ]
     },
     {
-      "id": "C42",
+      "id": "C41",
       "sources": [
         {
           "source": "S15",
@@ -598,25 +589,7 @@
       ]
     },
     {
-      "id": "C43",
-      "sources": [
-        {
-          "source": "S21",
-          "passage": "By giving preference to higher-priority work orders, the add-in helps avoid service level agreement penalties and helps you meet customer service commitments."
-        }
-      ]
-    },
-    {
-      "id": "C44",
-      "sources": [
-        {
-          "source": "S16",
-          "passage": "Schedule onsite visits when it's convenient for the customer."
-        }
-      ]
-    },
-    {
-      "id": "C45",
+      "id": "C42",
       "sources": [
         {
           "source": "S1",
@@ -629,7 +602,7 @@
       ]
     },
     {
-      "id": "C46",
+      "id": "C43",
       "sources": [
         {
           "source": "S14",
@@ -642,16 +615,7 @@
       ]
     },
     {
-      "id": "C47",
-      "sources": [
-        {
-          "source": "S20",
-          "passage": "If you book outside the schedule assistant's recommended slots, constraints such as capacity, work hours, and time windows aren't verified or enforced."
-        }
-      ]
-    },
-    {
-      "id": "C48",
+      "id": "C44",
       "sources": [
         {
           "source": "S1",
@@ -668,7 +632,7 @@
       ]
     },
     {
-      "id": "C49",
+      "id": "C45",
       "sources": [
         {
           "source": "S22",
@@ -681,7 +645,7 @@
       ]
     },
     {
-      "id": "C50",
+      "id": "C46",
       "sources": [
         {
           "source": "S22",
@@ -690,16 +654,16 @@
       ]
     },
     {
-      "id": "C51",
+      "id": "C47",
       "sources": [
         {
-          "source": "S17",
-          "passage": "The Booking Statuses available out of the box are: Scheduled Traveling In Progress On Break Completed Canceled"
+          "source": "S20",
+          "passage": "If you book outside the schedule assistant's recommended slots, constraints such as capacity, work hours, and time windows aren't verified or enforced."
         }
       ]
     },
     {
-      "id": "C52",
+      "id": "C48",
       "sources": [
         {
           "source": "S11",
@@ -712,7 +676,7 @@
       ]
     },
     {
-      "id": "C53",
+      "id": "C49",
       "sources": [
         {
           "source": "S11",
@@ -721,16 +685,20 @@
       ]
     },
     {
-      "id": "C54",
+      "id": "C50",
       "sources": [
         {
           "source": "S19",
           "passage": "Field Service agreements let organizations automatically generate work orders and invoices with predefined details, frequencies, and date ranges."
+        },
+        {
+          "source": "S19",
+          "passage": "Weekly work orders where the agreement assigns the same resource each time at a defined start time."
         }
       ]
     },
     {
-      "id": "C55",
+      "id": "C51",
       "sources": [
         {
           "source": "S9",
@@ -743,7 +711,16 @@
       ]
     },
     {
-      "id": "C56",
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Inspect work performed to ensure that it meets specifications and established standards."
+        }
+      ]
+    },
+    {
+      "id": "C53",
       "sources": [
         {
           "source": "S3",
@@ -756,7 +733,7 @@
       ]
     },
     {
-      "id": "C57",
+      "id": "C54",
       "sources": [
         {
           "source": "S3",
@@ -769,7 +746,7 @@
       ]
     },
     {
-      "id": "C58",
+      "id": "C55",
       "sources": [
         {
           "source": "S22",
@@ -778,7 +755,7 @@
       ]
     },
     {
-      "id": "C59",
+      "id": "C56",
       "sources": [
         {
           "source": "S16",
@@ -787,20 +764,7 @@
       ]
     },
     {
-      "id": "C60",
-      "sources": [
-        {
-          "source": "S16",
-          "passage": "Complete more service calls per technician per week."
-        },
-        {
-          "source": "S16",
-          "passage": "Reduce travel time, mileage, and vehicle wear and tear."
-        }
-      ]
-    },
-    {
-      "id": "C61",
+      "id": "C57",
       "sources": [
         {
           "source": "S21",
@@ -809,16 +773,7 @@
       ]
     },
     {
-      "id": "C62",
-      "sources": [
-        {
-          "source": "S21",
-          "passage": "By fitting more appointments into working hours, the add-in drives revenue and reduces overtime costs."
-        }
-      ]
-    },
-    {
-      "id": "C63",
+      "id": "C58",
       "sources": [
         {
           "source": "S5",
