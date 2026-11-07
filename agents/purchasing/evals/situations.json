@@ -75,7 +75,11 @@
             ]
           ],
           "notContains": [
-            "pending",
+            "is pending",
+            "still pending",
+            "pending approval",
+            "pending with rosa",
+            "pending rosa",
             "still with rosa",
             "still waiting",
             "awaiting",
@@ -171,7 +175,11 @@
             ]
           ],
           "notContains": [
-            "pending",
+            "is pending",
+            "still pending",
+            "pending approval",
+            "pending with rosa",
+            "pending rosa",
             "still with rosa",
             "still waiting",
             "awaiting",
@@ -412,7 +420,16 @@
             "it has been booked in",
             "has now been booked in",
             "po-1003 has been booked",
-            "is now booked in"
+            "is now booked in",
+            "po-1003 is booked in",
+            "po-1003 was booked in",
+            "booked in as received",
+            "is now marked received",
+            "po-1003 has been received",
+            "has been booked in as",
+            "have booked it in",
+            "i've logged the delivery",
+            "i have logged the delivery"
           ]
         }
       }
