@@ -291,6 +291,10 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
   const company = options.company ?? loadCompanyFacts();
   const clock = options.now ?? (() => new Date(DEMO_NOW));
   const audiences = options.audiences ?? demoAudiences();
+  const offerTerms = [
+    ...company.services.map((service) => service.name),
+    ...company.priceBook.map((line) => line.name),
+  ];
   const drafts: DraftState[] = (options.drafts ?? demoDrafts(company)).map((draft) => ({
     ...draft,
     heldClaims: [...draft.heldClaims],
@@ -347,7 +351,8 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
     >,
     checked: string,
   ): Draft => {
-    const claims = findResultClaims(checked, company.marketing.approvedClaims);
+    // An offer may name one of the company's own services or price book lines after "off".
+    const claims = findResultClaims(checked, company.marketing.approvedClaims, offerTerms);
     const state: DraftState = {
       ...draft,
       id: nextDraftId(),

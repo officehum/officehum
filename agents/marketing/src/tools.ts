@@ -220,7 +220,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     const draftId = error.draftId === undefined ? "" : ` with draftId ${error.draftId}`;
     const text = error.finalText === undefined ? "" : `\n${block(error.finalText)}`;
     const next: Partial<Record<DeskRefusal, string>> = {
-      unapproved_claim: ` Next: tell the person who asked which claim was refused and why. Take the claim out and draft again, or, if they want to keep it, call request_claim_approval${draftId}, the claim exactly as quoted and draftText exactly as below, which asks ${approver}. Never publish it as it is.${text}`,
+      unapproved_claim: ` Next: tell the person who asked which claim was refused and why. Take the claim out and draft again, or, if they have said they want to keep it (ask them first if they have not), call request_claim_approval${draftId}, the claim exactly as quoted and draftText exactly as below, which asks ${approver}. Never publish it as it is.${text}`,
       not_ready: ` Next: each held claim needs request_claim_approval first, which asks ${approver}; or draft it again without the claim.`,
       draft_changed: ` Next: give the text exactly as the desk holds it, below.${text}`,
     };
@@ -256,7 +256,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
   const draftPost = defineTool({
     name: "draft_post",
     description:
-      "Save a social or website post as a draft for one channel. It publishes nothing. The desk checks every sentence: a result claim (a percentage or numeric result, a proof such as 'tests prove', or a broad green term such as 'eco-friendly') that is not on the company's approved list is refused, naming the phrase, and the draft is held. Offers such as '20% off' and price book prices are fine.",
+      "Save a social or website post as a draft for one channel. It publishes nothing. The desk checks every sentence: a result claim (a percentage or numeric result, a proof such as 'tests prove', or a broad green term such as 'eco-friendly') that is not on the company's approved list is refused, naming the phrase, and the draft is held. An offer on a price ('20% off your first clean') and price book prices are fine; '30% off your sick days' is a result.",
     parameters: Type.Object(
       {
         channel: Type.Union(

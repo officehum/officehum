@@ -66,20 +66,26 @@ waiting to go out.
 `src/claims.test.ts`. The desk checks each sentence of a draft (an email's subject and body) and
 refuses one that holds:
 
-- a percentage or a numeric result: "cuts sick days 30%", "2x cleaner", "3 times cleaner", "twice as
-  clean", a result verb followed closely by a number ("cuts complaints by 50", "saves you $400");
+- a percentage or a numeric result, in digits or words: "cuts sick days 30%", "thirty percent",
+  "ninety-nine per-cent", "30pc", "2x cleaner", "3 times cleaner", "twice as clean", "half of", "in
+  half", a result verb followed within six words by a number ("cuts complaints by 50", "dropped by
+  30", "saves you $400"; "$2000" is money, not a year);
 - a proof phrase: "tests prove", "studies show", "proven", "clinically", "scientifically",
   "lab-tested";
 - a broad environmental term: "eco-friendly", "non-toxic", "green", "environmentally friendly",
   "sustainable", "chemical-free", "biodegradable" and the like.
 
-It lets through an offer written as "20% off" or "15 percent discount", a price ("$99", "from $185 a
-visit") and a year. A sentence that is exactly one of `marketing.approvedClaims` (ignoring case,
-spacing and the closing punctuation) is not refused. The refusal names the sentence and the phrase,
-holds the draft with its own id, and names `request_claim_approval` and the approver. The detector is
-deliberately simple: "saves you money" with no figure, superlatives, and the word "green" in a street
-name are not read in context. The first are left to the prompt and to the person who approves every
-publication; the last is refused, and a person can approve it.
+Fullwidth digits and signs are read as the digits they are. It lets through an offer on a price —
+"N% off" or "N% discount" (digits or words) at the end of a sentence, or followed by a price word
+("clean", "visit", "service", "site"…) or one of the company's service or price book names — a price
+("$99", "from $185 a visit") and a year. "Takes 30% off your sick days" is a result, not an offer. A
+sentence that is exactly one of `marketing.approvedClaims` (ignoring case, spacing and the closing
+punctuation) is not refused. The refusal names the sentence and the phrase, holds the draft with its
+own id, and names `request_claim_approval` and the approver. The detector is deliberately simple. Not
+read: "saves you money" with no figure, superlatives, bare verb forms such as "lower" or "save" (left
+out because "the lower 2 floors" and "save $50 on your first clean" are not results), a number split
+from its verb by a line break, and "green" in a street name (refused; a person can approve it). The
+prompt and the person who approves every publication are the backstop.
 
 **A claim approval** names the held draft, the claim exactly as refused and the draft's full text, so
 the person reads the claim in context. The desk records it for that claim in that draft only; the same

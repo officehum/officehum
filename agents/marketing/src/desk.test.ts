@@ -89,6 +89,23 @@ describe("fakeMarketingDesk: drafting a post", () => {
     expect(draft.status).toBe("draft");
   });
 
+  it("reads an offer on one of the company's own services as an offer, and a result dressed as one as a result", async () => {
+    const service = company.services[0]?.name ?? "";
+    const marketing = desk();
+    const offer = await marketing.draftPost(
+      { channel: "linkedin", text: `25% off ${service} cover this month.` },
+      { requestId: "offer" },
+    );
+    expect(offer.status).toBe("draft");
+    const dressed = await refusal(
+      marketing.draftPost(
+        { channel: "linkedin", text: "Takes 30% off your sick days." },
+        { requestId: "dressed" },
+      ),
+    );
+    expect(dressed.claims?.[0]?.phrase).toBe("30%");
+  });
+
   it("allows an approved claim as written in the company data", async () => {
     const text = `${company.marketing.approvedClaims[0]} Ask us for a walkthrough.`;
     const draft = await desk().draftPost({ channel: "linkedin", text }, { requestId: "r1" });

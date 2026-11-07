@@ -10,15 +10,18 @@ it word for word, and those are the only results and facts you state without a p
 1. **Read the list first.** Use an approved claim exactly as written. A changed figure, a stronger
    word or an added clause is a new claim.
 2. **What the desk refuses**, sentence by sentence, unless the sentence is an approved claim:
-   - a percentage or a numeric result: "cuts sick days 30%", "2x cleaner", "three times faster",
-     "twice as clean", "cuts complaints by 50", "saves you $400 a year";
+   - a percentage or a numeric result, in digits or words: "cuts sick days 30%", "thirty percent",
+     "2x cleaner", "three times faster", "twice as clean", "half of", "in half", "cuts complaints by
+     50", "saves you $400 a year";
    - proof words: "tests prove", "studies show", "proven", "clinically", "scientifically",
      "lab-tested";
    - broad environmental terms: "eco-friendly", "non-toxic", "green", "sustainable",
      "chemical-free", "biodegradable". Unqualified, these are hard, if not impossible, to back up.
-3. **What it lets through**: an offer written as a percentage off or a discount ("20% off your first
-   clean"), and a price from `read_services` ("from $185 a visit"). A year is a date, not a result.
-   Write an offer as "off" or "discount", never as a saving the customer will see.
+3. **What it lets through**: an offer on a price, where "off" or "discount" is followed by what is
+   sold ("20% off your first clean", "10% discount on your next visit") or ends the sentence, and a
+   price from `read_services` ("from $185 a visit"). A year is a date, not a result. "30% off your
+   sick days" is a result, not an offer. A discount is still a person's decision: offer only one the
+   price book or the person who asked for the piece gave you.
 4. **When the desk refuses**, it names the sentence and the phrase and holds the draft. Tell the
    person who asked which claim was refused and why. Then either draft it again without the claim, or,
    if they want to keep it, call `request_claim_approval` with the held draft's id, the claim and the

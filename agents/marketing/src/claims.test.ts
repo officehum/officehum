@@ -35,6 +35,22 @@ const REFUSED: readonly (readonly [string, string])[] = [
   ["Our cleaning is environmentally friendly.", "environmentally friendly"],
   ["Sustainable floor care that lasts.", "Sustainable"],
   ["Chemical-free restroom care.", "Chemical-free"],
+  // Percentages and halves written in words.
+  ["Cuts sick days by thirty percent.", "thirty percent"],
+  ["Kills ninety-nine percent of germs.", "ninety-nine percent"],
+  ["Twenty percent fewer complaints.", "Twenty percent"],
+  ["A hundred percent spotless, every night.", "A hundred percent"],
+  ["Half of our clients report fewer sick days.", "Half of"],
+  ["Restroom complaints cut in half.", "in half"],
+  // A result dressed as an offer: "off" that is not followed by a price.
+  ["Takes 30% off your sick days.", "30%"],
+  ["Up to 30% off sick days.", "30%"],
+  // Other spellings, verb forms, a longer gap, and a dollar amount that looks like a year.
+  ["Restroom complaints fell 40 per-cent.", "40 per-cent"],
+  ["30pc fewer complaints.", "30pc"],
+  ["Complaints dropped by 30 in a month.", "dropped by 30"],
+  ["Cuts the number of sick days by 30.", "Cuts the number of sick days by 30"],
+  ["Saves you $2000 a year.", "Saves you $2000"],
   // A testimonial that states a result is a result claim.
   ['"Since Northwind took over, our sick days fell 20%." — a client', "20%"],
 ];
@@ -64,6 +80,17 @@ const ALLOWED: readonly string[] = [
   "Interior glass on a quarterly schedule.",
   "Strip and re-wax includes four coats.",
   "We reduced our holiday hours for 2026.",
+  // Offers on a price, written in digits or words.
+  "Twenty percent off your first clean.",
+  "Get ten percent off.",
+  "20% off a deep clean this month.",
+  "15% off window cleaning in March.",
+  "10% discount on your next visit, this month only.",
+  // Number words that are not results.
+  "Two crews on every site.",
+  "One free clean for every referral.",
+  "Three visits a week, or five.",
+  "A half-day porter shift is available.",
 ];
 
 describe("findResultClaims", () => {
@@ -77,6 +104,18 @@ describe("findResultClaims", () => {
 
   it.each(ALLOWED)("allows %j", (text) => {
     expect(findResultClaims(text, [])).toEqual([]);
+  });
+
+  it("reads fullwidth digits and signs as the digits they are", () => {
+    expect(findResultClaims("３０％ fewer sick days.", [])).toEqual([
+      { claim: "３０％ fewer sick days.", phrase: "30%" },
+    ]);
+  });
+
+  it("masks an offer on a service the company names, and only then", () => {
+    const text = "25% off Day porter cover this month.";
+    expect(findResultClaims(text, [])).toHaveLength(1);
+    expect(findResultClaims(text, [], ["Day porter"])).toEqual([]);
   });
 
   it("names each claim in a longer text once, by its sentence, in order", () => {
