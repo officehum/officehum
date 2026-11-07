@@ -404,12 +404,15 @@
             "i have recorded",
             "i've booked",
             "i have booked",
-            "has been booked in",
             "has been recorded as received",
             "marked as received",
             "is now received",
             "is now fully received",
-            "now shows as received"
+            "now shows as received",
+            "it has been booked in",
+            "has now been booked in",
+            "po-1003 has been booked",
+            "is now booked in"
           ]
         }
       }
