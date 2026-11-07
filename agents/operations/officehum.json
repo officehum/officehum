@@ -25,7 +25,7 @@
       "name": "assign_crew",
       "replay": "unsafe",
       "noApproval": "Routine dispatch inside a crew's weekly hours cap. The desk refuses an assignment that would pass the cap, pointing to request_overtime, and one on a day the crew has approved time off.",
-      "description": "Assign a crew to a job. The desk refuses it when the crew's week would pass its weekly hours cap, or when the crew has approved time off that day."
+      "description": "Assign a crew to a job. The desk refuses it when the crew's week would pass its weekly hours cap, when the crew has approved time off that day, or when a contract visit already has a different crew."
     },
     {
       "name": "request_overtime",

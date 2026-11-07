@@ -145,6 +145,8 @@ export type DeskRefusal =
   | "not_found"
   | "invalid"
   | "over_cap"
+  | "over_cap_move"
+  | "contract_crew"
   | "time_off"
   | "fits"
   | "recurring"
@@ -235,7 +237,8 @@ export function demoJobs(): readonly Job[] {
       crewId: "cleaning-south",
       start: "18:30",
       crewHours: 11,
-      dates: weekdays,
+      // No Thursday visit: that is the South crew's approved day off this week.
+      dates: ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-13"],
     },
     {
       contractId: "CT-306",
@@ -380,8 +383,6 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
   const clock = options.now ?? (() => new Date(DEMO_NOW));
   const jobs: Job[] = (options.jobs ?? demoJobs()).map((job) => ({ ...job }));
   const timeOff = [...(options.timeOff ?? demoTimeOff())];
-  /** Approved overtime hours, by `crewId:weekStart`. */
-  const overtime = new Map<string, number>();
   const assignments = new Map<string, Assignment>();
   const grants = new Map<string, OvertimeGrant>();
   const moves = new Map<string, Reschedule>();
@@ -422,8 +423,20 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
         .reduce((total, job) => total + job.crewHours, 0),
     );
 
+  /**
+   * Overtime a person approved for a crew in a week: the grants whose job is still on that crew in that
+   * week. An approval is for one crew and one job, so when the job moves or changes crew, its overtime
+   * goes with it and never pays for other work.
+   */
   const overtimeFor = (crewId: string, weekStart: string): number =>
-    overtime.get(`${crewId}:${weekStart}`) ?? 0;
+    round(
+      [...grants.values()]
+        .filter((grant) => {
+          const job = jobs.find((candidate) => candidate.id === grant.jobId);
+          return job !== undefined && job.crewId === crewId && weekOf(job.date).start === weekStart;
+        })
+        .reduce((total, grant) => total + grant.hours, 0),
+    );
 
   const refuseTimeOff = (crew: Crew, date: string, job: Job): void => {
     const off = timeOff.find((entry) => entry.crewId === crew.id && entry.date === date);
@@ -486,7 +499,7 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
     const over = overage(crew, job, newDate);
     if (over > 0) {
       throw new OperationsDeskError(
-        "over_cap",
+        "over_cap_move",
         `Moving ${job.id} to ${newDate} would put ${crew.name} ${hoursText(over)} hours over its weekly hours cap for the week of ${weekOf(newDate).start}. Choose another date, or ask the person who owns the schedule.`,
         over,
       );
@@ -561,6 +574,13 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
 
       const job = findJob(input.jobId);
       const crew = findCrew(input.crewId);
+      // A recurring contract promises the same crew each visit, so a different one is a person's call.
+      if (job.contractId !== null && job.crewId !== null && job.crewId !== crew.id) {
+        throw new OperationsDeskError(
+          "contract_crew",
+          `${job.id} is a visit on recurring contract ${job.contractId}, which keeps its crew (${job.crewId}). A different crew on a contract visit is the decision of the person who owns the schedule: hand it to them. Nothing was assigned.`,
+        );
+      }
       refuseTimeOff(crew, job.date, job);
       const over = overage(crew, job, job.date);
       if (over > 0) {
@@ -601,15 +621,13 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
           needed,
         );
       }
-      const week = weekOf(job.date).start;
-      overtime.set(`${crew.id}:${week}`, round(overtimeFor(crew.id, week) + needed));
       job.crewId = crew.id;
       grantNumber += 1;
-      const grant: OvertimeGrant = {
-        ...assignmentOf(job, crew),
-        id: `OT-${grantNumber}`,
-        hours: needed,
-      };
+      const id = `OT-${grantNumber}`;
+      // The grant is stored first so the week's overtime counts it, then stored again with the
+      // receipt's figures: both entries are the same grant, under the same requestId.
+      grants.set(requestId, { ...assignmentOf(job, crew), id, hours: needed });
+      const grant: OvertimeGrant = { ...assignmentOf(job, crew), id, hours: needed };
       grants.set(requestId, grant);
       return grant;
     },

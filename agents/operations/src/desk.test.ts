@@ -75,10 +75,13 @@ describe("listCrews", () => {
       hoursLeft: 5,
     });
     expect((await crewWeek(operations, "cleaning-north")).bookedHours).toBe(128);
-    expect((await crewWeek(operations, "cleaning-south")).bookedHours).toBe(61);
+    expect((await crewWeek(operations, "cleaning-south")).bookedHours).toBe(50);
     expect((await crewWeek(operations, "maintenance")).bookedHours).toBe(83);
     const south = await crewWeek(operations, "cleaning-south");
     expect(south.timeOff.map((entry) => entry.date)).toEqual(["2026-11-12"]);
+    // The demo week books no South job on its own day off.
+    const thursday = await operations.listJobs({ date: "2026-11-12", crewId: "cleaning-south" });
+    expect(thursday).toEqual([]);
   });
 
   it("defaults to the week the clock is in", async () => {
@@ -151,7 +154,7 @@ describe("assignCrew", () => {
     );
     expect(refused.code).toBe("time_off");
     expect(refused.message).toContain("2026-11-12");
-    expect((await crewWeek(operations, "cleaning-south")).bookedHours).toBe(61);
+    expect((await crewWeek(operations, "cleaning-south")).bookedHours).toBe(50);
   });
 
   it("answers a replayed call with the assignment it already made, counting the hours once", async () => {
@@ -166,6 +169,22 @@ describe("assignCrew", () => {
     );
     expect(again).toEqual(first);
     expect((await crewWeek(operations, "cleaning-north")).bookedHours).toBe(138);
+  });
+
+  it("keeps a contract visit's crew: another crew is the Operations Manager's decision", async () => {
+    const operations = desk();
+    const refused = await refusalOf(
+      operations.assignCrew({ jobId: "J-1051", crewId: "cleaning-central" }, { requestId: "cc" }),
+    );
+    expect(refused.code).toBe("contract_crew");
+    expect(refused.message).toContain("CT-305");
+    expect((await operations.listJobs({ client: "J-1051" }))[0]?.crewId).toBe("cleaning-south");
+    // Re-assigning the crew it already has changes nothing and is not refused.
+    const same = await operations.assignCrew(
+      { jobId: "J-1051", crewId: "cleaning-south" },
+      { requestId: "cc-same" },
+    );
+    expect(same.crewId).toBe("cleaning-south");
   });
 
   it("refuses a job or a crew it does not hold, naming what it does", async () => {
@@ -249,6 +268,39 @@ describe("requestOvertime", () => {
     expect(again).toEqual(first);
     expect((await crewWeek(operations, "cleaning-central")).overtimeHours).toBe(7);
   });
+  it("counts approved overtime only while its job is still on that crew in that week", async () => {
+    const operations = desk();
+    await operations.requestOvertime(
+      { crewId: "cleaning-central", jobId: "J-2101", hours: 7 },
+      { requestId: "ot-moves" },
+    );
+    await operations.rescheduleJob(
+      { jobId: "J-2101", newDate: "2026-11-17" },
+      { requestId: "move-away" },
+    );
+    const central = await crewWeek(operations, "cleaning-central");
+    expect(central).toMatchObject({ bookedHours: 135, overtimeHours: 0, hoursLeft: 5 });
+    const refused = await refusalOf(
+      operations.assignCrew(
+        { jobId: "J-2102", crewId: "cleaning-central" },
+        { requestId: "spend-credit" },
+      ),
+    );
+    expect(refused.code).toBe("over_cap");
+  });
+
+  it("stops counting overtime once its job is given to another crew", async () => {
+    const operations = desk();
+    await operations.requestOvertime(
+      { crewId: "cleaning-central", jobId: "J-2101", hours: 7 },
+      { requestId: "ot-reassigned" },
+    );
+    await operations.assignCrew(
+      { jobId: "J-2101", crewId: "cleaning-north" },
+      { requestId: "to-north" },
+    );
+    expect((await crewWeek(operations, "cleaning-central")).overtimeHours).toBe(0);
+  });
 });
 
 describe("rescheduleJob", () => {
@@ -301,7 +353,7 @@ describe("rescheduleJob", () => {
     const overCap = await refusalOf(
       full.rescheduleJob({ jobId: "J-2103", newDate: "2026-11-11" }, { requestId: "m-4" }),
     );
-    expect(overCap.code).toBe("over_cap");
+    expect(overCap.code).toBe("over_cap_move");
   });
 
   it("answers a replayed call with the move it already made", async () => {

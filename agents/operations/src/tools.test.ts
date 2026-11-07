@@ -251,6 +251,44 @@ describe("record_callout", () => {
   });
 });
 
+describe("replay of the other writes", () => {
+  it("answers a replayed reschedule, contract move and call-out with what it already did", async () => {
+    const cases = [
+      ["rescheduleJob", { jobId: "J-2103", newDate: "2026-11-16" }],
+      ["requestContractReschedule", { jobId: "J-1034", newDate: "2026-11-14", reason: "Carpet" }],
+      ["recordCallout", { jobId: "J-1041", reason: "Leak" }],
+    ] as const;
+    for (const [tool, args] of cases) {
+      const operations = desk();
+      const first = await tools(operations)[tool].execute(args, call("r"), BACKGROUND_CONTEXT);
+      const again = await tools(operations)[tool].execute(args, call("r"), BACKGROUND_CONTEXT);
+      expect(isError(first), tool).toBe(false);
+      expect(text(again), tool).toBe(text(first));
+    }
+    // A replayed call-out is one record: the next new call is CO-2, not CO-3.
+    const operations = desk();
+    const args = { jobId: "J-1041", reason: "Leak" };
+    await tools(operations).recordCallout.execute(args, call("x"), BACKGROUND_CONTEXT);
+    await tools(operations).recordCallout.execute(args, call("x"), BACKGROUND_CONTEXT);
+    const next = await tools(operations).recordCallout.execute(args, call("y"), BACKGROUND_CONTEXT);
+    expect(text(next)).toContain("CO-2");
+  });
+});
+
+describe("contract crew", () => {
+  it("refuses another crew on a contract visit and says to hand it to the schedule owner", async () => {
+    const result = await tools(desk()).assignCrew.execute(
+      { jobId: "J-1051", crewId: "cleaning-central" },
+      call("cc"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(details(result).code).toBe("contract_crew");
+    expect(text(result)).toContain(owner);
+    expect(text(result)).not.toContain("request_contract_reschedule");
+  });
+});
+
 describe("read_company", () => {
   it("gives the crews with their caps, and the staff policies with who answers each", async () => {
     const result = await tools(undefined).readCompany.execute(

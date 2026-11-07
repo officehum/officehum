@@ -17,6 +17,7 @@ import { type CompanyFacts, person, personLabel, scheduleOwner } from "./company
 import {
   type Assignment,
   type CrewWeek,
+  type DeskRefusal,
   type Job,
   type OperationsDesk,
   OperationsDeskError,
@@ -215,13 +216,14 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     // Typed loosely on purpose: a refusal's details and a receipt's share one tool, so neither may
     // narrow what the other reports.
     if (!(error instanceof OperationsDeskError)) throw error;
-    const next =
-      error.code === "over_cap" && error.message.includes("request_overtime")
-        ? ` request_overtime asks ${owner}.`
-        : error.code === "recurring"
-          ? ` request_contract_reschedule asks ${owner}.`
-          : "";
-    return refusal<JsonObject>(`${error.message}${next}`, {
+    // The next step comes from the refusal's code, never from reading its message.
+    const next: Partial<Record<DeskRefusal, string>> = {
+      over_cap: ` request_overtime asks ${owner}.`,
+      recurring: ` request_contract_reschedule asks ${owner}.`,
+      contract_crew: ` That is ${owner}: hand it to them, and do not call another tool for it.`,
+      over_cap_move: ` The schedule's owner is ${owner}.`,
+    };
+    return refusal<JsonObject>(`${error.message}${next[error.code] ?? ""}`, {
       code: error.code,
       ...(error.overtimeHoursNeeded === undefined
         ? {}
@@ -313,7 +315,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
   const assignCrew = defineTool({
     name: "assign_crew",
     description:
-      "Assign a crew to a job. The desk adds the job's hours to the crew's week and refuses when that would pass the crew's weekly hours cap (then use request_overtime), or when the crew has approved time off that day.",
+      "Assign a crew to a job. The desk adds the job's hours to the crew's week and refuses when that would pass the crew's weekly hours cap (then use request_overtime), or when the crew has approved time off that day. A visit on a recurring contract keeps its crew: a different one is a person's decision.",
     parameters: Type.Object(
       {
         jobId: Type.String({ description: "The job's id from list_jobs, e.g. J-2101" }),

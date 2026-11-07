@@ -49,7 +49,7 @@ Operations Manager, and a request to sign off a job handed to the same person.
 | --- | --- | --- | --- |
 | `list_jobs` | safe | — | The schedule, by date, crew or client: hours, crew, one-off or contract visit |
 | `list_crews` | safe | — | Each crew's week: hours booked, cap, approved overtime, hours left, time off |
-| `assign_crew` | unsafe | `noApproval`; the desk refuses past the cap or on time off | Put a crew on a job |
+| `assign_crew` | unsafe | `noApproval`; the desk refuses past the cap, on time off, or a different crew on a contract visit | Put a crew on a job |
 | `request_overtime` | unsafe | approval `overtime`, every call | Overtime so a crew can take a job its cap cannot hold |
 | `reschedule_job` | unsafe | `noApproval`; the desk refuses a contract visit | Move a one-off job |
 | `request_contract_reschedule` | unsafe | approval `contract_reschedule`, every call | Move a visit on a recurring contract |
@@ -61,6 +61,10 @@ job would take it past its cap, and the overtime that would need. The caps are t
 `crews[].weeklyHoursCap`; there is no hours constant in the code. When `assign_crew` is refused for the
 cap, the refusal states the overtime hours and names `request_overtime`; `request_overtime` refuses any
 other figure, so the person approving sees exactly what the job needs.
+
+A visit on a recurring contract keeps its crew: `assign_crew` refuses a different one, and the refusal
+says to hand it to the Operations Manager. Approved overtime belongs to its crew and job: if the job
+moves to another week or another crew, the overtime no longer counts toward the old week.
 
 There is no tool to subcontract, to mark a job approved or complete, or to book a call-out: those are
 the Operations Manager's, and the manifest's `mayNot` says so.
