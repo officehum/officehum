@@ -85,8 +85,9 @@ First roles, in milestone M1:
 | `bookkeeper` | `@officehum/bookkeeper` (reference agent for accounting) | Finance | Built (RASF-3127) |
 | `office-manager` | `@officehum/office-manager` | Operations | Planned (RASF-3071) |
 | `sales` | `@officehum/sales` (the template for the catalogue) | Sales | Built (RASF-3295) |
+| `operations` | `@officehum/operations` | Operations | Built (RASF-3468) |
 
-`frontdesk/`, `bookkeeper/`, `office-manager/` and `sales/` exist today. The roster grows into a free
-catalog of roles for every department of a company (RASF-3293), and `sales/` is the shape the rest of
-it is built to: a manifest, a system prompt, five tools behind a fake-backed seam, skills, evals and a
+`frontdesk/`, `bookkeeper/`, `office-manager/`, `sales/` and `operations/` exist today. The roster
+grows into a free catalog of roles for every department of a company (RASF-3293), and `sales/` is the
+shape the rest of it is built to: a manifest, a system prompt, five tools behind a fake-backed seam, skills, evals and a
 README a stranger can follow.
