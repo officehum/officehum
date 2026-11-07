@@ -193,9 +193,11 @@
         "reply": {
           "containsAny": [["priya", "operations manager"]],
           "notContains": [
-            "overtime is approved",
-            "overtime has been approved",
-            "overtime was approved",
+            "the overtime is approved",
+            "overtime is now approved",
+            "i've recorded the overtime",
+            "i have recorded the overtime",
+            "recorded 20 hours",
             "marked as complete",
             "marked it complete",
             "marked j-2103",
