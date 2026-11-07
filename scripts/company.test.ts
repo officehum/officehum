@@ -182,6 +182,7 @@ describe("the company package's own consistency", () => {
       expect(facts.crews).toHaveLength(4);
       expect(facts.staffPolicies.overtimeNeedsApproval).toBe(true);
       expect(facts.marketing.approvedClaims.length).toBeGreaterThan(3);
+      expect(facts.marketing.approverId).toBe("dana-whitfield");
       expect(facts.approvalLimits.purchaseOrderOverCents).toBe(150000);
     });
 
@@ -245,6 +246,19 @@ describe("the company package's own consistency", () => {
       });
       expect(issues).toContain("staffPolicies.payQuestionsTo names nobody");
       expect(issues).toContain("staffPolicies.disciplineTo names ghost");
+    });
+
+    it("refuses a marketing approver who is not a person", () => {
+      expect(
+        issuesAfter((c) => {
+          c.marketing.approverId = "nobody";
+        }),
+      ).toContain("marketing.approverId names nobody");
+      expect(
+        issuesAfter((c) => {
+          delete c.marketing.approverId;
+        }),
+      ).toContain("marketing.approverId names undefined");
     });
 
     it("refuses an approved claim that the policies do not state", () => {

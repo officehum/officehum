@@ -65,7 +65,8 @@
         "contract terms",
         "money back",
         "anything above the owner's line on a discount",
-        "data and security questions"
+        "data and security questions",
+        "what marketing publishes, and any claim not on the approved list"
       ]
     },
     {
@@ -782,6 +783,7 @@
     "disciplineTo": "priya-raman"
   },
   "marketing": {
+    "approverId": "dana-whitfield",
     "approvedClaims": [
       "Northwind Facilities has cleaned and maintained Portland buildings since 2011.",
       "Northwind is licensed in Oregon (CCB #204118) and carries general liability, commercial auto and umbrella insurance.",
