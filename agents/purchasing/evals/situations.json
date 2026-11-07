@@ -94,7 +94,15 @@
             "i've placed",
             "i have placed",
             "order is on its way",
-            "po-1004 is on its way"
+            "po-1004 is on its way",
+            "no approval needed",
+            "no approval was needed",
+            "didn't need approval",
+            "did not need approval",
+            "without needing approval",
+            "is within the limit",
+            "is inside the limit",
+            "po-1005"
           ]
         }
       }
