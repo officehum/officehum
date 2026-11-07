@@ -21,9 +21,10 @@ remember it.
 4. **Raise it** with `raise_purchase_order`: the supplier's id and each item's id and quantity. Never
    give a price or a total. The receipt states each line, the total and the expected date; quote it.
 5. **Refused for the spending limit.** The desk saved the order as a draft and gave its id. Call
-   `request_po_approval` with that id. Never retry the order, take items off it, or split it into
-   smaller orders to get under the limit: the desk refuses orders to one supplier on one day that
-   together pass the limit, and splitting is the thing the limit exists to stop.
+   `request_po_approval` with that id, the supplier and the total the refusal gave. Never retry
+   the order, take items off it, or split it into smaller orders to get under the limit: the desk
+   refuses orders to one supplier on one day that together pass the limit, and splitting is the
+   thing the limit exists to stop.
 6. **Refused for the supplier.** A supplier not on the approved list is never ordered from. Use the
    usual supplier from `list_stock`, or call `request_new_supplier` if someone wants that supplier.
 7. **While an approval waits**, say the order is with the person who decides purchasing, by name, and

@@ -54,6 +54,9 @@ const PACIFIC = {
   ],
 };
 
+/** The approval for the Cascade restock: the draft, and the supplier and total the desk gave for it. */
+const GRANT = { draftId: "PO-1004", supplierId: "sup-cascade-paper", totalCents: 217200 };
+
 const RECEIPT = {
   purchaseOrderId: "PO-1003",
   lines: [{ itemId: "glass-cleaner", quantity: 10 }],
@@ -122,7 +125,7 @@ describe("list_purchase_orders", () => {
     expect(text(result)).toContain("PO-1001 — Columbia Floor Care Supply — placed");
     expect(text(result)).toContain("placed 2026-11-04, expected 2026-11-09");
     expect(text(result)).toContain(
-      "6 × Floor pads, 17 inch (case of 5) at $75.00 = $450.00, 0 received",
+      "6 × Floor pads, 17 inch [floor-pad] (case of 5) at $75.00 = $450.00, 0 received",
     );
     expect(text(result)).toContain("total $450.00");
   });
@@ -148,7 +151,7 @@ describe("raise_purchase_order", () => {
     expect(isError(result)).toBe(false);
     expect(text(result)).toContain("Placed PO-1004 with Pacific Janitorial Supply");
     expect(text(result)).toContain(
-      "12 × Hospital-grade disinfectant concentrate (gallon) at $24.00 = $288.00",
+      "12 × Hospital-grade disinfectant concentrate [disinfectant] (gallon) at $24.00 = $288.00",
     );
     expect(text(result)).toContain("Total $628.00");
     expect(text(result)).toContain("expected 2026-11-12");
@@ -164,7 +167,9 @@ describe("raise_purchase_order", () => {
     );
     expect(isError(result)).toBe(true);
     expect(text(result)).toContain("request_po_approval");
-    expect(text(result)).toContain("draftId PO-1004");
+    expect(text(result)).toContain(
+      `Next: call request_po_approval with draftId PO-1004, supplierId sup-cascade-paper and totalCents 217200, which asks ${lead}.`,
+    );
     expect(text(result)).toContain(money(company.approvalLimits.purchaseOrderOverCents));
     expect(text(result)).toContain(lead);
     expect(details(result)).toMatchObject({
@@ -207,7 +212,7 @@ describe("raise_purchase_order", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(result)).toContain(
-      `Next: call request_po_approval with draftId PO-77, which asks ${lead}.`,
+      `Next: call request_po_approval with draftId PO-77, supplierId sup-pacific-janitorial and totalCents 1, which asks ${lead}.`,
     );
     expect(text(result)).not.toContain("request_new_supplier");
   });
@@ -245,7 +250,7 @@ describe("request_po_approval", () => {
     const purchasing = desk();
     await tools(purchasing).raisePurchaseOrder.execute(CASCADE, call("d1"), BACKGROUND_CONTEXT);
     const first = await tools(purchasing).requestPoApproval.execute(
-      { draftId: "PO-1004" },
+      GRANT,
       call("d2"),
       BACKGROUND_CONTEXT,
     );
@@ -253,7 +258,7 @@ describe("request_po_approval", () => {
     expect(text(first)).toContain("Approved and placed: PO-1004 with Cascade Paper & Packaging");
     expect(text(first)).toContain("Total $2,172.00");
     const again = await tools(purchasing).requestPoApproval.execute(
-      { draftId: "PO-1004" },
+      GRANT,
       call("d2"),
       BACKGROUND_CONTEXT,
     );
@@ -261,9 +266,24 @@ describe("request_po_approval", () => {
     expect(await purchasing.listPurchaseOrders({ status: "placed" })).toHaveLength(3);
   });
 
+  it("places nothing when the total it was asked about is not the draft's", async () => {
+    const purchasing = desk();
+    await tools(purchasing).raisePurchaseOrder.execute(CASCADE, call("d4"), BACKGROUND_CONTEXT);
+    const result = await tools(purchasing).requestPoApproval.execute(
+      { ...GRANT, totalCents: 100 },
+      call("d5"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(details(result).code).toBe("draft_changed");
+    expect(text(result)).toContain("totalCents 217200");
+    const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1004" });
+    expect(draft?.status).toBe("draft");
+  });
+
   it("refuses an order that is not a draft", async () => {
     const result = await tools(desk()).requestPoApproval.execute(
-      { draftId: "PO-1001" },
+      { ...GRANT, draftId: "PO-1001" },
       call("d3"),
       BACKGROUND_CONTEXT,
     );
@@ -315,7 +335,9 @@ describe("record_receipt", () => {
     expect(text(result)).toContain("Recorded GR-1 against PO-1003 (Pacific Janitorial Supply)");
     expect(text(result)).toContain("reported by Dev Patel");
     expect(text(result)).toContain("packing slip PJ-55812");
-    expect(text(result)).toContain("10 × Glass cleaner (gallon) received, 2 still to come");
+    expect(text(result)).toContain(
+      "10 × Glass cleaner [glass-cleaner] (gallon) received, 2 still to come",
+    );
     expect(text(result)).toContain("PO-1003 is partially received");
     expect(text(result)).toContain("nothing is paid");
   });

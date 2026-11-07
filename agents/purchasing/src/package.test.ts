@@ -40,7 +40,7 @@ describe("purchasing package", () => {
     expect(validated.value.piDurableRange).toBe("1.3.x");
     expect(Object.keys(validated.value.suites)).toEqual(["evals/situations.json"]);
     const scenarios = Object.values(validated.value.suites).flatMap((suite) => suite.scenarios);
-    expect(scenarios).toHaveLength(12);
+    expect(scenarios).toHaveLength(13);
     for (const scenario of scenarios) {
       expect(Object.keys(scenario.stubs).sort()).toEqual([...TOOLS].sort());
     }
@@ -146,6 +146,7 @@ describe("purchasing package", () => {
     expect(mayNot).toContain("claim or dispute");
     expect(mayNot).toContain("surplus");
     expect(mayNot).toContain("split");
+    expect(mayNot).toContain("supplier's own delivery notice");
     expect(roleManifest.accepts.map((accept) => accept.type)).toEqual(["purchasing.request"]);
     const accepted = new Set(roleManifest.accepts.map((accept) => accept.type));
     for (const dispatch of roleManifest.dispatches ?? []) {

@@ -40,7 +40,7 @@
     {
       "name": "request_po_approval",
       "replay": "unsafe",
-      "description": "Ask a person to approve one draft purchase order that the desk refused for the spending limit. Once approved, the desk places exactly that draft."
+      "description": "Ask a person to approve one draft purchase order that the desk refused for the spending limit, naming its supplier and total. Once approved, the desk places exactly that draft."
     },
     {
       "name": "request_new_supplier",
@@ -64,7 +64,7 @@
     {
       "id": "po_over_limit",
       "tool": "request_po_approval",
-      "description": "Approve placing this draft purchase order, which is over the spending limit"
+      "description": "Approve placing this draft purchase order, with this supplier for this total in cents, which is over the spending limit"
     },
     {
       "id": "new_supplier",
@@ -114,6 +114,10 @@
     {
       "action": "Record goods as received without a named person's report of what arrived",
       "instead": "ask who received the delivery and what arrived, then record it with record_receipt"
+    },
+    {
+      "action": "Record a receipt from a supplier's own delivery notice or proof of delivery",
+      "instead": "ask someone in the company who received it what arrived, then record their report"
     },
     {
       "action": "Pay a supplier, or approve a supplier's invoice for payment",

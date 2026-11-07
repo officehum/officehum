@@ -104,7 +104,7 @@ function statusText(status: OrderStatus): string {
 function orderLines(order: PurchaseOrder): string[] {
   return order.lines.map(
     (line) =>
-      `- ${line.quantity} × ${line.name} (${line.unit}) at ${money(line.unitCostCents)} = ${money(line.lineTotalCents)}, ${line.receivedQuantity} received`,
+      `- ${line.quantity} × ${line.name} [${line.itemId}] (${line.unit}) at ${money(line.unitCostCents)} = ${money(line.lineTotalCents)}, ${line.receivedQuantity} received`,
   );
 }
 
@@ -125,7 +125,7 @@ function placedText(order: PurchaseOrder): string {
     `${order.id} with ${order.supplierName}:`,
     ...order.lines.map(
       (line) =>
-        `- ${line.quantity} × ${line.name} (${line.unit}) at ${money(line.unitCostCents)} = ${money(line.lineTotalCents)}`,
+        `- ${line.quantity} × ${line.name} [${line.itemId}] (${line.unit}) at ${money(line.unitCostCents)} = ${money(line.lineTotalCents)}`,
     ),
     `Total ${money(order.totalCents)}. Placed ${order.placedOn ?? ""}, expected ${order.expectedOn ?? "not set"}.`,
   ].join("\n");
@@ -137,7 +137,7 @@ function receiptText(receipt: GoodsReceipt): string {
     `Recorded ${receipt.id} against ${receipt.purchaseOrderId} (${receipt.supplierName}), reported by ${receipt.reportedBy} (${receipt.source})${slip}:`,
     ...receipt.lines.map(
       (line) =>
-        `- ${line.quantity} × ${line.name} (${line.unit}) received, ${line.outstanding} still to come`,
+        `- ${line.quantity} × ${line.name} [${line.itemId}] (${line.unit}) received, ${line.outstanding} still to come`,
     ),
     `${receipt.purchaseOrderId} is ${statusText(receipt.orderStatus)}. This is an internal record: nothing is paid and nothing is sent to the supplier.`,
   ].join("\n");
@@ -223,14 +223,18 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
   const refused = (error: unknown, extra: JsonObject) => {
     if (!(error instanceof PurchasingDeskError)) throw error;
     // The next step comes from the refusal's code, never from reading its message.
-    const draft = error.draftId === undefined ? "" : ` with draftId ${error.draftId}`;
-    const supplier =
-      typeof extra.supplierId === "string" ? ` with supplier ${extra.supplierId}` : "";
-    const approval = ` Next: call request_po_approval${draft}, which asks ${lead}.`;
+    const supplier = typeof extra.supplierId === "string" ? extra.supplierId : undefined;
+    // The approval names the draft, its supplier and the desk's total, so the person sees what they
+    // approve and the desk can refuse a grant for anything else.
+    const grant =
+      error.draftId === undefined
+        ? ""
+        : ` with draftId ${error.draftId}${supplier === undefined ? "" : `, supplierId ${supplier}`}${error.totalCents === undefined ? "" : ` and totalCents ${error.totalCents}`}`;
+    const approval = ` Next: call request_po_approval${grant}, which asks ${lead}.`;
     const next: Partial<Record<DeskRefusal, string>> = {
       over_limit: approval,
       split_order: approval,
-      unapproved_supplier: ` Next: call request_new_supplier${supplier} and the reason, which asks ${lead}.`,
+      unapproved_supplier: ` Next: call request_new_supplier${supplier === undefined ? "" : ` with supplier ${supplier}`} and the reason, which asks ${lead}.`,
       over_received: ` Any extra is ${lead}'s to take up with the supplier.`,
     };
     return refusal<JsonObject>(`${error.message}${next[error.code] ?? ""}`, {
@@ -409,11 +413,18 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
   const requestPoApproval = defineTool({
     name: "request_po_approval",
     description:
-      "Ask a person to approve one draft purchase order that raise_purchase_order refused for the spending limit, by the draft's id from that refusal. Every call waits for a person; once approved, the desk places exactly that draft.",
+      "Ask a person to approve one draft purchase order that raise_purchase_order refused for the spending limit, with the draft's id, supplier and total exactly as the refusal gave them, so the person sees what they approve. Every call waits for a person; once approved, the desk places exactly that draft, and refuses if the draft is not what the approval named.",
     parameters: Type.Object(
       {
         draftId: Type.String({
           description: "The draft's purchase order number from the refusal, e.g. PO-1004",
+        }),
+        supplierId: Type.String({
+          description: "The draft's supplier id from the refusal, e.g. sup-cascade-paper",
+        }),
+        totalCents: Type.Integer({
+          minimum: 1,
+          description: "The draft's total in cents, exactly as the refusal gave it, e.g. 217200",
         }),
       },
       { additionalProperties: false },
@@ -423,7 +434,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
       const desk = requireDesk(dependencies);
       try {
         const order = await desk.placeDraft(
-          { draftId: args.draftId },
+          { draftId: args.draftId, supplierId: args.supplierId, totalCents: args.totalCents },
           { requestId: requestId("po-approval", api) },
         );
         return {

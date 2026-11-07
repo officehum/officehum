@@ -24,6 +24,9 @@ const CASCADE_RESTOCK = {
   ],
 };
 
+/** What a person is asked to approve for that order: the draft, its supplier and the desk's total. */
+const GRANT = { draftId: "PO-1004", supplierId: "sup-cascade-paper", totalCents: 217200 };
+
 const PACIFIC_RESTOCK = {
   supplierId: "sup-pacific-janitorial",
   lines: [
@@ -206,15 +209,26 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     expect(refused.draftId).toBe("PO-1005");
     expect(refused.message).toContain("$2,172.00");
 
-    // Another supplier the same day is a separate order, and so is the same supplier the next day.
+    // Another supplier the same day is a separate order.
     await purchasing.raisePurchaseOrder(PACIFIC_RESTOCK, { requestId: "s3" });
-    const tomorrow = fakePurchasingDesk({ now: () => new Date("2026-11-10T16:00:00.000Z") });
-    await tomorrow.raisePurchaseOrder(
-      { supplierId: "sup-cascade-paper", lines: [{ itemId: "toilet-tissue", quantity: 16 }] },
+
+    // The same supplier the next day is a separate order too: $1,452.00 placed on Monday and $720.00
+    // on Tuesday would be over the limit if the day were not counted.
+    let now = DEMO_NOW;
+    const week = fakePurchasingDesk({ now: () => new Date(now) });
+    await week.raisePurchaseOrder(
+      {
+        supplierId: "sup-cascade-paper",
+        lines: [
+          { itemId: "toilet-tissue", quantity: 16 },
+          { itemId: "hand-towel", quantity: 12 },
+        ],
+      },
       { requestId: "t1" },
     );
-    const next = await tomorrow.raisePurchaseOrder(
-      { supplierId: "sup-cascade-paper", lines: [{ itemId: "hand-towel", quantity: 12 }] },
+    now = "2026-11-10T16:00:00.000Z";
+    const next = await week.raisePurchaseOrder(
+      { supplierId: "sup-cascade-paper", lines: [{ itemId: "trash-liners", quantity: 20 }] },
       { requestId: "t2" },
     );
     expect(next.status).toBe("placed");
@@ -242,7 +256,7 @@ describe("fakePurchasingDesk: approving a draft", () => {
     const refused = await refusal(
       purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "a1" }),
     );
-    const placed = await purchasing.placeDraft({ draftId: "PO-1004" }, { requestId: "a2" });
+    const placed = await purchasing.placeDraft(GRANT, { requestId: "a2" });
     expect(placed).toMatchObject({
       id: refused.draftId,
       status: "placed",
@@ -251,17 +265,17 @@ describe("fakePurchasingDesk: approving a draft", () => {
       expectedOn: "2026-11-13",
       approved: true,
     });
-    const replayed = await purchasing.placeDraft({ draftId: "PO-1004" }, { requestId: "a2" });
+    const replayed = await purchasing.placeDraft(GRANT, { requestId: "a2" });
     expect(replayed).toEqual(placed);
     // A second request for the same draft is not a second order.
-    const twice = await refusal(purchasing.placeDraft({ draftId: "PO-1004" }, { requestId: "a3" }));
+    const twice = await refusal(purchasing.placeDraft(GRANT, { requestId: "a3" }));
     expect(twice.code).toBe("not_draft");
   });
 
   it("does not let an approval cover a changed order: a changed order is a new draft that needs its own", async () => {
     const purchasing = desk();
     await refusal(purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "b1" }));
-    await purchasing.placeDraft({ draftId: "PO-1004" }, { requestId: "b2" });
+    await purchasing.placeDraft(GRANT, { requestId: "b2" });
     const changed = await refusal(
       purchasing.raisePurchaseOrder(
         {
@@ -281,13 +295,30 @@ describe("fakePurchasingDesk: approving a draft", () => {
     expect(draft?.status).toBe("draft");
   });
 
+  it("places nothing when the supplier or total asked about is not the draft's: the grant is for what was shown", async () => {
+    const purchasing = desk();
+    await refusal(purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "d1" }));
+    for (const [grant, requestId] of [
+      [{ ...GRANT, totalCents: 145200 }, "d2"],
+      [{ ...GRANT, supplierId: "sup-pacific-janitorial" }, "d3"],
+    ] as const) {
+      const refused = await refusal(purchasing.placeDraft(grant, { requestId }));
+      expect(refused.code).toBe("draft_changed");
+      expect(refused.message).toContain("$2,172.00");
+    }
+    const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1004" });
+    expect(draft?.status).toBe("draft");
+  });
+
   it("refuses an order that is not a draft, and one that does not exist", async () => {
     const purchasing = desk();
     expect(
-      (await refusal(purchasing.placeDraft({ draftId: "PO-1001" }, { requestId: "c1" }))).code,
+      (await refusal(purchasing.placeDraft({ ...GRANT, draftId: "PO-1001" }, { requestId: "c1" })))
+        .code,
     ).toBe("not_draft");
     expect(
-      (await refusal(purchasing.placeDraft({ draftId: "PO-9" }, { requestId: "c2" }))).code,
+      (await refusal(purchasing.placeDraft({ ...GRANT, draftId: "PO-9" }, { requestId: "c2" })))
+        .code,
     ).toBe("not_found");
   });
 });

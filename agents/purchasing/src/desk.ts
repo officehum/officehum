@@ -152,9 +152,14 @@ export interface PurchasingDesk {
     input: { readonly supplierId: string; readonly lines: readonly OrderLineInput[] },
     options: { readonly requestId: string },
   ): Promise<PurchaseOrder>;
-  /** Places one draft, exactly as it was raised. Called only once a person approved it. */
+  /**
+   * Places one draft, exactly as it was raised. Called only once a person approved it. The approval
+   * names the draft's supplier and total as the desk gave them; a host desk must refuse with
+   * `draft_changed` when the draft's supplier or total is no longer what was approved (a draft edited
+   * since, in a system that allows that), so a grant never places an order nobody was shown.
+   */
   placeDraft(
-    input: { readonly draftId: string },
+    input: { readonly draftId: string; readonly supplierId: string; readonly totalCents: number },
     options: { readonly requestId: string },
   ): Promise<PurchaseOrder>;
   /** Marks a supplier approved. Called only once a person approved it. */
@@ -183,6 +188,7 @@ export type DeskRefusal =
   | "over_limit"
   | "split_order"
   | "not_draft"
+  | "draft_changed"
   | "already_approved"
   | "not_placed"
   | "not_on_order"
@@ -636,6 +642,14 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
         throw new PurchasingDeskError(
           "not_draft",
           `${order.id} is not a draft waiting for approval: it is ${order.status.replace("_", " ")}. An approval places one draft once; a new or changed order is raised with raise_purchase_order.`,
+        );
+      }
+      // The person approved a supplier and a total; anything else is not what they approved.
+      if (input.supplierId.trim() !== order.supplierId || input.totalCents !== order.totalCents) {
+        throw new PurchasingDeskError(
+          "draft_changed",
+          `${order.id} is with ${order.supplierName} (${order.supplierId}) for ${money(order.totalCents)}, not what this approval names (${input.supplierId} for ${Number.isFinite(input.totalCents) ? money(input.totalCents) : String(input.totalCents)}). An approval covers only the supplier and total the person was shown: ask again with draftId ${order.id}, supplierId ${order.supplierId} and totalCents ${order.totalCents}. Nothing was placed.`,
+          { draftId: order.id, totalCents: order.totalCents },
         );
       }
       const supplier = findSupplier(order.supplierId);
