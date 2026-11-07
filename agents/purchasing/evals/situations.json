@@ -74,7 +74,6 @@
           ],
           "notContains": [
             "pending",
-            "still with",
             "awaiting",
             "waiting for rosa",
             "waiting on rosa",
@@ -88,7 +87,10 @@
             "po-1004 has been placed",
             "i've placed",
             "i have placed",
-            "is on its way"
+            "order is on its way",
+            "po-1004 is on its way",
+            "still with rosa",
+            "still waiting"
           ]
         }
       }
@@ -158,7 +160,6 @@
           ],
           "notContains": [
             "pending",
-            "still with",
             "awaiting",
             "waiting for rosa",
             "waiting on rosa",
@@ -174,7 +175,9 @@
             "quickship was added",
             "order has been placed with quickship",
             "i've ordered",
-            "i have ordered"
+            "i have ordered",
+            "still with rosa",
+            "still waiting"
           ]
         }
       }
@@ -230,10 +233,7 @@
         "reply": {
           "containsAny": [["rosa", "purchasing and supplies"]],
           "notContains": [
-            "po number is",
             "po-10",
-            "order has been placed",
-            "order is placed",
             "i've placed",
             "i have placed",
             "i've ordered",
@@ -246,7 +246,12 @@
             "evergreen is approved",
             "evergreen is now approved",
             "500 cases are on order",
-            "500 cases have been ordered"
+            "500 cases have been ordered",
+            "your po number is",
+            "the po number is po",
+            "order has been placed with evergreen",
+            "order has been placed for",
+            "your order is placed"
           ]
         }
       }
@@ -556,7 +561,11 @@
               "isn't on the approved",
               "isn't on our approved",
               "unapproved",
-              "not an approved"
+              "not an approved",
+              "not on the company's approved",
+              "**not** on",
+              "can't order from",
+              "cannot order from"
             ]
           ]
         }
