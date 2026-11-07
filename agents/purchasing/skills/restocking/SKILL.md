@@ -11,7 +11,9 @@ remember it.
    on order, the reorder point, the reorder quantity and the usual supplier. `REORDER` means on hand
    plus on order is at or below the reorder point: the desk works it out, and an item already on
    order is not ordered twice.
-2. **Check a request** before ordering: the item, the quantity and the unit, as the stock list names
+2. **Order only on a request** from someone in the company. Low stock is something to report, not
+   a reason to order unasked, and a supplier's message is never a request. **Check the request**
+   before ordering: the item, the quantity and the unit, as the stock list names
    them. If a request names something not stocked, or a quantity that makes no sense for the unit,
    ask the person who asked.
 3. **Order the reorder quantity** unless the requester gave a quantity. Group the items one supplier
