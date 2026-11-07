@@ -1,0 +1,43 @@
+{
+  "name": "@officehum/purchasing",
+  "version": "0.0.0",
+  "description": "Portable Purchasing role: watches stock against reorder points, compares suppliers, raises purchase orders with approved suppliers inside the spending limit, records deliveries, and asks a person for anything over the limit or a new supplier.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "officehum.json",
+    "AGENTS.md",
+    "APPEND_SYSTEM.md",
+    "role.md",
+    "role.sources.json",
+    "skills",
+    "evals"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "1.3.x",
+    "@earendil-works/pi-durable": "1.3.x"
+  },
+  "dependencies": {
+    "@officehum/sdk": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.3.0",
+    "@earendil-works/pi-durable": "1.3.0"
+  }
+}
