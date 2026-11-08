@@ -656,7 +656,7 @@
           <thead><tr><th>Role</th><th>Accepts</th><th>Approval gates</th><th>State</th></tr></thead>
           <tbody>
             <tr><td>Front Desk</td><td><code>booking.request</code>, <code>customer.reply</code></td><td>Contact create and update, first contact, booking, discount over the set rate, reschedule, cancel</td><td><span class="chip built">Built</span></td></tr>
-            <tr><td>Bookkeeper</td><td><code>invoice.create</code>, <code>invoice.question</code></td><td><code>large_invoice</code> (over $5,000 by default), <code>new_recipient</code>, <code>final_notice</code>, <code>any_payment</code></td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Bookkeeper</td><td><code>invoice.create</code>, <code>invoice.question</code>, <code>collections.run</code>, <code>payables.bill</code>, <code>books.close</code></td><td><code>large_invoice</code> (over $5,000 by default), <code>new_recipient</code>, <code>final_notice</code>, <code>any_payment</code></td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Office Manager</td><td><code>triage.request</code>, <code>digest.request</code></td><td>No tools of its own; the office's front door for unrouted work</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Sales</td><td><code>quote.request</code>, <code>lead.qualify</code>, <code>pipeline.review</code></td><td><code>any_discount</code>, <code>quote_over_limit</code></td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Operations</td><td><code>operations.schedule</code>, <code>operations.callout</code></td><td><code>overtime</code>, <code>contract_reschedule</code></td><td><span class="chip built">Built</span></td></tr>
@@ -801,12 +801,13 @@
             <text x="56" y="184" class="tm">hands off</text><text x="132" y="184" class="tm" style="fill: var(--ink)">invoice.question</text>
             <text x="132" y="200" class="tm" style="fill: var(--ink)">lead.qualify (example)</text></g>
           <!-- Sales -->
-          <g><rect x="660" y="96" width="260" height="110" rx="6" class="bx"/>
+          <g><rect x="660" y="96" width="260" height="128" rx="6" class="bx"/>
             <text x="676" y="120" class="tb">Sales</text><text x="904" y="120" text-anchor="end" class="tl c-ok">BUILT</text>
             <text x="676" y="144" class="tm">accepts</text><text x="752" y="144" class="tm" style="fill: var(--ink)">lead.qualify</text>
             <text x="752" y="162" class="tm" style="fill: var(--ink)">quote.request</text>
-            <text x="676" y="184" class="tm">hands off</text><text x="752" y="184" class="tm" style="fill: var(--ink)">invoice.create</text>
-            <text x="752" y="200" class="tm" style="fill: var(--ink)">booking.request</text></g>
+            <text x="676" y="184" class="tm">hands off</text><text x="752" y="184" class="tm" style="fill: var(--ink)">support.request</text>
+            <text x="752" y="200" class="tm" style="fill: var(--ink)">finance.review</text>
+            <text x="752" y="216" class="tm" style="fill: var(--ink)">operations.schedule</text></g>
           <!-- Office Manager -->
           <g><rect x="40" y="320" width="260" height="110" rx="6" class="bx"/>
             <text x="56" y="344" class="tb">Office Manager</text><text x="284" y="344" text-anchor="end" class="tl c-ok">BUILT SOLO</text>
@@ -873,7 +874,7 @@
       <h3>Worked example: a prospect becomes an invoice</h3>
       <p class="col">A prospect emails asking for a meeting on Tuesday and for onboarding pricing. Four
         agents and the owner handle it. Steps 5 to 12 depend on the M2 team runtime; the roles
-        themselves are built (RASF-3295).</p>
+        themselves are built (RASF-3295), but their hand-offs do not yet form this chain as drawn (RASF-3490).</p>
 
       <figure class="figure wide">
         <div class="scroll">
