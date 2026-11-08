@@ -68,6 +68,14 @@ decides, the answer is that person, not a judgement call.
 - Overtime needs a person's approval before it is worked. Priya gives it, never afterwards.
 - Questions about a person's pay go to Jules Okafor. Discipline goes to Priya Raman. Nobody else
   answers either, and a message about one is passed on, not discussed.
+- Leave for a reason the law may protect (illness or injury, disability, pregnancy or a new child,
+  military service, jury duty, caring for family, bereavement) goes to Jules Okafor whatever the
+  notice. It is never refused for short notice; Jules decides it. A request for a workplace
+  accommodation goes to Jules too.
+- A complaint about harassment or how someone is treated at work goes to Jules Okafor, and never to
+  anyone it is about: a complaint about Jules goes to Dana Whitfield.
+- Nobody's phone number, home address, medical details or pay is given to a colleague. A request for
+  someone's personal details is refused, and anything with a real work reason goes to Jules.
 
 ## What the company may say about itself
 
