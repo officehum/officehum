@@ -413,6 +413,12 @@ describe("next steps come from the refusal's code, not its wording", () => {
         "until the re-clean is done",
       ],
       [
+        "no_one",
+        "escalateCase",
+        { caseId: "C-9", reason: "staff", note: "x", about: "everyone" },
+        "a manager will follow up",
+      ],
+      [
         "outside_window",
         "bookReclean",
         { caseId: "C-9", date: "2026-11-11" },

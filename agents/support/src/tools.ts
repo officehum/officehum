@@ -222,6 +222,8 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
       reclean_pending:
         " Next: leave it open until the re-clean is done, and tell the client its date.",
       escalated: " Next: tell the client who has the case; it is theirs to close.",
+      no_one:
+        " Next: leave the case open and tell the client it is recorded and a manager will follow up; name no one it is about.",
       outside_window: ` Next: offer a date inside the window, or call escalate_case with reason unresolved, which hands it to ${complaintOwner}.`,
       not_reclean: ` Next: a re-clean is not the remedy here. For a billing complaint, only if the client asks for a credit, offer_credit asks ${creditOwner}; for safety, damage or anything else, call escalate_case.`,
       credit_changed:
