@@ -77,21 +77,21 @@ Rules, enforced by `@officehum/sdk` (`validatePackage`, `checkAgent`, `checkFour
 See [docs/design/agent-package.md](../docs/design/agent-package.md). For a minimal working role, see
 [packages/sdk/fixtures/sample-desk](../packages/sdk/fixtures/sample-desk).
 
-First roles, in milestone M1:
+## Catalog
 
-| Folder | Package | Department | Status |
-| --- | --- | --- | --- |
-| `frontdesk` | `@officehum/frontdesk` | Front office | Built (solo) |
-| `bookkeeper` | `@officehum/bookkeeper` (the Accounting agent: invoicing, collections, supplier bills with `list_vendor_bills`, `record_vendor_bill` and `pay_vendor_bill` behind a person's approval, and `reconcile_summary` for the month-end close; the package keeps its name until RASF-3079) | Finance | Built (RASF-3127; accounts payable RASF-3070) |
-| `office-manager` | `@officehum/office-manager` | Operations | Planned (RASF-3071) |
-| `sales` | `@officehum/sales` (the template for the catalogue) | Sales | Built (RASF-3295) |
-| `operations` | `@officehum/operations` | Operations | Built (RASF-3468) |
-| `purchasing` | `@officehum/purchasing` | Operations (purchasing) | Built (RASF-3469) |
-| `marketing` | `@officehum/marketing` | Marketing | Built (RASF-3470) |
-| `support` | `@officehum/support` | Front office (customer support) | Built (RASF-3471) |
-| `people-ops` | `@officehum/people-ops` | People | Built (RASF-3472) |
+Every role below is built. `sales/` is the shape the rest of the catalog follows: a manifest, a system prompt, tools behind
+a fake-backed seam, skills, evals and a README a stranger can follow. The roster keeps growing toward a free role for every
+department of a company (RASF-3293). Tools and approvals are copied from each role's `officehum.json`, and
+`scripts/catalog.test.ts` fails when this table drifts from the manifests.
 
-`frontdesk/`, `bookkeeper/`, `office-manager/`, `sales/`, `operations/`, `purchasing/`, `marketing/`,
-`support/` and `people-ops/` exist today. The roster grows into a free catalog of roles for every department of a company (RASF-3293),
-and `sales/` is the shape the rest of it is built to: a manifest, a system prompt, five tools behind
-a fake-backed seam, skills, evals and a README a stranger can follow.
+| Folder | Package | Job | Tools | Asks a person before |
+| --- | --- | --- | --- | --- |
+| `frontdesk` | `@officehum/frontdesk` | Manages approved contacts, messages, and UTC appointments | `check_schedule`, `list_bookings`, `list_contacts`, `create_contact`, `update_contact`, `send_message`, `reply_message`, `book_appointment`, `reschedule_appointment`, `cancel_appointment` | `confirm_contact_creation` creating a contact; `confirm_contact_update` correcting a contact; `confirm_inbound_reply` replying to an inbound sender; `first_contact` messaging a destination for the first time; `confirm_booking` booking an appointment; `discount_booking` a discount above the business's set rate; `confirm_reschedule` rescheduling an appointment; `confirm_cancellation` cancelling an appointment |
+| `bookkeeper` | `@officehum/bookkeeper` | The Accounting agent: invoices jobs, chases overdue invoices and answers billing questions; records supplier bills and pays them with approval | `find_customer`, `list_invoices`, `get_invoice`, `create_invoice`, `send_invoice`, `send_reminder`, `list_vendor_bills`, `record_vendor_bill`, `pay_vendor_bill`, `reconcile_summary` | `large_invoice` an invoice over the business's set amount; `new_recipient` sending an invoice to an address other than the one on file; `final_notice` a final notice to a customer; `any_payment` paying a supplier bill |
+| `office-manager` | `@officehum/office-manager` | Reads a request and says what it is, where it belongs and what is missing; writes the daily digest | None | Nothing: it has no tools and acts only in words |
+| `sales` | `@officehum/sales` | Qualifies leads, quotes from the price book, follows up and keeps the pipeline | `list_leads`, `get_quote`, `search_price_book`, `create_quote`, `log_activity`, `read_company` | `any_discount` a discount on a quote; `quote_over_limit` a quote above the quote limit |
+| `operations` | `@officehum/operations` | Schedules and dispatches the field crews inside their weekly hours, and asks a person for overtime and contract changes | `list_jobs`, `list_crews`, `assign_crew`, `request_overtime`, `reschedule_job`, `request_contract_reschedule`, `record_callout`, `read_company` | `overtime` overtime for a crew and job; `contract_reschedule` moving a visit on a recurring contract |
+| `purchasing` | `@officehum/purchasing` | Buys supplies from approved suppliers inside the spending limit; asks a person above it or for a new supplier | `list_stock`, `list_suppliers`, `compare_suppliers`, `list_purchase_orders`, `raise_purchase_order`, `request_po_approval`, `request_new_supplier`, `record_receipt`, `read_company` | `po_over_limit` a purchase order over the spending limit; `new_supplier` adding a supplier to the approved list |
+| `marketing` | `@officehum/marketing` | Drafts posts and campaign emails from approved claims; a person approves each new claim and every publication | `read_services`, `draft_post`, `draft_campaign_email`, `request_claim_approval`, `publish`, `list_drafts`, `read_company` | `claim` using a new claim in a draft; `publish` publishing a draft |
+| `support` | `@officehum/support` | Logs client complaints as cases, books re-cleans, asks a person for every credit, and escalates safety and refunds | `find_client`, `list_cases`, `log_case`, `book_reclean`, `offer_credit`, `escalate_case`, `resolve_case`, `read_company` | `any_credit` offering a credit note to a client |
+| `people-ops` | `@officehum/people-ops` | Keeps hiring and onboarding moving, records time off for a person to answer, and hands pay and discipline to a person | `list_candidates`, `update_candidate_stage`, `onboarding_checklist`, `record_time_off_request`, `request_time_off_exception`, `list_availability`, `refer_to_person`, `read_company` | `time_off_exception` time off with less notice than the company asks |

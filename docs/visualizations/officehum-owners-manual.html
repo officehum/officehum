@@ -1077,10 +1077,10 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
         <li><b>Paper Office tickets had no milestone. <span class="chip built">Fixed in Linear</span></b>RASF-3283
           to 3286 floated while their parent sat in M3, and Word and Excel had no adapter tickets.<span class="fix">All
           moved to M3; Word (RASF-3300) and Excel (RASF-3301) adapters added.</span></li>
-        <li><b>Reference role order flipped. <span class="chip planned">Partly fixed</span></b>Bookkeeper was called
+        <li><b>Reference role order flipped. <span class="chip built">Fixed</span></b>Bookkeeper was called
           the reference role built first, but Front Desk was built and Bookkeeper has not started.<span class="fix">RASF-3070
-          is corrected. <code>agents/README.md</code> still lists Bookkeeper and Office Manager folders
-          that do not exist.</span></li>
+          is corrected, and <code>agents/README.md</code> is now a catalog of the built roles, checked against
+          each manifest by <code>scripts/catalog.test.ts</code>.</span></li>
         <li><b>Exit tests were not gating. <span class="chip built">Fixed in Linear</span></b>The M0 exit test is
           unmet while M4 email work is in progress.<span class="fix">The project rule now reads: later work
           may start early, but a milestone closes only when its exit test passes.</span></li>
