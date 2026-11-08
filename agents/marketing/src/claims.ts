@@ -39,7 +39,7 @@ const TEENS = "ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eig
 const TENS = "twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety";
 /** A number in digits or in words, up to a hundred: "30", "99.9", "thirty", "ninety-nine". */
 const NUMBER = String.raw`(?:\d+(?:[.,]\d+)?|(?:a\s+|one\s+)?hundred|(?:${TENS})(?:[- ](?:${UNITS}))?|${TEENS}|${UNITS})`;
-const PERCENT = String.raw`${NUMBER}\s*(?:%|percent\b|per[\s-]?cent\b|pc\b)`;
+const PERCENT = String.raw`${NUMBER}(?:\s*|-)(?:%|percent\b|per[\s-]?cent\b|pc\b)`;
 const COMPARATIVE = String.raw`(?:cleaner|faster|better|healthier|safer|fresher|longer|cheaper|more|less|fewer)`;
 const RESULT_VERB = String.raw`(?:cuts?|reduces?|reduced|lowers|lowered|boosts?|boosted|increases?|increased|improves?|improved|halves?|halved|slash(?:es|ed)?|saves|saved|doubles?|doubled|triples?|tripled|eliminates|kills|removes|drops|dropped|fell|falls)`;
 

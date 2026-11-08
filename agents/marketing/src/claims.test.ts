@@ -38,6 +38,8 @@ const REFUSED: readonly (readonly [string, string])[] = [
   // Percentages and halves written in words.
   ["Cuts sick days by thirty percent.", "thirty percent"],
   ["Kills ninety-nine percent of germs.", "ninety-nine percent"],
+  ["Cuts sick days by thirty-percent.", "thirty-percent"],
+  ["Cuts sick days by 30-percent.", "30-percent"],
   ["Twenty percent fewer complaints.", "Twenty percent"],
   ["A hundred percent spotless, every night.", "A hundred percent"],
   ["Half of our clients report fewer sick days.", "Half of"],
