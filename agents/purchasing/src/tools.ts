@@ -231,13 +231,22 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
         ? ""
         : ` with draftId ${error.draftId}${supplier === undefined ? "" : `, supplierId ${supplier}`}${error.totalCents === undefined ? "" : ` and totalCents ${error.totalCents}`}`;
     const approval = ` Next: call request_po_approval${grant}, which asks ${lead}.`;
-    const next: Partial<Record<DeskRefusal, string>> = {
+    const next: Record<DeskRefusal, string> = {
       over_limit: approval,
       split_order: approval,
       unapproved_supplier: ` Next: call request_new_supplier${supplier === undefined ? "" : ` with supplier ${supplier}`} and the reason, which asks ${lead}.`,
       over_received: ` Any extra is ${lead}'s to take up with the supplier.`,
+      // The desk's own message already says what to do for these.
+      not_found: "",
+      invalid: "",
+      not_offered: "",
+      not_draft: "",
+      draft_changed: "",
+      already_approved: "",
+      not_placed: "",
+      not_on_order: "",
     };
-    return refusal<JsonObject>(`${error.message}${next[error.code] ?? ""}`, {
+    return refusal<JsonObject>(`${error.message}${next[error.code]}`, {
       code: error.code,
       ...(error.draftId === undefined ? {} : { draftId: error.draftId }),
       ...(error.totalCents === undefined ? {} : { totalCents: error.totalCents }),

@@ -51,6 +51,13 @@ describe("checkRoleMd", () => {
     expect(checkRoleMd(fixture("licence-note.md"), sources())).toEqual([]);
   });
 
+  it("a stray line after the licence note and a blank line is reported", () => {
+    const issues = checkRoleMd(fixture("junk-after-licence-note.md"), sources());
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.path).toMatch(/^Sources › line \d+$/);
+    expect(issues[0]?.message).toContain("Source licences");
+  });
+
   it("a marker for a missing claim is reported", () => {
     const issues = checkRoleMd(fixture("missing-claim.md"), sources());
     expect(lines(issues)).toEqual([

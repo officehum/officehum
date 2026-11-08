@@ -217,13 +217,19 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     // narrow what the other reports.
     if (!(error instanceof OperationsDeskError)) throw error;
     // The next step comes from the refusal's code, never from reading its message.
-    const next: Partial<Record<DeskRefusal, string>> = {
+    const next: Record<DeskRefusal, string> = {
       over_cap: ` request_overtime asks ${owner}.`,
       recurring: ` request_contract_reschedule asks ${owner}.`,
       contract_crew: ` That is ${owner}: hand it to them, and do not call another tool for it.`,
       over_cap_move: ` The schedule's owner is ${owner}.`,
+      // The desk's own message already says what to do for these.
+      not_found: "",
+      invalid: "",
+      time_off: "",
+      fits: "",
+      one_off: "",
     };
-    return refusal<JsonObject>(`${error.message}${next[error.code] ?? ""}`, {
+    return refusal<JsonObject>(`${error.message}${next[error.code]}`, {
       code: error.code,
       ...(error.overtimeHoursNeeded === undefined
         ? {}

@@ -357,7 +357,7 @@ that must branch on what a tool returned cannot be written as JSON; use `piDurab
 | `@officehum/office` | `packages/office` | Runtime: Pi Durable harness, workboard, relay, workflow engine |
 | `@officehum/cli` | `packages/cli` | Run an office, watch the board, steer a live agent |
 | `@officehum/role-factory` | `packages/role-factory` | `ROLE_SPEC.md`: the four-layer spec a role is generated from, its parser, and `officehum-role generate` |
-| `@officehum/<role>` | `agents/<role>` | One role agent each (Front Desk, Bookkeeper, Office Manager first) |
+| `@officehum/<role>` | `agents/<role>` | One role agent each: Front Desk, Bookkeeper (Accounting), Office Manager, Sales, Operations, Purchasing, Marketing, Support, People Ops (catalog in `agents/README.md`) |
 
 ## Paper Office document workspace
 

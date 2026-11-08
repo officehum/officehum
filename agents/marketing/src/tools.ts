@@ -219,12 +219,17 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     // The next step comes from the refusal's code, never from reading its message.
     const draftId = error.draftId === undefined ? "" : ` with draftId ${error.draftId}`;
     const text = error.finalText === undefined ? "" : `\n${block(error.finalText)}`;
-    const next: Partial<Record<DeskRefusal, string>> = {
+    const next: Record<DeskRefusal, string> = {
       unapproved_claim: ` Next: tell the person who asked which claim was refused and why. Take the claim out and draft again, or, if they have said they want to keep it (ask them first if they have not), call request_claim_approval${draftId}, the claim exactly as quoted and draftText exactly as below, which asks ${approver}. Never publish it as it is.${text}`,
       not_ready: ` Next: each held claim needs request_claim_approval first, which asks ${approver}; or draft it again without the claim.`,
       draft_changed: ` Next: give the text exactly as the desk holds it, below.${text}`,
+      // The desk's own message already says what to do for these.
+      not_found: "",
+      invalid: "",
+      claim_not_held: "",
+      already_published: "",
     };
-    return refusal<JsonObject>(`${error.message}${next[error.code] ?? ""}`, {
+    return refusal<JsonObject>(`${error.message}${next[error.code]}`, {
       code: error.code,
       ...(error.draftId === undefined ? {} : { draftId: error.draftId }),
       ...(error.claims === undefined
