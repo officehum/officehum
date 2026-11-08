@@ -281,7 +281,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
         `${invoice.id} line ${line.line} — ${line.name} — ${line.quantity.toLocaleString("en-US")} × ${line.unit} at ${money(line.unitPriceCents)} = ${money(line.lineTotalCents)} — credit if a person approves: ${money(line.creditCents)}`,
         ...eligible.map(
           (entry) =>
-            `  To ask for it: ${creditCall({ caseId: entry.id, client: entry.clientName, invoiceId: invoice.id, line: line.line, creditCents: line.creditCents })}.`,
+            `  Only if the client asks for a credit on ${entry.id}: ${creditCall({ caseId: entry.id, client: entry.clientName, invoiceId: invoice.id, line: line.line, creditCents: line.creditCents })}.`,
         ),
       ]),
     ]);

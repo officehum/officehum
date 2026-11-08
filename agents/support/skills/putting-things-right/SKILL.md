@@ -10,7 +10,7 @@ the service not fallen short. A prompt explanation and apology is often enough o
    at no charge. Agree a date with the client and book it with `book_reclean`. The desk refuses a
    date in the past or outside the re-clean window, a second re-clean, and any case a re-clean does
    not put right. Say it is booked only once the receipt says so, and give its date.
-2. **A credit** on an invoice: read the client's invoice lines in `list_cases`, which shows the
+2. **A credit**, only when the client asks for one: read the client's invoice lines in `list_cases`, which shows the
    credit the desk works out for each line and the exact `offer_credit` call. Ask the client which
    charge it concerns if it is not clear. Call `offer_credit` with those values unchanged; you never
    choose or round an amount. Every credit waits for the person who approves credits.

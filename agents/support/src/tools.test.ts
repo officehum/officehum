@@ -124,7 +124,7 @@ describe("list_cases", () => {
       "INV-2041 line 1 — Office cleaning, one visit, up to 3,000 sq ft — 22 × visit at $185.00 = $4,070.00 — credit if a person approves: $150.00",
     );
     expect(text(result)).toContain(
-      'To ask for it: offer_credit with caseId C-301, client "Hawthorne Family Dental", invoiceId INV-2041, line 1, creditCents 15000.',
+      'Only if the client asks for a credit on C-301: offer_credit with caseId C-301, client "Hawthorne Family Dental", invoiceId INV-2041, line 1, creditCents 15000.',
     );
     expect(details(result).found).toBe(true);
   });
