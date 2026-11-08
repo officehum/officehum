@@ -544,6 +544,7 @@ const RAINIER_PAYMENT = {
   supplierId: "sup-rainier-tools",
   supplierInvoice: "RT-5520",
   recordedBy: "Eileen Hart",
+  source: "PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
   lines: [
     { itemId: "microfiber-cloth", quantity: 20 },
     { itemId: "mop-head", quantity: 12 },
@@ -662,6 +663,7 @@ describe("accounts payable approval gate", () => {
                 supplierId: "sup-columbia-floor",
                 supplierInvoice: "CF-7790",
                 recordedBy: "Rosa",
+                source: "email, 9 November",
                 lines: [{ itemId: "floor-finish", quantity: 1 }],
                 totalCents: 11500,
               },

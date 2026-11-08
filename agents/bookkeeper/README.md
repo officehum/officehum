@@ -61,7 +61,7 @@ listPayments(filter?: { customerId?: string; since?: string }): Promise<Payment[
 ```ts
 listVendorBills(filter?: { status?: "unpaid" | "due" | "overdue" | "open" | "paid"; supplier?: string; billId?: string }): Promise<VendorBill[]>;
 recordVendorBill(input: { supplier, supplierInvoice, lines: { itemId, quantity }[], recordedBy, source, termsDays? }, options: { requestId }): Promise<VendorBill>;
-payVendorBill(input: { billId, supplierId, supplierInvoice, recordedBy, lines, totalCents }, options: { requestId }): Promise<VendorPayment>;
+payVendorBill(input: { billId, supplierId, supplierInvoice, recordedBy, source, lines, totalCents }, options: { requestId }): Promise<VendorPayment>;
 reconcile(input: { month?: number; majorOverCents: number | null }): Promise<Reconciliation>;
 ```
 
@@ -70,7 +70,7 @@ and the due date (the recorded date plus the bill's terms, 30 days when it state
 whether a bill is open, due within seven days, overdue or paid from its own clock, pays exactly a
 bill's own total, and matches the statement against the books. A refusal is an `AccountingDeskError`
 with a code (`unknown_supplier`, `unapproved_supplier`, `not_supplied`, `duplicate_bill`,
-`already_paid`, `bill_mismatch`, `bill_changed`, `no_statement`, `not_found`, `invalid`); the tools
+`already_paid`, `bill_mismatch`, `source_mismatch`, `bill_changed`, `no_statement`, `not_found`, `invalid`); the tools
 turn each code into the next step, never by reading the message. A host desk must refuse a payment
 with `bill_changed` when the bill was corrected after the facts in the call were read.
 
@@ -157,11 +157,17 @@ Creating an invoice, sending one, sending a reminder and paying a supplier bill 
 
 - **`any_payment`** (`pay_vendor_bill`) — no condition: **every** payment waits for a person, whatever
   its size. The call names the bill and the facts the person approves (supplier id, the supplier's
-  invoice number, who recorded it, each item and quantity, and the total in cents) exactly as
-  `list_vendor_bills` gave them, so the approval request shows them. The desk pays the bill's own
-  total, never a figure from the model, and refuses the payment (`bill_mismatch`) when those facts are
-  not the bill's, or (`bill_changed`) when the bill was corrected after they were read, so a grant
-  covers exactly the bill and total the person saw. A retried call pays once.
+  invoice number, who recorded it and what it was recorded from, each item and quantity, and the
+  total in cents) exactly as `list_vendor_bills` gave them, so the approval request shows them,
+  including where the bill came from. The desk pays the bill's own total, never a figure from the
+  model, and refuses the payment when the source is not what the bill was recorded from
+  (`source_mismatch`), when the other facts are not the bill's (`bill_mismatch`), or when the bill
+  was corrected after they were read (`bill_changed`), so a grant covers exactly the bill and total
+  the person saw. A retried call pays once.
+
+Two clocks in the demonstration: the shipped desk's bills are aged against its fixed clock (Monday 9
+November 2026), while `list_invoices` ages QuickBooks invoices against today. A real desk uses the
+real clock.
 
 ### `new_recipient` over-blocks in Office Hum, on purpose
 
@@ -214,12 +220,14 @@ Ten tools, each declaring its replay policy exactly as `officehum.json` does:
 | `send_reminder` | unsafe | `{ invoice, tone }` — `friendly`, `firm` or `final`, once per invoice per stage (this one belongs to the collections skill) |
 | `list_vendor_bills` | safe | `{ status?, supplier?, billId? }` — `unpaid`, `due`, `overdue`, `open` or `paid` |
 | `record_vendor_bill` | unsafe | `{ supplier, supplierInvoice, lines: { itemId, quantity }[], recordedBy, source, termsDays? }` — no approval: the desk refuses a supplier not on file or not approved and prices every line |
-| `pay_vendor_bill` | unsafe | `{ billId, supplierId, supplierInvoice, recordedBy, lines, totalCents }` — `any_payment` on every call; demonstration backend |
+| `pay_vendor_bill` | unsafe | `{ billId, supplierId, supplierInvoice, recordedBy, source, lines, totalCents }` — `any_payment` on every call; demonstration backend |
 | `reconcile_summary` | safe | `{ month? }` — the month's number (10 for October); the desk works out the year as the last such month that has ended, or the last full month when omitted |
 
 No tool takes a bank account, a routing number or a remittance address: a supplier's payment details
-never come from a message, and a request to change them is handed to the person who owns finance. A
-repayment plan or new payment terms, a refund, a write-off or a dispute go to a person the same way.
+never come from a message, and a request to change them is answered with who decides it: the person who
+owns finance, named from the company record. A repayment plan or new payment terms, a refund, a
+write-off or a dispute are answered the same way. The role has no hand-off tool, so nobody is told
+and no reply promises they will be in touch (a hand-off tool is a follow-up).
 Nothing closes a period or posts an entry: the `month-end-close` skill builds a summary from
 `reconcile_summary`, the unpaid bills and the overdue invoices for the person who closes the month.
 

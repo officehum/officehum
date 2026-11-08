@@ -140,6 +140,8 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
     already_paid: () => " Next: tell the person it is already paid; there is nothing to pay.",
     bill_mismatch: (billId) =>
       ` Next: read ${billId ?? "the bill"} with list_vendor_bills and name its facts exactly as the desk holds them.`,
+    source_mismatch: (billId) =>
+      ` Next: read ${billId ?? "the bill"} with list_vendor_bills and name what it was recorded from exactly as the desk shows it, so the person approving sees where it came from.`,
     bill_changed: (billId) =>
       ` Next: tell the person ${billId ?? "the bill"} changed after it was put to a person, so it was not paid; read it again with list_vendor_bills before anything else.`,
     no_statement: () => " Next: ask which of the periods on file is wanted.",
@@ -260,7 +262,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
   const payVendorBill = defineTool({
     name: "pay_vendor_bill",
     description:
-      "Ask a person to approve paying one supplier bill, naming the bill and its facts exactly as list_vendor_bills gave them (supplier id, the supplier's invoice number, who recorded it, each item and quantity, and the total in cents), so the person sees what they approve. Every call waits for a person. Once approved, the desk pays the bill's own total, and refuses if the bill is not what the approval named or changed since. Demonstration backend: no money moves.",
+      "Ask a person to approve paying one supplier bill, naming the bill and its facts exactly as list_vendor_bills gave them (supplier id, the supplier's invoice number, who recorded it and from what, each item and quantity, and the total in cents), so the person sees what they approve. Every call waits for a person. Once approved, the desk pays the bill's own total, and refuses if the bill is not what the approval named or changed since. Demonstration backend: no money moves.",
     parameters: Type.Object(
       {
         billId: Type.String({ description: "The bill's id, e.g. BILL-2001" }),
@@ -271,6 +273,10 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
           description: "The supplier's invoice number on the bill, e.g. RT-5520",
         }),
         recordedBy: Type.String({ description: "Who recorded the bill, as the desk shows it" }),
+        source: Type.String({
+          description:
+            "What the bill was recorded from, exactly as the desk shows it after 'from', e.g. PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
+        }),
         lines: LINES,
         totalCents: Type.Integer({
           minimum: 1,
@@ -289,6 +295,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
             supplierId: args.supplierId,
             supplierInvoice: args.supplierInvoice,
             recordedBy: args.recordedBy,
+            source: args.source,
             lines: args.lines,
             totalCents: args.totalCents,
           },

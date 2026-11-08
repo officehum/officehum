@@ -134,6 +134,8 @@ export interface PaymentInput {
   readonly supplierId: string;
   readonly supplierInvoice: string;
   readonly recordedBy: string;
+  /** What the bill was recorded from, as the desk shows it: the main signal of where it came from. */
+  readonly source: string;
   readonly lines: readonly BillLineInput[];
   readonly totalCents: number;
 }
@@ -155,7 +157,8 @@ export interface AccountingDesk {
   /**
    * Pays one bill, for its own total. Called only once a person approved exactly this bill. A host
    * desk must refuse with `bill_changed` when the bill was corrected after the facts in `input` were
-   * read, and with `bill_mismatch` when they are not the bill's, so a grant never pays a bill nobody
+   * read, with `source_mismatch` when the bill was recorded from something other than `source`, and
+   * with `bill_mismatch` when the other facts are not the bill's, so a grant never pays a bill nobody
    * was shown.
    */
   payVendorBill(
@@ -183,6 +186,7 @@ export type DeskRefusal =
   | "duplicate_bill"
   | "already_paid"
   | "bill_mismatch"
+  | "source_mismatch"
   | "bill_changed"
   | "no_statement";
 
@@ -196,6 +200,7 @@ export const DESK_REFUSALS: readonly DeskRefusal[] = [
   "duplicate_bill",
   "already_paid",
   "bill_mismatch",
+  "source_mismatch",
   "bill_changed",
   "no_statement",
 ];
@@ -203,7 +208,7 @@ export const DESK_REFUSALS: readonly DeskRefusal[] = [
 /** A refusal the model reads: an unknown supplier, a bill already paid, a bill that changed. */
 export class AccountingDeskError extends Error {
   readonly code: DeskRefusal;
-  /** For `duplicate_bill`, `already_paid`, `bill_mismatch` and `bill_changed`: the bill concerned. */
+  /** For a refusal about one bill (duplicate, paid, mismatch, source, changed): the bill concerned. */
   readonly billId: string | undefined;
 
   constructor(code: DeskRefusal, message: string, extra: { readonly billId?: string } = {}) {
@@ -676,7 +681,17 @@ export function fakeAccountingDesk(options: FakeAccountingDeskOptions = {}): Fak
         same(input.supplierId, bill.supplierId) &&
         same(input.supplierInvoice, bill.supplierInvoice) &&
         same(input.recordedBy, bill.recordedBy);
-      if (facts && input.totalCents === bill.totalCents && sameLines(input.lines, bill.lines)) {
+      const sourced = same(input.source, bill.source);
+      const content = input.totalCents === bill.totalCents && sameLines(input.lines, bill.lines);
+      if (facts && content && !sourced) {
+        // Everything else is the bill's, but the person would have been shown another origin for it.
+        throw new AccountingDeskError(
+          "source_mismatch",
+          `${bill.id} was recorded from ${JSON.stringify(bill.source)}, not ${JSON.stringify(input.source)}, so the approval did not show what it was recorded from. Nothing was paid.`,
+          { billId: bill.id },
+        );
+      }
+      if (facts && content && sourced) {
         const payment: VendorPayment = {
           id: `PAY-${++paymentNumber}`,
           billId: bill.id,
@@ -714,7 +729,7 @@ export function fakeAccountingDesk(options: FakeAccountingDeskOptions = {}): Fak
       }
       throw new AccountingDeskError(
         "bill_mismatch",
-        `That is not ${bill.id} as the desk holds it: ${bill.supplierName} (${bill.supplierId}), invoice ${bill.supplierInvoice}, recorded by ${bill.recordedBy}, total ${money(bill.totalCents)} (${bill.totalCents} cents). Nothing was paid.`,
+        `That is not ${bill.id} as the desk holds it: ${bill.supplierName} (${bill.supplierId}), invoice ${bill.supplierInvoice}, recorded by ${bill.recordedBy} from ${bill.source}, total ${money(bill.totalCents)} (${bill.totalCents} cents). Nothing was paid.`,
         { billId: bill.id },
       );
     },

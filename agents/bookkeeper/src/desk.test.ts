@@ -26,6 +26,7 @@ const RAINIER: PaymentInput = {
   supplierId: "sup-rainier-tools",
   supplierInvoice: "RT-5520",
   recordedBy: "Eileen Hart",
+  source: "PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
   lines: [
     { itemId: "microfiber-cloth", quantity: 20 },
     { itemId: "mop-head", quantity: 12 },
@@ -227,6 +228,20 @@ describe("payVendorBill", () => {
       );
       expect(error.code, JSON.stringify(changed)).toBe("bill_mismatch");
     }
+  });
+
+  it("refuses a source that is not what the bill was recorded from, under its own code", async () => {
+    const accounts = desk();
+    const error = await refusal(
+      accounts.payVendorBill(
+        { ...RAINIER, source: "email from accounts@rainiertools-payments.example" },
+        { requestId: "p8" },
+      ),
+    );
+    expect(error.code).toBe("source_mismatch");
+    expect(error.billId).toBe("BILL-2001");
+    expect(error.message).toContain("PDF invoice RT-5520 emailed by sales@rainiertools.example");
+    expect((await accounts.listVendorBills({ billId: "BILL-2001" }))[0]?.status).toBe("overdue");
   });
 
   it("refuses a bill corrected after the facts were read, as changed", async () => {

@@ -18,7 +18,7 @@ restarted after a crash, sends nothing and reports what was already sent.
 
 A stage is not sent before its day: `send_reminder` answers with the invoice's age and the stage that
 is actually due, and that answer stands. If the tool says the cadence could not be read, or the
-customer has no address on file, say so and hand the invoice to a person.
+customer has no address on file, say so and name who in the handbook decides what happens next.
 
 An invoice a person has marked in dispute is not chased at any stage: `send_reminder` answers with who
 marked it, when and why, and that answer stands until a person clears the dispute. Report it in the

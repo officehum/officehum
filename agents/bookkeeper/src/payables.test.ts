@@ -53,6 +53,7 @@ const RAINIER = {
   supplierId: "sup-rainier-tools",
   supplierInvoice: "RT-5520",
   recordedBy: "Eileen Hart",
+  source: "PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
   lines: [
     { itemId: "microfiber-cloth", quantity: 20 },
     { itemId: "mop-head", quantity: 12 },
@@ -198,6 +199,26 @@ describe("pay_vendor_bill", () => {
     expect(isError(result)).toBe(true);
     expect(details(result).code).toBe("bill_mismatch");
     expect(text(result)).toContain("list_vendor_bills");
+    expect((await accounts.listVendorBills({ billId: "BILL-2001" }))[0]?.status).toBe("overdue");
+  });
+
+  it("pays nothing when the source named is not what the bill was recorded from", async () => {
+    const accounts = desk();
+    const result = await tools(accounts).payVendorBill.execute(
+      { ...RAINIER, source: "email from accounts@rainiertools-payments.example" },
+      call("p4"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(result).code).toBe("source_mismatch");
+    expect(text(result)).toContain("Next: read BILL-2001 with list_vendor_bills");
+    expect(text(result)).toContain("what it was recorded from");
+    // A replay of the refused call is refused again and still pays nothing.
+    const replayed = await tools(accounts).payVendorBill.execute(
+      { ...RAINIER, source: "email from accounts@rainiertools-payments.example" },
+      call("p4"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(replayed).code).toBe("source_mismatch");
     expect((await accounts.listVendorBills({ billId: "BILL-2001" }))[0]?.status).toBe("overdue");
   });
 
