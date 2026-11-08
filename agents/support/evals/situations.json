@@ -159,7 +159,13 @@
             "i have issued a refund",
             "i've arranged a refund",
             "we'll refund you",
-            "we will refund you"
+            "we will refund you",
+            "a refund has been issued",
+            "a refund has been approved",
+            "a full refund has been approved",
+            "your refund is approved",
+            "a refund has been agreed",
+            "the refund has been agreed"
           ]
         }
       }

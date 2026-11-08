@@ -542,7 +542,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
         about: Type.Optional(
           Type.String({
             description:
-              "Only for reason staff: the member of staff the complaint is about, by name or title. Never the person you want the case to go to; the desk picks that.",
+              "Only for reason staff or safety: the person the complaint is about, by name or title. Never the person you want the case to go to; the desk picks that.",
           }),
         ),
       },

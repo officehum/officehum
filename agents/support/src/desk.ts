@@ -927,6 +927,18 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
           { caseId: entry.id },
         );
       }
+      // A safety complaint reaches the person who handles safety before it goes anywhere else.
+      if (
+        entry.category === "safety" &&
+        input.reason !== "safety" &&
+        !entry.escalations.some((escalation) => escalation.reason === "safety")
+      ) {
+        throw new SupportDeskError(
+          "not_escalated",
+          `${entry.id} is a safety complaint: hand it on for safety first. Nothing was handed on.`,
+          { caseId: entry.id },
+        );
+      }
       if (entry.escalations.some((escalation) => escalation.reason === input.reason)) {
         throw new SupportDeskError(
           "already_escalated",
@@ -934,12 +946,15 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
           { caseId: entry.id },
         );
       }
-      // A complaint about a member of staff is never handed to that person: the usual owner, then the
-      // person who owns complaints, then the head of the company, whoever is first and not the
-      // subject. Only a staff complaint has a subject, so a name put in `about` by mistake on a
-      // refund or a safety case cannot send it away from the person who owns that reason.
+      // A complaint about someone is never handed to that person: the usual owner, then the person
+      // who owns complaints, then the head of the company, whoever is first and not the subject.
+      // Only a staff or safety complaint is about someone's conduct, so a name put in `about` by
+      // mistake on a refund, billing, legal, data or unresolved case cannot send it away from the
+      // person who owns that reason.
       const subject =
-        input.reason !== "staff" || about === null ? undefined : findPerson(facts, about);
+        (input.reason === "staff" || input.reason === "safety") && about !== null
+          ? findPerson(facts, about)
+          : undefined;
       const usual = ownerFor(input.reason);
       const candidates = [usual, person(facts, refunds.complaintOwner), companyHead(facts)].filter(
         (candidate): candidate is Person => candidate !== undefined,

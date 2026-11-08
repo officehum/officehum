@@ -154,9 +154,12 @@ export function personLabel(who: Person | undefined, fallback = "a person"): str
 }
 
 /**
- * A person the company record names, by id, full name, first name or title, ignoring case: how a
- * client or colleague refers to someone, by first name or by title. `undefined` when the
- * words name nobody on the record, such as a crew member the record does not list.
+ * A person the company record names, by id, full name, title, surname or first name, each matched as
+ * whole words anywhere in the text, ignoring case: how a client or colleague refers to someone
+ * ("the client services lead", "Mr" and a surname, a first name). A word that only contains a name
+ * does not match. `undefined` when the words name nobody on the record, such as a crew member the
+ * record does not list. Used to keep a complaint away from the person it is about, so matching
+ * eagerly only ever sends a case to someone else.
  */
 export function findPerson(
   company: Pick<CompanyFacts, "people">,
@@ -164,14 +167,20 @@ export function findPerson(
 ): Person | undefined {
   const wanted = words.trim().toLowerCase();
   if (wanted === "") return undefined;
+  const has = (phrase: string): boolean => {
+    const escaped = phrase
+      .trim()
+      .toLowerCase()
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return escaped !== "" && new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`).test(wanted);
+  };
   return company.people.find((candidate) => {
-    const first = candidate.name.split(" ")[0]?.toLowerCase();
+    const parts = candidate.name.split(" ");
     return (
       candidate.id.toLowerCase() === wanted ||
-      candidate.name.toLowerCase() === wanted ||
-      first === wanted ||
-      candidate.title.toLowerCase() === wanted ||
-      wanted.includes(candidate.name.toLowerCase())
+      has(candidate.name) ||
+      has(candidate.title) ||
+      parts.some((part) => has(part))
     );
   });
 }
