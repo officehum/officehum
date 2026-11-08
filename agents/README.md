@@ -82,7 +82,7 @@ First roles, in milestone M1:
 | Folder | Package | Department | Status |
 | --- | --- | --- | --- |
 | `frontdesk` | `@officehum/frontdesk` | Front office | Built (solo) |
-| `bookkeeper` | `@officehum/bookkeeper` (reference agent for accounting) | Finance | Built (RASF-3127) |
+| `bookkeeper` | `@officehum/bookkeeper` (the Accounting agent: invoicing, collections, supplier bills with `list_vendor_bills`, `record_vendor_bill` and `pay_vendor_bill` behind a person's approval, and `reconcile_summary` for the month-end close; the package keeps its name until RASF-3079) | Finance | Built (RASF-3127; accounts payable RASF-3070) |
 | `office-manager` | `@officehum/office-manager` | Operations | Planned (RASF-3071) |
 | `sales` | `@officehum/sales` (the template for the catalogue) | Sales | Built (RASF-3295) |
 | `operations` | `@officehum/operations` | Operations | Built (RASF-3468) |

@@ -963,7 +963,7 @@
       "sources": [
         {
           "source": "S19",
-          "passage": "For example, the Suggest Vendor Payments action that finds vendor payments that are due, and the Vendor - Summary Aging report that shows an overview of due vendor payments."
+          "passage": "For example, the Suggest Vendor Payments action finds vendor payments that are due. The Vendor - Summary Aging report shows an overview of due vendor payments."
         }
       ]
     },

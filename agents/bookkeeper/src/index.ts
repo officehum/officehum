@@ -1,23 +1,27 @@
 /**
- * The Bookkeeper's entry point: the factory a host calls to get the role.
+ * The Accounting role's entry point (package `@officehum/bookkeeper`): the factory a host calls.
  *
  * ```ts
  * import bookkeeper from "@officehum/bookkeeper";
  *
- * const role = bookkeeper({ quickbooks, approve, overlays: ["./my-bookkeeper"] });
+ * const role = bookkeeper({ quickbooks, desk, approve, overlays: ["./my-bookkeeper"] });
  * for (const extension of role.extensions) registry.install(extension);
  * const root = await harness.root(context, { agent: role.agent });
  * ```
  *
  * The package brings its own prompt, skills, tools and approval conditions; the host brings the
- * QuickBooks connection and, optionally, the person who decides gated actions. Nothing here needs
- * Office Hum, so the same bundle runs in a bare Pi Durable harness.
+ * QuickBooks connection, optionally its own accounts desk (payables and bank records; omitted, the
+ * demonstration desk, which moves no money), and the person who decides gated actions. Nothing here
+ * needs Office Hum, so the same bundle runs in a bare Pi Durable harness.
  */
 
 import { fileURLToPath } from "node:url";
 import type { QuickBooks } from "@officehum/quickbooks";
 import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
+import { type CompanyFacts, loadCompanyFacts } from "./company.js";
+import { type AccountingDesk, fakeAccountingDesk } from "./desk.js";
+import { payablesTools } from "./payables.js";
 import { bookkeeperTools, largeInvoiceCondition, newRecipientCondition } from "./tools.js";
 
 /**
@@ -38,6 +42,50 @@ export {
   type ReminderTone,
   sentStage,
 } from "./collections.js";
+export {
+  COMPANY_FACTS_URL,
+  type CompanyFacts,
+  financeLead,
+  loadCompanyFacts,
+  money,
+  type Person,
+  personLabel,
+  purchasingLead,
+  type Supplier,
+  type SupplyItem,
+} from "./company.js";
+export {
+  type AccountingDesk,
+  AccountingDeskError,
+  type BankEntry,
+  type BankStatement,
+  type BillFilter,
+  type BillLineInput,
+  type BillStatus,
+  DEFAULT_TERMS_DAYS,
+  DEMO_NOW,
+  DESK_REFUSALS,
+  type DeskRefusal,
+  demoBills,
+  demoBooks,
+  demoStatements,
+  type FakeAccountingDesk,
+  type FakeAccountingDeskOptions,
+  fakeAccountingDesk,
+  type PaymentInput,
+  type Reconciliation,
+  type SeedBill,
+  type UnmatchedItem,
+  type VendorBill,
+  type VendorBillLine,
+  type VendorPayment,
+} from "./desk.js";
+export {
+  MAJOR_UNMATCHED_LIMIT,
+  type PayablesToolDependencies,
+  type PayablesToolset,
+  payablesTools,
+} from "./payables.js";
 export {
   type BookkeeperToolset,
   bookkeeperTools,
@@ -63,9 +111,23 @@ export interface BookkeeperOptions {
    * its gated actions.
    */
   readonly quickbooks?: QuickBooks;
+  /**
+   * The host's payables and bank records: accounting software in production, `fakeAccountingDesk` in
+   * a test or an eval. Omitted, the role runs on the demonstration desk it ships with, whose payments
+   * are recorded in memory and move no money.
+   */
+  readonly desk?: AccountingDesk;
+  /**
+   * The company whose suppliers, catalogue and people the desk and the hand-offs use. Omitted, the
+   * generated facts in this package.
+   */
+  readonly company?: CompanyFacts;
   /** Overlay directories, lowest first: the business's AGENTS.md, skills, settings and limits. */
   readonly overlays?: readonly string[];
-  /** Decides every gated action. Omitted: creating, sending and reminding are all blocked. */
+  /**
+   * Decides every gated action. Omitted: a large invoice, a send to another address, a final notice
+   * and every supplier payment are all blocked.
+   */
   readonly approve?: Approver;
 }
 
@@ -75,7 +137,16 @@ export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
   // reader is bound to the role this call returns; before it exists no cadence resolves, and a
   // reminder then refuses rather than guessing a stage.
   let role: DefinedRole | undefined;
-  const tools = bookkeeperTools(options.quickbooks, () => role?.current().limits ?? {});
+  const limits = () => role?.current().limits ?? {};
+  const tools = bookkeeperTools(options.quickbooks, limits);
+  const company = options.company ?? loadCompanyFacts();
+  // The demonstration desk prices bills from the company's own catalogue, so a first run and a real
+  // one refuse the same supplier. The major-item limit is read live, like the collections cadence.
+  const payables = payablesTools({
+    desk: options.desk ?? fakeAccountingDesk({ company }),
+    company,
+    limits,
+  });
   const created = defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
@@ -85,6 +156,10 @@ export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
       tools.getInvoice,
       tools.createInvoice,
       tools.sendInvoice,
+      payables.listVendorBills,
+      payables.recordVendorBill,
+      payables.payVendorBill,
+      payables.reconcileSummary,
     ],
     // The reminder belongs to the collections skill, which is where its instructions live.
     skillTools: { collections: [tools.sendReminder] },
@@ -96,7 +171,7 @@ export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
     // comes from the client, which no manifest condition can read, so its declaration has no `when`
     // and the office gate asks a person about every send. That over-blocking is deliberate; the
     // README records why the manifest cannot. `final_notice` needs nothing but the tone and stays a
-    // manifest condition.
+    // manifest condition. `any_payment` has no condition: every payment waits for a person.
     when: {
       large_invoice: largeInvoiceCondition,
       new_recipient: newRecipientCondition(options.quickbooks),
