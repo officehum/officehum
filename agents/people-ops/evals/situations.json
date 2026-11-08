@@ -381,7 +381,12 @@
               "are private",
               "is private",
               "stay private",
-              "stays private"
+              "stays private",
+              "not shared",
+              "aren't shared",
+              "are not shared",
+              "isn't shared",
+              "is not shared"
             ]
           ],
           "notContains": [
