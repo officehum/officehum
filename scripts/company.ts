@@ -385,6 +385,15 @@ function departmentIssues(
     }
   }
 
+  // Who approves what marketing publishes is the company's own choice; the Marketing role asks them.
+  const approver = asRecord(company.marketing)?.approverId;
+  if (typeof approver !== "string" || !personIds.has(approver)) {
+    add(
+      "company.json",
+      `marketing.approverId names ${String(approver)}, who is not one of the people; name the person who approves what marketing publishes`,
+    );
+  }
+
   const claims = asArray(asRecord(company.marketing)?.approvedClaims);
   if (claims === undefined || claims.length === 0) {
     add("company.json", "marketing.approvedClaims is missing or empty");

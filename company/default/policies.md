@@ -71,8 +71,8 @@ decides, the answer is that person, not a judgement call.
 
 ## What the company may say about itself
 
-Marketing states results and facts only from this list. Anything else needs a person's approval
-before it is published.
+Marketing states results and facts only from this list. Anything else needs Dana Whitfield's
+approval before it is published, and she approves every post and campaign email before it goes out.
 
 - Northwind Facilities has cleaned and maintained Portland buildings since 2011.
 - Northwind is licensed in Oregon (CCB #204118) and carries general liability, commercial auto and umbrella insurance.
