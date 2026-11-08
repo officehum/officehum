@@ -780,7 +780,9 @@
     "timeOffNoticeDays": 14,
     "overtimeNeedsApproval": true,
     "payQuestionsTo": "jules-okafor",
-    "disciplineTo": "priya-raman"
+    "disciplineTo": "priya-raman",
+    "protectedLeaveTo": "jules-okafor",
+    "employeeRelationsTo": "jules-okafor"
   },
   "marketing": {
     "approverId": "dana-whitfield",
