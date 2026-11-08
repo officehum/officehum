@@ -66,7 +66,13 @@ const SECTIONS: readonly CompanySection[] = [
   "glossary",
 ];
 
-const DATE = Type.String({ description: "A date as YYYY-MM-DD, e.g. 2026-11-20" });
+const DATE = Type.String({
+  description:
+    "A date as YYYY-MM-DD. When the person gives no year, it is the next such date from today: list_availability's heading gives this week's dates",
+});
+
+const EMPLOYEE =
+  "The employee's name as they gave it: a full name, or a first name or surname alone. The desk finds them and says if more than one person has that name, so never ask for a surname first";
 
 const literals = <T extends string>(values: readonly T[], description: string) =>
   Type.Union(
@@ -361,7 +367,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
       "Record an employee's time-off request. It is recorded as pending for the person who decides it; nothing is approved. The desk refuses a request with less notice than the company asks unless the reason may be protected by law (illness, disability, pregnancy or a new child, military, jury duty, family care, bereavement), which is always recorded and sent to a person.",
     parameters: Type.Object(
       {
-        employee: Type.String({ description: "The employee's full name" }),
+        employee: Type.String({ description: EMPLOYEE }),
         startDate: DATE,
         endDate: Type.String({
           description: "The last day off, as YYYY-MM-DD; the start date for one day",
@@ -396,7 +402,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
       "Ask a person to approve time off requested with less notice than the company asks, with the daysNotice record_time_off_request's refusal stated and why. Every call waits for a person; once approved, the desk records the time off as approved by them.",
     parameters: Type.Object(
       {
-        employee: Type.String({ description: "The employee's full name" }),
+        employee: Type.String({ description: EMPLOYEE }),
         startDate: DATE,
         endDate: Type.String({ description: "The last day off, as YYYY-MM-DD" }),
         reasonCategory: REASON,

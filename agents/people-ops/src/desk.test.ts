@@ -284,6 +284,43 @@ describe("time off", () => {
     expect(overlap.code).toBe("duplicate");
   });
 
+  it("finds an employee by a first name alone when only one person has it", async () => {
+    const request = await desk().recordTimeOffRequest(
+      {
+        employee: "maya",
+        startDate: "2026-12-14",
+        endDate: "2026-12-18",
+        reasonCategory: "vacation",
+      },
+      { requestId: "first-name" },
+    );
+    expect(request.employeeName).toBe("Maya Singh");
+  });
+
+  it("refuses a name more than one person shares, naming them", async () => {
+    const people = fakePeopleOpsDesk({
+      company,
+      now: () => NOW,
+      employees: [
+        { id: "E-1", name: "Ana Lopez", title: "Cleaner", crewId: "cleaning-north" },
+        { id: "E-2", name: "Ana Reyes", title: "Cleaner", crewId: "cleaning-north" },
+      ],
+    });
+    const error = await refusal(
+      people.recordTimeOffRequest(
+        {
+          employee: "Ana",
+          startDate: "2026-12-14",
+          endDate: "2026-12-14",
+          reasonCategory: "vacation",
+        },
+        { requestId: "ambiguous" },
+      ),
+    );
+    expect(error.code).toBe("ambiguous");
+    expect(error.message).toContain("Ana Reyes");
+  });
+
   it("records one request however often the same call is replayed", async () => {
     const people = desk();
     const input = {
