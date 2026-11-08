@@ -327,6 +327,66 @@ describe("fakeSupportDesk: escalation", () => {
     expect(crew.redirected).toBe(false);
   });
 
+  it("recognises the person a staff complaint is about by title, surname or first name, as whole words", async () => {
+    const owner = person(company, refunds.complaintOwner);
+    const head = companyHead(company);
+    if (owner === undefined || head === undefined) throw new Error("company changed");
+    const [first = "", last = ""] = owner.name.split(" ");
+    for (const about of [
+      `the ${owner.title}`,
+      `your ${owner.title.toLowerCase()}`,
+      `Mr ${last}`,
+      first,
+      `${first.toUpperCase()} on the phone`,
+    ]) {
+      const receipt = await desk().escalateCase(
+        { caseId: "C-303", reason: "staff", note: "Rude on the phone.", about },
+        { requestId: `w-${about}` },
+      );
+      expect(receipt.toPersonId, about).toBe(head.id);
+      expect(receipt.redirected, about).toBe(true);
+    }
+    // A word that merely contains a name is not that person.
+    const near = await desk().escalateCase(
+      { caseId: "C-303", reason: "staff", note: "Rude.", about: `${first}as from the night crew` },
+      { requestId: "w-near" },
+    );
+    expect(near.toPersonId).toBe(owner.id);
+    expect(near.redirected).toBe(false);
+  });
+
+  it("never hands a safety complaint to the safety owner it is about, and a safety case goes to safety first", async () => {
+    const safetyOwner = escalationOwner(company, "safety-incident");
+    if (safetyOwner === undefined) throw new Error("company changed");
+    const receipt = await desk().escalateCase(
+      { caseId: "C-301", reason: "safety", note: "Ignored a hazard.", about: safetyOwner.name },
+      { requestId: "y1" },
+    );
+    expect(receipt.toPersonId).not.toBe(safetyOwner.id);
+    expect(receipt.toPersonId).toBe(refunds.complaintOwner);
+    expect(receipt.redirected).toBe(true);
+
+    // A logged safety complaint is escalated for safety before anything else.
+    const support = desk();
+    const logged = await support.logCase(SAFETY, { requestId: "y-log" });
+    const wrong = await refusal(
+      support.escalateCase(
+        { caseId: logged.id, reason: "unresolved", note: "Bleach left out." },
+        { requestId: "y2" },
+      ),
+    );
+    expect(wrong.code).toBe("not_escalated");
+    await support.escalateCase(
+      { caseId: logged.id, reason: "safety", note: "Bleach left out." },
+      { requestId: "y3" },
+    );
+    const refund = await support.escalateCase(
+      { caseId: logged.id, reason: "refund", note: "Wants the month back." },
+      { requestId: "y4" },
+    );
+    expect(refund.toPersonId).toBe(refunds.refundNeeds);
+  });
+
   it("marks the case escalated, escalates once on replay, and refuses the same reason twice", async () => {
     const support = desk();
     const input = { caseId: "C-301", reason: "unresolved" as const, note: "Third time." };
