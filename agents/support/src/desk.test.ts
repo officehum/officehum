@@ -387,6 +387,66 @@ describe("fakeSupportDesk: escalation", () => {
     expect(refund.toPersonId).toBe(refunds.refundNeeds);
   });
 
+  it("keeps a staff-category complaint away from its subject whatever reason it is escalated under", async () => {
+    const owner = person(company, refunds.complaintOwner);
+    if (owner === undefined) throw new Error("company changed");
+    for (const reason of ["unresolved", "billing", "legal"] as const) {
+      const support = desk();
+      const logged = await support.logCase(
+        { ...SAFETY, category: "staff", summary: "Rude on the phone." },
+        { requestId: `st-log-${reason}` },
+      );
+      const receipt = await support.escalateCase(
+        { caseId: logged.id, reason, note: "Rude on the phone.", about: owner.name },
+        { requestId: `st-${reason}` },
+      );
+      expect(receipt.toPersonId, reason).not.toBe(owner.id);
+    }
+    // A refund on a case that is not about anyone still ignores a misplaced name.
+    const refundOwner = person(company, refunds.refundNeeds);
+    const refund = await desk().escalateCase(
+      { caseId: "C-301", reason: "refund", note: "Money back.", about: refundOwner?.name },
+      { requestId: "st-refund" },
+    );
+    expect(refund.toPersonId).toBe(refundOwner?.id);
+  });
+
+  it("excludes every person a complaint names, not only the first", async () => {
+    const owner = person(company, refunds.complaintOwner);
+    const head = companyHead(company);
+    const safetyOwner = escalationOwner(company, "safety-incident");
+    if (owner === undefined || head === undefined || safetyOwner === undefined) {
+      throw new Error("company changed");
+    }
+    // The safety owner comes before the complaint owner in the record, so a first-match lookup
+    // would exclude only the safety owner and hand the case to the complaint owner it also names.
+    expect(company.people.indexOf(safetyOwner)).toBeLessThan(company.people.indexOf(owner));
+    const receipt = await desk().escalateCase(
+      {
+        caseId: "C-303",
+        reason: "staff",
+        note: "Both were rude.",
+        about: `${safetyOwner.name} and ${owner.name}`,
+      },
+      { requestId: "two" },
+    );
+    expect(receipt.toPersonId).toBe(head.id);
+
+    // Naming everyone the case could go to leaves nobody: the desk refuses rather than guess.
+    const nobody = await refusal(
+      desk().escalateCase(
+        {
+          caseId: "C-303",
+          reason: "staff",
+          note: "All rude.",
+          about: `${head.name} and ${owner.name}`,
+        },
+        { requestId: "none" },
+      ),
+    );
+    expect(nobody.code).toBe("no_one");
+  });
+
   it("marks the case escalated, escalates once on replay, and refuses the same reason twice", async () => {
     const support = desk();
     const input = { caseId: "C-301", reason: "unresolved" as const, note: "Third time." };

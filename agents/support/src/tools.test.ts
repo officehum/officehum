@@ -181,6 +181,17 @@ describe("log_case", () => {
     expect(text(third)).toContain("Logged C-308");
   });
 
+  it("points a staff complaint at escalate_case with reason staff and about, from its category", async () => {
+    const result = await tools(desk()).logCase.execute(
+      { ...SAFETY, category: "staff", summary: "Rude on the phone." },
+      call("c-staff"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain(
+      "Next: a complaint about a member of staff goes to a person: call escalate_case with caseId C-306, reason staff and about naming who it is about; the desk keeps it away from them.",
+    );
+  });
+
   it("gives no escalation step for a question", async () => {
     const result = await tools(desk()).logCase.execute(
       { ...SAFETY, kind: "question", category: "other", summary: "Do you clean on holidays?" },
@@ -236,7 +247,7 @@ describe("book_reclean", () => {
       BACKGROUND_CONTEXT,
     );
     expect(details(result).code).toBe("not_reclean");
-    expect(text(result)).toContain("offer_credit");
+    expect(text(result)).toContain("only if the client asks for a credit, offer_credit");
     expect(text(result)).toContain("escalate_case");
   });
 });
@@ -407,7 +418,12 @@ describe("next steps come from the refusal's code, not its wording", () => {
         { caseId: "C-9", date: "2026-11-11" },
         "escalate_case with reason unresolved",
       ],
-      ["not_reclean", "bookReclean", { caseId: "C-9", date: "2026-11-11" }, "offer_credit"],
+      [
+        "not_reclean",
+        "bookReclean",
+        { caseId: "C-9", date: "2026-11-11" },
+        "only if the client asks for a credit",
+      ],
     ];
     for (const [code, tool, args, step] of cases) {
       const result = await tools(quiet(code, { caseId: "C-9" }))[tool].execute(
