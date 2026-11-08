@@ -374,6 +374,17 @@ function departmentIssues(
         );
       }
     }
+    // The People Ops role routes protected leave and workplace complaints by these; without them it
+    // would fall back silently to someone the company never chose.
+    for (const key of [
+      "payQuestionsTo",
+      "disciplineTo",
+      "protectedLeaveTo",
+      "employeeRelationsTo",
+    ]) {
+      if (!(key in staff))
+        add("company.json", `staffPolicies.${key} is missing; name the person by id`);
+    }
     for (const [key, value] of Object.entries(staff)) {
       if (!key.endsWith("To")) continue;
       if (typeof value !== "string" || !personIds.has(value)) {

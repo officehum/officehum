@@ -284,6 +284,51 @@ describe("time off", () => {
     expect(overlap.code).toBe("duplicate");
   });
 
+  it("records a protected absence that already happened, pending for a person, never refused", async () => {
+    for (const reasonCategory of ["medical", "family_care"] as const) {
+      const request = await desk().recordTimeOffRequest(
+        { employee: "Ana Lopez", startDate: "2026-11-06", endDate: "2026-11-06", reasonCategory },
+        { requestId: `past-${reasonCategory}` },
+      );
+      expect(request, reasonCategory).toMatchObject({
+        status: "pending",
+        protected: true,
+        daysNotice: 0,
+        decidesName: protectedOwner?.name,
+      });
+    }
+    // An ordinary reason for a past date is still refused.
+    const vacation = await refusal(
+      desk().recordTimeOffRequest(
+        {
+          employee: "Ana Lopez",
+          startDate: "2026-11-06",
+          endDate: "2026-11-06",
+          reasonCategory: "vacation",
+        },
+        { requestId: "past-vacation" },
+      ),
+    );
+    expect(vacation.code).toBe("invalid");
+  });
+
+  it("sends a past protected absence asked for as an exception back to recording it", async () => {
+    const error = await refusal(
+      desk().requestTimeOffException(
+        {
+          employee: "Ana Lopez",
+          startDate: "2026-11-06",
+          endDate: "2026-11-06",
+          reasonCategory: "medical",
+          daysNotice: 0,
+          why: "Sick",
+        },
+        { requestId: "past-exception" },
+      ),
+    );
+    expect(error.code).toBe("protected");
+  });
+
   it("finds an employee by a first name alone when only one person has it", async () => {
     const request = await desk().recordTimeOffRequest(
       {
@@ -472,6 +517,57 @@ describe("referrals", () => {
       expect(receipt.toName).toBe(head?.name);
       expect(receipt.rerouted).toBe(true);
     }
+  });
+
+  it("keeps a complaint about the people ops person away from them when the sender calls them HR", async () => {
+    for (const about of ["the HR manager", "human resources", "the personnel officer"]) {
+      const receipt = await desk().referToPerson(
+        { topic: "employee_relations", summary: "Comments about appearance.", about },
+        { requestId: `hr-${about}` },
+      );
+      expect(receipt.toName, about).not.toBe(relations?.name);
+      expect(receipt.rerouted).toBe(true);
+    }
+  });
+
+  it("keeps a pay or accommodation matter that names its usual owner away from them", async () => {
+    const people = desk();
+    const payReceipt = await people.referToPerson(
+      {
+        topic: "pay",
+        summary: "Says pay was docked after she complained.",
+        about: pay?.name ?? "",
+      },
+      { requestId: "pay-about" },
+    );
+    expect(payReceipt.toName).not.toBe(pay?.name);
+    expect(payReceipt.rerouted).toBe(true);
+    const owner = person(company, staff.protectedLeaveTo);
+    const accommodation = await people.referToPerson(
+      { topic: "accommodation", summary: "Refused a seat at work.", about: owner?.name ?? "" },
+      { requestId: "accommodation-about" },
+    );
+    expect(accommodation.toName).not.toBe(owner?.name);
+  });
+
+  it("reads the summary of a complaint for the people it names, as well as about", async () => {
+    const receipt = await desk().referToPerson(
+      {
+        topic: "employee_relations",
+        summary: `Comments from ${relations?.name ?? ""} and a crew member about her appearance.`,
+        about: "a crew member",
+      },
+      { requestId: "summary-named" },
+    );
+    expect(receipt.toName).not.toBe(relations?.name);
+  });
+
+  it("never reads the summary of a plain pay question, so it reaches the person who takes pay", async () => {
+    const receipt = await desk().referToPerson(
+      { topic: "pay", summary: `Asks ${pay?.name ?? ""} about a short paycheck.` },
+      { requestId: "pay-summary" },
+    );
+    expect(receipt.toName).toBe(pay?.name);
   });
 
   it("keeps discipline about the person it normally goes to away from them", async () => {

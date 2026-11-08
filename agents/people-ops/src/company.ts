@@ -153,9 +153,15 @@ export function companyHead(company: Pick<CompanyFacts, "people">): Person | und
  * Every person the company record names, by id, full name, title, surname or first name, each matched
  * as whole words anywhere in the text, ignoring case: how a colleague refers to someone ("the people
  * ops person", a surname, a first name). A word that only contains a name does not match. Empty when
- * the words name nobody on the record, such as a crew member the record does not list. Used to keep a
+ * the words name nobody on the record, such as a crew member the record does not list. Whoever holds
+ * a people or HR title is also matched by the everyday words for that job ("HR", "human resources",
+ * "personnel"). Used to keep a
  * complaint away from the people it names, so matching eagerly only ever sends it to someone else.
  */
+/** A title that means the people function, and the everyday words people use for whoever holds it. */
+const HR_TITLE = /\b(people|hr|human resources|personnel)\b/i;
+const HR_WORDS = ["hr", "human resources", "personnel", "people ops", "people team"];
+
 export function findPeople(
   company: Pick<CompanyFacts, "people">,
   words: string,
@@ -175,7 +181,8 @@ export function findPeople(
       candidate.id.toLowerCase() === wanted ||
       has(candidate.name) ||
       has(candidate.title) ||
-      parts.some((part) => has(part))
+      parts.some((part) => has(part)) ||
+      (HR_TITLE.test(candidate.title) && HR_WORDS.some((word) => has(word)))
     );
   });
 }

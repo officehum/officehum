@@ -81,8 +81,9 @@ figure). The role never approves anything: a recorded request is pending until a
 only an approved exception is recorded as approved.
 
 **Leave the law may protect.** A reason category of medical, disability, pregnancy or parental,
-military, jury duty, family care or bereavement is never refused for notice: the desk records it as
-pending and routes it to `staffPolicies.protectedLeaveTo`. The model picks the category from the
+military, jury duty, family care or bereavement is never refused for notice, nor for a date that has
+already passed ("I was off sick yesterday"): the desk records it as pending and routes it to
+`staffPolicies.protectedLeaveTo`. The model picks the category from the
 employee's words, so a short-notice refusal for a vague category (personal, other, unspecified)
 carries `mayBeProtected` and points to the protected route — decided from the field, never the
 message text.
@@ -95,8 +96,9 @@ hire. `onboarding_checklist` refuses a candidate who is not hired, and a second 
 to `staffPolicies.payQuestionsTo` and `staffPolicies.disciplineTo`. A complaint about harassment or
 how someone is treated goes to `staffPolicies.employeeRelationsTo`, and an accommodation request to
 `staffPolicies.protectedLeaveTo`. A discipline, termination or employee-relations matter must say who
-it is about, and is never handed to anyone named there (matched by full name, title, surname or first
-name as whole words, as Customer Support does): it goes to the head of the company instead, and if
+it is about. Whatever the topic, a matter is never handed to anyone named in `about`, and for those
+three topics in its summary too (matched by full name, title, surname or first name as whole words, as
+Customer Support does, and "HR", "human resources" or "personnel" for whoever holds a people title): it goes to the head of the company instead, and if
 everyone it could go to is named the desk refuses with `no_one_left`.
 
 **Privacy.** The desk holds no contact or personal details, `list_availability` returns names and

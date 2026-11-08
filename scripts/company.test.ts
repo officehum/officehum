@@ -248,6 +248,15 @@ describe("the company package's own consistency", () => {
       expect(issues).toContain("staffPolicies.disciplineTo names ghost");
     });
 
+    it("requires the people who take protected leave and workplace complaints, naming each gap", () => {
+      const issues = issuesAfter((c) => {
+        delete c.staffPolicies.protectedLeaveTo;
+        delete c.staffPolicies.employeeRelationsTo;
+      });
+      expect(issues).toContain("staffPolicies.protectedLeaveTo is missing");
+      expect(issues).toContain("staffPolicies.employeeRelationsTo is missing");
+    });
+
     it("refuses a marketing approver who is not a person", () => {
       expect(
         issuesAfter((c) => {

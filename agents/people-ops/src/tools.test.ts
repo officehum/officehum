@@ -223,6 +223,9 @@ describe("record_time_off_request", () => {
     expect(text(result)).toContain(personLabel(person(company, staff.protectedLeaveTo)));
     expect(text(result)).toContain("never refused for short notice");
     expect(text(result)).toContain("Do not ask for medical details");
+    // A record, not a send: the receipt claims no hand-off.
+    expect(text(result)).not.toContain("went to");
+    expect(text(result)).toContain("nothing has been sent to anyone");
   });
 });
 
@@ -314,7 +317,7 @@ describe("refer_to_person", () => {
     );
     expect(text(result)).toContain(personLabel(companyHead(company)));
     expect(details(result)).toMatchObject({ rerouted: true });
-    expect(text(result)).toContain("never say it went to anyone it names");
+    expect(text(result)).toContain("never say it is with anyone it names");
   });
 
   it("gives a next step when no one is left to take it", async () => {
@@ -329,6 +332,14 @@ describe("refer_to_person", () => {
     );
     expect(details(result)).toMatchObject({ code: "no_one_left" });
     expect(text(result)).toContain("manager they trust");
+  });
+});
+
+describe("refer_to_person description", () => {
+  it("tells the model to resolve a job description to a name from read_company", () => {
+    const parameters = JSON.stringify(tools(desk()).referToPerson.parameters);
+    expect(parameters).toContain("read_company");
+    expect(parameters).toContain("my supervisor");
   });
 });
 

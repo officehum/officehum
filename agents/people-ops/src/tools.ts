@@ -157,7 +157,7 @@ function timeOffText(entry: TimeOffRequest): string {
     return `Approved by a person and recorded: ${entry.id}, ${span}, with ${entry.daysNotice} days' notice.`;
   }
   if (entry.protected) {
-    return `Recorded ${entry.id}: ${span}. Status: pending — not approved. The reason may be protected by law, so it went to ${decides} whatever the notice: it is never refused for short notice, and ${decides} decides it. Do not ask for medical details, and say nothing about whether the law applies.`;
+    return `Recorded ${entry.id}: ${span}. Status: pending — not approved. The reason may be protected by law, so ${decides} decides it whatever the notice: it is never refused for short notice. This is an internal record: nothing has been sent to anyone. Do not ask for medical details, and say nothing about whether the law applies.`;
   }
   return `Recorded ${entry.id}: ${span}, with ${entry.daysNotice} days' notice. Status: pending — not approved. ${decides} decides it. This is an internal record: nothing has been sent to anyone.`;
 }
@@ -492,7 +492,10 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
           description: "What the person needs to know, in the sender's words",
         }),
         about: Type.Optional(
-          Type.String({ description: "Who it is about, by name or title, as the sender put it" }),
+          Type.String({
+            description:
+              "Who it is about. When the sender describes someone by their job (HR, the office manager, my supervisor), find their name with read_company (people) first and give it here with the sender's words",
+          }),
         ),
       },
       { additionalProperties: false },
@@ -511,7 +514,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
         );
         const holder = `${referral.toName} (${referral.toTitle})`;
         const rerouted = referral.rerouted
-          ? " It names the person it would normally go to, so it went to someone else: never say it went to anyone it names."
+          ? " It names the person it would normally go to, so it is with someone else: never say it is with anyone it names."
           : "";
         return {
           ...textResult(

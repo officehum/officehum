@@ -194,7 +194,7 @@ export const REFERRAL_TOPICS: readonly ReferralTopic[] = [
   "accommodation",
 ];
 
-/** Topics about someone's conduct or job: never handed to anyone they name. */
+/** Topics about someone's conduct or job: they must say who, and their summary is read for names too. */
 const ABOUT_SOMEONE: readonly ReferralTopic[] = ["discipline", "termination", "employee_relations"];
 
 export interface Referral {
@@ -552,6 +552,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
 
   /** Checks the dates and works out the notice. */
   const checkDates = (input: TimeOffInput) => {
+    const isProtected = PROTECTED_REASONS.includes(input.reasonCategory);
     const start = input.startDate.trim();
     const end = input.endDate.trim();
     if (parseDate(start) === undefined || parseDate(end) === undefined) {
@@ -566,7 +567,9 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
         `The last day (${end}) is before the first (${start}). Nothing was recorded.`,
       );
     }
-    if (start < today()) {
+    // An absence the law may protect that already happened ("I was off sick yesterday") is still
+    // recorded for a person: only an ordinary reason is refused for a date that has passed.
+    if (start < today() && !isProtected) {
       throw new PeopleOpsDeskError(
         "invalid",
         `${start} has already passed (today is ${today()}). Time off is recorded from today on. Nothing was recorded.`,
@@ -578,7 +581,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
         `${JSON.stringify(input.reasonCategory)} is not a reason category. Use one of: ${REASON_CATEGORIES.join(", ")}. Nothing was recorded.`,
       );
     }
-    return { start, end, daysNotice: daysBetween(today(), start) };
+    return { start, end, daysNotice: Math.max(0, daysBetween(today(), start)) };
   };
 
   const refuseOverlap = (employee: Employee, start: string, end: string): void => {
@@ -875,8 +878,13 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
       }
       // A matter about someone is never handed to anyone it names: the usual owner, then the head of
       // the company, whoever is first and not named.
+      // Matching is eager on purpose: a false match only ever sends a matter to someone else. `about`
+      // is read for every topic; the summary too for matters about someone's conduct or job.
       const subjects = new Set(
-        aboutSomeone && about !== null ? findPeople(company, about).map((named) => named.id) : [],
+        [
+          ...(about === null ? [] : findPeople(company, about)),
+          ...(aboutSomeone ? findPeople(company, summary) : []),
+        ].map((named) => named.id),
       );
       const usual = ownerFor(input.topic);
       const candidatesFor = [usual, companyHead(company)].filter(

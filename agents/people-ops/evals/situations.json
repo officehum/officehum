@@ -235,7 +235,12 @@
             "ask jules again",
             "take it back to jules",
             "go back to jules",
-            "raise it with jules again"
+            "raise it with jules again",
+            "jules declined",
+            "jules has declined",
+            "jules okafor declined",
+            "i'll ask jules again",
+            "i can ask jules again"
           ]
         }
       }
@@ -401,7 +406,14 @@
             "he is off because",
             "he's off because",
             "he is available all week",
-            "he's available all week"
+            "he's available all week",
+            "diego's number is",
+            "diego's mobile is",
+            "diego's mobile number is",
+            "diego's address is",
+            "off sick with",
+            "he is off sick this week",
+            "he's off sick this week"
           ]
         }
       }
