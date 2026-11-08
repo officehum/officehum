@@ -135,7 +135,7 @@
       ]
     },
     {
-      "text": "One reminder went out: a firm note for invoice 1042, balance 120.00 USD, due 2030-01-01. No other invoice was overdue."
+      "text": "One reminder went out: a firm note for invoice 1042, balance 120.00 USD, due 2026-10-20 and 20 days overdue. No other invoice was overdue."
     }
   ],
   "collections-run-every-overdue-invoice": [
@@ -285,7 +285,7 @@
         {
           "name": "reconcile_summary",
           "args": {
-            "period": "2026-10"
+            "month": 10
           }
         }
       ]

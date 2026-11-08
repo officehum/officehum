@@ -415,10 +415,26 @@ export function bookkeeperTools(
     },
   });
 
+  /**
+   * How late an overdue invoice is and which reminder its age calls for, worked out here: the role
+   * has no clock, so the model never reads the days off a date. With no cadence resolved the days are
+   * still given and no stage is guessed; `send_reminder` decides again at the moment it sends.
+   */
+  const lateness = (invoice: Invoice): string => {
+    if (invoice.status !== "overdue") return "";
+    const days = daysOverdue(invoice.dueOn);
+    if (days === undefined) return "";
+    const late = ` — ${days} ${days === 1 ? "day" : "days"} overdue`;
+    const cadence = collectionsCadence(limits());
+    if (cadence === undefined) return late;
+    const stage = collectionsStage(days, cadence);
+    return `${late}, ${stage === undefined ? "no reminder is due yet" : `the ${stage} reminder is due`}`;
+  };
+
   const listInvoices = defineTool({
     name: "list_invoices",
     description:
-      "List a customer's invoices, filtered by status: open, overdue or paid. Returns each invoice's number, total, balance and due date.",
+      "List a customer's invoices, filtered by status: open, overdue or paid. Returns each invoice's number, total, balance and due date, and for an overdue one how many days late it is and which reminder is due.",
     parameters: Type.Object(
       {
         customer: Type.Optional(
@@ -471,7 +487,7 @@ export function bookkeeperTools(
             invoices.length === 0 ? `No invoices for ${scope}` : `Invoices for ${scope}:`,
             ...invoices.map(
               (invoice) =>
-                `${invoiceLabel(invoice)} — ${invoice.status} — total ${moneyText(invoice.total)} — balance ${moneyText(invoice.balance)} — due ${invoice.dueOn}`,
+                `${invoiceLabel(invoice)} — ${invoice.status} — total ${moneyText(invoice.total)} — balance ${moneyText(invoice.balance)} — due ${invoice.dueOn}${lateness(invoice)}`,
             ),
           ].join("\n"),
         ),

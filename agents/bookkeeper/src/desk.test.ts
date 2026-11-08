@@ -283,11 +283,19 @@ describe("reconcile", () => {
     expect(none.unmatched.every((item) => item.major)).toBe(true);
   });
 
-  it("refuses a period with no statement, and a period that is not a month", async () => {
-    expect((await refusal(desk().reconcile({ period: "2026-09", majorOverCents: 0 }))).code).toBe(
-      "no_statement",
-    );
-    expect((await refusal(desk().reconcile({ period: "October", majorOverCents: 0 }))).code).toBe(
+  it("works out the year itself from a month number: the last ended month with that number", async () => {
+    // Monday 9 November 2026: October is 2026-10; November has not ended, so it is 2025-11.
+    expect((await desk().reconcile({ month: 10, majorOverCents: 0 })).period).toBe("2026-10");
+    const november = await refusal(desk().reconcile({ month: 11, majorOverCents: 0 }));
+    expect(november.code).toBe("no_statement");
+    expect(november.message).toContain("2025-11");
+  });
+
+  it("refuses a month with no statement, and a number that is not a month", async () => {
+    const september = await refusal(desk().reconcile({ month: 9, majorOverCents: 0 }));
+    expect(september.code).toBe("no_statement");
+    expect(september.message).toContain("2026-09");
+    expect((await refusal(desk().reconcile({ month: 13, majorOverCents: 0 }))).code).toBe(
       "invalid",
     );
   });

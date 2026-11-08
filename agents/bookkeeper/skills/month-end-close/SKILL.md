@@ -6,7 +6,8 @@ description: Summarise the month-end close for a person, from the reconciliation
 The close is a person's: you prepare the summary they close the month from. No tool posts an entry,
 corrects the books or closes a period, and you never say any of that was done.
 
-1. **Reconcile.** `reconcile_summary` for the month (leave the period out for the last full month).
+1. **Reconcile.** `reconcile_summary` with the month's number (leave it out for the last full month; never
+   give a year, the desk works it out).
    It gives the opening and closing balances on the statement and in the books, the difference, how
    many lines matched, and each unmatched item, marked major or minor by the desk.
 2. **Unpaid bills.** `list_vendor_bills` with status `unpaid`: which supplier bills are open, due soon

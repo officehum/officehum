@@ -163,11 +163,12 @@ export interface AccountingDesk {
     options: { readonly requestId: string },
   ): Promise<VendorPayment>;
   /**
-   * Matches a month's statement against the books. `period` omitted: the last full month before the
-   * desk's today. `majorOverCents` null: every unmatched item is major.
+   * Matches a month's statement against the books. `month` is the month's number (10 for October):
+   * the desk works out the year, as the last month with that number that has ended, because the role
+   * has no clock. Omitted: the last full month. `majorOverCents` null: every unmatched item is major.
    */
   reconcile(input: {
-    readonly period?: string;
+    readonly month?: number;
     readonly majorOverCents: number | null;
   }): Promise<Reconciliation>;
 }
@@ -402,11 +403,16 @@ function same(left: string, right: string): boolean {
   return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
 
-/** The last full month before a date, as `YYYY-MM`. */
-function previousMonth(today: string): string {
+/**
+ * The last ended month with a given number, as `YYYY-MM`: this year's when it is before the current
+ * month, last year's otherwise (the current month has not ended). Omitted: the month before today's.
+ */
+function endedMonth(today: string, wanted?: number): string {
   const year = Number(today.slice(0, 4));
-  const month = Number(today.slice(5, 7));
-  return month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, "0")}`;
+  const current = Number(today.slice(5, 7));
+  const month = wanted ?? (current === 1 ? 12 : current - 1);
+  const inYear = month < current ? year : year - 1;
+  return `${inYear}-${String(month).padStart(2, "0")}`;
 }
 
 interface BillState {
@@ -714,13 +720,16 @@ export function fakeAccountingDesk(options: FakeAccountingDeskOptions = {}): Fak
     },
 
     async reconcile(input): Promise<Reconciliation> {
-      const period = input.period?.trim() || previousMonth(today());
-      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
+      if (
+        input.month !== undefined &&
+        (!Number.isInteger(input.month) || input.month < 1 || input.month > 12)
+      ) {
         throw new AccountingDeskError(
           "invalid",
-          `${JSON.stringify(period)} is not a period: give a month as YYYY-MM, or leave it out for the last full month.`,
+          `${String(input.month)} is not a month: give its number from 1 to 12, or leave it out for the last full month.`,
         );
       }
+      const period = endedMonth(today(), input.month);
       const statement = statements.find((candidate) => candidate.period === period);
       if (statement === undefined) {
         const onFile = statements.map((candidate) => candidate.period).join(", ") || "none";

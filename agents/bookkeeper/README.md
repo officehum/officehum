@@ -62,7 +62,7 @@ listPayments(filter?: { customerId?: string; since?: string }): Promise<Payment[
 listVendorBills(filter?: { status?: "unpaid" | "due" | "overdue" | "open" | "paid"; supplier?: string; billId?: string }): Promise<VendorBill[]>;
 recordVendorBill(input: { supplier, supplierInvoice, lines: { itemId, quantity }[], recordedBy, source, termsDays? }, options: { requestId }): Promise<VendorBill>;
 payVendorBill(input: { billId, supplierId, supplierInvoice, recordedBy, lines, totalCents }, options: { requestId }): Promise<VendorPayment>;
-reconcile(input: { period?: string; majorOverCents: number | null }): Promise<Reconciliation>;
+reconcile(input: { month?: number; majorOverCents: number | null }): Promise<Reconciliation>;
 ```
 
 The desk owns every number and date: it prices each bill line from the catalogue, works out the total
@@ -215,7 +215,7 @@ Ten tools, each declaring its replay policy exactly as `officehum.json` does:
 | `list_vendor_bills` | safe | `{ status?, supplier?, billId? }` — `unpaid`, `due`, `overdue`, `open` or `paid` |
 | `record_vendor_bill` | unsafe | `{ supplier, supplierInvoice, lines: { itemId, quantity }[], recordedBy, source, termsDays? }` — no approval: the desk refuses a supplier not on file or not approved and prices every line |
 | `pay_vendor_bill` | unsafe | `{ billId, supplierId, supplierInvoice, recordedBy, lines, totalCents }` — `any_payment` on every call; demonstration backend |
-| `reconcile_summary` | safe | `{ period? }` — `YYYY-MM`, or the last full month |
+| `reconcile_summary` | safe | `{ month? }` — the month's number (10 for October); the desk works out the year as the last such month that has ended, or the last full month when omitted |
 
 No tool takes a bank account, a routing number or a remittance address: a supplier's payment details
 never come from a message, and a request to change them is handed to the person who owns finance. A

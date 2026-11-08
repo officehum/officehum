@@ -87,6 +87,11 @@ describe("list_vendor_bills", () => {
     expect(text(result)).not.toContain("BILL-1998");
   });
 
+  it("names who owns supplier payments, from the company record, so no name is made up", async () => {
+    const result = await tools(desk()).listVendorBills.execute({}, call("l4"), BACKGROUND_CONTEXT);
+    expect(text(result)).toContain(`Supplier payments and payment questions belong to ${finance}.`);
+  });
+
   it("never prints a ready-made call to the payment tool", async () => {
     const result = await tools(desk()).listVendorBills.execute({}, call("l2"), BACKGROUND_CONTEXT);
     expect(text(result)).not.toContain("pay_vendor_bill");
@@ -270,9 +275,23 @@ describe("reconcile_summary", () => {
     expect(text(none).match(/MAJOR/g)).toHaveLength(2);
   });
 
+  it("takes a month number and never a year, so the model cannot guess one", async () => {
+    const schema = tools(desk()).reconcileSummary.parameters as {
+      properties: Record<string, { type?: string }>;
+    };
+    expect(Object.keys(schema.properties)).toEqual(["month"]);
+    expect(schema.properties.month?.type).toBe("integer");
+    const result = await tools(desk()).reconcileSummary.execute(
+      { month: 10 },
+      call("s5"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain("Bank reconciliation for 2026-10:");
+  });
+
   it("refuses a month with no statement, naming the months on file", async () => {
     const result = await tools(desk()).reconcileSummary.execute(
-      { period: "2026-08" },
+      { month: 8 },
       call("s4"),
       BACKGROUND_CONTEXT,
     );

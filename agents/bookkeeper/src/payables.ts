@@ -192,6 +192,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
           [
             `Supplier bills (${bills.length}; ${unpaid.length} unpaid, ${overdue.length} overdue):`,
             ...bills.map(billText),
+            `Supplier payments and payment questions belong to ${finance}.`,
           ].join("\n"),
         ),
         details,
@@ -327,12 +328,15 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
   const reconcileSummary = defineTool({
     name: "reconcile_summary",
     description:
-      "Match one month's bank statement against the books and summarise it: the balances, how many lines matched, and every unmatched item, each marked major or minor by the desk. It posts, corrects and closes nothing. Leave the period out for the last full month.",
+      "Match one month's bank statement against the books and summarise it: the balances, how many lines matched, and every unmatched item, each marked major or minor by the desk. It posts, corrects and closes nothing. Give the month's number (never a year: the desk works it out), or leave it out for the last full month.",
     parameters: Type.Object(
       {
-        period: Type.Optional(
-          Type.String({
-            description: "A month as YYYY-MM; omit it for the last full month",
+        month: Type.Optional(
+          Type.Integer({
+            minimum: 1,
+            maximum: 12,
+            description:
+              "The month's number, e.g. 10 for October; omit it for the last full month. The desk works out the year.",
           }),
         ),
       },
@@ -346,7 +350,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
         typeof limit === "number" && Number.isSafeInteger(limit) && limit >= 0 ? limit : null;
       try {
         const summary = await desk.reconcile({
-          ...(args.period === undefined ? {} : { period: args.period }),
+          ...(args.month === undefined ? {} : { month: args.month }),
           majorOverCents,
         });
         return {
@@ -354,7 +358,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
           details: { ...summary, unmatched: summary.unmatched.map((item) => ({ ...item })) },
         };
       } catch (error) {
-        return refused(error, { period: args.period ?? null });
+        return refused(error, { month: args.month ?? null });
       }
     },
   });
