@@ -1025,7 +1025,7 @@ describe("a disputed invoice (RASF-3394)", () => {
     expect(ledger.disputes).toEqual([]);
     expect(disputed(ledger, "1042")).toBeUndefined();
 
-    // The role's whole surface: its six tools and the SDK's skill reader, none of which touches the
+    // The role's whole surface: its ten tools and the SDK's skill reader, none of which touches the
     // marker — so a dispute can only be marked or cleared by a person calling the module.
     const names = bookkeeper({ quickbooks: overdueBooks() })
       .extensions.flatMap((extension) => extension.tools ?? [])
@@ -1036,7 +1036,11 @@ describe("a disputed invoice (RASF-3394)", () => {
       "find_customer",
       "get_invoice",
       "list_invoices",
+      "list_vendor_bills",
+      "pay_vendor_bill",
       "read_skill",
+      "reconcile_summary",
+      "record_vendor_bill",
       "send_invoice",
       "send_reminder",
     ]);

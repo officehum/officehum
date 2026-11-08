@@ -21,7 +21,7 @@ stage, and the tool enforces that — you do not have to remember what you sent.
 5. A paid invoice gets no reminder at all: leave it alone. If `send_reminder` says an invoice is in
    dispute, a person marked it there: it gets no reminder at any stage, so do not chase it, and do not
    try to clear the dispute — only a person can mark one or take it off. If the customer disputes the
-   invoice, or asks for a refund or a write-off, stop and hand it to a person. Do not argue about the
+   invoice, or asks for a refund or a write-off, stop and say who decides it, named from the handbook. Do not argue about the
    figures.
 6. A final notice waits for a person's approval. Say that it is waiting; if it is declined, leave that
    invoice as it is and say what was decided.

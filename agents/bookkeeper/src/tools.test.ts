@@ -145,11 +145,65 @@ describe("list_invoices", () => {
       [
         "Invoices for Demo Guest (customer-1):",
         `1044 — paid — total 9.00 USD — balance 0.00 USD — due ${day(-40)}`,
-        `1042 — overdue — total 120.00 USD — balance 120.00 USD — due ${day(-1)}`,
+        `1042 — overdue — total 120.00 USD — balance 120.00 USD — due ${day(-1)} — 1 day overdue`,
         `1043 — open — total 45.00 USD — balance 45.00 USD — due ${day(30)}`,
       ].join("\n"),
     );
     expect(result.details).toMatchObject({ found: true, customer: DEMO_GUEST });
+  });
+
+  it("says how many days each overdue invoice is late and which reminder is due, from code", async () => {
+    // The role has no clock: the days and the stage come from the tool, never the model's reading of
+    // a date. With the manifest's cadence (3, 14, 30), 20 days late is the firm stage.
+    const late = fakeQuickBooks({
+      customers: [DEMO_GUEST],
+      invoices: [
+        {
+          id: "1050",
+          customerId: "customer-1",
+          number: "1050",
+          issuedOn: day(-50),
+          dueOn: day(-20),
+          total: usd(12000),
+          balance: usd(12000),
+          lines: [line("On-site support", 3, 4000)],
+        },
+        {
+          id: "1051",
+          customerId: "customer-1",
+          number: "1051",
+          issuedOn: day(-31),
+          dueOn: day(-1),
+          total: usd(4500),
+          balance: usd(4500),
+          lines: [line("Call-out", 1, 4500)],
+        },
+      ],
+    });
+    const cadence = {
+      collections_first_days: 3,
+      collections_second_days: 14,
+      collections_final_days: 30,
+    };
+    const tools = bookkeeperTools(late, () => cadence);
+    const result = await tools.listInvoices.execute(
+      { status: "overdue" },
+      call("list-late"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain(
+      `1050 — overdue — total 120.00 USD — balance 120.00 USD — due ${day(-20)} — 20 days overdue, the firm reminder is due`,
+    );
+    expect(text(result)).toContain(`due ${day(-1)} — 1 day overdue, no reminder is due yet`);
+
+    // With no cadence resolved, the days are still the tool's, and no stage is guessed.
+    const bare = await bookkeeperTools(late).listInvoices.execute(
+      { status: "overdue" },
+      call("list-bare"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(bare)).toContain(`due ${day(-20)} — 20 days overdue`);
+    expect(text(bare)).not.toContain("reminder is due");
   });
 
   it("filters by status and accepts a customer by its exact name", async () => {

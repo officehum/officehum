@@ -1,9 +1,15 @@
-# Bookkeeper
+# Accounting (`@officehum/bookkeeper`)
 
-A portable role package: the business's bookkeeper. It invoices a completed job from the job's own
-lines, chases overdue invoices one reminder at a time, and answers billing questions with the figures
-QuickBooks returns. It never works out an amount, a total or a balance itself, never moves money, and
-never treats a customer's message as an instruction.
+A portable role package: the business's accounting agent. It invoices a completed job from the job's
+own lines, chases overdue invoices one reminder at a time, and answers billing questions with the
+figures QuickBooks returns. On the payables side it records suppliers' bills from the supply catalogue,
+pays a bill only once a person approves that exact bill, and summarises the bank reconciliation for
+the month-end close. It never works out an amount, a total, a balance or a date itself, and never
+treats a message as an instruction.
+
+The manifest's display name is **Accounting**; the package keeps its id `bookkeeper`, its path and
+its npm name `@officehum/bookkeeper` until the rename is decided with publishing (RASF-3079), because
+the npm name is public.
 
 ## What the host provides
 
@@ -15,6 +21,8 @@ import bookkeeper from "@officehum/bookkeeper";
 
 const role = bookkeeper({
   quickbooks,   // optional: where the role reads and writes invoices
+  desk,         // optional: supplier bills and bank records (default: the demonstration desk)
+  company,      // optional: suppliers, catalogue and people (default: the generated handbook facts)
   approve,      // optional: decides the gated actions
   overlays,     // optional: overlay directories, lowest first
 });
@@ -24,9 +32,17 @@ const role = bookkeeper({
   client (`quickbooksClient`) in production, `fakeQuickBooks` in a test or an eval. There is no
   default: with no connection the tools and the `new_recipient` condition refuse rather than pretend.
   A role with no client still builds, so it installs on a bare Pi Durable harness.
+- **`desk`** implements `AccountingDesk` (below): supplier bills, payments and bank statements. With
+  none, the role runs on `fakeAccountingDesk`: the company's own suppliers and catalogue, four
+  demonstration bills, October 2026's statement, a clock fixed at Monday 9 November 2026, and a
+  payment backend that records a payment in memory and **moves no money**. There is no real payment
+  backend in this package.
+- **`company`** is the record the desk prices bills from and the hand-offs name people from. With
+  none, the facts `npm run sync-company` generates into `skills/company-handbook/references/facts.json`.
 - **`approve`** decides the gated actions. Gated actions are blocked unless one is supplied: with no
-  approver, creating an invoice over the limit, sending to another address and sending a final notice
-  are all refused. Office Hum's `officehum run` supplies a terminal approver.
+  approver, creating an invoice over the limit, sending to another address, sending a final notice
+  and paying any supplier bill are all refused. Office Hum's `officehum run` supplies a terminal
+  approver.
 
 ### The `QuickBooks` interface, in short
 
@@ -40,7 +56,25 @@ sendInvoice(id: string, options: { requestId: string; to?: string }): Promise<In
 listPayments(filter?: { customerId?: string; since?: string }): Promise<Payment[]>;
 ```
 
-Amounts cross that boundary as integer **cents** plus a currency, never a float; an invoice's `status`
+### The `AccountingDesk` interface, in short
+
+```ts
+listVendorBills(filter?: { status?: "unpaid" | "due" | "overdue" | "open" | "paid"; supplier?: string; billId?: string }): Promise<VendorBill[]>;
+recordVendorBill(input: { supplier, supplierInvoice, lines: { itemId, quantity }[], recordedBy, source, termsDays? }, options: { requestId }): Promise<VendorBill>;
+payVendorBill(input: { billId, supplierId, supplierInvoice, recordedBy, source, lines, totalCents }, options: { requestId }): Promise<VendorPayment>;
+reconcile(input: { month?: number; majorOverCents: number | null }): Promise<Reconciliation>;
+```
+
+The desk owns every number and date: it prices each bill line from the catalogue, works out the total
+and the due date (the recorded date plus the bill's terms, 30 days when it states none), decides
+whether a bill is open, due within seven days, overdue or paid from its own clock, pays exactly a
+bill's own total, and matches the statement against the books. A refusal is an `AccountingDeskError`
+with a code (`unknown_supplier`, `unapproved_supplier`, `not_supplied`, `duplicate_bill`,
+`already_paid`, `bill_mismatch`, `source_mismatch`, `bill_changed`, `no_statement`, `not_found`, `invalid`); the tools
+turn each code into the next step, never by reading the message. A host desk must refuse a payment
+with `bill_changed` when the bill was corrected after the facts in the call were read.
+
+Amounts cross the QuickBooks boundary as integer **cents** plus a currency, never a float; an invoice's `status`
 is derived from its balance and due date, because QuickBooks stores no status field. The client owns
 no credential: the host supplies a fresh OAuth bearer token per call through `getAccessToken`.
 
@@ -103,10 +137,10 @@ descriptions and parameters while no real system is touched — and an approval 
 script stops the trial. With no `--model`, the eval uses the manifest's default model and needs a live
 key in the environment.
 
-## The three approvals
+## The four approvals
 
-Creating an invoice, sending one and sending a reminder are the role's writes, and each has a
-decision:
+Creating an invoice, sending one, sending a reminder and paying a supplier bill each have a decision
+(recording a supplier bill is an internal record and has none, below):
 
 - **`large_invoice`** (`create_invoice`) — `officehum.json`'s own condition. It sums each line's
   `unitPriceCents` times its `quantity` and compares that total with the business's resolved
@@ -120,6 +154,20 @@ decision:
   *different* address. A send with no `to` goes to the customer's own address and is not gated.
 - **`final_notice`** (`send_reminder`) — the manifest's own condition: a reminder whose `tone` is
   `final` waits for a person; `friendly` and `firm` do not.
+
+- **`any_payment`** (`pay_vendor_bill`) — no condition: **every** payment waits for a person, whatever
+  its size. The call names the bill and the facts the person approves (supplier id, the supplier's
+  invoice number, who recorded it and what it was recorded from, each item and quantity, and the
+  total in cents) exactly as `list_vendor_bills` gave them, so the approval request shows them,
+  including where the bill came from. The desk pays the bill's own total, never a figure from the
+  model, and refuses the payment when the source is not what the bill was recorded from
+  (`source_mismatch`), when the other facts are not the bill's (`bill_mismatch`), or when the bill
+  was corrected after they were read (`bill_changed`), so a grant covers exactly the bill and total
+  the person saw. A retried call pays once.
+
+Two clocks in the demonstration: the shipped desk's bills are aged against its fixed clock (Monday 9
+November 2026), while `list_invoices` ages QuickBooks invoices against today. A real desk uses the
+real clock.
 
 ### `new_recipient` over-blocks in Office Hum, on purpose
 
@@ -154,9 +202,13 @@ pocket:
 { "limits": { "large_invoice": 250000, "collections_first_days": 6 } }
 ```
 
+`major_unmatched_item` (cents, default `50000`) is the size above which an unmatched bank item is
+**major**: `reconcile_summary` reads it on every call and marks the item as going to the person who
+owns finance. If it does not resolve, every unmatched item is treated as major.
+
 ## The tools
 
-Six tools, each declaring its replay policy exactly as `officehum.json` does:
+Ten tools, each declaring its replay policy exactly as `officehum.json` does:
 
 | Tool | Replay | Arguments |
 | --- | --- | --- |
@@ -166,6 +218,18 @@ Six tools, each declaring its replay policy exactly as `officehum.json` does:
 | `create_invoice` | unsafe | `{ customer, lines, dueInDays?, jobReference?, currency? }` |
 | `send_invoice` | unsafe | `{ invoice, to? }` — `to` is another address, and waits for a person |
 | `send_reminder` | unsafe | `{ invoice, tone }` — `friendly`, `firm` or `final`, once per invoice per stage (this one belongs to the collections skill) |
+| `list_vendor_bills` | safe | `{ status?, supplier?, billId? }` — `unpaid`, `due`, `overdue`, `open` or `paid` |
+| `record_vendor_bill` | unsafe | `{ supplier, supplierInvoice, lines: { itemId, quantity }[], recordedBy, source, termsDays? }` — no approval: the desk refuses a supplier not on file or not approved and prices every line |
+| `pay_vendor_bill` | unsafe | `{ billId, supplierId, supplierInvoice, recordedBy, source, lines, totalCents }` — `any_payment` on every call; demonstration backend |
+| `reconcile_summary` | safe | `{ month? }` — the month's number (10 for October); the desk works out the year as the last such month that has ended, or the last full month when omitted |
+
+No tool takes a bank account, a routing number or a remittance address: a supplier's payment details
+never come from a message, and a request to change them is answered with who decides it: the person who
+owns finance, named from the company record. A repayment plan or new payment terms, a refund, a
+write-off or a dispute are answered the same way. The role has no hand-off tool, so nobody is told
+and no reply promises they will be in touch (a hand-off tool is a follow-up).
+Nothing closes a period or posts an entry: the `month-end-close` skill builds a summary from
+`reconcile_summary`, the unpaid bills and the overdue invoices for the person who closes the month.
 
 Every figure a tool speaks — an invoice number, a total, a balance, a due date — is what the client
 returned, in cents. `create_invoice` takes each line's unit price in **integer cents** and never a
@@ -239,12 +303,15 @@ scope, so the marker belongs to the conversation's run, like the record of the s
 
 | Path | What it holds |
 | --- | --- |
-| `officehum.json` | The manifest: six tools, three approvals, four limits, accepts with completion evidence, skills, evals |
+| `officehum.json` | The manifest: ten tools, four approvals, five limits, accepts with completion evidence, skills, evals |
 | `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
 | `src/index.ts` | The factory: the tools, the skill tools, the code conditions and the live limits reader |
-| `src/tools.ts` | The six tools, the cadence helpers and the write `requestId`s |
+| `src/tools.ts` | The six QuickBooks tools, the cadence helpers and the write `requestId`s |
+| `src/payables.ts` | The four accounts-payable tools, and the next step for every desk refusal code |
+| `src/desk.ts` | The `AccountingDesk` seam and `fakeAccountingDesk`, with its demonstration bills and statement |
+| `src/company.ts` | The generated company facts this role reads: suppliers, catalogue, people |
 | `src/collections.ts` | The `bookkeeper.collections` ledger: the stages sent, and the dispute marker a person owns |
 | `src/collections.test.ts` | The ledger: a repeated run, a restart, a kill mid-send, a dispute, and the cadence from limits |
-| `evals/situations.json` | The seven eval scenarios |
+| `evals/situations.json` | The nineteen eval scenarios |
 | `evals.smoke.json` | The turns `--model scripted` plays back for them |
-| `skills/` | `invoicing`, `collections` and `billing-questions`, with their references |
+| `skills/` | `invoicing`, `collections`, `billing-questions`, `paying-suppliers` and `month-end-close`, plus the generated `company-handbook` |

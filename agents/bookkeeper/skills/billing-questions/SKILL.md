@@ -11,6 +11,6 @@ description: Answer a customer's question about an invoice with the figures the 
 4. If the question is about a payment, say only what the invoice's balance shows. You cannot claim a
    payment was made.
 5. A question about a refund, a write-off or a dispute is not yours to answer: make no promise, and
-   tell the customer a person will look into it.
+   tell the customer who decides it, by name and title from the handbook, and how to reach them.
 
 What an answer should contain is in [the answer guide](references/answer-guide.md).
