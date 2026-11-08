@@ -252,7 +252,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
       entry.credit === null
         ? "none"
         : entry.credit.status === "waiting"
-          ? `${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line}, waiting for ${creditOwner}`
+          ? `${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line}, waiting for ${creditOwner} (already asked: do not call offer_credit for this case)`
           : `credit note ${entry.credit.creditNoteId ?? ""}, ${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line}`;
     const escalated =
       entry.escalations.length === 0
@@ -530,7 +530,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
   const escalateCase = defineTool({
     name: "escalate_case",
     description:
-      "Hand a case to a person. The desk picks who from the company record by the reason: safety (injury, hazard, damage, near miss), refund (money back), billing (an invoice dispute), legal (a claim, insurance, contract terms), data (a client's data or security), staff (a complaint about a member of staff: say who in about), or unresolved (anything you cannot put right). A complaint is never handed to the person it is about. It sends nothing to the client.",
+      "Hand a case to a person. You never choose who: the desk picks who from the company record by the reason: safety (injury, hazard, damage, near miss), refund (money back), billing (an invoice dispute), legal (a claim, insurance, contract terms), data (a client's data or security), staff (a complaint about a member of staff: say who in about), or unresolved (anything you cannot put right). A complaint is never handed to the person it is about. It sends nothing to the client.",
     parameters: Type.Object(
       {
         caseId: CASE_ID,
@@ -541,7 +541,8 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
         note: Type.String({ minLength: 1, description: "What the person needs to know" }),
         about: Type.Optional(
           Type.String({
-            description: "Who the complaint is about, by name or title, when it is about someone",
+            description:
+              "Only for reason staff: the member of staff the complaint is about, by name or title. Never the person you want the case to go to; the desk picks that.",
           }),
         ),
       },

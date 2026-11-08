@@ -308,14 +308,15 @@ describe("fakeSupportDesk: escalation", () => {
     );
     expect(aboutHead.toPersonId).toBe(owner.id);
 
-    // The same rule holds for any reason: a safety complaint about the safety owner goes elsewhere.
-    const safetyOwner = escalationOwner(company, "safety-incident");
-    const aboutSafety = await desk().escalateCase(
-      { caseId: "C-301", reason: "safety", note: "Unsafe ladder use.", about: safetyOwner?.name },
+    // Only a staff complaint has a subject: a name in `about` on a refund (the model naming who it
+    // wants the case to go to) never sends it away from the person who decides money back.
+    const refundOwner = person(company, refunds.refundNeeds);
+    const misnamed = await desk().escalateCase(
+      { caseId: "C-301", reason: "refund", note: "Wants October back.", about: refundOwner?.name },
       { requestId: "s3" },
     );
-    expect(aboutSafety.toPersonId).not.toBe(safetyOwner?.id);
-    expect(aboutSafety.redirected).toBe(true);
+    expect(misnamed.toPersonId).toBe(refundOwner?.id);
+    expect(misnamed.redirected).toBe(false);
 
     // A crew member the record does not list is not a person the case could go to.
     const crew = await desk().escalateCase(

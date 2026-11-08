@@ -934,9 +934,12 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
           { caseId: entry.id },
         );
       }
-      // A complaint is never handed to the person it is about: the usual owner, then the person who
-      // owns complaints, then the head of the company, whoever is first and not the subject.
-      const subject = about === null ? undefined : findPerson(facts, about);
+      // A complaint about a member of staff is never handed to that person: the usual owner, then the
+      // person who owns complaints, then the head of the company, whoever is first and not the
+      // subject. Only a staff complaint has a subject, so a name put in `about` by mistake on a
+      // refund or a safety case cannot send it away from the person who owns that reason.
+      const subject =
+        input.reason !== "staff" || about === null ? undefined : findPerson(facts, about);
       const usual = ownerFor(input.reason);
       const candidates = [usual, person(facts, refunds.complaintOwner), companyHead(facts)].filter(
         (candidate): candidate is Person => candidate !== undefined,
