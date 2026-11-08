@@ -170,7 +170,12 @@ export function checkRoleMd(markdown: string, sources: RoleSources): Issue[] {
     if (section === "Sources" && item === undefined) {
       // Only source entries and one closing licence note may sit here, so stray text (such as
       // pasted script output) cannot hide in a file people read.
-      if (row.trim() === "" || inLicenceNote) return;
+      if (row.trim() === "") {
+        // The note is one paragraph, so a blank line ends it and the check applies again.
+        inLicenceNote = false;
+        return;
+      }
+      if (inLicenceNote) return;
       if (row.startsWith(LICENCE_NOTE)) {
         inLicenceNote = true;
         return;

@@ -309,7 +309,7 @@
         <div><dt>Source checked</dt><dd><code>main</code> @ 5790a71</dd></div>
         <div><dt>Pi Durable</dt><dd>1.3.0, pinned</dd></div>
         <div><dt>Linear project</dt><dd>officehum · 209 issues</dd></div>
-        <div><dt>Roles built</dt><dd>3 of 3 in M1</dd></div>
+        <div><dt>Roles built</dt><dd>9 built (3 in M1)</dd></div>
       </dl>
       <div class="keyline">
         <span><i class="sw o"></i>Office Hum</span>
@@ -369,9 +369,10 @@
               <li><b>Market wording disagreed.</b> The README said “medium-sized businesses”, the Linear
                 project “small businesses”, and RASF-3199 and RASF-3205 “mid-market”. Linear now says
                 medium-sized companies everywhere (updated 15 Oct).</li>
-              <li><b>All three M1 roles exist.</b> Front Desk, Bookkeeper (the reference role) and Office
-                Manager are built. Sales was not planned; it is now an epic (RASF-3295)
-                under a new catalog of free roles for every department (RASF-3293).</li>
+              <li><b>Nine roles are built.</b> Front Desk, Bookkeeper (the Accounting agent), Office
+                Manager, Sales, Operations, Purchasing, Marketing, Support and People Ops. Sales was not
+                planned at first; it came with a catalog of free roles for every department
+                (RASF-3293), listed in <code>agents/README.md</code>.</li>
             </ul>
           </div>
         </article>
@@ -432,8 +433,14 @@
             <tr><td>Paper provider</td><td><code>packages/provider-paper</code></td><td>Portable <code>pi-ai</code> provider for Ultramarine 1 Flash, so a role's default model resolves in a bare Pi Durable install</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Google Calendar client</td><td><code>packages/google-calendar</code></td><td>Portable REST client and fake for tests</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Workboard, relay, office extension</td><td>none yet</td><td>The team runtime that lets roles hand work to each other</td><td><span class="chip planned">M2</span></td></tr>
-            <tr><td>Bookkeeper role</td><td><code>agents/bookkeeper</code></td><td>Invoices completed jobs, chases overdue invoices, answers billing questions; QuickBooks client and fake</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Bookkeeper role</td><td><code>agents/bookkeeper</code></td><td>Invoices completed jobs, chases overdue invoices, answers billing questions; records supplier bills and pays them with approval; QuickBooks client and fake</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Office Manager role</td><td><code>agents/office-manager</code></td><td>Triages requests and writes the daily digest; no tools of its own</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Sales role</td><td><code>agents/sales</code></td><td>Qualifies leads, quotes from the price book, follows up and keeps the pipeline</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Operations role</td><td><code>agents/operations</code></td><td>Schedules and dispatches the field crews inside their weekly hours; asks a person for overtime and contract changes</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Purchasing role</td><td><code>agents/purchasing</code></td><td>Buys supplies from approved suppliers inside the spending limit; asks a person above it or for a new supplier</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Marketing role</td><td><code>agents/marketing</code></td><td>Drafts posts and campaign emails from approved claims; a person approves each new claim and every publication</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Support role</td><td><code>agents/support</code></td><td>Logs client complaints as cases, books re-cleans, asks a person for every credit, and escalates safety and refunds</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>People Ops role</td><td><code>agents/people-ops</code></td><td>Keeps hiring and onboarding moving, records time off for a person to answer, and hands pay and discipline to a person</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Paper Office tool pack and worker</td><td><code>packages/tools-paper-office</code></td><td>Word, PowerPoint and Excel tools for every role</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Studio, Inbox, hosted servers</td><td>none yet</td><td>Web interface, approvals inbox, one server per business</td><td><span class="chip planned">M4</span></td></tr>
           </tbody>
@@ -481,7 +488,7 @@
           <g><rect x="20" y="300" width="146" height="78" rx="6" class="bx"/><text x="93" y="322" text-anchor="middle" class="tb">Front Desk</text><text x="93" y="341" text-anchor="middle" class="tl c-ok">BUILT</text><text x="93" y="362" text-anchor="middle" class="tm">booking.request</text></g>
           <g><rect x="178" y="300" width="146" height="78" rx="6" class="bx"/><text x="251" y="322" text-anchor="middle" class="tb">Bookkeeper</text><text x="251" y="341" text-anchor="middle" class="tl c-ok">BUILT</text><text x="251" y="362" text-anchor="middle" class="tm">invoice.create</text></g>
           <g><rect x="336" y="300" width="146" height="78" rx="6" class="bx"/><text x="409" y="322" text-anchor="middle" class="tb">Office Manager</text><text x="409" y="341" text-anchor="middle" class="tl c-ok">BUILT</text><text x="409" y="362" text-anchor="middle" class="tm">triage.request</text></g>
-          <g class="planned"><rect x="494" y="300" width="146" height="78" rx="6" class="bx dash"/><text x="567" y="322" text-anchor="middle" class="tb">Sales</text><text x="567" y="341" text-anchor="middle" class="tl c-part">PLANNED</text><text x="567" y="362" text-anchor="middle" class="tm">lead.qualify</text></g>
+          <g><rect x="494" y="300" width="146" height="78" rx="6" class="bx"/><text x="567" y="322" text-anchor="middle" class="tb">Sales</text><text x="567" y="341" text-anchor="middle" class="tl c-ok">BUILT</text><text x="567" y="362" text-anchor="middle" class="tm">lead.qualify</text></g>
 
           <path d="M330 378V404" class="ln" marker-end="url(#ah1)"/>
           <text x="342" y="396" class="tm">defineRole() returns plain Pi Durable extensions</text>
@@ -649,10 +656,15 @@
           <thead><tr><th>Role</th><th>Accepts</th><th>Approval gates</th><th>State</th></tr></thead>
           <tbody>
             <tr><td>Front Desk</td><td><code>booking.request</code>, <code>customer.reply</code></td><td>Contact create and update, first contact, booking, discount over the set rate, reschedule, cancel</td><td><span class="chip built">Built</span></td></tr>
-            <tr><td>Bookkeeper</td><td><code>invoice.create</code>, <code>invoice.question</code></td><td><code>large_invoice</code> (over $5,000 by default), <code>new_recipient</code>, <code>final_notice</code></td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Bookkeeper</td><td><code>invoice.create</code>, <code>invoice.question</code></td><td><code>large_invoice</code> (over $5,000 by default), <code>new_recipient</code>, <code>final_notice</code>, <code>any_payment</code></td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Office Manager</td><td><code>triage.request</code>, <code>digest.request</code></td><td>No tools of its own; the office's front door for unrouted work</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Sales</td><td><code>quote.request</code>, <code>lead.qualify</code>, <code>pipeline.review</code></td><td><code>any_discount</code>, <code>quote_over_limit</code></td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Operations</td><td><code>operations.schedule</code>, <code>operations.callout</code></td><td><code>overtime</code>, <code>contract_reschedule</code></td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Purchasing</td><td><code>purchasing.request</code></td><td><code>po_over_limit</code>, <code>new_supplier</code></td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Marketing</td><td><code>marketing.request</code></td><td><code>claim</code>, <code>publish</code></td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Support</td><td><code>support.request</code></td><td><code>any_credit</code></td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>People Ops</td><td><code>people.request</code></td><td><code>time_off_exception</code></td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Configurator</td><td>Plain-language configuration requests</td><td>Every overlay change shown as a diff for approval</td><td><span class="chip planned">M4 backlog</span></td></tr>
-            <tr class="planned"><td>Sales</td><td><code>lead.qualify</code>, <code>quote.request</code></td><td><code>discount_over_limit</code>, <code>large_quote</code>, <code>first_contact</code> (draft brief)</td><td><span class="chip planned">Epic RASF-3295</span></td></tr>
           </tbody>
         </table></div>
         <p>The roster is meant to grow into a free catalog covering every department of a company
@@ -789,8 +801,8 @@
             <text x="56" y="184" class="tm">hands off</text><text x="132" y="184" class="tm" style="fill: var(--ink)">invoice.question</text>
             <text x="132" y="200" class="tm" style="fill: var(--ink)">lead.qualify (example)</text></g>
           <!-- Sales -->
-          <g class="planned"><rect x="660" y="96" width="260" height="110" rx="6" class="bx dash"/>
-            <text x="676" y="120" class="tb">Sales</text><text x="904" y="120" text-anchor="end" class="tl c-part">PLANNED</text>
+          <g><rect x="660" y="96" width="260" height="110" rx="6" class="bx"/>
+            <text x="676" y="120" class="tb">Sales</text><text x="904" y="120" text-anchor="end" class="tl c-ok">BUILT</text>
             <text x="676" y="144" class="tm">accepts</text><text x="752" y="144" class="tm" style="fill: var(--ink)">lead.qualify</text>
             <text x="752" y="162" class="tm" style="fill: var(--ink)">quote.request</text>
             <text x="676" y="184" class="tm">hands off</text><text x="752" y="184" class="tm" style="fill: var(--ink)">invoice.create</text>
@@ -834,7 +846,7 @@
           <!-- People -->
           <g><rect x="360" y="380" width="240" height="70" rx="6" class="bx"/><text x="480" y="406" text-anchor="middle" class="t">Owner and staff</text><text x="480" y="426" text-anchor="middle" class="ts">approve in the Inbox (CLI today)</text><text x="480" y="442" text-anchor="middle" class="ts">receive escalations</text></g>
           <path d="M480 320V376" class="ln" marker-end="url(#ah2)"/>
-          <text x="40" y="474" class="tm">All four roles are conversations in one Pi Durable harness per office. Sales ticket types come from its draft brief.</text>
+          <text x="40" y="474" class="tm">All four roles are conversations in one Pi Durable harness per office. Sales is built; its ticket types are in its manifest.</text>
         </svg>
         </div>
         <figcaption><b>Figure 7.1</b> The office as a hub. Each role knows its colleagues from a short
@@ -860,8 +872,8 @@
 
       <h3>Worked example: a prospect becomes an invoice</h3>
       <p class="col">A prospect emails asking for a meeting on Tuesday and for onboarding pricing. Four
-        agents and the owner handle it. Steps 5 to 12 depend on M2 and on roles that are not built yet;
-        the Sales ticket types come from its draft brief (RASF-3295).</p>
+        agents and the owner handle it. Steps 5 to 12 depend on the M2 team runtime; the roles
+        themselves are built (RASF-3295).</p>
 
       <figure class="figure wide">
         <div class="scroll">
@@ -896,7 +908,7 @@
         </div>
         <figcaption><b>Figure 7.2</b> Steps 1 to 4 work today in solo mode: inbound email, approval and
           an approved reply. Step 7 needs the Paper Office pack. Steps 5, 6, 8, 9 and 12 need the
-          workboard and relay. Steps 10 and 11 need the Bookkeeper.</figcaption>
+          workboard and relay. Steps 10 and 11 need the workboard to carry the invoice to the Bookkeeper.</figcaption>
       </figure>
 
       <ol class="flow" style="--paper: var(--office)">

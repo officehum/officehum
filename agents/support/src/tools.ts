@@ -216,7 +216,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     if (!(error instanceof SupportDeskError)) throw error;
     // The next step comes from the refusal's code, never from reading its message.
     const caseId = error.caseId ?? extra.caseId ?? "the case";
-    const next: Partial<Record<DeskRefusal, string>> = {
+    const next: Record<DeskRefusal, string> = {
       not_escalated: ` Next: call escalate_case with caseId ${caseId} and reason safety, which hands it to ${safetyOwner}.`,
       credit_waiting: ` A credit on ${caseId} is already with ${creditOwner}: tell the client it waits for them, and do not ask again. Leave the case open.`,
       reclean_pending:
@@ -235,8 +235,13 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
       already_booked: " Tell the client the date already booked.",
       already_escalated: " Tell the client who already has it.",
       wrong_client: " Next: use a line of the case's own client's invoice, from list_cases.",
+      // The desk's own message already says what to do for these.
+      not_found: "",
+      invalid: "",
+      closed: "",
+      not_a_complaint: "",
     };
-    return refusal<JsonObject>(`${error.message}${next[error.code] ?? ""}`, {
+    return refusal<JsonObject>(`${error.message}${next[error.code]}`, {
       ...extra,
       code: error.code,
       ...(error.quote === undefined ? {} : plain(error.quote)),
