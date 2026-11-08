@@ -32,7 +32,7 @@ export {
   companyHead,
   type EscalationRule,
   escalationOwner,
-  findPerson,
+  findPeople,
   type GlossaryEntry,
   type Hours,
   loadCompanyFacts,

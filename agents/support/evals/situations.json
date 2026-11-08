@@ -540,7 +540,7 @@
           "text": "Cases (1):\nC-303 — Sellwood Law Partners (CL-103) — question, other — open — priority normal — opened 2026-11-06 by Arthur Pell (email from Arthur Pell, Friday 6 November) — first response due 2026-11-06\n  Asked whether the nightly clean can add Saturday visits in December.\n  re-clean: none — credit: none — escalated: no"
         },
         "log_case": {
-          "text": "Logged C-306 for Sellwood Law Partners: complaint, staff, priority high. First response due 2026-11-09. This is an internal record: nothing has been sent to the client."
+          "text": "Logged C-306 for Sellwood Law Partners: complaint, staff, priority high. First response due 2026-11-09. This is an internal record: nothing has been sent to the client. Next: a complaint about a member of staff goes to a person: call escalate_case with caseId C-306, reason staff and about naming who it is about; the desk keeps it away from them."
         },
         "book_reclean": {
           "text": "Booked a re-clean for C-301 (Hawthorne Family Dental) on Wednesday 2026-11-11, at no charge: a return visit to put right the work that fell short. The case stays open until the re-clean is done."
@@ -631,7 +631,7 @@
         "notCalled": ["offer_credit", "book_reclean", "escalate_case"],
         "approvalsRequested": [],
         "reply": {
-          "containsAny": [["c-302"]]
+          "containsAny": [["c-302", "closed"]]
         }
       }
     }

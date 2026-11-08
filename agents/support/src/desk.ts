@@ -17,7 +17,7 @@ import {
   type CompanyFacts,
   companyHead,
   escalationOwner,
-  findPerson,
+  findPeople,
   loadCompanyFacts,
   money,
   type Person,
@@ -946,20 +946,25 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
           { caseId: entry.id },
         );
       }
-      // A complaint about someone is never handed to that person: the usual owner, then the person
-      // who owns complaints, then the head of the company, whoever is first and not the subject.
-      // Only a staff or safety complaint is about someone's conduct, so a name put in `about` by
-      // mistake on a refund, billing, legal, data or unresolved case cannot send it away from the
+      // A complaint about someone is never handed to anyone it names: the usual owner, then the
+      // person who owns complaints, then the head of the company, whoever is first and not named.
+      // A complaint is about someone's conduct when it was logged as staff or safety, or is handed
+      // on for one of those reasons, whatever reason the escalation then gives. A name put in
+      // `about` on any other case (a refund on a quality complaint) cannot send it away from the
       // person who owns that reason.
-      const subject =
-        (input.reason === "staff" || input.reason === "safety") && about !== null
-          ? findPerson(facts, about)
-          : undefined;
+      const aboutConduct =
+        input.reason === "staff" ||
+        input.reason === "safety" ||
+        entry.category === "staff" ||
+        entry.category === "safety";
+      const subjects = new Set(
+        aboutConduct && about !== null ? findPeople(facts, about).map((named) => named.id) : [],
+      );
       const usual = ownerFor(input.reason);
       const candidates = [usual, person(facts, refunds.complaintOwner), companyHead(facts)].filter(
         (candidate): candidate is Person => candidate !== undefined,
       );
-      const owner = candidates.find((candidate) => candidate.id !== subject?.id);
+      const owner = candidates.find((candidate) => !subjects.has(candidate.id));
       if (owner === undefined) {
         throw new SupportDeskError(
           "no_one",

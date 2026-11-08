@@ -223,7 +223,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
         " Next: leave it open until the re-clean is done, and tell the client its date.",
       escalated: " Next: tell the client who has the case; it is theirs to close.",
       outside_window: ` Next: offer a date inside the window, or call escalate_case with reason unresolved, which hands it to ${complaintOwner}.`,
-      not_reclean: ` Next: a re-clean is not the remedy here. For a billing complaint, offer_credit asks ${creditOwner}; for safety, damage or anything else, call escalate_case.`,
+      not_reclean: ` Next: a re-clean is not the remedy here. For a billing complaint, only if the client asks for a credit, offer_credit asks ${creditOwner}; for safety, damage or anything else, call escalate_case.`,
       credit_changed:
         error.quote === undefined
           ? ""
@@ -435,7 +435,9 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
         const next =
           entry.category === "safety"
             ? ` Next: a safety complaint goes to a person now: call escalate_case with caseId ${entry.id} and reason safety, which hands it to ${safetyOwner}.`
-            : "";
+            : entry.category === "staff"
+              ? ` Next: a complaint about a member of staff goes to a person: call escalate_case with caseId ${entry.id}, reason staff and about naming who it is about; the desk keeps it away from them.`
+              : "";
         return {
           ...textResult(
             `Logged ${entry.id} for ${entry.clientName}: ${entry.kind}, ${words(entry.category)}, priority ${entry.priority}. First response due ${entry.firstResponseDue}. This is an internal record: nothing has been sent to the client.${next}`,

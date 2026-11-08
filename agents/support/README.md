@@ -87,9 +87,9 @@ case.
 
 **Escalation.** The desk picks the person from the company record by the reason: the escalation table
 for safety, legal and data, the refunds policy for refunds, billing and complaints. A complaint is
-never handed to the person it is about (`about`, read for reasons `staff` and `safety`, matched by
+never handed to the person it is about (`about`, read for reasons `staff` and `safety` and for any case logged as staff or safety, matched by
 name, surname, first name or title as whole words): it goes to the person who owns complaints, or to
-the head of the company if the complaint is about them. For any other reason `about` is ignored, so a
+the head of the company if the complaint is about them. On any other case `about` is ignored, so a
 misplaced name cannot send a refund away from its owner. A safety case is escalated for safety before
 any other reason. A safety complaint's `log_case` receipt names
 `escalate_case` as the next step, and the desk refuses to close a safety case that was never handed
