@@ -312,6 +312,23 @@ describe("time off", () => {
     expect(vacation.code).toBe("invalid");
   });
 
+  it("refuses a protected absence dated long ago, naming today, so a wrong year is caught", async () => {
+    const error = await refusal(
+      desk().recordTimeOffRequest(
+        {
+          employee: "Chloe Nguyen",
+          startDate: "2025-11-17",
+          endDate: "2025-11-30",
+          reasonCategory: "medical",
+        },
+        { requestId: "wrong-year" },
+      ),
+    );
+    expect(error.code).toBe("invalid");
+    expect(error.message).toContain("today is 2026-11-09");
+    expect(error.message).toContain("Check the year");
+  });
+
   it("sends a past protected absence asked for as an exception back to recording it", async () => {
     const error = await refusal(
       desk().requestTimeOffException(

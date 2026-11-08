@@ -405,6 +405,9 @@ export function demoTimeOff(): readonly BookedTimeOff[] {
 
 const DAY_MS = 86_400_000;
 
+/** How far back a protected absence may be recorded; anything older is most likely a wrong year. */
+export const PAST_ABSENCE_DAYS = 31;
+
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -569,6 +572,14 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     }
     // An absence the law may protect that already happened ("I was off sick yesterday") is still
     // recorded for a person: only an ordinary reason is refused for a date that has passed.
+    // A past protected absence is recorded, but only a recent one: a date further back is almost always
+    // a wrong year, and recording it would hide the mistake.
+    if (isProtected && daysBetween(start, today()) > PAST_ABSENCE_DAYS) {
+      throw new PeopleOpsDeskError(
+        "invalid",
+        `${start} is more than ${PAST_ABSENCE_DAYS} days ago (today is ${today()}). Check the year; an older absence goes to ${personLabel(person(company, staff.protectedLeaveTo))} directly. Nothing was recorded.`,
+      );
+    }
     if (start < today() && !isProtected) {
       throw new PeopleOpsDeskError(
         "invalid",
