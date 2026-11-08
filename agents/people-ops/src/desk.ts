@@ -577,7 +577,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     if (isProtected && daysBetween(start, today()) > PAST_ABSENCE_DAYS) {
       throw new PeopleOpsDeskError(
         "invalid",
-        `${start} is more than ${PAST_ABSENCE_DAYS} days ago (today is ${today()}). Check the year; an older absence goes to ${personLabel(person(company, staff.protectedLeaveTo))} directly. Nothing was recorded.`,
+        `${start} is more than ${PAST_ABSENCE_DAYS} days ago (today is ${today()}). Check the year. If it really was that long ago, tell the employee to take it to ${personLabel(person(company, staff.protectedLeaveTo))} directly, and never record it under another date. Nothing was recorded.`,
       );
     }
     if (start < today() && !isProtected) {

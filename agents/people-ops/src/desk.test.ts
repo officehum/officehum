@@ -327,6 +327,33 @@ describe("time off", () => {
     expect(error.code).toBe("invalid");
     expect(error.message).toContain("today is 2026-11-09");
     expect(error.message).toContain("Check the year");
+    expect(error.message).toContain("never record it under another date");
+  });
+
+  it("records a protected absence exactly a month back, and refuses one a day older", async () => {
+    const people = desk();
+    const recorded = await people.recordTimeOffRequest(
+      {
+        employee: "Chloe Nguyen",
+        startDate: "2026-10-09",
+        endDate: "2026-10-09",
+        reasonCategory: "medical",
+      },
+      { requestId: "day-31" },
+    );
+    expect(recorded.status).toBe("pending");
+    const older = await refusal(
+      people.recordTimeOffRequest(
+        {
+          employee: "Chloe Nguyen",
+          startDate: "2026-10-08",
+          endDate: "2026-10-08",
+          reasonCategory: "medical",
+        },
+        { requestId: "day-32" },
+      ),
+    );
+    expect(older.code).toBe("invalid");
   });
 
   it("sends a past protected absence asked for as an exception back to recording it", async () => {

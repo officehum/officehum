@@ -242,7 +242,9 @@
             "i can ask jules again",
             "your request is still pending",
             "your day off is still pending",
-            "the 20th is still pending"
+            "the 20th is still pending",
+            "remains pending",
+            "is still waiting for approval"
           ]
         }
       }
