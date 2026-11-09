@@ -41,10 +41,34 @@ const TicketInput = Type.Object(
 );
 
 /** A canned tool result. The model still sees the tool's real name, description and parameters. */
-const Stub = Type.Object(
+const TextStub = Type.Object(
   { text: Type.String(), isError: Type.Optional(Type.Boolean()) },
   { additionalProperties: false },
 );
+
+/**
+ * A canned result that depends on the call's arguments: the first entry whose `args` match (the same
+ * partial match `expect.calls[].args` uses) answers; `otherwise` answers the rest.
+ */
+const ArgsStub = Type.Object(
+  {
+    byArgs: Type.Array(
+      Type.Object(
+        {
+          args: Type.Record(Type.String(), Type.Unknown()),
+          text: Type.String(),
+          isError: Type.Optional(Type.Boolean()),
+        },
+        { additionalProperties: false },
+      ),
+      { minItems: 1 },
+    ),
+    otherwise: Type.Optional(TextStub),
+  },
+  { additionalProperties: false },
+);
+
+const Stub = Type.Union([TextStub, ArgsStub]);
 
 const ExpectedCall = Type.Object(
   {
@@ -114,6 +138,7 @@ export type Scenario = Omit<Static<typeof ScenarioSchema>, "input"> & {
   readonly input: ScenarioInput;
 };
 export type EvalSuite = { readonly $schema?: string; readonly scenarios: readonly Scenario[] };
+export type Stub = Static<typeof Stub>;
 export type ScenarioExpect = Scenario["expect"];
 
 /**
@@ -144,7 +169,8 @@ export function validateSuite(
   const suite = value as EvalSuite;
   const crossIssues: Issue[] = [];
   const add = (path: string, message: string) => crossIssues.push({ source, path, message });
-  const tools = new Set(manifest.tools.map((tool) => tool.name));
+  const manifestTools = new Map(manifest.tools.map((tool) => [tool.name, tool]));
+  const tools = new Set(manifestTools.keys());
   const approvals = new Set(manifest.approvals.map((approval) => approval.id));
   const accepts = new Set(manifest.accepts.map((accept) => accept.type));
   const seen = new Set<string>();
@@ -161,6 +187,21 @@ export function validateSuite(
       if (!(tool.name in scenario.stubs)) {
         add(at("stubs"), `must stub ${show(tool.name)}; evals never call real tools`);
       }
+    }
+    for (const [tool, stub] of Object.entries(scenario.stubs)) {
+      if (!("byArgs" in stub)) continue;
+      // Only engine tools name their parameters in the manifest; a tool defined in code has none to check.
+      const parameters = manifestTools.get(tool)?.parameters;
+      if (parameters === undefined) continue;
+      stub.byArgs.forEach((entry, entryIndex) => {
+        for (const name of Object.keys(entry.args)) {
+          if (!(name in parameters))
+            add(
+              at(`stubs.${tool}.byArgs[${entryIndex}].args.${name}`),
+              `is not a parameter of ${show(tool)}`,
+            );
+        }
+      });
     }
     for (const id of Object.keys(scenario.approvals ?? {})) {
       if (!approvals.has(id)) add(at(`approvals.${id}`), "is not a declared approval");

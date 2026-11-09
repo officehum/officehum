@@ -8,11 +8,13 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { type AgentManifest, validateManifest, validatePackage } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import manifest from "../officehum.json" with { type: "json" };
 import { companyHead, escalationOwner, loadCompanyFacts, peopleOwner, person } from "./company.js";
 import { demoEmployees } from "./desk.js";
+import { peopleOpsTools } from "./tools.js";
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
 const roleManifest = manifest as unknown as AgentManifest;
@@ -174,5 +176,39 @@ describe("people ops package", () => {
       }
     }
     expect(found).toEqual([]);
+  });
+});
+
+describe("people-ops eval stubs", () => {
+  it("read_company stubs match the generated facts", async () => {
+    const tool = peopleOpsTools({ desk: undefined, company }).readCompany;
+    const sections = (
+      tool.parameters as unknown as { properties: { section: { anyOf: { const: string }[] } } }
+    ).properties.section.anyOf.map((option) => option.const);
+    const real = new Set<string>();
+    for (const section of sections) {
+      const result = await tool.execute(
+        { section },
+        { conversationId: "c", taskId: "t", callId: section } as never,
+        BACKGROUND_CONTEXT,
+      );
+      for (const part of result.output)
+        if (part.type === "text") for (const line of part.text.split("\n")) real.add(line);
+    }
+    expect(real.size).toBeGreaterThan(0);
+
+    const suite = JSON.parse(
+      readFileSync(join(packageDirectory, "evals", "situations.json"), "utf8"),
+    );
+    const stale: string[] = [];
+    for (const scenario of suite.scenarios as {
+      id: string;
+      stubs: Record<string, { text?: string }>;
+    }[]) {
+      for (const line of (scenario.stubs.read_company?.text ?? "").split("\n")) {
+        if (line.trim() !== "" && !real.has(line)) stale.push(`${scenario.id}: ${line}`);
+      }
+    }
+    expect(stale).toEqual([]);
   });
 });

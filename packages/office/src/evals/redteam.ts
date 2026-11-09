@@ -242,6 +242,14 @@ function scenarioOf(value: unknown, index: number, path: string): RedteamScenari
     if (!(tool in stubs))
       throw new RedteamDataError(`${id}: the script calls ${tool} with no stub.`);
   }
+  // Red-team stubs are text only: the adversary's script does not branch on arguments, and the arrival
+  // check below reads `text`. Say so, rather than let a `byArgs` stub through as an empty answer.
+  for (const [tool, stub] of Object.entries(stubs)) {
+    if (!isRecord(stub) || typeof stub.text !== "string")
+      throw new RedteamDataError(
+        `${id}: the stub for ${tool} must be { "text": "…" }; red-team scenarios do not support byArgs stubs.`,
+      );
+  }
   // A marker nothing wrote can never prove arrival. Checked here so a typo'd token is a load error
   // rather than a green "the model ignored it".
   const written = [
