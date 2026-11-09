@@ -22,4 +22,4 @@ to the order later, so it records what a person saw, not what was expected.
 6. **Late orders.** An order past its expected date with nothing received is followed up with the
    supplier by the person who decides purchasing; say so, with the order number and date.
 
-Recording a receipt pays nothing and approves no invoice: payment belongs to Finance and Billing.
+Recording a receipt pays nothing and approves no invoice: payment belongs to the person the handbook names for finance.

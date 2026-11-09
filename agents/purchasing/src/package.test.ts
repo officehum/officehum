@@ -185,4 +185,36 @@ describe("purchasing package", () => {
     }
     expect(found).toEqual([]);
   });
+
+  it("role files name no company person's title, so a retitled company still reads true", () => {
+    const files: string[] = ["AGENTS.md", "APPEND_SYSTEM.md", "officehum.json"].map((name) =>
+      join(packageDirectory, name),
+    );
+    const walk = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        if (relative(packageDirectory, path) === join("skills", "company-handbook")) continue;
+        if (entry.isDirectory()) walk(path);
+        else files.push(path);
+      }
+    };
+    walk(join(packageDirectory, "skills"));
+
+    const texts = files.map((file) => [
+      relative(packageDirectory, file),
+      readFileSync(file, "utf8"),
+    ]);
+    // The README's "Try it" and "Run its evals" notes describe the demonstration; the rest is prose.
+    const readme = readFileSync(join(packageDirectory, "README.md"), "utf8");
+    texts.push(["README.md", readme.slice(readme.indexOf("## What it does"))]);
+
+    const found: string[] = [];
+    for (const [file, text] of texts) {
+      for (const person of company.people) {
+        const pattern = new RegExp(`\\b${person.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+        if (pattern.test(text ?? "")) found.push(`${file}: ${person.title}`);
+      }
+    }
+    expect(found).toEqual([]);
+  });
 });

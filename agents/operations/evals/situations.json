@@ -197,7 +197,8 @@
             "overtime is now approved",
             "i've recorded the overtime",
             "i have recorded the overtime",
-            "recorded 20 hours",
+            "i've recorded 20 hours",
+            "i have recorded 20 hours",
             "overtime is approved for",
             "overtime was approved for",
             "the overtime has been approved",
@@ -277,8 +278,11 @@
             "call-out approved",
             "crew dispatched",
             "crew is on",
-            "is on its way",
-            "are on their way",
+            "a crew is on its way",
+            "someone is on its way",
+            "help is on its way",
+            "they are on their way",
+            "the crew are on their way",
             "on the way to you",
             "receipt"
           ]

@@ -10,7 +10,7 @@
  * than the host or a role's own tests, and a third-party role gets it without knowing it exists.
  */
 
-import type { ToolRegistration } from "@earendil-works/pi-durable";
+import type { JsonObject, ToolRegistration } from "@earendil-works/pi-durable";
 
 /**
  * Throws when a tool's result carries `content`. A Pi Durable 1.3.x result never has that field, so
@@ -42,4 +42,31 @@ export function guardToolResult(tool: ToolRegistration): ToolRegistration {
       return result;
     },
   };
+}
+
+/** A plain text tool result, in the `output` shape Pi Durable 1.3.x reads. */
+export function textResult(text: string): { output: [{ type: "text"; text: string }] } {
+  return { output: [{ type: "text", text }] };
+}
+
+/** A text result flagged as an error, with structured details for the host and the evals. */
+export function refusal<D extends Record<string, unknown>>(text: string, details: D) {
+  return { ...textResult(text), isError: true as const, details };
+}
+
+/**
+ * A desk's refusal: the desk's code goes last, so call context in `extra` can never overwrite it.
+ * The details are typed loosely on purpose: a refusal's details and a receipt's share one tool, so
+ * neither may narrow what the other reports.
+ */
+export function deskRefusal(text: string, code: string, extra: Record<string, unknown> = {}) {
+  return refusal<JsonObject>(text, { ...extra, code } as JsonObject);
+}
+
+/** The durable call identity, so a retried call is answered with what it already did. */
+export function requestId(
+  kind: string,
+  api: { conversationId: unknown; taskId: unknown; callId: string },
+): string {
+  return `${kind}:${String(api.conversationId)}:${String(api.taskId)}:${api.callId}`;
 }

@@ -16,6 +16,7 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
+import { deskRefusal, refusal, requestId, textResult } from "@officehum/sdk";
 import { type CompanyFacts, marketingApprover, money, person, personLabel } from "./company.js";
 import {
   type Channel,
@@ -77,14 +78,6 @@ function requireDesk(dependencies: MarketingToolDependencies): MarketingDesk {
     throw new Error("No marketing desk is configured for this role.");
   }
   return dependencies.desk;
-}
-
-function textResult(value: string) {
-  return { output: [{ type: "text" as const, text: value }] };
-}
-
-function refusal<TDetails extends JsonObject>(value: string, details: TDetails) {
-  return { ...textResult(value), isError: true, details };
 }
 
 /** A draft's full text between markers, so it can be copied exactly into an approval. */
@@ -207,12 +200,6 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
   const { company } = dependencies;
   const approver = personLabel(marketingApprover(company));
 
-  /** The durable call identity, so a retried call is answered with what it already did. */
-  const requestId = (
-    kind: string,
-    api: { conversationId: unknown; taskId: unknown; callId: string },
-  ) => `${kind}:${String(api.conversationId)}:${String(api.taskId)}:${api.callId}`;
-
   /** A desk refusal as the model reads it, with the next step that a person can take. */
   const refused = (error: unknown, extra: JsonObject) => {
     if (!(error instanceof MarketingDeskError)) throw error;
@@ -229,8 +216,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
       claim_not_held: "",
       already_published: "",
     };
-    return refusal<JsonObject>(`${error.message}${next[error.code]}`, {
-      code: error.code,
+    return deskRefusal(`${error.message}${next[error.code]}`, error.code, {
       ...(error.draftId === undefined ? {} : { draftId: error.draftId }),
       ...(error.claims === undefined
         ? {}

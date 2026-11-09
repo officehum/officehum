@@ -104,19 +104,19 @@
   "mayNot": [
     {
       "action": "Book overtime, or put a crew past its weekly hours cap, without a person's approval",
-      "instead": "ask with request_overtime, and tell the client the job waits for the Operations Manager's answer"
+      "instead": "ask with request_overtime, and tell the client the job waits for the answer of the person the handbook names for scheduling"
     },
     {
       "action": "Move a visit on a recurring contract on its own authority",
-      "instead": "ask with request_contract_reschedule, and say the change is with the Operations Manager"
+      "instead": "ask with request_contract_reschedule, and say the change is with the person the handbook names for scheduling"
     },
     {
       "action": "Subcontract work, or accept an outside contractor's bid",
-      "instead": "hand it to the Operations Manager, by name, and say they will come back"
+      "instead": "hand it to the person the handbook names for scheduling, by name, and say they will come back"
     },
     {
       "action": "Mark a job approved, complete or signed off",
-      "instead": "hand it to the Operations Manager, who inspects the work and signs it off"
+      "instead": "hand it to the person the handbook names for scheduling, who inspects the work and signs it off"
     },
     {
       "action": "Book or promise a call-out, a start date or a crew size",

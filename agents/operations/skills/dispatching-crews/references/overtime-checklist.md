@@ -5,7 +5,7 @@
   refusal stated the overtime hours.
 - No other crew has room that day without time off (checked with `list_crews`).
 - The request names the crew, the job and exactly the hours the refusal stated.
-- The reply says the overtime is with the Operations Manager, by name, until the approval answers.
+- The reply says the overtime is with the person the handbook names for scheduling, by name, until the approval answers.
 
 # After the answer
 

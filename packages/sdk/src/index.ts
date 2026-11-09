@@ -46,6 +46,12 @@ export {
   formatCardLine,
 } from "./card.js";
 export {
+  type CompanyPerson,
+  findPeople,
+  loadCompanyFacts,
+  personLabel,
+} from "./company.js";
+export {
   type CommandEngineOptions,
   checkRuntimes,
   commandEngine,
@@ -212,5 +218,12 @@ export {
   type Skill,
   skillFolders,
 } from "./skills.js";
-export { guardToolResult, guardToolResultShape } from "./tool-result.js";
+export {
+  deskRefusal,
+  guardToolResult,
+  guardToolResultShape,
+  refusal,
+  requestId,
+  textResult,
+} from "./tool-result.js";
 export { intentHash } from "./versioned-file-validation.js";

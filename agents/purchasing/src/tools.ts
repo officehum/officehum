@@ -14,6 +14,7 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
+import { deskRefusal, refusal, requestId, textResult } from "@officehum/sdk";
 import { type CompanyFacts, money, person, personLabel, purchasingLead } from "./company.js";
 import {
   type DeskRefusal,
@@ -87,14 +88,6 @@ function requireDesk(dependencies: PurchasingToolDependencies): PurchasingDesk {
     throw new Error("No purchasing desk is configured for this role.");
   }
   return dependencies.desk;
-}
-
-function textResult(value: string) {
-  return { output: [{ type: "text" as const, text: value }] };
-}
-
-function refusal<TDetails extends JsonObject>(value: string, details: TDetails) {
-  return { ...textResult(value), isError: true, details };
 }
 
 function statusText(status: OrderStatus): string {
@@ -213,12 +206,6 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
   const { company } = dependencies;
   const lead = personLabel(purchasingLead(company));
 
-  /** The durable call identity, so a retried call is answered with what it already did. */
-  const requestId = (
-    kind: string,
-    api: { conversationId: unknown; taskId: unknown; callId: string },
-  ) => `${kind}:${String(api.conversationId)}:${String(api.taskId)}:${api.callId}`;
-
   /** A desk refusal as the model reads it, with the next step that a person can take. */
   const refused = (error: unknown, extra: JsonObject) => {
     if (!(error instanceof PurchasingDeskError)) throw error;
@@ -246,8 +233,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
       not_placed: "",
       not_on_order: "",
     };
-    return refusal<JsonObject>(`${error.message}${next[error.code]}`, {
-      code: error.code,
+    return deskRefusal(`${error.message}${next[error.code]}`, error.code, {
       ...(error.draftId === undefined ? {} : { draftId: error.draftId }),
       ...(error.totalCents === undefined ? {} : { totalCents: error.totalCents }),
       ...extra,

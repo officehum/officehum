@@ -15,6 +15,7 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
+import { deskRefusal, refusal, requestId, textResult } from "@officehum/sdk";
 import { type CompanyFacts, financeLead, money, personLabel, purchasingLead } from "./company.js";
 import {
   type AccountingDesk,
@@ -66,14 +67,6 @@ function requireDesk(dependencies: PayablesToolDependencies): AccountingDesk {
   return dependencies.desk;
 }
 
-function textResult(value: string) {
-  return { output: [{ type: "text" as const, text: value }] };
-}
-
-function refusal<TDetails extends JsonObject>(value: string, details: TDetails) {
-  return { ...textResult(value), isError: true, details };
-}
-
 function billDetails(bill: VendorBill): JsonObject {
   return { ...bill, lines: bill.lines.map((line) => ({ ...line })) };
 }
@@ -101,7 +94,10 @@ function billText(bill: VendorBill): string {
 }
 
 function paymentText(payment: VendorPayment): string {
-  return `Paid ${payment.billId} (${payment.supplierName}, supplier invoice ${payment.supplierInvoice}): ${money(payment.amountCents)}, the bill's own total, on ${payment.paidOn}, payment ${payment.id}. Demonstration backend: the payment is recorded on the desk and no money moved.`;
+  const paid = `Paid ${payment.billId} (${payment.supplierName}, supplier invoice ${payment.supplierInvoice}): ${money(payment.amountCents)}, the bill's own total, on ${payment.paidOn}, payment ${payment.id}.`;
+  return payment.backend === "demo"
+    ? `${paid} Demonstration backend: the payment is recorded on the desk and no money moved.`
+    : paid;
 }
 
 function signed(cents: number): string {
@@ -116,11 +112,6 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
   const { company } = dependencies;
   const finance = personLabel(financeLead(company), "the person who owns finance");
   const purchasing = personLabel(purchasingLead(company), "the person who decides purchasing");
-
-  const requestId = (
-    kind: string,
-    api: { conversationId: unknown; taskId: unknown; callId: string },
-  ) => `${kind}:${String(api.conversationId)}:${String(api.taskId)}:${api.callId}`;
 
   /**
    * The next step for every refusal code, chosen from the code and never from the message. The
@@ -149,8 +140,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
 
   const refused = (error: unknown, extra: JsonObject) => {
     if (!(error instanceof AccountingDeskError)) throw error;
-    return refusal<JsonObject>(`${error.message}${NEXT[error.code](error.billId)}`, {
-      code: error.code,
+    return deskRefusal(`${error.message}${NEXT[error.code](error.billId)}`, error.code, {
       ...(error.billId === undefined ? {} : { billId: error.billId }),
       ...extra,
     });

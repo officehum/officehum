@@ -69,8 +69,8 @@ export interface VendorPayment {
   readonly supplierInvoice: string;
   readonly amountCents: number;
   readonly paidOn: string;
-  /** Always true here: the shipped backend records the payment and moves no money. */
-  readonly demo: true;
+  /** Which backend recorded the payment. The shipped fake says `"demo"`: it moves no money. */
+  readonly backend: string;
 }
 
 /** One line of a bank statement or of the books' bank account, signed: money in is positive. */
@@ -700,7 +700,7 @@ export function fakeAccountingDesk(options: FakeAccountingDeskOptions = {}): Fak
           supplierInvoice: bill.supplierInvoice,
           amountCents: bill.totalCents,
           paidOn: today(),
-          demo: true,
+          backend: "demo",
         };
         bill.paidOn = payment.paidOn;
         bill.paymentId = payment.id;

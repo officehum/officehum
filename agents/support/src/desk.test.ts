@@ -355,6 +355,29 @@ describe("fakeSupportDesk: escalation", () => {
     expect(near.redirected).toBe(false);
   });
 
+  it('a staff complaint about "HR" is routed away from the People Ops person', async () => {
+    const peopleOps = company.people.find((candidate) => /\bpeople\b/i.test(candidate.title));
+    const head = companyHead(company);
+    if (peopleOps === undefined || head === undefined) throw new Error("company changed");
+    // The complaint owner is the People Ops person here, so "HR" must send it up to the head.
+    const hrOwned = {
+      ...company,
+      policies: {
+        ...company.policies,
+        refunds: { ...refunds, complaintOwner: peopleOps.id },
+      },
+    };
+    const receipt = await fakeSupportDesk({
+      company: hrOwned,
+      now: () => new Date(DEMO_NOW),
+    }).escalateCase(
+      { caseId: "C-303", reason: "staff", note: "Rude on the phone.", about: "HR" },
+      { requestId: "hr1" },
+    );
+    expect(receipt.toPersonId).toBe(head.id);
+    expect(receipt.toPersonId).not.toBe(peopleOps.id);
+  });
+
   it("never hands a safety complaint to the safety owner it is about, and a safety case goes to safety first", async () => {
     const safetyOwner = escalationOwner(company, "safety-incident");
     if (safetyOwner === undefined) throw new Error("company changed");

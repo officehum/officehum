@@ -9,7 +9,13 @@ import { describe, expect, it } from "vitest";
 import sampleManifest from "../fixtures/sample-desk/officehum.json" with { type: "json" };
 import { defineRole } from "./role.js";
 import { SAMPLE_DIR } from "./test-helpers.js";
-import { guardToolResultShape } from "./tool-result.js";
+import {
+  deskRefusal,
+  guardToolResultShape,
+  refusal,
+  requestId,
+  textResult,
+} from "./tool-result.js";
 
 /** A fixture tool whose result still uses `content`, the field Pi Durable renamed to `output`. */
 function leakyTool(): ToolRegistration {
@@ -72,5 +78,32 @@ describe("tool-result shape guard", () => {
     expect(() => guardToolResultShape("t", { details: { nested: { content: [] } } })).not.toThrow();
     expect(() => guardToolResultShape("t", undefined)).not.toThrow();
     expect(() => guardToolResultShape("t", { content: [], output: [] })).toThrow(/t/);
+  });
+});
+
+describe("shared result builders", () => {
+  it("textResult wraps text in output", () => {
+    expect(textResult("hi")).toEqual({ output: [{ type: "text", text: "hi" }] });
+  });
+
+  it("refusal is an error result with details", () => {
+    expect(refusal("no", { code: "x" })).toEqual({
+      output: [{ type: "text", text: "no" }],
+      isError: true,
+      details: { code: "x" },
+    });
+  });
+
+  it("deskRefusal keeps the desk code when extra has a code key", () => {
+    const result = deskRefusal("x", "not_found", { code: "y", caseId: "c1" });
+    expect(result.details.code).toBe("not_found");
+    expect(result.details.caseId).toBe("c1");
+    expect(result.isError).toBe(true);
+  });
+
+  it("requestId joins kind and call identity", () => {
+    expect(requestId("pay-bill", { conversationId: "c", taskId: "t", callId: "k" })).toBe(
+      "pay-bill:c:t:k",
+    );
   });
 });
