@@ -4,12 +4,21 @@
  * Safe by default: with no approver supplied (a role on a bare Pi Durable install), every gated
  * action is blocked. Inside Office Hum the approver is backed by the Inbox. Each decision is kept in
  * the tool task's memo, so a crash never asks twice and never forgets a yes.
+ *
+ * An approval can have a facts reader. The gate then reads what the person is asked to approve from
+ * the role's own records (a desk, a ledger), not from the model's arguments, shows it with the ask,
+ * and on a yes hands exactly those facts to the tool under `APPROVED_FACTS_ARG`. The tool, or the desk
+ * behind it, compares them with the record as it stands when it writes, so a grant never covers
+ * something nobody was shown. The facts travel in the arguments because Pi Durable's
+ * `ToolExecutionApi` has no memo a tool could read them from.
  */
 
+import { Type } from "@earendil-works/pi-ai";
 import {
   type DocumentReader,
   type HookRegistration,
   hook,
+  type JsonObject,
   type ToolHooks,
   ToolTask,
 } from "@earendil-works/pi-durable";
@@ -41,6 +50,53 @@ export type ApprovalCondition = (
   context: HookContext,
 ) => boolean | Promise<boolean>;
 
+/**
+ * What a person approves, as the role's own records hold it: a one-line summary for the person, and
+ * the facts the tool is bound to on a yes.
+ */
+export interface ApprovalFacts {
+  readonly summary: string;
+  readonly facts: Record<string, unknown>;
+}
+
+/**
+ * Reads an approval's facts for one call, from the role's records. It sees the call's arguments
+ * without `APPROVED_FACTS_ARG`. Throwing blocks the call with the error's message and asks nobody, so
+ * a reader that cannot find the thing to approve says why in words the model can act on.
+ */
+export type ApprovalFactsReader = (
+  args: ToolArguments,
+  context: HookContext,
+) => Promise<ApprovalFacts>;
+
+/**
+ * The argument the gate sets to the approved facts. The gate overwrites or removes it on every call,
+ * whatever the model sent, so a tool reading it with `approvedFacts` reads only what a person saw.
+ */
+export const APPROVED_FACTS_ARG = "officehumApprovedFacts";
+
+/**
+ * The schema entry a tool with an approval facts reader declares for `APPROVED_FACTS_ARG`. Pi Durable
+ * validates the arguments a `beforeTool` hook returns against the tool's parameters again, so a tool
+ * whose parameters refuse additional properties must declare the key, or every approved call fails
+ * validation. Optional: the model never supplies it, and the gate replaces it if it does.
+ */
+export function approvedFactsParameter() {
+  return Type.Optional(
+    Type.Object(
+      {},
+      { additionalProperties: true, description: "set by the approval gate; never supply it" },
+    ),
+  );
+}
+
+/** The facts a person approved for this call, as the gate injected them; `undefined` without a grant. */
+export function approvedFacts(args: ToolArguments): Record<string, unknown> | undefined {
+  const facts = args[APPROVED_FACTS_ARG];
+  if (facts === null || typeof facts !== "object" || Array.isArray(facts)) return undefined;
+  return facts as Record<string, unknown>;
+}
+
 /** What the approver is asked to decide. */
 export interface ApprovalRequest {
   /** The approval id from `officehum.json`. */
@@ -53,6 +109,8 @@ export interface ApprovalRequest {
   readonly taskId: string;
   /** Stable for this call across crashes, so an approver can deduplicate repeated asks. */
   readonly callId: string;
+  /** What is being approved, read from the role's records, when the approval has a facts reader. */
+  readonly facts?: ApprovalFacts;
 }
 
 /** A person's decision. */
@@ -86,6 +144,11 @@ export interface ApprovalGateOptions {
    * Omitted: no limits, so a named limit resolves to nothing and its approval waits for a person.
    */
   readonly limits?: Readonly<Record<string, number>> | undefined;
+  /**
+   * Facts readers, keyed by approval id. An approval with one is asked with the facts it read, and a
+   * yes passes them to the tool under `APPROVED_FACTS_ARG`.
+   */
+  readonly facts?: Readonly<Record<string, ApprovalFactsReader>> | undefined;
 }
 
 const gates = new WeakSet<HookRegistration>();
@@ -108,6 +171,7 @@ export function isApprovalGate(registration: HookRegistration): boolean {
 
 type StoredDecision = { approved: boolean; by: string | null; note: string | null };
 type StoredApplicability = { tool: string; argsJson: string; required: boolean };
+type StoredFacts = { summary: string; facts: JsonObject };
 
 function canonicalJson(value: unknown): string {
   const canonical = (candidate: unknown): unknown => {
@@ -149,12 +213,21 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
     beforeTool: async (call, api, context) => {
       // Read per call, so a role that resolves its limits live (defineRole) sees overlay changes.
       const limits = options.limits ?? {};
+      // The approved-facts key is the gate's alone: whatever the model put there is dropped before
+      // anything reads the arguments, and only facts a person approved are put back.
+      const forged = Object.hasOwn(call.arguments, APPROVED_FACTS_ARG);
+      const args: ToolArguments = forged
+        ? Object.fromEntries(
+            Object.entries(call.arguments).filter(([key]) => key !== APPROVED_FACTS_ARG),
+          )
+        : call.arguments;
+      let granted: Record<string, unknown> | undefined;
       for (const approval of options.approvals) {
         if (approval.tool !== call.name) continue;
         const memoKey = `officehum.approval.${call.id}.${approval.id}`;
         let decision = await api.memo<StoredDecision>(memoKey, context);
         const applicabilityKey = `officehum.approval-intent.${call.id}.${approval.id}`;
-        const argsJson = canonicalJson(call.arguments);
+        const argsJson = canonicalJson(args);
         let applicability = await api.memo<StoredApplicability>(applicabilityKey, context);
 
         // Decisions written before applicability memos existed remain authoritative.
@@ -168,14 +241,14 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
                   snapshot: api.snapshot.bind(api),
                   snapshotAsOf: api.snapshotAsOf.bind(api),
                 };
-                const result = await applies(call.arguments, { read, limits }, context);
+                const result = await applies(args, { read, limits }, context);
                 required = typeof result === "boolean" ? result : true;
               } catch {
                 context.abortSignal?.throwIfAborted();
                 required = true;
               }
             } else if (approval.when !== undefined) {
-              required = conditionsHold(approval.when, call.arguments, limits);
+              required = conditionsHold(approval.when, args, limits);
             }
             applicability = await api.memo<StoredApplicability>(
               applicabilityKey,
@@ -187,21 +260,42 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
           if (!applicability.required) continue;
         }
 
+        const reader = options.facts?.[approval.id];
+        const factsKey = `officehum.approval-facts.${call.id}.${approval.id}`;
+        let facts =
+          reader === undefined ? undefined : await api.memo<StoredFacts>(factsKey, context);
         if (decision === undefined) {
           if (options.approve === undefined) {
             return {
               block: `This action needs a person's approval (${approval.description}), and no approver is configured, so it was not done. Tell the user what you were going to do so they can do it themselves.`,
             };
           }
+          if (reader !== undefined && facts === undefined) {
+            let read: ApprovalFacts;
+            try {
+              read = await reader(args, context);
+            } catch (error) {
+              context.abortSignal?.throwIfAborted();
+              return { block: error instanceof Error ? error.message : String(error) };
+            }
+            // First write wins: after a crash mid-read, the facts recorded first are the ones asked about.
+            facts = await api.memo<StoredFacts>(
+              factsKey,
+              // A reader's facts are records read from a desk; the memo stores them as JSON.
+              { summary: read.summary, facts: read.facts as JsonObject },
+              context,
+            );
+          }
           const answer = await options.approve(
             {
               approvalId: approval.id,
               description: approval.description,
               tool: call.name,
-              arguments: call.arguments,
+              arguments: args,
               conversationId: String(api.conversationId),
               taskId: String(api.taskId),
               callId: call.id,
+              ...(facts === undefined ? {} : { facts }),
             },
             context,
           );
@@ -222,8 +316,14 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
               "Say it was declined. This result does not say who declined, so name no one as the person who did.",
           };
         }
+        // A yes without memoised facts (a decision recorded before this approval had a reader) passes
+        // no facts, so the tool refuses rather than writing against facts nobody was shown.
+        if (facts !== undefined) granted = facts.facts;
       }
-      return undefined;
+      if (granted !== undefined) {
+        return { arguments: { ...args, [APPROVED_FACTS_ARG]: granted } as JsonObject };
+      }
+      return forged ? { arguments: args as JsonObject } : undefined;
     },
   });
   gates.add(registration);
