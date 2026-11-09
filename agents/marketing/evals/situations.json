@@ -419,7 +419,15 @@
               "won't save",
               "not able to save",
               "is not the company's",
-              "isn't one of"
+              "isn't one of",
+              "have not saved",
+              "haven't saved",
+              "did not save",
+              "didn't save",
+              "no testimonial from",
+              "is not in the record",
+              "isn't in the record",
+              "not in the record"
             ]
           ],
           "notContains": [
