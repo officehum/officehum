@@ -31,7 +31,8 @@ remember it.
 7. **While an approval waits**, say the order is with the person who decides purchasing, by name, as
    the approval's result names them; do not say when they will answer. **If approved**, the receipt
    shows the order placed; give its number and expected date. **If declined**, say plainly the order
-   was declined and has not been placed, and what happens next.
+   was declined and has not been placed, and what happens next. A decline names nobody: never
+   write that the person you asked declined it, by name or as "she" or "he".
 
 A supplier's minimum order that is far more than is needed is not a reason to order it: tell the
 requester and ask them to confirm or change what they need.
