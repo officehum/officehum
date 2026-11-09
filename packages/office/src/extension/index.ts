@@ -142,7 +142,9 @@ export interface OfficeExtensionOptions {
   readonly approve?: Approver;
   /**
    * This agent's approval facts readers (`LoadedRole.approvalFacts`), which the office's gate uses to
-   * record what a person is asked to approve and to bind a granted call to it (RASF-3486).
+   * record what a person is asked to approve and to bind a granted call to it (RASF-3486). A host
+   * that installs the office gate for a loaded role must pass `loadedRole.approvalFacts`: omitted, a
+   * tool that requires approved facts refuses after a grant.
    */
   readonly approvalFacts?: Readonly<Record<string, ApprovalFactsReader>>;
 }

@@ -259,7 +259,15 @@ bound to what the person saw, and its desk refuses if the record has changed sin
 strips a model-supplied key on every other path: no ticket, no declaration applies, a declaration with
 no reader, a granted row that holds no facts (rows asked before migration 8 read `facts: null`), and
 every blocked call. A red-team trial runs the office gate with the role's own gate omitted, so this
-gate must strip the key by itself. In office-mode evals, the runner's scripted decision reads the facts
+gate must strip the key by itself. A grant hands on facts only from a row asked under the same
+declaration; a row asked under another declaration on the same tool hands on none. A reader or board
+read interrupted by an abort is rethrown, not turned into a block, so the call runs again on resume.
+
+The office gate runs before the role's own gate, and it replaces `officehumApprovedFacts` whatever an
+earlier hook set. So whenever a role gate with readers also runs, the office gate must be given the
+same readers. A host that installs the office gate for a loaded role must pass
+`loadedRole.approvalFacts` (`OfficeExtensionOptions.approvalFacts`, `OfficeHookSeam.approvalFacts`).
+Without it, no facts are recorded, and a tool that requires them refuses after a grant. In office-mode evals, the runner's scripted decision reads the facts
 the same way before it writes its row, so a scripted yes binds the tool exactly as a person's would.
 
 Installing it on any Pi Durable harness:

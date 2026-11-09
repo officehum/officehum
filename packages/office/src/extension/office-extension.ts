@@ -215,8 +215,9 @@ export interface OfficeHookSeam {
   readonly approvalTtlMs?: number;
   /**
    * This agent's approval facts readers, keyed by approval id: `LoadedRole.approvalFacts`. The gate
-   * records what each reads with the request and binds a granted call to it. Omitted: no facts, so a
-   * tool that requires them refuses after a grant.
+   * records what each reads with the request and binds a granted call to it. A host that installs the
+   * office gate for a loaded role must pass `loadedRole.approvalFacts`: omitted, no facts are
+   * recorded and a tool that requires them refuses after a grant.
    */
   readonly approvalFacts?: Readonly<Record<string, ApprovalFactsReader>>;
 }
@@ -252,6 +253,11 @@ export function declaredLimits(manifest: AgentManifest): Readonly<Record<string,
  * The gate comes first so its refusal is the one the model reads: it names the person who has been
  * asked, and a budget hook's refusal would say the ticket is blocked instead. Ordering does not weaken
  * the budget — a gated call that the gate allows still meets every later hook.
+ *
+ * The office gate runs before the role's own gate. It strips or replaces `officehumApprovedFacts`
+ * on every call, whatever an earlier hook set, so whenever a role gate with facts readers also runs
+ * the office gate must be given the same readers (`approvalFacts`), or the role's grant reaches the
+ * tool without its facts and the tool refuses.
  *
  * The gate is given the manifest's own `approvals` and limits, not a derived list of tool names: the
  * `when` on each declaration is the role's statement of which calls need a person, and a tool list

@@ -182,9 +182,16 @@ export function approvalHooks(options: ApprovalHookOptions): readonly HookRegist
           const covering = board.approvals.approvalCovering(ticket.ticketId, call.name, hash);
           if (covering !== undefined) {
             // A grant hands on the facts the person was shown, and only those. A declaration with no
-            // reader, or a row asked before facts were recorded, hands on none, so a tool that needs
-            // them refuses rather than acting on facts nobody saw.
-            if (reader === undefined || covering.facts === null) return allow;
+            // reader, a row asked before facts were recorded, or a row asked under another
+            // declaration hands on none, so a tool that needs them refuses rather than acting on
+            // facts nobody saw for this declaration.
+            if (
+              reader === undefined ||
+              covering.facts === null ||
+              covering.approvalId !== declaration.id
+            ) {
+              return allow;
+            }
             return {
               arguments: { ...args, [APPROVED_FACTS_ARG]: covering.facts.facts } as JsonObject,
             };
@@ -211,6 +218,9 @@ export function approvalHooks(options: ApprovalHookOptions): readonly HookRegist
             try {
               facts = await reader(args, context);
             } catch (error) {
+              // An abort is not a refusal: rethrown, the call stays unsettled and runs again on
+              // resume, as the SDK gate does, instead of settling as a block nobody earned.
+              context.abortSignal?.throwIfAborted();
               // The reader says what is missing (no such bill, already paid) in words the model can
               // act on, and nobody is asked about a thing the role's records do not hold.
               return { block: error instanceof Error ? error.message : String(error) };
@@ -230,6 +240,8 @@ export function approvalHooks(options: ApprovalHookOptions): readonly HookRegist
           });
           return { block: approvalAskedText(call.name, person) };
         } catch {
+          // An abort is not "could not check": rethrow it so the call resumes after a restart.
+          context.abortSignal?.throwIfAborted();
           // The board is unreadable, the arguments are not JSON, the write failed: none of those is
           // permission. Failing closed is the only answer that cannot approve an unapproved call.
           return { block: approvalUncheckedText(call.name) };

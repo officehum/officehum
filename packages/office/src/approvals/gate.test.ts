@@ -595,6 +595,80 @@ describe("approval facts at the office gate", () => {
   });
 });
 
+describe("approval facts: aborts and declarations", () => {
+  it("rethrows an abort during the reader and records no block", async () => {
+    const fixture = openFixture();
+    try {
+      const controller = new AbortController();
+      const read: ApprovalFactsReader = async () => {
+        controller.abort();
+        throw new Error("This operation was aborted");
+      };
+      const gate = gateOf(fixture.board, [ANY_PAYMENT], {}, { any_payment: read });
+      const context = { abortSignal: controller.signal } as Parameters<BeforeTool>[2];
+
+      // Rethrown, the task stays unsettled and runs again on resume; a block would settle it as a
+      // refusal nobody gave.
+      await expect(gate(call(PAY, BILL), hookApi(), context)).rejects.toThrow();
+      expect(rows(fixture.file)).toBe(0);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it("rethrows an abort that lands while the board is read", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "officehum-approval-gate-"));
+    temps.push(directory);
+    const board = createWorkboard(join(directory, "office.sqlite"));
+    const gate = gateOf(board, [ANY_PAYMENT]);
+    board.close();
+    const controller = new AbortController();
+    controller.abort();
+    const context = { abortSignal: controller.signal } as Parameters<BeforeTool>[2];
+    await expect(gate(call(PAY, BILL), hookApi(), context)).rejects.toThrow();
+  });
+
+  it("binds a grant only to facts asked under the same declaration", async () => {
+    const fixture = openFixture();
+    try {
+      // Two declarations on one tool; the row was asked and granted under the second.
+      const SECOND: ApprovalDeclaration = {
+        id: "second_payment",
+        tool: PAY,
+        description: "Another policy on the same tool",
+      };
+      const row = fixture.board.approvals.requestApproval(fixture.ticketId, {
+        tool: PAY,
+        args: BILL,
+        requestedBy: "bookkeeper",
+        approvalId: SECOND.id,
+        facts: BILL_FACTS,
+      });
+      fixture.board.approvals.decideApproval(row.id, { by: PERSON.id, decision: "approved" });
+
+      // `any_payment` is the declaration that applies first, and its grant was never given: the
+      // covering row's facts belong to another declaration, so none are handed on.
+      const gate = gateOf(
+        fixture.board,
+        [ANY_PAYMENT, SECOND],
+        {},
+        { any_payment: deskReader().read, second_payment: deskReader().read },
+      );
+      expect(
+        await gate(call(PAY, { ...BILL, [APPROVED_FACTS_ARG]: FORGED }), hookApi(), CONTEXT),
+      ).toEqual({ arguments: BILL });
+
+      // Under its own declaration the same row does hand them on.
+      const own = gateOf(fixture.board, [SECOND], {}, { second_payment: deskReader().read });
+      expect(await own(call(PAY, BILL, "call-2"), hookApi(), CONTEXT)).toEqual({
+        arguments: { ...BILL, [APPROVED_FACTS_ARG]: BILL_FACTS.facts },
+      });
+    } finally {
+      fixture.close();
+    }
+  });
+});
+
 /**
  * The approved-facts key is the gate's alone (Task 6 review, finding I1). A red-team trial runs the
  * office gate with the role's own gate omitted, so this gate must strip a model-supplied key on every
