@@ -8,7 +8,7 @@
  * checked against the manifest (`checkAgent`).
  *
  * The factory is a role package's default export. It is called with the caller's overlays, approver,
- * clock (`now`), an engine built from the manifest when the package declares one, and the named app
+ * clock (`now`), verified sender (`sender`), an engine built from the manifest when the package declares one, and the named app
  * clients the caller passes (`calendar`, `quickbooks`, …). A role package keeps its own app clients;
  * the host decides which concrete client each name resolves to. See docs/design/agent-package.md.
  */
@@ -28,13 +28,14 @@ import {
   type Issue,
   type RoleBundle,
   type RolePackage,
+  type SenderResolver,
   supportsPiDurable,
   validatePackage,
 } from "@officehum/sdk";
 import { PI_DURABLE_VERSION } from "../version.js";
 
 /** The names `loadRole` passes to a role factory itself; a client may not reuse them. */
-export const RESERVED_ROLE_OPTIONS = ["overlays", "approve", "engine", "now"] as const;
+export const RESERVED_ROLE_OPTIONS = ["overlays", "approve", "engine", "now", "sender"] as const;
 
 /** Options a host gives `loadRole`; everything here reaches the role's factory. */
 export interface LoadRoleOptions {
@@ -51,6 +52,12 @@ export interface LoadRoleOptions {
    * and its desk's records from it. Omitted: the role's own default.
    */
   readonly now?: () => Date;
+  /**
+   * Who is asking, passed to the factory as `sender`: the host's verified answer for each call (the
+   * office's is `boardSenderResolver`). Reserved, so a client or a user's config can never supply a
+   * sender of its own. Omitted: the role treats every sender as unknown.
+   */
+  readonly sender?: SenderResolver;
   /** Named app clients the factory receives, e.g. `{ calendar, quickbooks }`. */
   readonly clients?: Readonly<Record<string, unknown>>;
 }
@@ -181,6 +188,7 @@ export async function loadRole(dir: string, options: LoadRoleOptions = {}): Prom
   if (options.approve !== undefined) factoryOptions.approve = options.approve;
   if (engine !== undefined) factoryOptions.engine = engine;
   if (options.now !== undefined) factoryOptions.now = options.now;
+  if (options.sender !== undefined) factoryOptions.sender = options.sender;
 
   const entry = await entryPoint(dir);
   const module = (await loadEntry(entry, rolePackage.name)) as { default?: unknown };

@@ -27,7 +27,10 @@
  * Every tool the manifest declares is replaced with `wrapTool`: the stub keeps the real name,
  * description and parameters and returns the scenario's text. A call to a declared tool the scenario
  * does not stub stops the trial. `read_skill` is not declared, so it is left alone and runs for real.
- * An approval the scenario does not script is never guessed: the trial stops. Each trial opens its own
+ * An approval the scenario does not script is never guessed: the trial stops. The role is handed a
+ * verified sender as production would hand it one: in office mode the board's (the scenario's `from`
+ * and `channel` are written to the ticket's provenance), in bare mode the scenario's `from` as an
+ * outside contact, and unknown when the scenario names nobody. Each trial opens its own
  * office and conversation, so an index-based scripted provider must be rebuilt per trial — hence the
  * `model` factory rather than a single provider.
  */
@@ -64,6 +67,7 @@ import {
   type ExecutedCall,
   isApprovalGate,
   type Scenario,
+  type SenderResolver,
   type Stub,
   type TicketSummary,
   type Trace,
@@ -77,6 +81,7 @@ import { InboundConversationDoc } from "../inbound-session.js";
 import { type RelayMessage, type RelayProvenance, relayMessage } from "../relay/message.js";
 import type { LoadedRole } from "../roles/load-role.js";
 import { loadRole } from "../roles/load-role.js";
+import { boardSenderResolver } from "../roles/sender.js";
 import { budgetHooks } from "../spend/budget.js";
 
 /** The catalogue and the model ref one trial runs under. */
@@ -298,13 +303,21 @@ async function runTrial(
     requestStop?.();
   };
 
+  const officeMode = options.mode === "office";
+  // Office mode's sender is the board's, as in production. The role is loaded before its office opens
+  // (the ticket type comes from the role's manifest), so the resolver reads the board once it exists.
+  let officeSender: SenderResolver | undefined;
+  const sender: SenderResolver = officeMode
+    ? async (call) => officeSender?.(call)
+    : bareSender(scenario.input);
+
   const runtime = options.model(scenario, trial);
   const role = await loadRole(options.dir, {
     approve: scenarioApprover(scenario, approvalsRequested, stop),
+    sender,
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
   });
 
-  const officeMode = options.mode === "office";
   const ticketType = officeMode ? ticketTypeFor(options, role) : undefined;
   if (officeMode && ticketType === undefined) {
     return unrunTrace(
@@ -317,6 +330,7 @@ async function runTrial(
   const execution: Execution = { ran: new Set(), blocks: new Map() };
   const office =
     plan === undefined ? undefined : openEvalOffice(options, scenario, trial, role, plan, stop);
+  if (office !== undefined) officeSender = boardSenderResolver(office.board);
   const extension = runnerExtension({
     scenario,
     role,
@@ -484,6 +498,7 @@ function ticketPlan(scenario: Scenario, type: string, options: PiDurableRunnerOp
   const detail = lines.slice(1).join("\n").trim();
   const inbound = options.office?.delivery === "inbound-email";
   const sender = scenario.input.kind === "message" ? scenario.input.from : undefined;
+  const channel = scenario.input.kind === "message" ? scenario.input.channel : undefined;
   return {
     type,
     title: title.length === 0 ? `Eval ${scenario.id}` : title,
@@ -491,10 +506,14 @@ function ticketPlan(scenario: Scenario, type: string, options: PiDurableRunnerOp
     provenance: inbound
       ? {
           origin: "external",
-          sourceChannel: "email",
+          sourceChannel: channel ?? "email",
           sourceContact: sender ?? "customer@example.test",
         }
-      : { origin: "internal", sourceChannel: "chat", sourceContact: "colleague" },
+      : {
+          origin: "internal",
+          sourceChannel: channel ?? "chat",
+          sourceContact: sender ?? "colleague",
+        },
     maxCalls: options.office?.maxCalls,
     prior: options.office?.priorApproval,
     fenced: !guardOff(options, "fence"),
@@ -630,6 +649,19 @@ function openEvalOffice(
     if (directory !== undefined) rmSync(directory, { recursive: true, force: true });
     throw error;
   }
+}
+
+/**
+ * Bare mode's sender: the scenario's `from`, on its channel, as an outside contact — there is no board
+ * to have verified it, and an unverified asker is never a colleague. A scenario that names nobody
+ * leaves the sender unknown, as a role given no resolver would see it.
+ */
+function bareSender(input: Scenario["input"]): SenderResolver {
+  const sender =
+    input.kind === "message" && input.from !== undefined
+      ? { origin: "external" as const, channel: input.channel ?? "chat", contact: input.from }
+      : undefined;
+  return async () => sender;
 }
 
 /** The approver the scenario scripts: a request it does not script stops the trial, never allowed. */

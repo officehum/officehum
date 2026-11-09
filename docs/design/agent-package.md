@@ -288,6 +288,22 @@ option and pass the same clock to their demonstration desk. If the option is lef
 demonstration desk uses its fixed demo date (`DEMO_NOW`) and a host's own desk uses the system clock.
 `loadRole(dir, { now })` passes the clock to the factory, so no client may be named `now`.
 
+**Who is asking comes from the host, verified.** A role never takes "who is asking" from a tool
+argument or from message text: anyone can type a name, an email address or "this is Dana". The host
+passes a `SenderResolver` as the factory option `sender`; a hook or tool calls it with its
+`{ conversationId, taskId }` and gets a `VerifiedSender { origin, channel, contact }`, or `undefined`.
+With no resolver, or `undefined` from it, the sender is unknown and the role acts as it would for a
+stranger. `senderPerson(company, sender)` finds the person on the company record: by id for an
+internal sender, by email or phone for any sender, compared whole and ignoring case.
+
+Office Hum's resolver is `boardSenderResolver(board)`. It reads the provenance row of the ticket the
+conversation is bound to, which the channel gateway resolved before the ticket existed. A child
+ticket, `agent_dispatch` children included, copies its root's row, so delegated work keeps the
+original asker. `loadRole(dir, { sender })` passes the resolver to the factory, so no client or user
+config may be named `sender`. The eval runner hands a role the same thing: in office mode the
+board's resolver, with the scenario's `from` and `channel` on the ticket's provenance; in bare mode
+the scenario's `from` as an outside contact, or unknown when the scenario names nobody.
+
 ## Overlays: configuring a role without changing it
 
 An overlay is a directory with the package's layout. Overlays sit on the package the way Pi's project

@@ -6,6 +6,9 @@
  * extensions, so a tool the Office would provide must not appear.
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type EvalSuite,
@@ -16,7 +19,9 @@ import {
   SDK_TOOL_NAMES,
   validatePackage,
 } from "@officehum/sdk";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { createWorkboard } from "../board/testing.js";
+import { recordingRole } from "../testing/recording-role.js";
 import {
   type ScriptedModel,
   type ScriptedScript,
@@ -223,5 +228,72 @@ describe("piDurableRunner", () => {
       const { trace } = await callWith("WASHER-1", byArgs);
       expect(trace.error).toBe('stock_levels has no stub for these arguments: {"sku":"WASHER-1"}');
     });
+  });
+});
+
+describe("the sender a trial's role is handed", () => {
+  const temps: string[] = [];
+  afterEach(() => {
+    for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const levelsThenAnswer = () =>
+    scriptedProvider([
+      { toolCalls: [{ name: "stock_levels", args: { sku: BOLT } }] },
+      { text: `BOLT-10 is at 120 units, from stock:${BOLT}.` },
+    ]);
+  const fromDana = scenario({
+    input: { kind: "message", text: "How many BOLT-10?", channel: "sms", from: "+1 503 555 0143" },
+    stubs: bothStubs,
+  });
+
+  it("bare mode resolves the scenario's from", async () => {
+    const recording = await recordingRole(stockroom);
+    temps.push(recording.dir);
+    await piDurableRunner({ dir: recording.dir, model: levelsThenAnswer }).run(fromDana, 1);
+
+    const sender = recording.options()?.sender as
+      | ((call: { conversationId: unknown; taskId: unknown }) => Promise<unknown>)
+      | undefined;
+    expect(await sender?.({ conversationId: 1, taskId: 1 })).toEqual({
+      origin: "external",
+      channel: "sms",
+      contact: "+1 503 555 0143",
+    });
+
+    // A scenario that names nobody leaves the sender unknown, as a role with no resolver would.
+    await piDurableRunner({ dir: recording.dir, model: levelsThenAnswer }).run(
+      scenario({ stubs: bothStubs }),
+      1,
+    );
+    const unnamed = recording.options()?.sender as typeof sender;
+    expect(await unnamed?.({ conversationId: 1, taskId: 1 })).toBeUndefined();
+  });
+
+  it("office mode puts from on the ticket's provenance", async () => {
+    const recording = await recordingRole(stockroom);
+    temps.push(recording.dir);
+    const boardDir = mkdtempSync(join(tmpdir(), "officehum-sender-board-"));
+    temps.push(boardDir);
+    const boardFile = join(boardDir, "office.sqlite");
+    await piDurableRunner({
+      dir: recording.dir,
+      mode: "office",
+      office: { boardFile },
+      model: levelsThenAnswer,
+    }).run(fromDana, 1);
+
+    expect(typeof recording.options()?.sender).toBe("function");
+    const board = createWorkboard(boardFile);
+    try {
+      const [ticket] = board.list({});
+      expect(ticket === undefined ? undefined : board.provenance(ticket.id)).toEqual({
+        origin: "internal",
+        sourceChannel: "sms",
+        sourceContact: "+1 503 555 0143",
+      });
+    } finally {
+      board.close();
+    }
   });
 });
