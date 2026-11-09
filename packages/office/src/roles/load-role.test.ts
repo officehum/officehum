@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { recordingRole } from "../testing/recording-role.js";
 import { PI_DURABLE_VERSION } from "../version.js";
 import { loadRole } from "./load-role.js";
 
@@ -130,6 +131,20 @@ describe("loadRole", () => {
     await expect(
       loadRole(sampleDesk, { clients: { calendar, now: () => new Date() } }),
     ).rejects.toThrow(/The client named "now" is reserved/);
+  });
+
+  it("loadRole passes sender to the factory", async () => {
+    const recording = await recordingRole(sampleDesk);
+    temps.push(recording.dir);
+    const sender = async () => ({ origin: "internal", channel: "chat", contact: "dana" }) as const;
+    await loadRole(recording.dir, { clients: { calendar }, sender });
+    expect(recording.options()?.sender).toBe(sender);
+  });
+
+  it("a client named sender is refused", async () => {
+    await expect(
+      loadRole(sampleDesk, { clients: { calendar, sender: async () => undefined } }),
+    ).rejects.toThrow(/The client named "sender" is reserved/);
   });
 
   it("refuses a client named after a factory option loadRole sets itself", async () => {

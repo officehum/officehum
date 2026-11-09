@@ -6,6 +6,10 @@
  * extensions, so a tool the Office would provide must not appear.
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import {
   type EvalSuite,
@@ -16,7 +20,10 @@ import {
   SDK_TOOL_NAMES,
   validatePackage,
 } from "@officehum/sdk";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { createWorkboard } from "../board/testing.js";
+import { boardSenderResolver } from "../roles/sender.js";
+import { recordingRole } from "../testing/recording-role.js";
 import {
   type ScriptedModel,
   type ScriptedScript,
@@ -222,6 +229,112 @@ describe("piDurableRunner", () => {
     it("stops the trial when no entry matches and there is no otherwise", async () => {
       const { trace } = await callWith("WASHER-1", byArgs);
       expect(trace.error).toBe('stock_levels has no stub for these arguments: {"sku":"WASHER-1"}');
+    });
+  });
+});
+
+describe("the sender a trial's role is handed", () => {
+  const temps: string[] = [];
+  afterEach(() => {
+    for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const levelsThenAnswer = () =>
+    scriptedProvider([
+      { toolCalls: [{ name: "stock_levels", args: { sku: BOLT } }] },
+      { text: `BOLT-10 is at 120 units, from stock:${BOLT}.` },
+    ]);
+  const fromDana = scenario({
+    input: { kind: "message", text: "How many BOLT-10?", channel: "sms", from: "+1 503 555 0143" },
+    stubs: bothStubs,
+  });
+
+  it("bare mode resolves the scenario's from", async () => {
+    const recording = await recordingRole(stockroom);
+    temps.push(recording.dir);
+    await piDurableRunner({ dir: recording.dir, model: levelsThenAnswer }).run(fromDana, 1);
+
+    const sender = recording.options()?.sender as
+      | ((call: { conversationId: unknown; taskId: unknown }) => Promise<unknown>)
+      | undefined;
+    expect(await sender?.({ conversationId: 1, taskId: 1 })).toEqual({
+      origin: "external",
+      channel: "sms",
+      contact: "+1 503 555 0143",
+    });
+
+    // A scenario that names nobody leaves the sender unknown, as a role with no resolver would.
+    await piDurableRunner({ dir: recording.dir, model: levelsThenAnswer }).run(
+      scenario({ stubs: bothStubs }),
+      1,
+    );
+    const unnamed = recording.options()?.sender as typeof sender;
+    expect(await unnamed?.({ conversationId: 1, taskId: 1 })).toBeUndefined();
+  });
+
+  /**
+   * Runs `fromDana` in office mode on a board file the test keeps, then reopens the board and reads
+   * the ticket's provenance and what the office's resolver answers for the trial's conversation.
+   */
+  async function officeTrial(delivery: "internal-message" | "inbound-email") {
+    const recording = await recordingRole(stockroom);
+    temps.push(recording.dir);
+    const boardDir = mkdtempSync(join(tmpdir(), "officehum-sender-board-"));
+    temps.push(boardDir);
+    const boardFile = join(boardDir, "office.sqlite");
+    await piDurableRunner({
+      dir: recording.dir,
+      mode: "office",
+      office: { boardFile, delivery },
+      model: levelsThenAnswer,
+    }).run(fromDana, 1);
+    expect(typeof recording.options()?.sender).toBe("function");
+
+    // The board lists no bindings, so the trial's conversation id is read from the file.
+    const database = new DatabaseSync(boardFile);
+    const bound = database.prepare("SELECT conversation_id FROM ticket_conversations").all() as {
+      conversation_id: number;
+    }[];
+    database.close();
+    expect(bound).toHaveLength(1);
+    const conversationId = bound[0]?.conversation_id;
+
+    const board = createWorkboard(boardFile);
+    try {
+      const [ticket] = board.list({});
+      return {
+        provenance: ticket === undefined ? undefined : board.provenance(ticket.id),
+        resolved: await boardSenderResolver(board)({ conversationId, taskId: 1 }),
+      };
+    } finally {
+      board.close();
+    }
+  }
+
+  it("office mode puts from on the ticket's provenance", async () => {
+    const internal = await officeTrial("internal-message");
+    expect(internal.provenance).toEqual({
+      origin: "internal",
+      sourceChannel: "sms",
+      sourceContact: "+1 503 555 0143",
+    });
+    expect(internal.resolved).toEqual({
+      origin: "internal",
+      channel: "sms",
+      contact: "+1 503 555 0143",
+    });
+
+    // An inbound email stays an email whatever the scenario's channel; `from` is still the contact.
+    const inbound = await officeTrial("inbound-email");
+    expect(inbound.provenance).toEqual({
+      origin: "external",
+      sourceChannel: "email",
+      sourceContact: "+1 503 555 0143",
+    });
+    expect(inbound.resolved).toEqual({
+      origin: "external",
+      channel: "email",
+      contact: "+1 503 555 0143",
     });
   });
 });

@@ -139,6 +139,7 @@ export {
   type RoleRunOptions,
   type RoleRunResult,
 } from "./roles/run-role.js";
+export { boardSenderResolver } from "./roles/sender.js";
 export {
   emailInText,
   openSmsIntake,
