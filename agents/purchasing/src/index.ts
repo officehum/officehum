@@ -51,6 +51,7 @@ export {
   demoOffers,
   demoOrders,
   demoStock,
+  draftFacts,
   type FakePurchasingDeskOptions,
   fakePurchasingDesk,
   type GoodsReceipt,
@@ -67,6 +68,7 @@ export {
   type SupplierComparison,
   type SupplierOffer,
   type SupplierRecord,
+  supplierFacts,
 } from "./desk.js";
 export {
   type CompanySection,
@@ -123,7 +125,13 @@ export default function purchasing(options: PurchasingOptions = {}): DefinedRole
       tools.readCompany,
     ],
     // Both approvals are `officehum.json`'s, on every call of their tool; the SDK's gate evaluates
-    // them here and in the office from the same declaration.
+    // them here and in the office from the same declaration. Neither has a `when`, so every call
+    // gets facts: the model names the draft or the supplier, the gate reads what the person approves
+    // from the desk and hands it to the tool on a yes, and the desk writes only what they saw.
+    approvalFacts: {
+      po_over_limit: tools.poApprovalFacts,
+      new_supplier: tools.newSupplierApprovalFacts,
+    },
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

@@ -19,6 +19,8 @@ import {
 } from "@earendil-works/pi-durable";
 import {
   type AgentManifest,
+  APPROVED_FACTS_ARG,
+  type ApprovalRequest,
   type Approver,
   checkAgent,
   formatReport,
@@ -33,7 +35,7 @@ import {
   scriptedProvider,
 } from "../../../packages/office/src/testing/scripted-model.js";
 import manifest from "../officehum.json" with { type: "json" };
-import { fakePurchasingDesk, type PurchasingDesk } from "./desk.js";
+import { draftFacts, fakePurchasingDesk, type PurchasingDesk, supplierFacts } from "./desk.js";
 import purchasing from "./index.js";
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
@@ -74,12 +76,17 @@ const SCENARIOS = [
 const tools = (extensions: readonly Extension[]): ToolRegistration[] =>
   extensions.flatMap((extension) => extension.tools ?? []);
 
-const GRANT = { draftId: "PO-1004", supplierId: "sup-cascade-paper", totalCents: 217200 };
+/** The demonstration desk's Cascade restock, refused for the limit: the model names only the draft. */
+const GRANT = { draftId: "PO-1004" };
 
-function recording(decisions: string[], approved: boolean, seen?: unknown[]): Approver {
+/** What the person deciding PO-1004 is shown, read from the desk. */
+const PO_SUMMARY =
+  "Place draft PO-1004 with Cascade Paper & Packaging: 16 × Toilet tissue (case of 96 rolls) at $54.00 = $864.00; 12 × Roll hand towels (case of 12 rolls) at $49.00 = $588.00; 20 × Trash liners, 33 gallon (case of 250) at $36.00 = $720.00. Total $2,172.00; a purchase order over $1,500.00 needs a person's approval";
+
+function recording(decisions: string[], approved: boolean, seen?: ApprovalRequest[]): Approver {
   return async (request) => {
     decisions.push(request.approvalId);
-    seen?.push(request.arguments);
+    seen?.push(request);
     return { approved, by: "eval" };
   };
 }
@@ -149,12 +156,8 @@ const CASCADE = {
   ],
 };
 
-/** A desk with the Cascade restock already refused for the limit and saved as draft PO-1004. */
-async function withDraft(): Promise<PurchasingDesk> {
-  const desk = fakePurchasingDesk();
-  await desk.raisePurchaseOrder(CASCADE, { requestId: "setup" }).catch(() => undefined);
-  return desk;
-}
+/** The demonstration desk, which holds the Cascade restock as draft PO-1004, waiting for a person. */
+const withDraft = (): PurchasingDesk => fakePurchasingDesk();
 
 describe("purchasing role", () => {
   it("defaults the portable role to Paper with maximum thinking", () => {
@@ -215,7 +218,7 @@ describe("purchasing role", () => {
 
 describe("purchasing approval gates", () => {
   it("places no over-limit draft without an approver, and places it once a person approves", async () => {
-    const blocked = await withDraft();
+    const blocked = withDraft();
     const refused = await attempt({
       turns: one("request_po_approval", GRANT),
       desk: blocked,
@@ -223,23 +226,25 @@ describe("purchasing approval gates", () => {
     expect(lastToolText(refused.messages)).toContain("no approver is configured");
     expect(await statusOf(blocked, "PO-1004")).toBe("draft");
 
-    const approved = await withDraft();
+    const approved = withDraft();
     const decisions: string[] = [];
-    const seen: unknown[] = [];
+    const seen: ApprovalRequest[] = [];
     const run = await attempt({
       turns: one("request_po_approval", GRANT),
       desk: approved,
       approver: recording(decisions, true, seen),
     });
     expect(decisions).toEqual(["po_over_limit"]);
-    // The person deciding sees the supplier and the desk's total, not just a number.
-    expect(seen).toEqual([GRANT]);
+    // The person deciding sees the draft's supplier, lines and total as the desk holds them.
+    expect(seen.map((request) => [request.arguments, request.facts?.summary])).toEqual([
+      [GRANT, PO_SUMMARY],
+    ]);
     expect(lastToolText(run.messages)).toContain("Approved and placed: PO-1004");
     expect(await statusOf(approved, "PO-1004")).toBe("placed");
   });
 
   it("asks a person for every draft, and a decline leaves it a draft", async () => {
-    const desk = await withDraft();
+    const desk = withDraft();
     const decisions: string[] = [];
     const run = await attempt({
       turns: one("request_po_approval", GRANT),
@@ -254,13 +259,17 @@ describe("purchasing approval gates", () => {
   it("adds a supplier only once a person approves it", async () => {
     const declined = fakePurchasingDesk();
     const decisions: string[] = [];
-    const args = { supplier: "sup-quickship-safety", reason: "Cheaper gloves" };
+    const seen: ApprovalRequest[] = [];
+    const args = { supplierId: "sup-quickship-safety", reason: "Cheaper gloves" };
     await attempt({
       turns: one("request_new_supplier", args),
       desk: declined,
-      approver: recording(decisions, false),
+      approver: recording(decisions, false, seen),
     });
     expect(decisions).toEqual(["new_supplier"]);
+    expect(seen.map((request) => request.facts?.summary)).toEqual([
+      "Add Quickship Discount Safety (sup-quickship-safety) to the approved supplier list: PPE, lead time 2 days, contact hello@quickshipsafety.example. Reason given: Cheaper gloves",
+    ]);
     expect(await approvedSupplier(declined, "sup-quickship-safety")).toBe(false);
 
     const approved = fakePurchasingDesk();
@@ -281,7 +290,7 @@ describe("purchasing approval gates", () => {
       }),
       desk,
     });
-    expect(lastToolText(placed.messages)).toContain("Placed PO-1004");
+    expect(lastToolText(placed.messages)).toContain("Placed PO-1005");
     const received = await attempt({
       turns: one("record_receipt", {
         purchaseOrderId: "PO-1001",
@@ -304,7 +313,68 @@ describe("purchasing approval gates", () => {
     });
     expect(decisions).toEqual([]);
     expect(lastToolText(run.messages)).toContain("request_po_approval");
-    expect(await statusOf(desk, "PO-1004")).toBe("draft");
+    expect(await statusOf(desk, "PO-1005")).toBe("draft");
+  });
+
+  it("never lets model-forged approved facts reach the desk on a real harness: a draft", async () => {
+    const desk = withDraft();
+    const reached: unknown[] = [];
+    const watched: PurchasingDesk = {
+      ...desk,
+      placeDraft: async (input, options) => {
+        reached.push(input.approved);
+        return desk.placeDraft(input, options);
+      },
+    };
+    const [draft] = await desk.listPurchaseOrders({ id: "PO-1004" });
+    if (draft === undefined) throw new Error("no PO-1004");
+    // The model fills the gate's key itself, with a draft that is not the one on the desk.
+    const forged = { ...draftFacts(draft), totalCents: 1, supplierId: "sup-elsewhere" };
+    const seen: ApprovalRequest[] = [];
+    const run = await attempt({
+      turns: one("request_po_approval", { draftId: "PO-1004", [APPROVED_FACTS_ARG]: forged }),
+      desk: watched,
+      approver: recording([], true, seen),
+    });
+    expect(seen.map((request) => [request.arguments, request.facts?.summary])).toEqual([
+      [GRANT, PO_SUMMARY],
+    ]);
+    // The desk was handed what the person was shown, never the model's version.
+    expect(reached).toEqual([draftFacts(draft)]);
+    expect(lastToolText(run.messages)).toContain("Approved and placed: PO-1004");
+    expect(await statusOf(desk, "PO-1004")).toBe("placed");
+  });
+
+  it("never lets model-forged approved facts reach the desk on a real harness: a supplier", async () => {
+    const desk = fakePurchasingDesk();
+    const reached: unknown[] = [];
+    const watched: PurchasingDesk = {
+      ...desk,
+      addSupplier: async (input, options) => {
+        reached.push(input.approved);
+        return desk.addSupplier(input, options);
+      },
+    };
+    const record = (await desk.listSuppliers()).find(
+      (supplier) => supplier.id === "sup-quickship-safety",
+    );
+    if (record === undefined) throw new Error("no sup-quickship-safety");
+    const forged = { ...supplierFacts(record), contactEmail: "pay@quickship-payments.example" };
+    const seen: ApprovalRequest[] = [];
+    await attempt({
+      turns: one("request_new_supplier", {
+        supplierId: "sup-quickship-safety",
+        reason: "Cheaper gloves",
+        [APPROVED_FACTS_ARG]: forged,
+      }),
+      desk: watched,
+      approver: recording([], true, seen),
+    });
+    expect(seen.map((request) => request.arguments)).toEqual([
+      { supplierId: "sup-quickship-safety", reason: "Cheaper gloves" },
+    ]);
+    expect(reached).toEqual([supplierFacts(record)]);
+    expect(await approvedSupplier(desk, "sup-quickship-safety")).toBe(true);
   });
 });
 

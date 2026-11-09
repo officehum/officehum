@@ -7,22 +7,36 @@
  * supplier not on the approved list, and it checks every receipt against the order. Each refusal a
  * person can lift names the approval-gated tool that asks them. `request_po_approval` and
  * `request_new_supplier` are those tools; their approvals are `officehum.json`'s, evaluated by the
- * SDK's gate before the tool runs, so this file holds no money limit and no approval rule.
+ * SDK's gate before the tool runs, so this file holds no money limit and no approval rule. The model
+ * names only the draft or the supplier: `poApprovalFacts` and `newSupplierApprovalFacts` read what the
+ * person approves from the desk, the gate hands those facts to the tool on a yes, and the desk refuses
+ * when the draft or supplier no longer equals what was approved.
  *
  * Every amount a tool speaks comes back from the desk, and every name from the company record.
  */
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
-import { deskRefusal, refusal, requestId, textResult } from "@officehum/sdk";
+import {
+  APPROVED_FACTS_ARG,
+  type ApprovalFactsReader,
+  approvedFacts,
+  approvedFactsParameter,
+  deskRefusal,
+  refusal,
+  requestId,
+  textResult,
+} from "@officehum/sdk";
 import { type CompanyFacts, money, person, personLabel, purchasingLead } from "./company.js";
 import {
   type DeskRefusal,
+  draftFacts,
   type GoodsReceipt,
   type OrderStatus,
   type PurchaseOrder,
   type PurchasingDesk,
   PurchasingDeskError,
+  supplierFacts,
 } from "./desk.js";
 
 /** What the tools need: the desk, and the company whose supplies it buys. */
@@ -31,7 +45,10 @@ export interface PurchasingToolDependencies {
   readonly company: CompanyFacts;
 }
 
-/** The nine tools, named, so the factory places each one where the manifest declares it. */
+/**
+ * The nine tools, named, so the factory places each one where the manifest declares it, and the
+ * readers the two approvals ask with.
+ */
 export interface PurchasingToolset {
   readonly listStock: ToolRegistration;
   readonly listSuppliers: ToolRegistration;
@@ -42,6 +59,10 @@ export interface PurchasingToolset {
   readonly requestNewSupplier: ToolRegistration;
   readonly recordReceipt: ToolRegistration;
   readonly readCompany: ToolRegistration;
+  /** Reads a draft's supplier, lines and total from the desk for the person approving it. */
+  readonly poApprovalFacts: ApprovalFactsReader;
+  /** Reads a supplier's record from the desk for the person approving it. */
+  readonly newSupplierApprovalFacts: ApprovalFactsReader;
 }
 
 /** The company section `read_company` can answer for. */
@@ -211,24 +232,22 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     if (!(error instanceof PurchasingDeskError)) throw error;
     // The next step comes from the refusal's code, never from reading its message.
     const supplier = typeof extra.supplierId === "string" ? extra.supplierId : undefined;
-    // The approval names the draft, its supplier and the desk's total, so the person sees what they
-    // approve and the desk can refuse a grant for anything else.
-    const grant =
-      error.draftId === undefined
-        ? ""
-        : ` with draftId ${error.draftId}${supplier === undefined ? "" : `, supplierId ${supplier}`}${error.totalCents === undefined ? "" : ` and totalCents ${error.totalCents}`}`;
+    // The approval names only the draft: the gate reads its supplier, lines and total from the desk.
+    const grant = error.draftId === undefined ? "" : ` with draftId ${error.draftId}`;
     const approval = ` Next: call request_po_approval${grant}, which asks ${lead}.`;
+    const draft = error.draftId ?? "the draft";
     const next: Record<DeskRefusal, string> = {
       over_limit: approval,
       split_order: approval,
-      unapproved_supplier: ` Next: call request_new_supplier${supplier === undefined ? "" : ` with supplier ${supplier}`} and the reason, which asks ${lead}.`,
+      unapproved_supplier: ` Next: call request_new_supplier${supplier === undefined ? " with the supplier's id" : ` with supplierId ${supplier}`} and the reason, which asks ${lead}.`,
       over_received: ` Any extra is ${lead}'s to take up with the supplier.`,
       // The desk's own message already says what to do for these.
       not_found: "",
       invalid: "",
       not_offered: "",
       not_draft: "",
-      draft_changed: "",
+      draft_changed: ` Next: tell the person ${draft} changed after it was put to a person, so it was not placed; read it again with list_purchase_orders before anything else.`,
+      supplier_changed: ` Next: tell the person the supplier's record changed after it was put to a person, so it was not added; read it again with list_suppliers before anything else.`,
       already_approved: "",
       not_placed: "",
       not_on_order: "",
@@ -405,31 +424,64 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     },
   });
 
+  /**
+   * The `po_over_limit` approval's facts: the draft as the desk holds it, read before anyone is asked.
+   * An order that is not on the desk or is not a draft has nothing to approve, so it throws and the
+   * gate asks nobody.
+   */
+  const poApprovalFacts: ApprovalFactsReader = async (args) => {
+    const desk = requireDesk(dependencies);
+    const draftId = String(args.draftId);
+    const [order] = await desk.listPurchaseOrders({ id: draftId });
+    if (order === undefined) {
+      throw new Error(
+        `No purchase order has the number ${JSON.stringify(draftId)}. Nothing was put to a person and nothing was placed. Next: find the draft with list_purchase_orders.`,
+      );
+    }
+    if (order.status !== "draft") {
+      throw new Error(
+        `${order.id} is not a draft waiting for approval: it is ${statusText(order.status)}. Nothing was put to a person and nothing was placed again. Next: tell the person; a new or changed order is raised with raise_purchase_order.`,
+      );
+    }
+    const lines = order.lines
+      .map(
+        (line) =>
+          `${line.quantity} × ${line.name} (${line.unit}) at ${money(line.unitCostCents)} = ${money(line.lineTotalCents)}`,
+      )
+      .join("; ");
+    return {
+      summary: `Place draft ${order.id} with ${order.supplierName}: ${lines}. Total ${money(order.totalCents)}; a purchase order over ${money(company.approvalLimits.purchaseOrderOverCents)} needs a person's approval`,
+      facts: draftFacts(order),
+    };
+  };
+
   const requestPoApproval = defineTool({
     name: "request_po_approval",
     description:
-      "Ask a person to approve one draft purchase order that raise_purchase_order refused for the spending limit, with the draft's id, supplier and total exactly as the refusal gave them, so the person sees what they approve. Every call waits for a person; once approved, the desk places exactly that draft, and refuses if the draft is not what the approval named.",
+      "Ask a person to approve one draft purchase order that raise_purchase_order refused for the spending limit, named by the draft's id from the refusal. The desk reads the draft's supplier, lines and total and shows them to the person; every call waits for a person. Once approved, the desk places exactly that draft, and refuses if it changed since the person saw it.",
     parameters: Type.Object(
       {
         draftId: Type.String({
           description: "The draft's purchase order number from the refusal, e.g. PO-1004",
         }),
-        supplierId: Type.String({
-          description: "The draft's supplier id from the refusal, e.g. sup-cascade-paper",
-        }),
-        totalCents: Type.Integer({
-          minimum: 1,
-          description: "The draft's total in cents, exactly as the refusal gave it, e.g. 217200",
-        }),
+        // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared.
+        [APPROVED_FACTS_ARG]: approvedFactsParameter(),
       },
       { additionalProperties: false },
     ),
     replay: "unsafe",
     execute: async (args, api) => {
       const desk = requireDesk(dependencies);
+      const approved = approvedFacts(args);
+      if (approved === undefined) {
+        return refusal(
+          `Nothing was placed: this call to place ${args.draftId} carries no facts a person approved. A draft is placed only after the approval gate has put it to a person and they said yes. Next: tell the person placing it needs a person's approval and nothing was placed.`,
+          { code: "not_approved", draftId: args.draftId },
+        );
+      }
       try {
         const order = await desk.placeDraft(
-          { draftId: args.draftId, supplierId: args.supplierId, totalCents: args.totalCents },
+          { draftId: args.draftId, approved },
           { requestId: requestId("po-approval", api) },
         );
         return {
@@ -442,25 +494,62 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     },
   });
 
+  /**
+   * The `new_supplier` approval's facts: the supplier's record as the desk holds it. A supplier not on
+   * file has no record to show, and one already approved has nothing to approve, so either throws and
+   * the gate asks nobody. The reason stays in the call's arguments: it is the requester's words.
+   */
+  const newSupplierApprovalFacts: ApprovalFactsReader = async (args) => {
+    const desk = requireDesk(dependencies);
+    const wanted = String(args.supplierId).trim().toLowerCase();
+    const supplier = (await desk.listSuppliers()).find(
+      (candidate) =>
+        candidate.id.toLowerCase() === wanted || candidate.name.toLowerCase() === wanted,
+    );
+    if (supplier === undefined) {
+      throw new Error(
+        `No supplier on file is ${JSON.stringify(String(args.supplierId))}. Nothing was put to a person and nothing was added. Next: tell the person who asked that setting up a supplier not on file is for ${lead} to decide; nothing was asked or added.`,
+      );
+    }
+    if (supplier.approved) {
+      throw new Error(
+        `${supplier.name} (${supplier.id}) is already on the approved supplier list. Nothing was put to a person. Next: order from it with raise_purchase_order.`,
+      );
+    }
+    return {
+      summary: `Add ${supplier.name} (${supplier.id}) to the approved supplier list: ${supplier.category}, lead time ${supplier.leadTimeDays} days, contact ${supplier.contactEmail}. Reason given: ${String(args.reason)}`,
+      facts: supplierFacts(supplier),
+    };
+  };
+
   const requestNewSupplier = defineTool({
     name: "request_new_supplier",
     description:
-      "Ask a person to add a supplier to the company's approved supplier list, with the reason. Use the supplier's id from list_suppliers, or its name if it is not on file. Every call waits for a person; once approved, the supplier is on the list. It orders nothing.",
+      "Ask a person to add a supplier on file to the company's approved supplier list, named by its id from list_suppliers, with the requester's reason. The desk reads the supplier's record and shows it to the person; every call waits for a person. Once approved, the supplier is on the list. It orders nothing.",
     parameters: Type.Object(
       {
-        supplier: Type.String({
-          description: "The supplier's id from list_suppliers, or its name if it is not on file",
+        supplierId: Type.String({
+          description: "The supplier's id from list_suppliers, e.g. sup-quickship-safety",
         }),
         reason: Type.String({ description: "Why the company needs this supplier" }),
+        // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared.
+        [APPROVED_FACTS_ARG]: approvedFactsParameter(),
       },
       { additionalProperties: false },
     ),
     replay: "unsafe",
     execute: async (args, api) => {
       const desk = requireDesk(dependencies);
+      const approved = approvedFacts(args);
+      if (approved === undefined) {
+        return refusal(
+          `Nothing was added: this call to add ${args.supplierId} to the approved list carries no facts a person approved. A supplier is added only after the approval gate has put it to a person and they said yes. Next: tell the person adding it needs a person's approval and nothing was added.`,
+          { code: "not_approved", supplierId: args.supplierId },
+        );
+      }
       try {
         const added = await desk.addSupplier(
-          { supplier: args.supplier, reason: args.reason },
+          { supplierId: args.supplierId, reason: args.reason, approved },
           { requestId: requestId("new-supplier", api) },
         );
         return {
@@ -470,7 +559,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
           details: { ...added },
         };
       } catch (error) {
-        return refused(error, { supplier: args.supplier });
+        return refused(error, { supplierId: args.supplierId });
       }
     },
   });
@@ -551,5 +640,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     requestNewSupplier,
     recordReceipt,
     readCompany,
+    poApprovalFacts,
+    newSupplierApprovalFacts,
   };
 }

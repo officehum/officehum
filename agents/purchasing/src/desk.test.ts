@@ -7,7 +7,14 @@
 
 import { describe, expect, it } from "vitest";
 import { loadCompanyFacts } from "./company.js";
-import { DEMO_NOW, fakePurchasingDesk, type PurchasingDesk, PurchasingDeskError } from "./desk.js";
+import {
+  DEMO_NOW,
+  draftFacts,
+  fakePurchasingDesk,
+  type PurchasingDesk,
+  PurchasingDeskError,
+  supplierFacts,
+} from "./desk.js";
 
 const company = loadCompanyFacts();
 const LIMIT = company.approvalLimits.purchaseOrderOverCents;
@@ -24,8 +31,22 @@ const CASCADE_RESTOCK = {
   ],
 };
 
-/** What a person is asked to approve for that order: the draft, its supplier and the desk's total. */
-const GRANT = { draftId: "PO-1004", supplierId: "sup-cascade-paper", totalCents: 217200 };
+/**
+ * A placement of one draft, carrying the facts a person approved as the desk held them then. The
+ * demonstration desk holds the Cascade restock as draft PO-1004, refused for the limit this morning.
+ */
+async function approvedDraft(purchasing: PurchasingDesk, draftId = "PO-1004") {
+  const [order] = await purchasing.listPurchaseOrders({ id: draftId });
+  if (order === undefined) throw new Error(`no ${draftId} on the desk`);
+  return { draftId, approved: draftFacts(order) };
+}
+
+/** An addition of one supplier, carrying its record as a person approved it. */
+async function approvedSupplier(purchasing: PurchasingDesk, supplierId: string, reason: string) {
+  const record = (await purchasing.listSuppliers()).find((supplier) => supplier.id === supplierId);
+  if (record === undefined) throw new Error(`no ${supplierId} on file`);
+  return { supplierId, reason, approved: supplierFacts(record) };
+}
 
 const PACIFIC_RESTOCK = {
   supplierId: "sup-pacific-janitorial",
@@ -106,7 +127,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     const purchasing = desk();
     const order = await purchasing.raisePurchaseOrder(PACIFIC_RESTOCK, { requestId: "r1" });
     expect(order).toMatchObject({
-      id: "PO-1004",
+      id: "PO-1005",
       status: "placed",
       supplierName: "Pacific Janitorial Supply",
       totalCents: 12 * 2400 + 5 * 6800,
@@ -127,11 +148,11 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
       purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "r2" }),
     );
     expect(refused.code).toBe("over_limit");
-    expect(refused.draftId).toBe("PO-1004");
+    expect(refused.draftId).toBe("PO-1005");
     expect(refused.totalCents).toBe(217200);
     expect(refused.totalCents).toBeGreaterThan(LIMIT);
     expect(refused.message).toContain("$2,172.00");
-    const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1004" });
+    const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1005" });
     expect(draft).toMatchObject({ status: "draft", placedOn: null, totalCents: 217200 });
     expect(
       (await purchasing.listStock()).find((line) => line.itemId === "hand-towel")?.onOrder,
@@ -148,7 +169,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     );
     expect(refused.code).toBe("unapproved_supplier");
     expect(refused.draftId).toBeUndefined();
-    expect(await purchasing.listPurchaseOrders()).toHaveLength(3);
+    expect(await purchasing.listPurchaseOrders()).toHaveLength(4);
   });
 
   it("refuses an unknown supplier, an item the supplier does not offer, and a quantity that is not whole", async () => {
@@ -206,7 +227,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
       ),
     );
     expect(refused.code).toBe("split_order");
-    expect(refused.draftId).toBe("PO-1005");
+    expect(refused.draftId).toBe("PO-1006");
     expect(refused.message).toContain("$2,172.00");
 
     // Another supplier the same day is a separate order.
@@ -246,36 +267,84 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
       purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "over" }),
     );
     expect(refusedAgain.draftId).toBe(refusedOnce.draftId);
-    expect(await purchasing.listPurchaseOrders()).toHaveLength(5);
+    expect(await purchasing.listPurchaseOrders()).toHaveLength(6);
   });
 });
 
 describe("fakePurchasingDesk: approving a draft", () => {
-  it("places exactly the draft it was asked for, once", async () => {
+  it("holds the Cascade restock as a draft refused for the limit, waiting for a person", async () => {
+    const [draft] = await desk().listPurchaseOrders({ id: "PO-1004" });
+    expect(draft).toMatchObject({
+      supplierId: "sup-cascade-paper",
+      status: "draft",
+      totalCents: 217200,
+      placedOn: null,
+    });
+    expect(draft?.totalCents).toBeGreaterThan(LIMIT);
+  });
+
+  it("places exactly the draft a person approved, once", async () => {
     const purchasing = desk();
-    const refused = await refusal(
-      purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "a1" }),
-    );
-    const placed = await purchasing.placeDraft(GRANT, { requestId: "a2" });
+    const grant = await approvedDraft(purchasing);
+    const placed = await purchasing.placeDraft(grant, { requestId: "a2" });
     expect(placed).toMatchObject({
-      id: refused.draftId,
+      id: "PO-1004",
       status: "placed",
       totalCents: 217200,
       placedOn: "2026-11-09",
       expectedOn: "2026-11-13",
       approved: true,
     });
-    const replayed = await purchasing.placeDraft(GRANT, { requestId: "a2" });
+    const replayed = await purchasing.placeDraft(grant, { requestId: "a2" });
     expect(replayed).toEqual(placed);
     // A second request for the same draft is not a second order.
-    const twice = await refusal(purchasing.placeDraft(GRANT, { requestId: "a3" }));
+    const twice = await refusal(purchasing.placeDraft(grant, { requestId: "a3" }));
     expect(twice.code).toBe("not_draft");
+  });
+
+  it("approves the draft as it was raised, not where it stands", async () => {
+    const [draft] = await desk().listPurchaseOrders({ id: "PO-1004" });
+    if (draft === undefined) throw new Error("no PO-1004");
+    const facts = draftFacts(draft);
+    expect(facts).toEqual({
+      id: "PO-1004",
+      supplierId: "sup-cascade-paper",
+      supplierName: "Cascade Paper & Packaging",
+      lines: draft.lines.map(({ receivedQuantity: _, ...line }) => line),
+      totalCents: 217200,
+      raisedOn: draft.raisedOn,
+    });
+    // Placing it moves these; a person who approved the draft approved the same order.
+    for (const moving of ["status", "placedOn", "expectedOn", "approved"]) {
+      expect(facts, moving).not.toHaveProperty(moving);
+    }
+  });
+
+  it("refuses facts that are not the draft as it stands, as changed, placing nothing", async () => {
+    for (const changed of [
+      { totalCents: 145200 },
+      { supplierId: "sup-pacific-janitorial" },
+      { lines: [] },
+    ]) {
+      const purchasing = desk();
+      const grant = await approvedDraft(purchasing);
+      const refused = await refusal(
+        purchasing.placeDraft(
+          { ...grant, approved: { ...grant.approved, ...changed } },
+          { requestId: "d2" },
+        ),
+      );
+      expect(refused.code, JSON.stringify(changed)).toBe("draft_changed");
+      expect(refused.message).toContain("$2,172.00");
+      expect(refused.message).toContain("Nothing was placed.");
+      const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1004" });
+      expect(draft?.status).toBe("draft");
+    }
   });
 
   it("does not let an approval cover a changed order: a changed order is a new draft that needs its own", async () => {
     const purchasing = desk();
-    await refusal(purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "b1" }));
-    await purchasing.placeDraft(GRANT, { requestId: "b2" });
+    await purchasing.placeDraft(await approvedDraft(purchasing), { requestId: "b2" });
     const changed = await refusal(
       purchasing.raisePurchaseOrder(
         {
@@ -295,29 +364,15 @@ describe("fakePurchasingDesk: approving a draft", () => {
     expect(draft?.status).toBe("draft");
   });
 
-  it("places nothing when the supplier or total asked about is not the draft's: the grant is for what was shown", async () => {
-    const purchasing = desk();
-    await refusal(purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "d1" }));
-    for (const [grant, requestId] of [
-      [{ ...GRANT, totalCents: 145200 }, "d2"],
-      [{ ...GRANT, supplierId: "sup-pacific-janitorial" }, "d3"],
-    ] as const) {
-      const refused = await refusal(purchasing.placeDraft(grant, { requestId }));
-      expect(refused.code).toBe("draft_changed");
-      expect(refused.message).toContain("$2,172.00");
-    }
-    const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1004" });
-    expect(draft?.status).toBe("draft");
-  });
-
   it("refuses an order that is not a draft, and one that does not exist", async () => {
     const purchasing = desk();
+    const grant = await approvedDraft(purchasing);
     expect(
-      (await refusal(purchasing.placeDraft({ ...GRANT, draftId: "PO-1001" }, { requestId: "c1" })))
+      (await refusal(purchasing.placeDraft({ ...grant, draftId: "PO-1001" }, { requestId: "c1" })))
         .code,
     ).toBe("not_draft");
     expect(
-      (await refusal(purchasing.placeDraft({ ...GRANT, draftId: "PO-9" }, { requestId: "c2" })))
+      (await refusal(purchasing.placeDraft({ ...grant, draftId: "PO-9" }, { requestId: "c2" })))
         .code,
     ).toBe("not_found");
   });
@@ -327,10 +382,18 @@ describe("fakePurchasingDesk: adding a supplier", () => {
   it("approves a supplier on file, after which it can be ordered from", async () => {
     const purchasing = desk();
     const added = await purchasing.addSupplier(
-      { supplier: "sup-quickship-safety", reason: "Cheaper gloves, two-day lead time" },
+      await approvedSupplier(
+        purchasing,
+        "sup-quickship-safety",
+        "Cheaper gloves, two-day lead time",
+      ),
       { requestId: "n1" },
     );
-    expect(added).toMatchObject({ supplierId: "sup-quickship-safety", approved: true });
+    expect(added).toMatchObject({
+      supplierId: "sup-quickship-safety",
+      approved: true,
+      reason: "Cheaper gloves, two-day lead time",
+    });
     const order = await purchasing.raisePurchaseOrder(
       { supplierId: "sup-quickship-safety", lines: [{ itemId: "nitrile-gloves", quantity: 5 }] },
       { requestId: "n2" },
@@ -338,46 +401,68 @@ describe("fakePurchasingDesk: adding a supplier", () => {
     expect(order.totalCents).toBe(5 * 5900);
   });
 
-  it("adds a supplier that is not on file by name, with no items until someone sets up its prices", async () => {
-    const purchasing = desk();
-    const added = await purchasing.addSupplier(
-      { supplier: "Evergreen Supply Co.", reason: "Local stockist" },
-      { requestId: "n3" },
+  it("approves the supplier's record: name, category, lead time, contact, not yet approved", async () => {
+    const record = (await desk().listSuppliers()).find(
+      (supplier) => supplier.id === "sup-quickship-safety",
     );
-    expect(added.supplierName).toBe("Evergreen Supply Co.");
-    const listed = (await purchasing.listSuppliers()).find(
-      (supplier) => supplier.id === added.supplierId,
-    );
-    expect(listed).toMatchObject({ approved: true, items: [] });
+    if (record === undefined) throw new Error("no sup-quickship-safety");
+    expect(supplierFacts(record)).toEqual({
+      id: "sup-quickship-safety",
+      name: "Quickship Discount Safety",
+      category: record.category,
+      leadTimeDays: 2,
+      contactEmail: "hello@quickshipsafety.example",
+      approved: false,
+    });
   });
 
-  it("refuses an approved supplier, an empty reason, and replays without adding twice", async () => {
+  it("refuses a supplier whose record is not what was approved, as changed, adding nothing", async () => {
+    for (const changed of [
+      { contactEmail: "accounts@quickship-payments.example" },
+      { leadTimeDays: 9 },
+      { name: "Quickship Safety Ltd" },
+    ]) {
+      const purchasing = desk();
+      const grant = await approvedSupplier(purchasing, "sup-quickship-safety", "Cheaper gloves");
+      const refused = await refusal(
+        purchasing.addSupplier(
+          { ...grant, approved: { ...grant.approved, ...changed } },
+          { requestId: "n3" },
+        ),
+      );
+      expect(refused.code, JSON.stringify(changed)).toBe("supplier_changed");
+      expect(refused.message).toContain("Nothing was added.");
+      const record = (await purchasing.listSuppliers()).find(
+        (supplier) => supplier.id === "sup-quickship-safety",
+      );
+      expect(record?.approved).toBe(false);
+    }
+  });
+
+  it("refuses an unknown supplier, an approved supplier, an empty reason, and replays without adding twice", async () => {
     const purchasing = desk();
+    const grant = await approvedSupplier(purchasing, "sup-quickship-safety", "Cheaper gloves");
     expect(
       (
         await refusal(
           purchasing.addSupplier(
-            { supplier: "sup-cascade-paper", reason: "x" },
+            { ...grant, supplierId: "Evergreen Supply Co." },
             { requestId: "n4" },
           ),
         )
       ).code,
-    ).toBe("already_approved");
+    ).toBe("not_found");
+    const cascade = await approvedSupplier(purchasing, "sup-cascade-paper", "x");
+    expect((await refusal(purchasing.addSupplier(cascade, { requestId: "n5" }))).code).toBe(
+      "already_approved",
+    );
     expect(
-      (
-        await refusal(
-          purchasing.addSupplier(
-            { supplier: "sup-quickship-safety", reason: " " },
-            { requestId: "n5" },
-          ),
-        )
-      ).code,
+      (await refusal(purchasing.addSupplier({ ...grant, reason: " " }, { requestId: "n6" }))).code,
     ).toBe("invalid");
-    const input = { supplier: "Evergreen Supply Co.", reason: "Local stockist" };
-    const first = await purchasing.addSupplier(input, { requestId: "n6" });
-    const again = await purchasing.addSupplier(input, { requestId: "n6" });
+    const first = await purchasing.addSupplier(grant, { requestId: "n7" });
+    const again = await purchasing.addSupplier(grant, { requestId: "n7" });
     expect(again).toEqual(first);
-    expect(await purchasing.listSuppliers()).toHaveLength(company.suppliers.length + 1);
+    expect(await purchasing.listSuppliers()).toHaveLength(company.suppliers.length);
   });
 });
 
@@ -446,7 +531,7 @@ describe("fakePurchasingDesk: receiving goods", () => {
       ),
     );
     expect(received.code).toBe("not_placed");
-    await refusal(purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "g6" }));
+    // PO-1004 is the demonstration draft, refused for the limit and never sent.
     const draft = await refusal(
       purchasing.recordReceipt(
         { purchaseOrderId: "PO-1004", lines: [{ itemId: "hand-towel", quantity: 1 }], ...REPORT },
@@ -505,6 +590,7 @@ describe("fakePurchasingDesk: orders", () => {
       ["PO-1001", "placed"],
       ["PO-1002", "received"],
       ["PO-1003", "placed"],
+      ["PO-1004", "draft"],
     ]);
     for (const order of orders) {
       for (const line of order.lines) {
@@ -516,7 +602,8 @@ describe("fakePurchasingDesk: orders", () => {
       expect(order.totalCents).toBe(
         order.lines.reduce((sum, line) => sum + line.lineTotalCents, 0),
       );
-      expect(order.totalCents).toBeLessThanOrEqual(LIMIT);
+      // Only the draft is over the limit: it was refused for it and waits for a person.
+      if (order.status !== "draft") expect(order.totalCents).toBeLessThanOrEqual(LIMIT);
     }
     expect(
       (await purchasing.listPurchaseOrders({ supplier: "Columbia" })).map((o) => o.id),

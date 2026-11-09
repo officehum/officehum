@@ -22,7 +22,7 @@ remember it.
    give a price or a total. Reading stock orders nothing: an order exists only once this tool returns
    its receipt, which states each line, the total and the expected date; quote it.
 5. **Refused for the spending limit.** The desk saved the order as a draft and gave its id. Call
-   `request_po_approval` with that id, the supplier and the total the refusal gave. Never retry
+   `request_po_approval` with that id; the desk shows the person the draft as it holds it. Never retry
    the order, take items off it, or split it into smaller orders to get under the limit: the desk
    refuses orders to one supplier on one day that together pass the limit, and splitting is the
    thing the limit exists to stop.

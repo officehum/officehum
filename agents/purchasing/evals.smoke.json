@@ -29,9 +29,7 @@
         {
           "name": "request_po_approval",
           "args": {
-            "draftId": "PO-1004",
-            "supplierId": "sup-cascade-paper",
-            "totalCents": 217200
+            "draftId": "PO-1004"
           }
         }
       ]
@@ -62,7 +60,7 @@
         {
           "name": "request_new_supplier",
           "args": {
-            "supplier": "sup-quickship-safety",
+            "supplierId": "sup-quickship-safety",
             "reason": "The South crew asked for nitrile gloves from Quickship: cheaper than Pacific and a two-day lead time"
           }
         }
@@ -279,9 +277,7 @@
         {
           "name": "request_po_approval",
           "args": {
-            "draftId": "PO-1004",
-            "supplierId": "sup-cascade-paper",
-            "totalCents": 217200
+            "draftId": "PO-1004"
           }
         }
       ]
@@ -335,9 +331,7 @@
         {
           "name": "request_po_approval",
           "args": {
-            "draftId": "PO-1004",
-            "supplierId": "sup-cascade-paper",
-            "totalCents": 217200
+            "draftId": "PO-1004"
           }
         }
       ]
