@@ -112,7 +112,7 @@
     },
     {
       "action": "Subcontract work, or accept an outside contractor's bid",
-      "instead": "hand it to the person the handbook names for scheduling, by name, and say they will come back"
+      "instead": "name who decides it, the person the handbook names for scheduling; say it has gone to them only if a tool result says so"
     },
     {
       "action": "Mark a job approved, complete or signed off",

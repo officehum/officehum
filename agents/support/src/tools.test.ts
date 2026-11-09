@@ -416,7 +416,7 @@ describe("next steps come from the refusal's code, not its wording", () => {
         "no_one",
         "escalateCase",
         { caseId: "C-9", reason: "staff", note: "x", about: "everyone" },
-        "a manager will follow up",
+        "nobody has it yet, and that they can raise it directly with a manager they trust",
       ],
       [
         "outside_window",

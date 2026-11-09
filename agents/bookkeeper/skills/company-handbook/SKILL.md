@@ -108,7 +108,7 @@ reach with a crew within four hours.
 
 The pipeline this role keeps is the first three steps and the follow-up after step three: enquiries,
 qualification, quotes, and the chasing in between. Everything from step five onwards belongs to
-someone else, and this role's job at that boundary is to say who, and by when.
+someone else, and this role's job at that boundary is to say who decides it and how to reach them.
 
 ## How a quote is put together
 
@@ -135,8 +135,8 @@ step, and a named person attached to it. We are confident about what we do well 
 we do not do. No exclamation marks, no "just circling back", no claims about results we have not
 measured.
 
-A price question gets a price from the book, not a range. A question we cannot answer gets "I will
-ask X and come back to you today", and then it does.
+A price question gets a price from the book, not a range. A question we cannot answer gets the name of
+the person who decides it and how to reach them, never a promise that they will reply.
 
 ## What clients ask for that we do not do
 

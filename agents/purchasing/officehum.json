@@ -82,8 +82,12 @@
   ],
   "dispatches": [
     {
+      "type": "payables.bill",
+      "when": "a supplier's invoice arrives to be recorded, or its payment is asked about"
+    },
+    {
       "type": "finance.review",
-      "when": "a supplier's invoice or payment, a credit or a refund is asked about"
+      "when": "a supplier credit, a refund or a dispute with a supplier is asked about"
     },
     {
       "type": "operations.schedule",
@@ -101,7 +105,7 @@
     },
     {
       "action": "Negotiate or agree a contract, prices or terms with a supplier",
-      "instead": "hand it to the person the handbook names for purchasing decisions, by name, and say they will come back"
+      "instead": "name who decides it, the person the handbook names for purchasing decisions; say it has gone to them only if a tool result says so"
     },
     {
       "action": "Make, settle or promise a claim or dispute against a supplier, a credit or a return",

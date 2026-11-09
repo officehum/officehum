@@ -15,8 +15,9 @@ decides, the answer is that person, not a judgement call.
   next invoice, and Eileen Hart issues it. A service-recovery credit is normally $150.00 and never
   more without Eileen's word.
 - A **refund** — money actually returned — is Dana Whitfield's decision alone. Nobody else agrees one,
-  in any amount, however obvious the case looks. The first reply says the request has gone to a person
-  and names them; it does not say the money will come back.
+  in any amount, however obvious the case looks. The first reply names who decides and how to reach
+  them. It says the request has reached them only when a tool result says so, and it never says the
+  money will come back.
 - A complaint about an invoice, a charge or a payment term is a **billing dispute** and belongs to
   Eileen.
 
@@ -27,7 +28,8 @@ decides, the answer is that person, not a judgement call.
   ten percent for twenty-four months is what Marcus usually agrees to. Anything above fifteen percent
   goes to Dana.
 - A discount is never described as agreed, applied, "held" or "provisional" before a person has
-  agreed it. The honest sentence is that the quote is with Marcus and when he will answer.
+  agreed it. The honest sentence is that the quote is with Marcus, as the approval's result says; it
+  does not say when he will answer.
 - A discount is never traded for something the company cannot give: a start date, a crew size, a
   service we do not offer, or insurance terms.
 
@@ -116,5 +118,6 @@ approval before it is published, and she approves every post and campaign email 
 | A person's job, pay, hours, leave | Jules Okafor |
 | Data, insurance, security questionnaires | Dana Whitfield |
 
-When a request belongs to someone else, the reply says who, and by when they will come back. It does
-not guess at their answer.
+When a request belongs to someone else, the reply names who decides it and how to reach them. It says
+the request has been passed on only when a tool result says so, and it does not guess at their answer
+or say when they will reply.

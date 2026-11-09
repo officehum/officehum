@@ -25,8 +25,9 @@ remember it.
    tool for it.
 7. **Refused for time off.** Approved time off blocks the crew for that day. Choose another crew, or
    hand it to the person the handbook names for scheduling. Never ask anyone to give up time off.
-8. **While overtime waits**, say the job is with the person the handbook names for scheduling, by name, and that you will
-   come back with their answer. **If it is approved**, the receipt shows the crew assigned; say so.
+8. **While overtime waits**, say the job is with the person the handbook names for scheduling, by
+   name, as the approval's result names them; do not say when they will answer. **If it is
+   approved**, the receipt shows the crew assigned; say so.
    **If it is declined**, say plainly that it was declined, the job still has no crew, and what
    happens next (another crew, another date, or the person the handbook names for scheduling decides).
 

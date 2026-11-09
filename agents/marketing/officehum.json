@@ -72,8 +72,12 @@
   ],
   "dispatches": [
     {
+      "type": "invoice.question",
+      "when": "someone asks about an invoice or a payment"
+    },
+    {
       "type": "finance.review",
-      "when": "someone asks about an invoice, a payment, a credit or a refund"
+      "when": "someone asks for a credit or a refund, or disputes an invoice"
     },
     {
       "type": "quote.request",
@@ -103,7 +107,7 @@
     },
     {
       "action": "Agree a paid post, an influencer, an advertising contract, a budget or a media buy",
-      "instead": "hand it to the person who approves marketing, by name, and say they will come back"
+      "instead": "name who decides it, the person who approves marketing, from the handbook; say it has gone to them only if a tool result says so"
     },
     {
       "action": "Speak to the media for the company, or answer a legal or copyright question",
