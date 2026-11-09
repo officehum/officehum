@@ -114,7 +114,7 @@ describe("draft_post", () => {
       BACKGROUND_CONTEXT,
     );
     expect(isError(result)).toBe(false);
-    expect(text(result)).toContain("Saved D-105 as a draft (facebook post). Nothing is published");
+    expect(text(result)).toContain("Saved D-106 as a draft (facebook post). Nothing is published");
     expect(text(result)).toContain(approver);
     expect(text(result)).toContain("<text>\nDay porters on site during business hours.\n</text>");
   });
@@ -128,12 +128,12 @@ describe("draft_post", () => {
     expect(isError(result)).toBe(true);
     expect(text(result)).toContain(`"${CLAIM}" (the phrase "30%")`);
     expect(text(result)).toContain(
-      `call request_claim_approval with draftId D-105, which asks ${approver} and shows them the draft as the desk holds it.`,
+      `call request_claim_approval with draftId D-106, which asks ${approver} and shows them the draft as the desk holds it.`,
     );
     expect(text(result)).toContain(`<text>\n${POST}\n</text>`);
     expect(details(result)).toMatchObject({
       code: "unapproved_claim",
-      draftId: "D-105",
+      draftId: "D-106",
       claims: [{ claim: CLAIM, phrase: "30%" }],
     });
   });
@@ -184,7 +184,7 @@ describe("draft_post", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(refusedAgain)).toBe(text(refused));
-    expect(await marketing.listDrafts()).toHaveLength(6);
+    expect(await marketing.listDrafts()).toHaveLength(7);
   });
 });
 
@@ -196,7 +196,7 @@ describe("draft_campaign_email", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(result)).toContain(
-      "Saved D-105 as a draft (email to current-clients, channel email)",
+      "Saved D-106 as a draft (email to current-clients, channel email)",
     );
     expect(text(result)).toContain("To unsubscribe, reply UNSUBSCRIBE");
     expect(text(result)).toContain(postalAddress(company));
@@ -225,7 +225,7 @@ describe("draft_campaign_email", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(again)).toBe(text(first));
-    expect(await marketing.listDrafts()).toHaveLength(5);
+    expect(await marketing.listDrafts()).toHaveLength(6);
   });
 });
 
@@ -351,9 +351,23 @@ describe("publish", () => {
     const email = await set.publishApprovalFacts({ draftId: "D-103" }, HOOK_CONTEXT);
     const winter = await draft(marketing, "D-103");
     expect(email.summary).toBe(
-      `Send D-103 by email to the current-clients list, exactly as below, with the unsubscribe line and postal address the desk added:\n${winter.finalText}`,
+      `Send D-103 by email to the current clients list (Contracted clients who asked for news and offers), exactly as below, with the unsubscribe line and postal address the desk added:\n${winter.finalText}`,
     );
     expect(email.summary).toContain(postalAddress(company));
+  });
+
+  it("says plainly when an email's audience is not on file, rather than naming a list", async () => {
+    const marketing = desk();
+    const orphan = { ...(await draft(marketing, "D-103")), audienceId: null };
+    const edited: MarketingDesk = {
+      ...marketing,
+      listDrafts: async (filter) =>
+        filter?.id === "D-103" ? [orphan] : marketing.listDrafts(filter),
+    };
+    const read = await tools(edited).publishApprovalFacts({ draftId: "D-103" }, HOOK_CONTEXT);
+    expect(read.summary.split("\n")[0]).toBe(
+      "Send D-103 by email with no audience list on file, exactly as below, with the unsubscribe line and postal address the desk added:",
+    );
   });
 
   it("the approval refuses, asking nobody, a held, published or unknown draft", async () => {
@@ -426,7 +440,7 @@ describe("publish", () => {
 describe("list_drafts", () => {
   it("lists each draft with its status and full text, and the audiences", async () => {
     const result = await tools(desk()).listDrafts.execute({}, call("l"), BACKGROUND_CONTEXT);
-    expect(text(result)).toContain("Drafts (4):");
+    expect(text(result)).toContain("Drafts (5):");
     expect(text(result)).toContain("D-101 — linkedin post — published 2026-11-02");
     expect(text(result)).toContain("D-102 — linkedin post — draft, ready to publish");
     expect(text(result)).toContain("D-103 — email to current-clients, channel email — draft");

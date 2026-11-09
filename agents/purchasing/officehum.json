@@ -45,7 +45,7 @@
     {
       "name": "request_new_supplier",
       "replay": "unsafe",
-      "description": "Ask a person to add a supplier on file to the approved list, named by its id, with the reason. The desk reads the supplier's record and shows it to the person; once approved, it marks the supplier approved, and refuses if the record changed since."
+      "description": "Ask a person to add a supplier on file to the approved list, named by its id, with the requester's reason, which may not be empty. The desk reads the supplier's record and shows it to the person; once approved, it marks the supplier approved, and refuses if the record changed since."
     },
     {
       "name": "record_receipt",

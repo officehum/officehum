@@ -54,14 +54,19 @@ async function approvedPublication(marketing: MarketingDesk, draftId = "D-102") 
 }
 
 describe("fakeMarketingDesk: demonstration data", () => {
-  it("holds one published post, two drafts and one held post, built from the company's own facts", async () => {
+  it("holds one published post, two drafts and two held posts, built from the company's own facts", async () => {
     const drafts = await desk().listDrafts();
     expect(drafts.map((draft) => [draft.id, draft.channel, draft.status])).toEqual([
       ["D-101", "linkedin", "published"],
       ["D-102", "linkedin", "draft"],
       ["D-103", "email", "draft"],
       ["D-104", "facebook", "held"],
+      ["D-105", "linkedin", "held"],
     ]);
+    expect(drafts[4]).toMatchObject({
+      finalText: "Our nightly cleaning cuts sick days 30%. Ask us for a walkthrough.",
+      heldClaims: [{ claim: "Our nightly cleaning cuts sick days 30%.", phrase: "30%" }],
+    });
     expect(drafts[3]).toMatchObject({
       finalText: FLOOR_POST,
       heldClaims: [{ claim: FLOOR_CLAIM, phrase: "2x cleaner" }],
@@ -100,7 +105,7 @@ describe("fakeMarketingDesk: drafting a post", () => {
     const text = "Day porters on site during business hours. Ask us for a walkthrough.";
     const draft = await marketing.draftPost({ channel: "facebook", text }, { requestId: "r1" });
     expect(draft).toMatchObject({
-      id: "D-105",
+      id: "D-106",
       kind: "post",
       channel: "facebook",
       status: "draft",
@@ -145,12 +150,12 @@ describe("fakeMarketingDesk: drafting a post", () => {
       marketing.draftPost({ channel: "linkedin", text: POST }, { requestId: "r1" }),
     );
     expect(error.code).toBe("unapproved_claim");
-    expect(error.draftId).toBe("D-105");
+    expect(error.draftId).toBe("D-106");
     expect(error.claims).toEqual([{ claim: CLAIM, phrase: "30%" }]);
     expect(error.message).toContain('"30%"');
     expect(error.message).toContain(CLAIM);
     expect(error.finalText).toBe(POST);
-    const [held] = await marketing.listDrafts({ id: "D-105" });
+    const [held] = await marketing.listDrafts({ id: "D-106" });
     expect(held).toMatchObject({ status: "held", heldClaims: [{ claim: CLAIM, phrase: "30%" }] });
   });
 
@@ -167,7 +172,7 @@ describe("fakeMarketingDesk: drafting a post", () => {
         )
       ).code,
     ).toBe("invalid");
-    expect(await marketing.listDrafts()).toHaveLength(4);
+    expect(await marketing.listDrafts()).toHaveLength(5);
   });
 
   it("saves one draft however often the same call is replayed, refusals included", async () => {
@@ -183,7 +188,7 @@ describe("fakeMarketingDesk: drafting a post", () => {
       marketing.draftPost({ channel: "linkedin", text: POST }, { requestId: "claim" }),
     );
     expect(refusedAgain).toBe(refused);
-    expect(await marketing.listDrafts()).toHaveLength(6);
+    expect(await marketing.listDrafts()).toHaveLength(7);
   });
 });
 
@@ -273,7 +278,7 @@ describe("fakeMarketingDesk: approving a claim", () => {
       marketing.draftPost({ channel: "linkedin", text: FLOOR_POST }, { requestId: "second" }),
     );
     expect(again.code).toBe("unapproved_claim");
-    expect(again.draftId).toBe("D-105");
+    expect(again.draftId).toBe("D-106");
   });
 
   it("refuses facts that are not the held draft as it stands, as changed, granting nothing", async () => {
@@ -315,7 +320,7 @@ describe("fakeMarketingDesk: approving a claim", () => {
     const marketing = desk();
     const text = "Our floors are 2x cleaner. We use only non-toxic products.";
     await refusal(marketing.draftPost({ channel: "website", text }, { requestId: "two" }));
-    const grant = await approvedClaims(marketing, "D-105");
+    const grant = await approvedClaims(marketing, "D-106");
     expect((grant.approved.heldClaims as unknown[]).length).toBe(2);
     const draft = await marketing.approveClaim(grant, { requestId: "a" });
     expect(draft).toMatchObject({

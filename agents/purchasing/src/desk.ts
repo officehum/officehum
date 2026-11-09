@@ -312,9 +312,11 @@ export function demoOffers(): readonly SupplierOffer[] {
  * The orders already on the desk, priced from the catalogue: floor pads on order from last week,
  * microfiber delivered in full, glass cleaner placed on Friday and due today, and this morning's
  * paper goods restock from Cascade, refused for the spending limit and saved as draft PO-1004 for a
- * person to decide. They are demonstration data, not part of the company record. The draft is also
- * what the eval scenarios' refused restock names, so the approval gate reads the same draft from the
- * desk that the scenario's stubbed refusal tells the model about.
+ * person to decide. They are demonstration data, not part of the company record.
+ *
+ * The draft is seeded because eval scenarios name it: as for every role's demonstration data, the desk
+ * holds the records the scenarios' stubbed tools refer to, so the approval gate reads the same draft
+ * from the desk that the scenario's stubbed refusal tells the model about.
  */
 export function demoOrders(
   catalog: readonly SupplyItem[],

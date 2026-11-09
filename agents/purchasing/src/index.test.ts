@@ -268,7 +268,7 @@ describe("purchasing approval gates", () => {
     });
     expect(decisions).toEqual(["new_supplier"]);
     expect(seen.map((request) => request.facts?.summary)).toEqual([
-      "Add Quickship Discount Safety (sup-quickship-safety) to the approved supplier list: PPE, lead time 2 days, contact hello@quickshipsafety.example. Reason given: Cheaper gloves",
+      'Add Quickship Discount Safety (sup-quickship-safety) to the approved supplier list: PPE, lead time 2 days, contact hello@quickshipsafety.example. Reason given by the requester: "Cheaper gloves"',
     ]);
     expect(await approvedSupplier(declined, "sup-quickship-safety")).toBe(false);
 

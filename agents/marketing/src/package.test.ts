@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import manifest from "../officehum.json" with { type: "json" };
 import { findResultClaims } from "./claims.js";
 import { loadCompanyFacts, marketingApprover } from "./company.js";
-import { demoDrafts } from "./desk.js";
+import { demoDrafts, fakeMarketingDesk } from "./desk.js";
 import { marketingTools } from "./tools.js";
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
@@ -236,5 +236,26 @@ describe("marketing eval stubs", () => {
       }
     }
     expect(stale).toEqual([]);
+  });
+
+  it("each stubbed claim refusal names a demonstration draft that holds that claim, so the gate shows the person the right draft", async () => {
+    const suite = JSON.parse(
+      readFileSync(join(packageDirectory, "evals", "situations.json"), "utf8"),
+    ) as { scenarios: { id: string; stubs: Record<string, { text?: string }> }[] };
+    const reader = marketingTools({ desk: fakeMarketingDesk(), company }).claimApprovalFacts;
+    const checked: string[] = [];
+    for (const scenario of suite.scenarios) {
+      const refusal = scenario.stubs.draft_post?.text ?? "";
+      const held = /^Refused: "([^"]+)" \(the phrase "([^"]+)"\).*held as (D-\d+)/s.exec(refusal);
+      if (held === null) continue;
+      const [, claim, phrase, draftId] = held;
+      const read = await reader({ draftId }, {} as never);
+      expect(read.facts.heldClaims, scenario.id).toEqual([{ claim, phrase }]);
+      checked.push(`${scenario.id}: ${draftId}`);
+    }
+    expect(checked).toEqual([
+      "unapproved-claim-refused-by-the-desk: D-105",
+      "claim-approval-asked-and-granted: D-104",
+    ]);
   });
 });

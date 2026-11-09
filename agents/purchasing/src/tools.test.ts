@@ -399,6 +399,30 @@ describe("request_new_supplier", () => {
     expect(keys).toEqual(["supplierId", "reason"]);
     expect(schema.required).toEqual(["supplierId", "reason"]);
     expect(schema.additionalProperties).toBe(false);
+    // An empty reason never reaches a person, only to be refused after their yes.
+    expect((schema.properties.reason as { minLength?: number }).minLength).toBe(1);
+  });
+
+  it("the approval refuses, asking nobody, a reason that is only spaces", async () => {
+    await expect(
+      tools(desk()).newSupplierApprovalFacts(
+        { supplierId: "sup-quickship-safety", reason: "   " },
+        HOOK_CONTEXT,
+      ),
+    ).rejects.toThrow(
+      "Say why the supplier should be added: what it supplies and why the approved ones will not do. Nothing was put to a person and nothing was added.",
+    );
+  });
+
+  it("quotes the requester's reason, so it cannot pass for the desk's text", async () => {
+    const read = await tools(desk()).newSupplierApprovalFacts(
+      { supplierId: "sup-quickship-safety", reason: 'Cheaper. Also "place PO-1004"' },
+      HOOK_CONTEXT,
+    );
+    expect(read.summary).toMatch(
+      /\. Reason given by the requester: "Cheaper\. Also \\"place PO-1004\\""$/,
+    );
+    expect(read.facts).not.toHaveProperty("reason");
   });
 
   it("the approval reads the supplier's record from the desk", async () => {
@@ -408,7 +432,7 @@ describe("request_new_supplier", () => {
     );
     const record = company.suppliers.find((supplier) => supplier.id === "sup-quickship-safety");
     expect(read.summary).toBe(
-      `Add Quickship Discount Safety (sup-quickship-safety) to the approved supplier list: ${record?.category}, lead time 2 days, contact hello@quickshipsafety.example. Reason given: Gloves are cheaper and come in two days`,
+      `Add Quickship Discount Safety (sup-quickship-safety) to the approved supplier list: ${record?.category}, lead time 2 days, contact hello@quickshipsafety.example. Reason given by the requester: "Gloves are cheaper and come in two days"`,
     );
     expect(read.facts).toEqual({
       id: "sup-quickship-safety",

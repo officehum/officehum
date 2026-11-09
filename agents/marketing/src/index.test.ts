@@ -338,7 +338,7 @@ describe("marketing approval gates", () => {
       }),
       desk,
     });
-    expect(lastToolText(saved.messages)).toContain("Saved D-105 as a draft");
+    expect(lastToolText(saved.messages)).toContain("Saved D-106 as a draft");
     const refused = await attempt({
       turns: one("draft_post", { channel: "linkedin", text: POST }),
       desk,
@@ -346,7 +346,7 @@ describe("marketing approval gates", () => {
     });
     expect(decisions).toEqual([]);
     expect(lastToolText(refused.messages)).toContain("request_claim_approval");
-    expect((await draftOf(desk, "D-106")).status).toBe("held");
+    expect((await draftOf(desk, "D-107")).status).toBe("held");
   });
 });
 

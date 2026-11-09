@@ -516,8 +516,16 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
         `${supplier.name} (${supplier.id}) is already on the approved supplier list. Nothing was put to a person. Next: order from it with raise_purchase_order.`,
       );
     }
+    const reason = String(args.reason ?? "").trim();
+    if (reason === "") {
+      throw new Error(
+        "Say why the supplier should be added: what it supplies and why the approved ones will not do. Nothing was put to a person and nothing was added.",
+      );
+    }
     return {
-      summary: `Add ${supplier.name} (${supplier.id}) to the approved supplier list: ${supplier.category}, lead time ${supplier.leadTimeDays} days, contact ${supplier.contactEmail}. Reason given: ${String(args.reason)}`,
+      // The reason is the requester's words, not a desk fact: quoted, so the person sees where the
+      // desk's text ends.
+      summary: `Add ${supplier.name} (${supplier.id}) to the approved supplier list: ${supplier.category}, lead time ${supplier.leadTimeDays} days, contact ${supplier.contactEmail}. Reason given by the requester: ${JSON.stringify(reason)}`,
       facts: supplierFacts(supplier),
     };
   };
@@ -531,7 +539,10 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
         supplierId: Type.String({
           description: "The supplier's id from list_suppliers, e.g. sup-quickship-safety",
         }),
-        reason: Type.String({ description: "Why the company needs this supplier" }),
+        reason: Type.String({
+          minLength: 1,
+          description: "Why the company needs this supplier, in the requester's words",
+        }),
         // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared.
         [APPROVED_FACTS_ARG]: approvedFactsParameter(),
       },

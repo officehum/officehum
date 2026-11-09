@@ -415,10 +415,17 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
         `${draft.id} is held: ${draft.heldClaims.map((entry) => `"${entry.claim}" (the phrase "${entry.phrase}")`).join("; ")} still needs a person's approval. Nothing was put to a person and nothing was published.${NOT_READY}`,
       );
     }
-    const summary =
-      draft.kind === "email"
-        ? `Send ${draft.id} by email to the ${draft.audienceId ?? "no"} list, exactly as below, with the unsubscribe line and postal address the desk added:\n${draft.finalText}`
-        : `Publish ${draft.id} on ${draft.channel}, exactly as below:\n${draft.finalText}`;
+    let summary = `Publish ${draft.id} on ${draft.channel}, exactly as below:\n${draft.finalText}`;
+    if (draft.kind === "email") {
+      // The person reads the list's name as the desk holds it, not its id.
+      const audiences = await requireDesk(dependencies).listAudiences();
+      const audience = audiences.find((entry) => entry.id === draft.audienceId);
+      const to =
+        audience === undefined
+          ? "with no audience list on file"
+          : `to the ${audience.name} list (${audience.description})`;
+      summary = `Send ${draft.id} by email ${to}, exactly as below, with the unsubscribe line and postal address the desk added:\n${draft.finalText}`;
+    }
     return { summary, facts: readyDraftFacts(draft) };
   };
 

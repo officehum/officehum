@@ -74,13 +74,13 @@ company's `approvalLimits.purchaseOrderOverCents`. There is no money constant in
 
 **Over the limit.** The desk refuses the order, saves it as a draft with its own purchase order
 number, and the refusal names `request_po_approval` with that draft's id and the person who decides.
-The id is the tool's only argument: the approval's facts reader (`poApprovalFacts`) reads the draft's
-supplier, lines and total from the desk and the person approves those (`draftFacts`). On a yes the gate
-hands the same facts to the tool, and the desk places the draft only if it still equals them
-(`draft_changed` otherwise; a host desk that lets drafts be edited must refuse the same way). A call
-with no approved facts places nothing (`not_approved`).
-An approval places a draft once: a changed order is a new draft that needs its own approval, and a
-second request for a placed draft is refused.
+The id is the tool's only argument: the approval's facts reader (`poApprovalFacts`) reads the
+draft's supplier, lines and total from the desk and the person approves those (`draftFacts`). On a
+yes the gate hands the same facts to the tool, and the desk places the draft only if it still equals
+them (`draft_changed` otherwise; a host desk that lets drafts be edited must refuse the same way). A
+call with no approved facts places nothing (`not_approved`). An approval places a draft once: a
+changed order is a new draft that needs its own approval, and a second request for a placed draft is
+refused.
 
 **Split orders.** The desk refuses an order that is under the limit on its own when the orders already
 placed with the same supplier the same day bring the day's total over it, and saves it as a draft for
@@ -90,14 +90,14 @@ The rule counts every order placed that day, approved ones included, so once an 
 approved and placed, any further order to that supplier the same day also goes to a person. That is
 deliberate: conservative, and a person can approve it.
 
-**The approved supplier list** is the company's own setting (`suppliers[].approved`), not a legal rule.
-The desk refuses any supplier not marked approved and the refusal names `request_new_supplier`, which
-takes the supplier's id and the requester's reason. Its facts reader (`newSupplierApprovalFacts`)
-reads the supplier's record (`supplierFacts`: name, category, lead time, contact, not approved) for the
-person, and the desk adds the supplier only if the record still equals it (`supplier_changed`
-otherwise). Only a supplier on file can be asked about: one that is not on file has no record to show,
-so it is for the person who decides purchasing to set up. An approval adds the supplier to the list; it
-orders nothing.
+**The approved supplier list** is the company's own setting (`suppliers[].approved`), not a legal
+rule. The desk refuses any supplier not marked approved and the refusal names
+`request_new_supplier`, which takes the supplier's id and the requester's reason. Its facts reader
+(`newSupplierApprovalFacts`) reads the supplier's record (`supplierFacts`: name, category, lead
+time, contact, not approved) for the person, and the desk adds the supplier only if the record still
+equals it (`supplier_changed` otherwise). Only a supplier on file can be asked about: one that is
+not on file has no record to show, so it is for the person who decides purchasing to set up. An
+approval adds the supplier to the list; it orders nothing.
 
 The demonstration desk holds this morning's Cascade restock as draft PO-1004, refused for the limit.
 The eval scenarios' stubbed refusal names that draft, so the gate reads it from the desk.

@@ -92,10 +92,10 @@ prompt and the person who approves every publication are the backstop.
 
 **A claim approval** names only the held draft. Its facts reader (`claimApprovalFacts`) reads the
 draft's full text and each held claim with its phrase, as the desk recorded them at refusal
-(`heldDraftFacts`), so the person reads every claim in context and approves them together. On a yes the
-gate hands the same facts to the tool, and the desk grants them for that draft only if it still equals
-them (`draft_changed` otherwise); the same claim in a new draft is refused again. A call with no
-approved facts approves nothing (`not_approved`).
+(`heldDraftFacts`), so the person reads every claim in context and approves them together. On a yes
+the gate hands the same facts to the tool, and the desk grants them for that draft only if it still
+equals them (`draft_changed` otherwise); the same claim in a new draft is refused again. A call with
+no approved facts approves nothing (`not_approved`).
 
 **Campaign emails** always end with a line saying how to unsubscribe and the company's postal address,
 built by the desk from the company record. The model writes only the subject and body, and `publish`
@@ -103,14 +103,17 @@ publishes the text the desk holds, so the footer cannot be dropped.
 
 **Publishing** is approved on every call. The model names only the draft; the facts reader
 (`publishApprovalFacts`) reads its channel, audience and full final text, footer included
-(`readyDraftFacts`), and the person approves those. The desk publishes only when the draft still equals
-them, and otherwise refuses with `draft_changed` and the text it holds. So the person sees what goes
-out, and a grant never covers a draft that changed after they were asked. A held draft is refused
-until its claims are approved, and is never put to a person for publishing.
+(`readyDraftFacts`), and the person approves those. The desk publishes only when the draft still
+equals them, and otherwise refuses with `draft_changed` and the text it holds. So the person sees
+what goes out, and a grant never covers a draft that changed after they were asked. A held draft is
+refused until its claims are approved, and is never put to a person for publishing.
 
-The demonstration desk holds a Facebook post as D-104, refused this morning for "2x cleaner". The eval
-scenarios' stubbed refusal names that draft, so the gate reads it from the desk. The demonstration backend records the publication and posts nothing; a host that
-binds a real channel must refuse the same way.
+The demonstration backend records the publication and posts nothing; a host that binds a real
+channel must refuse the same way.
+
+The demonstration desk holds two posts refused this morning: D-104 on Facebook for "2x cleaner" and
+D-105 on LinkedIn for "30%". The eval scenarios' stubbed refusals name those drafts, so the gate
+reads from the desk the draft the scenario is about.
 
 **Testimonials** are quoted only from the company record (`marketing.testimonials`, absent here), and
 `read_company` says when there are none. A testimonial that states a result is a result claim.
