@@ -345,7 +345,9 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
           output: [
             {
               type: "text" as const,
-              text: `Handed ${ticket.id} (${ticket.type}) to ${person.name} on the board; it is with them now.`,
+              text:
+                `Handed ${ticket.id} (${ticket.type}) to ${person.name} on the board; it is with them now.` +
+                (args.wait === true ? " You are not waiting for their answer." : ""),
             },
           ],
           details: {

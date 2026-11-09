@@ -664,6 +664,28 @@ describe("agent_dispatch with person routes", () => {
     }
   });
 
+  it("a person route with wait says it is not waiting for their answer", async () => {
+    const fixture = await openFixture({
+      directory: DIRECTORY(),
+      script: () => ({ text: "Ready." }),
+      personRoutes: ROUTES,
+      seed: [EILEEN],
+    });
+    try {
+      const result = await call(
+        toolOf(fixture.front, "agent_dispatch"),
+        { ...REVIEW, wait: true },
+        OFFICE_CALL,
+      );
+      expect(result.isError).toBeUndefined();
+      expect(callText(result)).toBe(
+        `Handed ${String(detailsOf(result).ticketId)} (${REVIEW_TYPE}) to Eileen Hart on the board; it is with them now. You are not waiting for their answer.`,
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("refuses a person route whose person is not on the board", async () => {
     const fixture = await openFixture({
       directory: DIRECTORY(),
