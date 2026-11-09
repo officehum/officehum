@@ -470,10 +470,31 @@ function departmentIssues(
     if (!Array.isArray(testimonials)) {
       add("company.json", "marketing.testimonials must be a list of { quote, attribution }");
     } else {
+      const fix = {
+        quote: "write the customer's words exactly as recorded",
+        attribution: 'name who said it, e.g. "Name, role, Company"',
+      } as const;
       for (const [index, entry] of testimonials.entries()) {
-        for (const field of ["quote", "attribution"]) {
-          if (text(asRecord(entry)?.[field]) === undefined) {
-            add("company.json", `marketing.testimonials[${index}].${field} is empty`);
+        const record = asRecord(entry);
+        if (record === undefined) {
+          add(
+            "company.json",
+            `marketing.testimonials[${index}] must be an object { "quote": "…", "attribution": "…" }`,
+          );
+          continue;
+        }
+        for (const field of ["quote", "attribution"] as const) {
+          const value = record[field];
+          if (value !== undefined && typeof value !== "string") {
+            add(
+              "company.json",
+              `marketing.testimonials[${index}].${field} must be a non-empty string: ${fix[field]}`,
+            );
+          } else if (text(value) === undefined) {
+            add(
+              "company.json",
+              `marketing.testimonials[${index}].${field} is empty: ${fix[field]}`,
+            );
           }
         }
       }

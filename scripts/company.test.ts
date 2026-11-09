@@ -336,6 +336,18 @@ describe("the company package's own consistency", () => {
       ).toContain("marketing.testimonials must be a list");
     });
 
+    it("says what is wrong with a testimonial that is not text, and how to fix it", () => {
+      const issues = issuesAfter((c) => {
+        c.marketing.testimonials = [{ quote: 42, attribution: "A client" }, "a quote"];
+      });
+      expect(issues).toContain(
+        "marketing.testimonials[0].quote must be a non-empty string: write the customer's words exactly as recorded",
+      );
+      expect(issues).toContain(
+        'marketing.testimonials[1] must be an object { "quote": "…", "attribution": "…" }',
+      );
+    });
+
     it("allows a company with no testimonials", () => {
       expect(
         issuesAfter((c) => {
