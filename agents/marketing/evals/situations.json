@@ -427,7 +427,12 @@
               "no testimonial from",
               "is not in the record",
               "isn't in the record",
-              "not in the record"
+              "not in the record",
+              "no draft saved",
+              "no draft was saved",
+              "not saving",
+              "will not save",
+              "not sent it to the desk"
             ]
           ],
           "notContains": [
