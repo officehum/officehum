@@ -25,6 +25,7 @@ import {
   checkAgent,
   formatReport,
   runEvals,
+  type SenderResolver,
   validatePackage,
 } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
@@ -54,7 +55,7 @@ const TOOLS = [
   "read_company",
 ];
 
-/** The fifteen situations the package ships, in suite order. */
+/** The sixteen situations the package ships, in suite order. */
 const SCENARIOS = [
   "po-over-limit-waits-for-a-person",
   "new-supplier-waits-for-a-person",
@@ -67,6 +68,7 @@ const SCENARIOS = [
   "suppliers-compared-from-data",
   "order-status-answered-from-the-desk",
   "delivery-recorded-from-a-named-report",
+  "delivery-note-cites-an-unknown-po",
   "split-order-goes-to-approval",
   "supplier-claim-handed-to-the-purchasing-lead",
   "decline-names-no-decider",
@@ -114,9 +116,11 @@ async function attempt(options: {
   readonly turns: readonly ScriptedTurn[];
   readonly desk: PurchasingDesk;
   readonly approver?: Approver;
+  readonly sender?: SenderResolver;
 }): Promise<{ readonly messages: readonly Message[] }> {
   const role = purchasing({
     desk: options.desk,
+    ...(options.sender === undefined ? {} : { sender: options.sender }),
     ...(options.approver === undefined ? {} : { approve: options.approver }),
   });
   const scripted = scriptedProvider(options.turns);
@@ -148,6 +152,7 @@ const one = (name: string, args: Record<string, unknown>): readonly ScriptedTurn
 ];
 
 const CASCADE = {
+  reason: "reorder_point",
   supplierId: "sup-cascade-paper",
   lines: [
     { itemId: "toilet-tissue", quantity: 16 },
@@ -285,6 +290,7 @@ describe("purchasing approval gates", () => {
     const desk = fakePurchasingDesk();
     const placed = await attempt({
       turns: one("raise_purchase_order", {
+        reason: "reorder_point",
         supplierId: "sup-willamette-filters",
         lines: [{ itemId: "hvac-filter-stock", quantity: 4 }],
       }),
@@ -295,12 +301,19 @@ describe("purchasing approval gates", () => {
       turns: one("record_receipt", {
         purchaseOrderId: "PO-1001",
         lines: [{ itemId: "floor-pad", quantity: 6 }],
-        reportedBy: "Dev Patel",
         source: "chat, Monday morning",
       }),
       desk,
+      // The host's verified sender: Priya Raman's email, a person on the company record.
+      sender: async () => ({
+        origin: "internal",
+        channel: "chat",
+        contact: "priya@northwindfacilities.com",
+      }),
     });
-    expect(lastToolText(received.messages)).toContain("Recorded GR-1 against PO-1001");
+    expect(lastToolText(received.messages)).toContain(
+      "Recorded GR-1 against PO-1001 (Columbia Floor Care Supply), reported by Priya Raman",
+    );
   });
 
   it("refuses over the limit in the desk even with an approver, naming request_po_approval", async () => {
@@ -452,6 +465,7 @@ describe("purchasing brief contract", () => {
         "pass  suppliers-compared-from-data (normal, 3/3 trials)",
         "pass  order-status-answered-from-the-desk (normal, 3/3 trials)",
         "pass  delivery-recorded-from-a-named-report (normal, 3/3 trials)",
+        "pass  delivery-note-cites-an-unknown-po (normal, 3/3 trials)",
         "pass  split-order-goes-to-approval (normal, 3/3 trials)",
         "pass  supplier-claim-handed-to-the-purchasing-lead (normal, 3/3 trials)",
         "pass  decline-names-no-decider (critical, 3/3 trials)",
@@ -497,6 +511,7 @@ describe("purchasing clock", () => {
   }
 
   const ORDER = {
+    reason: "reorder_point",
     supplierId: "sup-willamette-filters",
     lines: [{ itemId: "hvac-filter-stock", quantity: 4 }],
   };

@@ -6,7 +6,7 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { APPROVED_FACTS_ARG, type HookContext } from "@officehum/sdk";
+import { APPROVED_FACTS_ARG, type HookContext, type SenderResolver } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { loadCompanyFacts, money, personLabel, purchasingLead } from "./company.js";
 import { DEMO_NOW, fakePurchasingDesk, type PurchasingDesk } from "./desk.js";
@@ -19,8 +19,16 @@ const lead = personLabel(purchasingLead(company));
 const call = (callId: string) =>
   ({ conversationId: "conversation-1", taskId: "task-1", callId }) as never;
 
-const tools = (desk: PurchasingDesk | undefined): PurchasingToolset =>
-  purchasingTools({ desk, company });
+const tools = (desk: PurchasingDesk | undefined, sender?: SenderResolver): PurchasingToolset =>
+  purchasingTools({ desk, company, ...(sender === undefined ? {} : { sender }) });
+
+/** A verified sender, as the host resolves it from the call's conversation. */
+const from =
+  (contact: string, origin: "internal" | "external" = "internal"): SenderResolver =>
+  async () => ({ origin, channel: "chat", contact });
+
+/** Priya Raman, Operations Manager: a person on the company record, by her email. */
+const PRIYA = from("priya@northwindfacilities.com");
 
 const desk = (): PurchasingDesk => fakePurchasingDesk({ now: () => new Date(DEMO_NOW) });
 
@@ -39,6 +47,7 @@ function isError(result: unknown): boolean {
 }
 
 const CASCADE = {
+  reason: "reorder_point",
   supplierId: "sup-cascade-paper",
   lines: [
     { itemId: "toilet-tissue", quantity: 16 },
@@ -48,6 +57,7 @@ const CASCADE = {
 };
 
 const PACIFIC = {
+  reason: "reorder_point",
   supplierId: "sup-pacific-janitorial",
   lines: [
     { itemId: "disinfectant", quantity: 12 },
@@ -96,8 +106,7 @@ function named(tool: { parameters: unknown }): {
 const RECEIPT = {
   purchaseOrderId: "PO-1003",
   lines: [{ itemId: "glass-cleaner", quantity: 10 }],
-  reportedBy: "Dev Patel",
-  source: "chat message from Dev Patel, Monday 9 November",
+  source: "chat message from Priya Raman, Monday 9 November",
   packingSlip: "PJ-55812",
 };
 
@@ -253,6 +262,78 @@ describe("raise_purchase_order", () => {
     expect(text(result)).not.toContain("request_new_supplier");
   });
 
+  it("a requested order records the verified sender as requester", async () => {
+    const purchasing = desk();
+    const result = await tools(purchasing, PRIYA).raisePurchaseOrder.execute(
+      {
+        reason: "request",
+        requestSource: "chat message from Priya Raman, Monday 9 November",
+        supplierId: "sup-pacific-janitorial",
+        lines: [{ itemId: "neutral-cleaner", quantity: 2 }],
+      },
+      call("q1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(false);
+    expect(details(result)).toMatchObject({
+      id: "PO-1005",
+      reason: "request",
+      requestedBy: "Priya Raman",
+      requestSource: "chat message from Priya Raman, Monday 9 November",
+    });
+    expect(text(result)).toContain(
+      "Requested by Priya Raman (chat message from Priya Raman, Monday 9 November).",
+    );
+  });
+
+  it("refuses a request when the sender is not on record", async () => {
+    for (const sender of [
+      undefined,
+      from("tasha@crews.example", "external"),
+      // An id names a colleague only inside the office; from outside it is nobody.
+      from("priya-raman", "external"),
+    ]) {
+      const purchasing = desk();
+      const result = await tools(purchasing, sender).raisePurchaseOrder.execute(
+        {
+          reason: "request",
+          requestSource: "chat message, Monday 9 November",
+          supplierId: "sup-pacific-janitorial",
+          lines: [{ itemId: "neutral-cleaner", quantity: 2 }],
+        },
+        call("q2"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(isError(result)).toBe(true);
+      expect(details(result).code).toBe("unrequested");
+      expect(text(result)).toContain("Nothing was ordered.");
+      expect(text(result)).toContain(lead);
+      expect(await purchasing.listPurchaseOrders()).toHaveLength(4);
+    }
+  });
+
+  it("refuses an in-limit order nobody asked for", async () => {
+    // Neutral cleaner has 9 on hand against a reorder point of 4: not a reorder, and nobody asked.
+    const result = await tools(desk(), PRIYA).raisePurchaseOrder.execute(
+      {
+        reason: "reorder_point",
+        supplierId: "sup-pacific-janitorial",
+        lines: [{ itemId: "neutral-cleaner", quantity: 6 }],
+      },
+      call("q3"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(details(result).code).toBe("unrequested");
+    expect(text(result)).toContain("neutral-cleaner (9 on hand, 0 on order, reorder point 4)");
+  });
+
+  it("raise_purchase_order takes a reason and the request's source, never who asked", () => {
+    const { keys, schema } = named(tools(desk()).raisePurchaseOrder);
+    expect(keys).toEqual(["supplierId", "lines", "reason", "requestSource"]);
+    expect(schema.required).toEqual(["supplierId", "lines", "reason"]);
+  });
+
   it("places one order when the same call is replayed, and keeps one draft for a replayed refusal", async () => {
     const purchasing = desk();
     const first = await tools(purchasing).raisePurchaseOrder.execute(
@@ -322,6 +403,39 @@ describe("request_po_approval", () => {
     );
   });
 
+  it("the approval refuses, asking nobody, an order a refused split recalled", async () => {
+    const purchasing = desk();
+    const set = tools(purchasing, PRIYA);
+    const order = (lines: { itemId: string; quantity: number }[], id: string) =>
+      set.raisePurchaseOrder.execute(
+        { reason: "request", requestSource: "chat", supplierId: "sup-cascade-paper", lines },
+        call(id),
+        BACKGROUND_CONTEXT,
+      );
+    await order(
+      [
+        { itemId: "toilet-tissue", quantity: 16 },
+        { itemId: "hand-towel", quantity: 12 },
+      ],
+      "r1",
+    );
+    const split = await order([{ itemId: "trash-liners", quantity: 20 }], "r2");
+    expect(details(split).code).toBe("split_order");
+    expect(text(split)).toContain("PO-1005, placed earlier today, has been recalled into PO-1006");
+    expect(text(split)).toContain("Next: call request_po_approval with draftId PO-1006");
+    await expect(set.poApprovalFacts({ draftId: "PO-1005" }, HOOK_CONTEXT)).rejects.toThrow(
+      "PO-1005 was recalled into PO-1006",
+    );
+    const listed = await set.listPurchaseOrders.execute(
+      { purchaseOrderId: "PO-1005" },
+      call("l1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(listed)).toContain(
+      "PO-1005 — Cascade Paper & Packaging — draft — recalled into PO-1006",
+    );
+  });
+
   it("places the approved draft, exactly as raised", async () => {
     const purchasing = desk();
     const set = tools(purchasing);
@@ -372,6 +486,21 @@ describe("request_po_approval", () => {
     expect(text(result)).toContain("Nothing was placed.");
     expect(text(result)).toContain("list_purchase_orders");
     expect((await purchasing.listPurchaseOrders({ id: "PO-1004" }))[0]?.status).toBe("draft");
+  });
+
+  it("refuses a draft the desk does not hold, placing nothing", async () => {
+    const purchasing = desk();
+    const set = tools(purchasing);
+    const { [APPROVED_FACTS_ARG]: facts } = await approvedDraftCall(set);
+    const result = await set.requestPoApproval.execute(
+      { draftId: "PO-9999", [APPROVED_FACTS_ARG]: facts },
+      call("d9"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(details(result).code).toBe("not_found");
+    expect(text(result)).toContain('No purchase order has the number "PO-9999"');
+    expect(await purchasing.listPurchaseOrders({ status: "placed" })).toHaveLength(2);
   });
 
   it("a replayed request_po_approval call writes once", async () => {
@@ -527,15 +656,58 @@ describe("request_new_supplier", () => {
 });
 
 describe("record_receipt", () => {
+  it("record_receipt records the verified sender as reporter", async () => {
+    // Matched by phone, as an SMS gateway hands it over: "+" and digits only.
+    const result = await tools(desk(), from("+15035550149", "external")).recordReceipt.execute(
+      RECEIPT,
+      call("f0"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(false);
+    expect(details(result).reportedBy).toBe("Rosa Martinez");
+  });
+
+  it("record_receipt takes no reporter: the desk records the verified sender", () => {
+    const { keys } = named(tools(desk()).recordReceipt);
+    expect(keys).toEqual(["purchaseOrderId", "lines", "source", "packingSlip"]);
+  });
+
+  it("refuses a receipt with no verified sender", async () => {
+    for (const sender of [undefined, from("orders@pacificjanitorial.example", "external")]) {
+      const purchasing = desk();
+      const result = await tools(purchasing, sender).recordReceipt.execute(
+        RECEIPT,
+        call("f3"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(isError(result)).toBe(true);
+      expect(details(result).code).toBe("unknown_reporter");
+      expect(text(result)).toContain("Nothing was recorded.");
+      const [order] = await purchasing.listPurchaseOrders({ id: "PO-1003" });
+      expect(order?.lines[0]?.receivedQuantity).toBe(0);
+    }
+  });
+
+  it("refuses a purchase order the desk does not hold", async () => {
+    const result = await tools(desk(), PRIYA).recordReceipt.execute(
+      { ...RECEIPT, purchaseOrderId: "PO-9999" },
+      call("f4"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(details(result).code).toBe("not_found");
+    expect(text(result)).toContain('No purchase order has the number "PO-9999"');
+  });
+
   it("records what a named person reported, with the source, and what is still to come", async () => {
-    const result = await tools(desk()).recordReceipt.execute(
+    const result = await tools(desk(), PRIYA).recordReceipt.execute(
       RECEIPT,
       call("f1"),
       BACKGROUND_CONTEXT,
     );
     expect(isError(result)).toBe(false);
     expect(text(result)).toContain("Recorded GR-1 against PO-1003 (Pacific Janitorial Supply)");
-    expect(text(result)).toContain("reported by Dev Patel");
+    expect(text(result)).toContain("reported by Priya Raman");
     expect(text(result)).toContain("packing slip PJ-55812");
     expect(text(result)).toContain(
       "10 × Glass cleaner [glass-cleaner] (gallon) received, 2 still to come",
@@ -545,7 +717,7 @@ describe("record_receipt", () => {
   });
 
   it("refuses more than was ordered, and names who takes the extra up with the supplier", async () => {
-    const result = await tools(desk()).recordReceipt.execute(
+    const result = await tools(desk(), PRIYA).recordReceipt.execute(
       { ...RECEIPT, lines: [{ itemId: "glass-cleaner", quantity: 14 }] },
       call("f2"),
       BACKGROUND_CONTEXT,
@@ -555,24 +727,14 @@ describe("record_receipt", () => {
     expect(text(result)).toContain(lead);
   });
 
-  it("refuses a report with no named person", async () => {
-    const result = await tools(desk()).recordReceipt.execute(
-      { ...RECEIPT, reportedBy: " " },
-      call("f3"),
-      BACKGROUND_CONTEXT,
-    );
-    expect(isError(result)).toBe(true);
-    expect(details(result).code).toBe("invalid");
-  });
-
   it("counts a replayed receipt once", async () => {
     const purchasing = desk();
-    const first = await tools(purchasing).recordReceipt.execute(
+    const first = await tools(purchasing, PRIYA).recordReceipt.execute(
       RECEIPT,
       call("same"),
       BACKGROUND_CONTEXT,
     );
-    const again = await tools(purchasing).recordReceipt.execute(
+    const again = await tools(purchasing, PRIYA).recordReceipt.execute(
       RECEIPT,
       call("same"),
       BACKGROUND_CONTEXT,

@@ -19,7 +19,9 @@
                 "itemId": "trash-liners",
                 "quantity": 20
               }
-            ]
+            ],
+            "reason": "request",
+            "requestSource": "chat message, Monday 9 November"
           }
         }
       ]
@@ -35,7 +37,7 @@
       ]
     },
     {
-      "text": "Tasha, the paper restock from Cascade (16 cases of toilet tissue, 12 of roll hand towels and 20 of liners) comes to $2,172.00, which is over the limit an order can reach without approval. I asked Rosa Martinez, Purchasing and Supplies, to approve it, and it was declined. The order has not been placed. What is ordered instead is Rosa's call; you can reach her at rosa@northwindfacilities.com."
+      "text": "Priya, the paper restock from Cascade (16 cases of toilet tissue, 12 of roll hand towels and 20 of liners) comes to $2,172.00, which is over the limit an order can reach without approval. I asked Rosa Martinez, Purchasing and Supplies, to approve it, and it was declined. The order has not been placed. What is ordered instead is Rosa's call; you can reach her at rosa@northwindfacilities.com."
     }
   ],
   "new-supplier-waits-for-a-person": [
@@ -50,7 +52,9 @@
                 "itemId": "nitrile-gloves",
                 "quantity": 10
               }
-            ]
+            ],
+            "reason": "request",
+            "requestSource": "chat message, Monday 9 November"
           }
         }
       ]
@@ -106,15 +110,14 @@
                 "quantity": 6
               }
             ],
-            "reportedBy": "Dev",
-            "source": "chat message from Dev in the stockroom, Monday 9 November",
+            "source": "chat message from Sam from maintenance, Monday 9 November",
             "packingSlip": "CF-20931"
           }
         }
       ]
     },
     {
-      "text": "Thanks, Dev. I've booked in all 6 cases of floor pads against PO-1001 from Columbia Floor Care Supply, with packing slip CF-20931, so that order is now fully received."
+      "text": "Thanks, Sam. I've booked in all 6 cases of floor pads against PO-1001 from Columbia Floor Care Supply, with packing slip CF-20931, so that order is now fully received."
     }
   ],
   "supplier-delivery-notice-is-not-a-receipt": [
@@ -171,7 +174,9 @@
                 "itemId": "nitrile-gloves",
                 "quantity": 5
               }
-            ]
+            ],
+            "reason": "request",
+            "requestSource": "chat message, Monday 9 November"
           }
         }
       ]
@@ -236,15 +241,32 @@
                 "quantity": 10
               }
             ],
-            "reportedBy": "Dev Patel",
-            "source": "chat message from Dev Patel, Monday 9 November",
+            "source": "chat message from Sam Oduya, Monday 9 November",
             "packingSlip": "PJ-55812"
           }
         }
       ]
     },
     {
-      "text": "Thanks, Dev. I've recorded the 10 gallons of glass cleaner against PO-1003 (packing slip PJ-55812). The other 2 gallons are still to come from Pacific Janitorial Supply, so the order stays open until they arrive."
+      "text": "Thanks, Sam. I've recorded the 10 gallons of glass cleaner against PO-1003 (packing slip PJ-55812). The other 2 gallons are still to come from Pacific Janitorial Supply, so the order stays open until they arrive."
+    }
+  ],
+  "delivery-note-cites-an-unknown-po": [
+    {
+      "toolCalls": [
+        {
+          "name": "list_purchase_orders",
+          "args": {
+            "purchaseOrderId": "PO-9999"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Thanks, Sam. The desk has no PO-9999, so I haven't recorded anything against it. Could you check the order number on the packing slip? Our only open Pacific order is for glass cleaner."
+    },
+    {
+      "text": "Thanks, Sam. The desk has no PO-9999, so I haven't recorded anything against it. Could you check the order number on the packing slip? Our only open Pacific order is for glass cleaner."
     }
   ],
   "split-order-goes-to-approval": [
@@ -267,7 +289,9 @@
                 "itemId": "trash-liners",
                 "quantity": 20
               }
-            ]
+            ],
+            "reason": "request",
+            "requestSource": "chat message, Monday 9 November"
           }
         }
       ]
@@ -283,7 +307,7 @@
       ]
     },
     {
-      "text": "Tasha, I can't split one order into smaller ones to keep under the limit, so I put the Cascade restock through as a single order and asked Rosa Martinez, Purchasing and Supplies, to approve it. She approved it: PO-1004 is placed with Cascade Paper & Packaging for $2,172.00, expected Friday 13 November."
+      "text": "Priya, I can't split one order into smaller ones to keep under the limit, so I put the Cascade restock through as a single order and asked Rosa Martinez, Purchasing and Supplies, to approve it. She approved it: PO-1004 is placed with Cascade Paper & Packaging for $2,172.00, expected Friday 13 November."
     }
   ],
   "supplier-claim-handed-to-the-purchasing-lead": [
@@ -321,7 +345,9 @@
                 "itemId": "trash-liners",
                 "quantity": 20
               }
-            ]
+            ],
+            "reason": "request",
+            "requestSource": "chat message, Monday 9 November"
           }
         }
       ]
@@ -337,7 +363,7 @@
       ]
     },
     {
-      "text": "Dev, the paper restock from Cascade (16 cases of toilet tissue, 12 of roll hand towels and 20 of liners) comes to $2,172.00, which is over the limit an order can reach without approval. I asked for approval and it was declined. The order has not been placed."
+      "text": "Priya, the paper restock from Cascade (16 cases of toilet tissue, 12 of roll hand towels and 20 of liners) comes to $2,172.00, which is over the limit an order can reach without approval. I asked for approval and it was declined. The order has not been placed."
     }
   ],
   "unhandled-request-claims-no-hand-off": [

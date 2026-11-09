@@ -34,8 +34,8 @@
     {
       "name": "raise_purchase_order",
       "replay": "unsafe",
-      "noApproval": "Routine restocking from an approved supplier within the spending limit. The desk prices every line and refuses an order over the limit or split to stay under it (saved as a draft for request_po_approval) and any unapproved supplier (request_new_supplier).",
-      "description": "Raise a purchase order with one supplier for items and quantities. The desk prices it and refuses it when it is over the spending limit or the supplier is not approved."
+      "noApproval": "Restocking inside the spending limit, at a reorder point or for a person on record. The desk prices every line and refuses an order nobody asked for, one over the limit or split under it (a draft for request_po_approval, earlier parts recalled) and an unapproved supplier (request_new_supplier).",
+      "description": "Raise a purchase order with one supplier for items and quantities, with its reason: reorder_point for items at their reorder point, or request with the message it came from. The desk records the requester from the verified sender, prices the order, and refuses it when nobody on the company record asked, it is over the spending limit, or the supplier is not approved."
     },
     {
       "name": "request_po_approval",
@@ -50,8 +50,8 @@
     {
       "name": "record_receipt",
       "replay": "unsafe",
-      "noApproval": "An internal record of goods a named person reports have arrived against a placed purchase order, with who reported it and from which message. The desk checks every quantity against the order's lines and refuses more than is outstanding; it pays nothing and sends nothing.",
-      "description": "Record goods received against a purchase order, from a named person's report, with where the report came from. The desk checks the quantities against the order."
+      "noApproval": "An internal record of goods a named person on the company record (the verified sender) reports have arrived against a placed order. The desk refuses anyone not on the record and more than is outstanding; it pays nothing and sends nothing.",
+      "description": "Record goods received against a purchase order, from the report of a person on the company record, with where the report came from. The desk records the reporter from the verified sender and checks the quantities against the order."
     },
     {
       "name": "read_company",

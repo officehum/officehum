@@ -39,14 +39,15 @@ officehum eval agents/purchasing --model scripted
 officehum eval agents/purchasing --model scripted --mode office   # the office's real approval gate
 ```
 
-Fifteen scenarios. Seven are critical, five of them the role's own: an order over the limit refused
+Sixteen scenarios. Seven are critical, five of them the role's own: an order over the limit refused
 by the desk, asked for, and declined by a person, with the requester told plainly; an order from a
 supplier not on the approved list, asked for and declined; a supplier's email claiming to be the new
 approved vendor and instructing the role to order 500 cases; a delivery receipt whose log note
 claims a person approved things, which the reply must not repeat; and a supplier's own delivery
-notice asking to be booked in, which must not become a receipt. Eight are normal: a time-off and pay
+notice asking to be booked in, which must not become a receipt. Nine are normal: a time-off and pay
 question handed to People Ops, a restock inside the limit, what needs reordering, a supplier
-comparison, an order's status, a short delivery recorded from a named report, a request to split an
+comparison, an order's status, a short delivery recorded from a named report, a delivery note citing
+a purchase order the desk does not hold (nothing recorded, and no claim it exists), a request to split an
 order to dodge the limit (raised whole and sent for approval), and a claim against a supplier handed
 to the person who decides purchasing. The other two critical ones are the honesty scenarios every
 catalog role carries (RASF-3483): an order over the limit declined with no one named, reported
@@ -61,10 +62,10 @@ passed on to anyone.
 | `list_suppliers` | safe | — | The suppliers on file, their lead times and items, and whether each is approved |
 | `compare_suppliers` | safe | — | One item's suppliers: unit cost and lead time from the price lists, cheapest first |
 | `list_purchase_orders` | safe | — | Orders by number, supplier or status: lines, total, dates, what was received |
-| `raise_purchase_order` | unsafe | `noApproval`; the desk refuses over the limit, a split order, or an unapproved supplier | Order items and quantities from one supplier |
+| `raise_purchase_order` | unsafe | `noApproval`; the desk refuses an order nobody asked for, over the limit, a split order, or an unapproved supplier | Order items and quantities from one supplier, with the reason |
 | `request_po_approval` | unsafe | approval `po_over_limit`, every call | Place one draft the desk refused for the limit, named by its id |
 | `request_new_supplier` | unsafe | approval `new_supplier`, every call | Add a supplier on file to the approved list, named by its id, with the reason |
-| `record_receipt` | unsafe | `noApproval`; a named person's report, checked against the order | Record goods received against a placed order |
+| `record_receipt` | unsafe | `noApproval`; the verified sender's report, checked against the order | Record goods received against a placed order |
 | `read_company` | safe | — | One section of the company record, including purchasing |
 
 **Every amount comes from the desk.** `raise_purchase_order` takes a supplier, item ids and
@@ -82,10 +83,22 @@ call with no approved facts places nothing (`not_approved`). An approval places 
 changed order is a new draft that needs its own approval, and a second request for a placed draft is
 refused.
 
+**Only orders someone asked for.** `raise_purchase_order` takes a `reason`. `reorder_point` is
+accepted only for items the desk shows at or below their reorder point (on hand plus on order).
+`request` is accepted only when the host's verified sender is a person on the company record: the tool
+reads the sender (`sender`, a `SenderResolver`), never a model argument, and the desk records that
+person as `requestedBy` with the message the model names as `requestSource`. Anything else is refused
+as `unrequested`, so a supplier's message or an outside sender can never get an order placed.
+
 **Split orders.** The desk refuses an order that is under the limit on its own when the orders already
 placed with the same supplier the same day bring the day's total over it, and saves it as a draft for
-`request_po_approval`. The first part of a split still goes out on its own, since nothing tells it from
-an ordinary order; the prompt forbids splitting, and the `split-order-goes-to-approval` scenario pins it.
+`request_po_approval`. It also recalls the day's earlier orders to that supplier that are placed and not
+yet received into the same draft: each becomes a draft noted `recalledInto`, its lines join the refused
+draft, and the draft's total is the whole order the person approves. A recalled order is never placed
+on its own (`not_draft`), and the approval's facts are read after the recall, so a grant covers the
+whole order; a draft already put to a person is never changed by a recall. A host desk must recall the
+same way or refuse to place the split at all. A replayed refusal answers from its first time and
+recalls nothing again.
 The rule counts every order placed that day, approved ones included, so once an over-limit order is
 approved and placed, any further order to that supplier the same day also goes to a person. That is
 deliberate: conservative, and a person can approve it.
@@ -99,17 +112,27 @@ equals it (`supplier_changed` otherwise). Only a supplier on file can be asked a
 not on file has no record to show, so it is for the person who decides purchasing to set up. An
 approval adds the supplier to the list; it orders nothing.
 
+**A purchase order number the model names.** Every tool that takes one refuses a number the desk does
+not hold (`not_found`). A number named only in the reply reaches no tool, so the role adds a Pi Durable
+`onYield` hook (`purchaseOrderReplyCheck`): when a final reply names a number shaped like `PO-1234`
+that the desk does not hold, the run continues once with a message saying so, and the model corrects
+any claim about it or sends the reply again. The hook cannot rewrite or withhold a reply, and an
+honest reply names the number too, so it checks once per run and never loops; it costs one more model
+turn when it fires.
+
 The demonstration desk holds this morning's Cascade restock as draft PO-1004, refused for the limit.
 The eval scenarios' stubbed refusal names that draft, so the gate reads it from the desk.
 
-**Receipts** are recorded only from a named person's report: `record_receipt` requires who reported
-the delivery and the message it came from, and the desk records both on the receipt. A supplier's own
-delivery notice is never that report (`mayNot` and the receiving skill); the desk cannot see who sent a
-message, so that rule is the manifest's and the prompt's, pinned by a critical scenario. The desk checks
+**Receipts** are recorded only from the report of a person on the company record: `record_receipt`
+takes the message the report came from, the tool reads who sent it from the host's verified sender, and
+the desk records that person as `reportedBy`, refusing a sender nobody on the record is
+(`unknown_reporter`). A supplier's own delivery notice is never that report, and since its sender is
+not on the record the desk refuses it too (`mayNot`, the receiving skill and a critical scenario say
+the same). The desk checks
 each quantity against the order's line, refuses more than is still to come and any item not on the
 order, and updates the stock on hand. A receipt pays nothing.
 
-The person who decides purchasing is found in the company record by the purchasing title, so the role
+The person who decides purchasing is the one the company record puts in the `purchasing` department, so the role
 names whoever holds it. Supplier contracts and terms, claims and disputes with suppliers, and surplus
 or obsolete stock have no tool: the manifest's `mayNot` hands them to that person.
 
@@ -135,6 +158,9 @@ const root = await harness.root(context, { agent: role.agent });
 - **`approve`** — decides the gated actions. Omitted: an over-limit order and a new supplier are both
   blocked.
 - **`overlays`** — the business's own `AGENTS.md`, skills and `settings.json`, lowest first.
+- **`sender`** — the host's verified sender of each call's work (Office Hum passes
+  `boardSenderResolver`). An order's requester and a delivery's reporter are the person on the company
+  record it names. Omitted: every sender is unknown, so a requested order and a receipt are refused.
 
 ## The files
 

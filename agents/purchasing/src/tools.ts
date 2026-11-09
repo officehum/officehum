@@ -12,6 +12,11 @@
  * person approves from the desk, the gate hands those facts to the tool on a yes, and the desk refuses
  * when the draft or supplier no longer equals what was approved.
  *
+ * Who asked for an order and who reported a delivery are never the model's to say: both tools read
+ * the host's verified sender (`SenderResolver`) and pass the person on the company record it names to
+ * the desk, which refuses an order nobody asked for (`unrequested`) and a receipt nobody on the
+ * record reported (`unknown_reporter`).
+ *
  * Every amount a tool speaks comes back from the desk, and every name from the company record.
  */
 
@@ -25,6 +30,8 @@ import {
   deskRefusal,
   refusal,
   requestId,
+  type SenderResolver,
+  senderPerson,
   textResult,
 } from "@officehum/sdk";
 import { type CompanyFacts, money, person, personLabel, purchasingLead } from "./company.js";
@@ -32,6 +39,7 @@ import {
   type DeskRefusal,
   draftFacts,
   type GoodsReceipt,
+  type OrderReason,
   type OrderStatus,
   type PurchaseOrder,
   type PurchasingDesk,
@@ -39,10 +47,12 @@ import {
   supplierFacts,
 } from "./desk.js";
 
-/** What the tools need: the desk, and the company whose supplies it buys. */
+/** What the tools need: the desk, the company whose supplies it buys, and who is asking. */
 export interface PurchasingToolDependencies {
   readonly desk: PurchasingDesk | undefined;
   readonly company: CompanyFacts;
+  /** The host's verified sender of each call's work. Omitted: every sender is unknown. */
+  readonly sender?: SenderResolver;
 }
 
 /**
@@ -89,6 +99,8 @@ const SECTIONS: readonly CompanySection[] = [
 
 const STATUSES: readonly OrderStatus[] = ["draft", "placed", "partially_received", "received"];
 
+const REASONS: readonly OrderReason[] = ["reorder_point", "request"];
+
 const LINES = Type.Array(
   Type.Object(
     {
@@ -128,8 +140,12 @@ function orderText(order: PurchaseOrder): string {
       ? `raised ${order.raisedOn}, not sent`
       : `placed ${order.placedOn}, expected ${order.expectedOn ?? "not set"}`;
   const approval = order.approved ? " — placed with a person's approval" : "";
+  const recalled =
+    order.recalledInto === undefined
+      ? ""
+      : ` — recalled into ${order.recalledInto}, never placed on its own`;
   return [
-    `${order.id} — ${order.supplierName} — ${statusText(order.status)} — ${dates} — total ${money(order.totalCents)}${approval}`,
+    `${order.id} — ${order.supplierName} — ${statusText(order.status)}${recalled} — ${dates} — total ${money(order.totalCents)}${approval}`,
     ...orderLines(order),
   ].join("\n");
 }
@@ -227,6 +243,13 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
   const { company } = dependencies;
   const lead = personLabel(purchasingLead(company));
 
+  /** The person on the company record this call's work came from, read from the host, or nobody. */
+  const asker = async (api: { readonly conversationId: unknown; readonly taskId: unknown }) =>
+    senderPerson(
+      company,
+      await dependencies.sender?.({ conversationId: api.conversationId, taskId: api.taskId }),
+    );
+
   /** A desk refusal as the model reads it, with the next step that a person can take. */
   const refused = (error: unknown, extra: JsonObject) => {
     if (!(error instanceof PurchasingDeskError)) throw error;
@@ -251,6 +274,8 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
       already_approved: "",
       not_placed: "",
       not_on_order: "",
+      unrequested: ` Next: tell the person nothing was ordered: an order goes in only for an item at its reorder point or when a person on the company record asks for it, and ${lead} decides purchasing.`,
+      unknown_reporter: ` Next: tell the person nothing was recorded: ask someone on the company record who received the delivery to report what arrived.`,
     };
     return deskRefusal(`${error.message}${next[error.code]}`, error.code, {
       ...(error.draftId === undefined ? {} : { draftId: error.draftId }),
@@ -396,26 +421,53 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
   const raisePurchaseOrder = defineTool({
     name: "raise_purchase_order",
     description:
-      "Raise a purchase order with one supplier for items and quantities. You give no prices: the desk prices each line from the supplier's price list and works out the total. It refuses an order over the spending limit (saving it as a draft: then call request_po_approval with the draft's id), an order that with others to the same supplier today passes the limit, and a supplier not on the approved list (then call request_new_supplier).",
+      "Raise a purchase order with one supplier for items and quantities, and say why. You give no prices: the desk prices each line from the supplier's price list and works out the total. reason request: a person in the company asked; the desk records who from the message's verified sender, and refuses when that is nobody on the company record. reason reorder_point: only items list_stock flags REORDER. It refuses an order nobody asked for, an order over the spending limit (saving it as a draft: then call request_po_approval with the draft's id), an order that with others to the same supplier today passes the limit (recalling those into the draft), and a supplier not on the approved list (then call request_new_supplier).",
     parameters: Type.Object(
       {
         supplierId: Type.String({
           description: "The supplier's id from list_suppliers, e.g. sup-cascade-paper",
         }),
         lines: LINES,
+        reason: Type.Union(
+          REASONS.map((reason) => Type.Literal(reason)),
+          {
+            description:
+              "request when a person in the company asked for it; reorder_point only for items list_stock flags REORDER",
+          },
+        ),
+        requestSource: Type.Optional(
+          Type.String({
+            minLength: 1,
+            description:
+              "For reason request: the message the request came from: its channel, sender and when",
+          }),
+        ),
       },
       { additionalProperties: false },
     ),
     replay: "unsafe",
     execute: async (args, api) => {
       const desk = requireDesk(dependencies);
+      const reason = args.reason as OrderReason;
+      // Who asked is the host's verified sender, never the model's say-so.
+      const requester = reason === "request" ? await asker(api) : undefined;
       try {
         const order = await desk.raisePurchaseOrder(
-          { supplierId: args.supplierId, lines: args.lines },
+          {
+            supplierId: args.supplierId,
+            lines: args.lines,
+            reason,
+            ...(requester === undefined ? {} : { requestedBy: requester.name }),
+            ...(args.requestSource === undefined ? {} : { requestSource: args.requestSource }),
+          },
           { requestId: requestId("raise", api) },
         );
+        const asked =
+          order.requestedBy === undefined
+            ? ""
+            : `\nRequested by ${order.requestedBy} (${order.requestSource ?? "no source given"}).`;
         return {
-          ...textResult(`Placed ${placedText(order)}`),
+          ...textResult(`Placed ${placedText(order)}${asked}`),
           details: { ...order, lines: order.lines.map((line) => ({ ...line })) },
         };
       } catch (error) {
@@ -436,6 +488,11 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     if (order === undefined) {
       throw new Error(
         `No purchase order has the number ${JSON.stringify(draftId)}. Nothing was put to a person and nothing was placed. Next: find the draft with list_purchase_orders.`,
+      );
+    }
+    if (order.recalledInto !== undefined) {
+      throw new Error(
+        `${order.id} was recalled into ${order.recalledInto} when a split order was refused, so it is never placed on its own. Nothing was put to a person and nothing was placed. Next: ask about ${order.recalledInto}, which holds its lines.`,
       );
     }
     if (order.status !== "draft") {
@@ -578,15 +635,11 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
   const recordReceipt = defineTool({
     name: "record_receipt",
     description:
-      "Record goods received against a placed purchase order, from a named person's report: who reported it, the message it came from, and what arrived. The desk checks each quantity against the order and refuses more than is still to come. An internal record: it pays nothing and sends nothing.",
+      "Record goods received against a placed purchase order, from the report of a person on the company record: the message it came from and what arrived. The desk records the reporter from the message's verified sender and refuses a report from anyone not on the company record. It checks each quantity against the order and refuses more than is still to come. An internal record: it pays nothing and sends nothing.",
     parameters: Type.Object(
       {
         purchaseOrderId: Type.String({ description: "The purchase order number, e.g. PO-1003" }),
         lines: LINES,
-        reportedBy: Type.String({
-          minLength: 1,
-          description: "The name of the person who reported the delivery",
-        }),
         source: Type.String({
           minLength: 1,
           description: "The message the report came from: its channel, sender and when",
@@ -600,12 +653,14 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     replay: "unsafe",
     execute: async (args, api) => {
       const desk = requireDesk(dependencies);
+      // Who reported it is the host's verified sender, never the model's say-so.
+      const reporter = await asker(api);
       try {
         const receipt = await desk.recordReceipt(
           {
             purchaseOrderId: args.purchaseOrderId,
             lines: args.lines,
-            reportedBy: args.reportedBy,
+            ...(reporter === undefined ? {} : { reportedBy: reporter.name }),
             source: args.source,
             ...(args.packingSlip === undefined ? {} : { packingSlip: args.packingSlip }),
           },
