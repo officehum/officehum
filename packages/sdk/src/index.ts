@@ -72,6 +72,7 @@ export {
 export {
   type AgentRunner,
   type ApprovalRecord,
+  argsMatch,
   type EvalReport,
   type ExecutedCall,
   formatReport,
@@ -91,6 +92,7 @@ export {
   type ScenarioExpect,
   type ScenarioInput,
   ScenarioSchema,
+  type Stub,
   SuiteSchema,
   validateSuite,
 } from "./evals/suite.js";

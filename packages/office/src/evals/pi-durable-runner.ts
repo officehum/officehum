@@ -57,11 +57,13 @@ import {
   type AgentRunner,
   type ApprovalRecord,
   type ApprovalRequest,
+  argsMatch,
   conditionsHold,
   type DefinedRole,
   type ExecutedCall,
   isApprovalGate,
   type Scenario,
+  type Stub,
   type TicketSummary,
   type Trace,
 } from "@officehum/sdk";
@@ -871,6 +873,14 @@ function decisionHook(
   });
 }
 
+/** The first `byArgs` entry whose args match the call, else `otherwise`; undefined when neither applies. */
+function answerFor(
+  stub: Extract<Stub, { byArgs: unknown }>,
+  args: unknown,
+): { text: string; isError?: boolean | undefined } | undefined {
+  return stub.byArgs.find((entry) => argsMatch(entry.args, args)) ?? stub.otherwise;
+}
+
 /** The stub for one declared tool: the scenario's text, or a refusal that stops the trial. */
 function stubTool(
   original: ToolRegistration,
@@ -881,7 +891,7 @@ function stubTool(
   const stub = scenario.stubs[original.name];
   return {
     ...original,
-    execute: async (_args, api) => {
+    execute: async (args, api) => {
       // The executed ledger's primary record: this is the only place a call actually runs, and a hook
       // that blocked the call never reaches it.
       execution.ran.add(api.callId);
@@ -897,9 +907,22 @@ function stubTool(
           ],
         };
       }
+      const answer = "byArgs" in stub ? answerFor(stub, args) : stub;
+      if (answer === undefined) {
+        stop(`${original.name} has no stub for these arguments: ${JSON.stringify(args)}`);
+        return {
+          isError: true,
+          output: [
+            {
+              type: "text" as const,
+              text: `${original.name} has no stub for these arguments, so it was not run.`,
+            },
+          ],
+        };
+      }
       return {
-        ...(stub.isError === true ? { isError: true } : {}),
-        output: [{ type: "text" as const, text: stub.text }],
+        ...(answer.isError === true ? { isError: true } : {}),
+        output: [{ type: "text" as const, text: answer.text }],
       };
     },
   };

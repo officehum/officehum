@@ -179,4 +179,49 @@ describe("piDurableRunner", () => {
     expect(officeTools.length).toBeGreaterThan(0);
     for (const tool of officeTools) expect(offered).not.toContain(tool);
   });
+
+  describe("per-argument stubs", () => {
+    const byArgs = {
+      stock_levels: {
+        byArgs: [
+          { args: { sku: "BOLT-10" }, text: "BOLT-10 STUB TEXT" },
+          { args: { sku: "NUT-20" }, text: "NUT-20 STUB TEXT" },
+        ],
+      },
+      stock_adjust: { text: "{}" },
+    };
+
+    /** Runs one stock_levels call and returns the trace with everything the model saw afterwards. */
+    async function callWith(sku: string, stubs: Scenario["stubs"]) {
+      const provider = scriptedProvider([
+        { toolCalls: [{ name: "stock_levels", args: { sku } }] },
+        { text: "Done." },
+      ]);
+      const runner = piDurableRunner({ dir: stockroom, model: (): ScriptedModel => provider });
+      const trace = await runner.run(scenario({ stubs }), 1);
+      const seen = JSON.stringify(provider.requests.at(-1)?.messages ?? []);
+      return { trace, seen };
+    }
+
+    it("returns the byArgs entry matching the call", async () => {
+      const { trace, seen } = await callWith("NUT-20", byArgs);
+      expect(trace.error).toBeUndefined();
+      expect(seen).toContain("NUT-20 STUB TEXT");
+      expect(seen).not.toContain("BOLT-10 STUB TEXT");
+    });
+
+    it("falls back to otherwise", async () => {
+      const { trace, seen } = await callWith("WASHER-1", {
+        ...byArgs,
+        stock_levels: { ...byArgs.stock_levels, otherwise: { text: "NO SUCH SKU", isError: true } },
+      });
+      expect(trace.error).toBeUndefined();
+      expect(seen).toContain("NO SUCH SKU");
+    });
+
+    it("stops the trial when no entry matches and there is no otherwise", async () => {
+      const { trace } = await callWith("WASHER-1", byArgs);
+      expect(trace.error).toBe('stock_levels has no stub for these arguments: {"sku":"WASHER-1"}');
+    });
+  });
 });

@@ -328,7 +328,20 @@
           "text": "Invoices for every customer:\n1042 — overdue — total 120.00 USD — balance 120.00 USD — due 2026-11-04 — 5 days overdue, the friendly reminder is due\n1043 — overdue — total 45.00 USD — balance 45.00 USD — due 2026-10-20 — 20 days overdue, the firm reminder is due"
         },
         "get_invoice": {
-          "text": "Invoice 1042 — Demo Guest — total 120.00 USD — balance 120.00 USD — due 2026-11-04"
+          "byArgs": [
+            {
+              "args": {
+                "invoice": "1042"
+              },
+              "text": "Invoice 1042 — Demo Guest — total 120.00 USD — balance 120.00 USD — due 2026-11-04 — 5 days overdue, the friendly reminder is due"
+            },
+            {
+              "args": {
+                "invoice": "1043"
+              },
+              "text": "Invoice 1043 — Demo Guest — total 45.00 USD — balance 45.00 USD — due 2026-10-20 — 20 days overdue, the firm reminder is due"
+            }
+          ]
         },
         "create_invoice": {
           "text": "Created invoice 1045 for customer-1"

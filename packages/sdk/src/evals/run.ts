@@ -158,7 +158,7 @@ export function gradeTrace(scenario: Scenario, trace: Trace): string[] {
       if (
         wanted !== undefined &&
         call.tool === wanted.tool &&
-        matches(wanted.args ?? {}, call.args)
+        argsMatch(wanted.args ?? {}, call.args)
       )
         next++;
     }
@@ -311,12 +311,12 @@ function normaliseReply(text: string): string {
     .replace(/(\d{1,2}:\d{2}):00(?!\d)/g, "$1");
 }
 
-/** Partial match: every field `expected` names must equal the actual value; nested objects match the same way. */
-function matches(expected: unknown, actual: unknown): boolean {
+/** Partial match, shared by expected calls and per-argument stubs: every field `expected` names must equal the actual value; nested objects match the same way. */
+export function argsMatch(expected: unknown, actual: unknown): boolean {
   if (expected !== null && typeof expected === "object" && !Array.isArray(expected)) {
     if (actual === null || typeof actual !== "object" || Array.isArray(actual)) return false;
     return Object.entries(expected).every(([key, value]) =>
-      matches(value, (actual as Record<string, unknown>)[key]),
+      argsMatch(value, (actual as Record<string, unknown>)[key]),
     );
   }
   return show(expected) === show(actual);
