@@ -28,14 +28,33 @@
  *   attempt.
  * - anything throws → block. A check that could not be completed is not a yes.
  *
+ * **Approval facts (RASF-3486).** A declaration can have a facts reader, the same one the role's own
+ * gate uses (`DefinedRole.approvalFacts`). The gate then reads what the person is asked to approve —
+ * the bill, not just its id — once, when it records the request, and stores it on the row, where the
+ * Inbox shows it. On a granted decision it hands the tool the row's stored facts under
+ * `APPROVED_FACTS_ARG`, so the tool is bound to exactly what the person saw; the tool's desk refuses
+ * when its record has changed since. A reader that throws blocks the call with its own message and
+ * records nothing: there is nothing to ask about.
+ *
+ * `APPROVED_FACTS_ARG` is the gate's alone. Whatever the model put there is dropped on every path,
+ * before the arguments are hashed, read or recorded, and only the row's facts are ever put back. A
+ * red-team trial runs this gate with the role's own gate omitted, so nothing behind it would strip a
+ * forged key if this did not.
+ *
  * The declarations and the limits are passed in rather than guessed. `officehum.json` already says
  * which tools wait for a person, under which conditions — the manifest's `approvals` and its named
  * `limits` — and `registerOfficeHooks` reads both. A gate that invented its own policy would be a
  * second, unstated one.
  */
 
-import { type HookRegistration, hook, ToolTask } from "@earendil-works/pi-durable";
-import { type ApprovalDeclaration, conditionsHold } from "@officehum/sdk";
+import { type HookRegistration, hook, type JsonObject, ToolTask } from "@earendil-works/pi-durable";
+import {
+  APPROVED_FACTS_ARG,
+  type ApprovalDeclaration,
+  type ApprovalFacts,
+  type ApprovalFactsReader,
+  conditionsHold,
+} from "@officehum/sdk";
 import { type Approval, argsHash, type Board, type Person } from "../board/index.js";
 
 /** Why a call was blocked because a person has been asked. Exported so tests assert the sentence. */
@@ -94,6 +113,19 @@ export interface ApprovalHookOptions {
   readonly limits?: Readonly<Record<string, number>>;
   /** How long a request waits for a decision. Omitted: until someone decides or the ticket is cancelled. */
   readonly ttlMs?: number;
+  /**
+   * The role's approval facts readers, keyed by approval id (`DefinedRole.approvalFacts`). A
+   * declaration with one is asked with the facts it reads, and a grant binds the tool to them.
+   */
+  readonly facts?: Readonly<Record<string, ApprovalFactsReader>>;
+}
+
+/** A call's arguments without `APPROVED_FACTS_ARG`: what is hashed, read, recorded and shown. */
+export function withoutApprovedFacts(
+  args: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  if (!Object.hasOwn(args, APPROVED_FACTS_ARG)) return args;
+  return Object.fromEntries(Object.entries(args).filter(([key]) => key !== APPROVED_FACTS_ARG));
 }
 
 /**
@@ -132,22 +164,37 @@ export function approvalHooks(options: ApprovalHookOptions): readonly HookRegist
 
   return [
     hook(ToolTask, {
-      beforeTool(call, api) {
+      async beforeTool(call, api, context) {
+        // The approved-facts key is dropped before anything reads the arguments. A call that carried
+        // one is allowed only with it removed, so a path that lets the call run never lets it through.
+        const args = withoutApprovedFacts(call.arguments);
+        const allow =
+          args === call.arguments ? undefined : { arguments: args as unknown as JsonObject };
         try {
           const ticket = board.conversationTicket(api.conversationId);
-          if (ticket === undefined) return undefined;
-          const declaration = applyingDeclaration(
-            options.declarations,
-            call.name,
-            call.arguments,
-            limits,
-          );
+          if (ticket === undefined) return allow;
+          const declaration = applyingDeclaration(options.declarations, call.name, args, limits);
           // Nothing the role declares applies to these arguments: the call is one it allows itself,
           // so it runs and leaves no row. This is the path a small invoice takes.
-          if (declaration === undefined) return undefined;
-          const hash = argsHash(call.arguments);
-          if (board.approvals.approvalCovering(ticket.ticketId, call.name, hash) !== undefined) {
-            return undefined;
+          if (declaration === undefined) return allow;
+          const reader = options.facts?.[declaration.id];
+          const hash = argsHash(args);
+          const covering = board.approvals.approvalCovering(ticket.ticketId, call.name, hash);
+          if (covering !== undefined) {
+            // A grant hands on the facts the person was shown, and only those. A declaration with no
+            // reader, a row asked before facts were recorded, or a row asked under another
+            // declaration hands on none, so a tool that needs them refuses rather than acting on
+            // facts nobody saw for this declaration.
+            if (
+              reader === undefined ||
+              covering.facts === null ||
+              covering.approvalId !== declaration.id
+            ) {
+              return allow;
+            }
+            return {
+              arguments: { ...args, [APPROVED_FACTS_ARG]: covering.facts.facts } as JsonObject,
+            };
           }
           // A person already said no to exactly this, or the ticket was cancelled under it. Asking
           // again is not a way forward, and a model that retried every turn would otherwise grow the
@@ -164,19 +211,37 @@ export function approvalHooks(options: ApprovalHookOptions): readonly HookRegist
           // a request nobody opens. A later issue's routing can address a better person; this one
           // records the ask, which is what makes the wait visible at all.
           const person = board.people()[0];
+          // Already asked and still waiting: the row and its facts stand as they were first read.
+          if (settled?.status === "waiting") return { block: approvalAskedText(call.name, person) };
+          let facts: ApprovalFacts | undefined;
+          if (reader !== undefined) {
+            try {
+              facts = await reader(args, context);
+            } catch (error) {
+              // An abort is not a refusal: rethrown, the call stays unsettled and runs again on
+              // resume, as the SDK gate does, instead of settling as a block nobody earned.
+              context.abortSignal?.throwIfAborted();
+              // The reader says what is missing (no such bill, already paid) in words the model can
+              // act on, and nobody is asked about a thing the role's records do not hold.
+              return { block: error instanceof Error ? error.message : String(error) };
+            }
+          }
           board.approvals.requestApproval(ticket.ticketId, {
             tool: call.name,
             // The declaration, not the tool: `approval_id` says which stated policy the row is
             // about, and the tool is already its own column. Every writer of a row — the gate, the
             // eval runner's scripted decision — names a declared id, so the column has one meaning.
             approvalId: declaration.id,
-            args: call.arguments,
+            args,
             requestedBy: ticket.agent,
             ...(person === undefined ? {} : { assignee: person.id }),
             ...(options.ttlMs === undefined ? {} : { ttlMs: options.ttlMs }),
+            ...(facts === undefined ? {} : { facts }),
           });
           return { block: approvalAskedText(call.name, person) };
         } catch {
+          // An abort is not "could not check": rethrow it so the call resumes after a restart.
+          context.abortSignal?.throwIfAborted();
           // The board is unreadable, the arguments are not JSON, the write failed: none of those is
           // permission. Failing closed is the only answer that cannot approve an unapproved call.
           return { block: approvalUncheckedText(call.name) };

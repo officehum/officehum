@@ -27,7 +27,13 @@ import {
   type PromptSection,
   section,
 } from "@earendil-works/pi-durable";
-import type { AgentManifest, ApprovalDeclaration, Approver, RoleBundle } from "@officehum/sdk";
+import type {
+  AgentManifest,
+  ApprovalDeclaration,
+  ApprovalFactsReader,
+  Approver,
+  RoleBundle,
+} from "@officehum/sdk";
 import { approvalHooks } from "../approvals/gate.js";
 import type { Board } from "../board/index.js";
 
@@ -207,6 +213,13 @@ export interface OfficeHookSeam {
   readonly limits?: Readonly<Record<string, number>>;
   /** How long a request waits for a decision. Omitted: until someone decides or the ticket is cancelled. */
   readonly approvalTtlMs?: number;
+  /**
+   * This agent's approval facts readers, keyed by approval id: `LoadedRole.approvalFacts`. The gate
+   * records what each reads with the request and binds a granted call to it. A host that installs the
+   * office gate for a loaded role must pass `loadedRole.approvalFacts`: omitted, no facts are
+   * recorded and a tool that requires them refuses after a grant.
+   */
+  readonly approvalFacts?: Readonly<Record<string, ApprovalFactsReader>>;
 }
 
 /** The installed manifest for `role`, when the office knows it. */
@@ -241,6 +254,11 @@ export function declaredLimits(manifest: AgentManifest): Readonly<Record<string,
  * asked, and a budget hook's refusal would say the ticket is blocked instead. Ordering does not weaken
  * the budget — a gated call that the gate allows still meets every later hook.
  *
+ * The office gate runs before the role's own gate. It strips or replaces `officehumApprovedFacts`
+ * on every call, whatever an earlier hook set, so whenever a role gate with facts readers also runs
+ * the office gate must be given the same readers (`approvalFacts`), or the role's grant reaches the
+ * tool without its facts and the tool refuses.
+ *
  * The gate is given the manifest's own `approvals` and limits, not a derived list of tool names: the
  * `when` on each declaration is the role's statement of which calls need a person, and a tool list
  * would throw that away and gate every invoice (RASF-3439).
@@ -257,6 +275,7 @@ export function registerOfficeHooks(seam: OfficeHookSeam): readonly HookRegistra
       declarations,
       limits: seam.limits ?? (manifest === undefined ? {} : declaredLimits(manifest)),
       ...(seam.approvalTtlMs === undefined ? {} : { ttlMs: seam.approvalTtlMs }),
+      ...(seam.approvalFacts === undefined ? {} : { facts: seam.approvalFacts }),
     }),
     ...supplied,
   ];

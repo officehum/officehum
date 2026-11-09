@@ -29,6 +29,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import type { ApprovalFacts } from "@officehum/sdk";
 import { BoardError, fail } from "./errors.js";
 
 /** A request's whole lifecycle. `expired` and `cancelled` end a wait without a person deciding it. */
@@ -49,6 +50,12 @@ export interface Approval {
   readonly args: unknown;
   /** SHA-256 of `canonicalArgs(args)`. What an approval actually covers. */
   readonly argsHash: string;
+  /**
+   * What the person was asked to approve, as the role's records held it when the request was made:
+   * a one-line summary and the facts a granted call is bound to. Null for a declaration with no facts
+   * reader, and for every row asked before facts were recorded.
+   */
+  readonly facts: ApprovalFacts | null;
   /** As stored, plus `expired` computed from `expiresAt` against the clock. */
   readonly status: ApprovalStatus;
   /** The agent that asked, or null on a row written before this issue could record one. */
@@ -75,6 +82,11 @@ export interface ApprovalRequestInput {
   readonly assignee?: string;
   /** How long the request waits for a decision. Omitted: until someone decides or the ticket is cancelled. */
   readonly ttlMs?: number;
+  /**
+   * The facts a role's reader read for this call. Recorded with the first ask only: a repeat of a
+   * waiting request returns the row as it was asked, facts included.
+   */
+  readonly facts?: ApprovalFacts;
 }
 
 /** A person's answer. `expired` and `cancelled` are the clock's and the ticket's, never a decision. */
@@ -146,6 +158,11 @@ export interface ApprovalStore {
  * of those is refused here instead, with the path to the offending value.
  */
 export function canonicalArgs(value: unknown): string {
+  return canonicalJson(value, "args", "Approval arguments");
+}
+
+/** `canonicalArgs`'s rule for any value; `root` and `noun` name it in a refusal. */
+function canonicalJson(value: unknown, root: string, noun: string): string {
   const encode = (item: unknown, path: string): string => {
     if (item === null) return "null";
     if (typeof item === "string") return JSON.stringify(item);
@@ -154,7 +171,7 @@ export function canonicalArgs(value: unknown): string {
       if (!Number.isFinite(item)) {
         throw fail(
           "invalid_argument",
-          `Approval arguments must contain finite numbers; ${path} is ${String(item)}.`,
+          `${noun} must contain finite numbers; ${path} is ${String(item)}.`,
         );
       }
       return JSON.stringify(item);
@@ -166,7 +183,7 @@ export function canonicalArgs(value: unknown): string {
     if (record === undefined) {
       throw fail(
         "invalid_argument",
-        `Approval arguments must be JSON; ${path} is ${item === undefined ? "undefined" : typeof item}.`,
+        `${noun} must be JSON; ${path} is ${item === undefined ? "undefined" : typeof item}.`,
       );
     }
     const prototype = Object.getPrototypeOf(record);
@@ -174,7 +191,7 @@ export function canonicalArgs(value: unknown): string {
       // A Date, a Map, a class instance: JSON would write most of these as `{}` and lose the value.
       throw fail(
         "invalid_argument",
-        `Approval arguments must be plain objects and arrays; ${path} is ${
+        `${noun} must be plain objects and arrays; ${path} is ${
           (record as { constructor?: { name?: string } }).constructor?.name ?? "an object"
         }.`,
       );
@@ -187,14 +204,14 @@ export function canonicalArgs(value: unknown): string {
         if (child === undefined) {
           throw fail(
             "invalid_argument",
-            `Approval arguments must not carry undefined; ${path}.${key} is undefined.`,
+            `${noun} must not carry undefined; ${path}.${key} is undefined.`,
           );
         }
         return `${JSON.stringify(key)}:${encode(child, `${path}.${key}`)}`;
       })
       .join(",")}}`;
   };
-  return encode(value, "args");
+  return encode(value, root);
 }
 
 function compareCodeUnits(left: string, right: string): number {
@@ -238,6 +255,7 @@ type ApprovalRow = {
   requested_by: string | null;
   assignee: string | null;
   expires_at: string | null;
+  facts_json: string | null;
 };
 
 function text(value: unknown, label: string, maximum = 500): string {
@@ -257,6 +275,44 @@ function statusOf(value: string): ApprovalStatus {
     throw new Error(`approvals holds an unknown status: ${value}.`);
   }
   return value as ApprovalStatus;
+}
+
+const SUMMARY_MAX = 2000;
+
+/**
+ * The stored text for a request's facts. The facts go through `canonicalArgs` for the same reason the
+ * arguments do: a value JSON would coerce (`NaN`, a `Date`) would show the person something other
+ * than what the tool is later bound to.
+ */
+function factsJson(facts: ApprovalFacts | undefined): string | null {
+  if (facts === undefined) return null;
+  if (facts === null || typeof facts !== "object") {
+    throw fail("invalid_argument", "Approval facts must be an object with a summary and facts.");
+  }
+  const summary = text(facts.summary, "Approval facts summary", SUMMARY_MAX);
+  const record = facts.facts;
+  if (record === null || typeof record !== "object" || Array.isArray(record)) {
+    throw fail("invalid_argument", "Approval facts must carry a facts object.");
+  }
+  const encoded = canonicalJson(record, "facts", "Approval facts");
+  return `{"facts":${encoded},"summary":${JSON.stringify(summary)}}`;
+}
+
+function factsOf(json: string | null): ApprovalFacts | null {
+  if (json === null) return null;
+  try {
+    const parsed = JSON.parse(json) as { summary?: unknown; facts?: unknown };
+    if (
+      typeof parsed.summary === "string" &&
+      parsed.facts !== null &&
+      typeof parsed.facts === "object"
+    ) {
+      return { summary: parsed.summary, facts: parsed.facts as Record<string, unknown> };
+    }
+  } catch {
+    // reported below
+  }
+  throw new Error("approvals holds malformed facts_json.");
 }
 
 function argumentsOf(json: string): unknown {
@@ -296,8 +352,8 @@ export function openApprovalStore(
   const insertRow = database.prepare(
     `INSERT INTO approvals
        (id, ticket_id, approval_id, tool, args_json, status, decided_by, decided_at, decided_note,
-        created_at, args_hash, requested_by, assignee, expires_at)
-     VALUES (?, ?, ?, ?, ?, 'waiting', NULL, NULL, NULL, ?, ?, ?, ?, ?)`,
+        created_at, args_hash, requested_by, assignee, expires_at, facts_json)
+     VALUES (?, ?, ?, ?, ?, 'waiting', NULL, NULL, NULL, ?, ?, ?, ?, ?, ?)`,
   );
   const decideRow = database.prepare(
     `UPDATE approvals SET status = ?, decided_by = ?, decided_at = ?, decided_note = ?
@@ -382,6 +438,7 @@ export function openApprovalStore(
       tool: row.tool,
       args: argumentsOf(row.args_json),
       argsHash: row.args_hash,
+      facts: factsOf(row.facts_json),
       status: expired ? "expired" : stored,
       requestedBy: row.requested_by,
       assignee: row.assignee,
@@ -422,6 +479,7 @@ export function openApprovalStore(
     }
     const argsJson = canonicalArgs(request.args);
     const hash = hashOfCanonical(argsJson);
+    const facts = factsJson(request.facts);
     const at = nowIso();
 
     return transact(() => {
@@ -454,6 +512,7 @@ export function openApprovalStore(
         requestedBy,
         assignee,
         expiresAt,
+        facts,
       );
       return toApproval(requireRow(approvalUuid));
     });

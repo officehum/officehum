@@ -17,7 +17,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { HookApi, ToolHooks } from "@earendil-works/pi-durable";
-import type { ApprovalDeclaration } from "@officehum/sdk";
+import {
+  APPROVED_FACTS_ARG,
+  type ApprovalDeclaration,
+  type ApprovalFacts,
+  type ApprovalFactsReader,
+} from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { argsHash, type Board } from "../board/index.js";
 import { createWorkboard, seedPerson } from "../board/testing.js";
@@ -95,8 +100,14 @@ function gateOf(
   board: Board,
   declarations: readonly ApprovalDeclaration[] = [REFUND_DECLARATION],
   limits: Readonly<Record<string, number>> = {},
+  facts?: Readonly<Record<string, ApprovalFactsReader>>,
 ): BeforeTool {
-  const registration = approvalHooks({ board, declarations, limits })[0];
+  const registration = approvalHooks({
+    board,
+    declarations,
+    limits,
+    ...(facts === undefined ? {} : { facts }),
+  })[0];
   if (registration === undefined) throw new Error("approvalHooks registered nothing.");
   const { handlers } = registration as unknown as { handlers: Pick<ToolHooks, "beforeTool"> };
   return handlers.beforeTool;
@@ -461,6 +472,280 @@ describe("a declaration's condition", () => {
         .pendingApprovals()
         .find((approval) => (approval.args as { discountPercent?: number }).discountPercent === 25);
       expect(quarter?.approvalId).toBe("discount_booking");
+    } finally {
+      fixture.close();
+    }
+  });
+});
+
+const PAY = "pay_vendor_bill";
+/** Bookkeeper's shape: every payment waits for a person, and the call names only the bill. */
+const ANY_PAYMENT: ApprovalDeclaration = {
+  id: "any_payment",
+  tool: PAY,
+  description: "Approve paying this supplier bill as the desk holds it",
+};
+const BILL = { billId: "BILL-2001" };
+/** What the desk holds for the bill, which is what a person is shown and the tool is bound to. */
+const BILL_FACTS: ApprovalFacts = {
+  summary: "Pay BILL-2001 to Rainier Cleaning Tools, supplier invoice RT-5520: $648.00",
+  facts: { id: "BILL-2001", supplierInvoice: "RT-5520", totalCents: 64_800, revision: 1 },
+};
+/** What a model that was talked into it puts under the gate's key. */
+const FORGED = { id: "BILL-2001", supplierInvoice: "RT-5520", totalCents: 1, revision: 1 };
+
+/** A desk reader that counts its reads and records the arguments it was shown. */
+function deskReader(answer: ApprovalFacts | Error = BILL_FACTS) {
+  const seen: Record<string, unknown>[] = [];
+  const read: ApprovalFactsReader = async (args) => {
+    seen.push({ ...args });
+    if (answer instanceof Error) throw answer;
+    return answer;
+  };
+  return { read, seen };
+}
+
+describe("approval facts at the office gate", () => {
+  it("records desk-read facts with the request", async () => {
+    const fixture = openFixture();
+    try {
+      const reader = deskReader();
+      const gate = gateOf(fixture.board, [ANY_PAYMENT], {}, { any_payment: reader.read });
+
+      const result = await gate(call(PAY, BILL), hookApi(), CONTEXT);
+      expect(result?.block).toBe(approvalAskedText(PAY, { id: PERSON.id, name: PERSON.name }));
+      // The row carries what the desk holds, so the person reads the bill and not just its id.
+      const [row] = fixture.board.approvals.pendingApprovals();
+      expect(row).toMatchObject({ approvalId: "any_payment", args: BILL, facts: BILL_FACTS });
+      expect(reader.seen).toEqual([BILL]);
+
+      // A retry while the ask waits is the same ask: one row, and the desk is not read again.
+      expect((await gate(call(PAY, BILL, "call-2"), hookApi(), CONTEXT))?.block).toBe(
+        result?.block,
+      );
+      expect(rows(fixture.file)).toBe(1);
+      expect(reader.seen).toHaveLength(1);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it("injects the stored facts on a granted decision", async () => {
+    const fixture = openFixture();
+    try {
+      const reader = deskReader();
+      const gate = gateOf(fixture.board, [ANY_PAYMENT], {}, { any_payment: reader.read });
+      await gate(call(PAY, BILL), hookApi(), CONTEXT);
+      approveOnly(fixture.board);
+
+      // The tool is bound to the facts the person saw: the row's, not a fresh read and not the
+      // model's. A changed bill is the desk's to refuse (`sameFacts`), not the gate's to re-read.
+      const granted = await gate(call(PAY, BILL, "call-2"), hookApi(), CONTEXT);
+      expect(granted).toEqual({ arguments: { ...BILL, [APPROVED_FACTS_ARG]: BILL_FACTS.facts } });
+      expect(reader.seen).toHaveLength(1);
+
+      // A forged key is overwritten by the stored facts, never merged with them.
+      const forged = await gate(
+        call(PAY, { ...BILL, [APPROVED_FACTS_ARG]: FORGED }, "call-3"),
+        hookApi(),
+        CONTEXT,
+      );
+      expect(forged?.arguments?.[APPROVED_FACTS_ARG]).toEqual(BILL_FACTS.facts);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it("the args hash ignores the approved-facts key", async () => {
+    const fixture = openFixture();
+    try {
+      const reader = deskReader();
+      const gate = gateOf(fixture.board, [ANY_PAYMENT], {}, { any_payment: reader.read });
+
+      // Asked with a forged key: the row records the call's own arguments, hashed without it, so a
+      // forged value can neither mint a second ask nor dodge the decision about the first.
+      await gate(call(PAY, { ...BILL, [APPROVED_FACTS_ARG]: FORGED }), hookApi(), CONTEXT);
+      const [row] = fixture.board.approvals.pendingApprovals();
+      expect(row?.args).toEqual(BILL);
+      expect(row?.argsHash).toBe(argsHash(BILL));
+      // The reader never sees the key either.
+      expect(reader.seen).toEqual([BILL]);
+      await gate(call(PAY, BILL, "call-2"), hookApi(), CONTEXT);
+      expect(rows(fixture.file)).toBe(1);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it("blocks and records nothing when the reader throws", async () => {
+    const fixture = openFixture();
+    try {
+      const message = 'No bill on the desk has the id "BILL-9999". Nothing was put to a person.';
+      const reader = deskReader(new Error(message));
+      const gate = gateOf(fixture.board, [ANY_PAYMENT], {}, { any_payment: reader.read });
+
+      // The reader's words are the block: they say what is missing in terms the model can act on.
+      expect(await gate(call(PAY, { billId: "BILL-9999" }), hookApi(), CONTEXT)).toEqual({
+        block: message,
+      });
+      expect(rows(fixture.file)).toBe(0);
+    } finally {
+      fixture.close();
+    }
+  });
+});
+
+describe("approval facts: aborts and declarations", () => {
+  it("rethrows an abort during the reader and records no block", async () => {
+    const fixture = openFixture();
+    try {
+      const controller = new AbortController();
+      const read: ApprovalFactsReader = async () => {
+        controller.abort();
+        throw new Error("This operation was aborted");
+      };
+      const gate = gateOf(fixture.board, [ANY_PAYMENT], {}, { any_payment: read });
+      const context = { abortSignal: controller.signal } as Parameters<BeforeTool>[2];
+
+      // Rethrown, the task stays unsettled and runs again on resume; a block would settle it as a
+      // refusal nobody gave.
+      await expect(gate(call(PAY, BILL), hookApi(), context)).rejects.toThrow();
+      expect(rows(fixture.file)).toBe(0);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it("rethrows an abort that lands while the board is read", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "officehum-approval-gate-"));
+    temps.push(directory);
+    const board = createWorkboard(join(directory, "office.sqlite"));
+    const gate = gateOf(board, [ANY_PAYMENT]);
+    board.close();
+    const controller = new AbortController();
+    controller.abort();
+    const context = { abortSignal: controller.signal } as Parameters<BeforeTool>[2];
+    await expect(gate(call(PAY, BILL), hookApi(), context)).rejects.toThrow();
+  });
+
+  it("binds a grant only to facts asked under the same declaration", async () => {
+    const fixture = openFixture();
+    try {
+      // Two declarations on one tool; the row was asked and granted under the second.
+      const SECOND: ApprovalDeclaration = {
+        id: "second_payment",
+        tool: PAY,
+        description: "Another policy on the same tool",
+      };
+      const row = fixture.board.approvals.requestApproval(fixture.ticketId, {
+        tool: PAY,
+        args: BILL,
+        requestedBy: "bookkeeper",
+        approvalId: SECOND.id,
+        facts: BILL_FACTS,
+      });
+      fixture.board.approvals.decideApproval(row.id, { by: PERSON.id, decision: "approved" });
+
+      // `any_payment` is the declaration that applies first, and its grant was never given: the
+      // covering row's facts belong to another declaration, so none are handed on.
+      const gate = gateOf(
+        fixture.board,
+        [ANY_PAYMENT, SECOND],
+        {},
+        { any_payment: deskReader().read, second_payment: deskReader().read },
+      );
+      expect(
+        await gate(call(PAY, { ...BILL, [APPROVED_FACTS_ARG]: FORGED }), hookApi(), CONTEXT),
+      ).toEqual({ arguments: BILL });
+
+      // Under its own declaration the same row does hand them on.
+      const own = gateOf(fixture.board, [SECOND], {}, { second_payment: deskReader().read });
+      expect(await own(call(PAY, BILL, "call-2"), hookApi(), CONTEXT)).toEqual({
+        arguments: { ...BILL, [APPROVED_FACTS_ARG]: BILL_FACTS.facts },
+      });
+    } finally {
+      fixture.close();
+    }
+  });
+});
+
+/**
+ * The approved-facts key is the gate's alone (Task 6 review, finding I1). A red-team trial runs the
+ * office gate with the role's own gate omitted, so this gate must strip a model-supplied key on every
+ * path by itself; nothing behind it will.
+ */
+describe("a forged approved-facts key at the office gate alone", () => {
+  const forgedCall = (args: Record<string, unknown>, id = "call-1") =>
+    call(PAY, { ...args, [APPROVED_FACTS_ARG]: FORGED }, id);
+
+  it("is stripped on a conversation with no ticket and on a call no declaration applies to", async () => {
+    const fixture = openFixture();
+    try {
+      const gate = gateOf(fixture.board, [ANY_PAYMENT], {}, { any_payment: deskReader().read });
+      expect(await gate(forgedCall(BILL), hookApi(99), CONTEXT)).toEqual({ arguments: BILL });
+      const ungated = await gate(
+        call("list_vendor_bills", { status: "unpaid", [APPROVED_FACTS_ARG]: FORGED }),
+        hookApi(),
+        CONTEXT,
+      );
+      expect(ungated).toEqual({ arguments: { status: "unpaid" } });
+      // A call without the key is left exactly as it was: nothing to strip, nothing returned.
+      expect(await gate(call("list_vendor_bills", {}), hookApi(), CONTEXT)).toBeUndefined();
+      expect(rows(fixture.file)).toBe(0);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it("is stripped from a granted call whose declaration has no reader", async () => {
+    const fixture = openFixture();
+    try {
+      // No reader: the person approved the arguments alone, so the tool gets no facts at all.
+      const gate = gateOf(fixture.board, [ANY_PAYMENT]);
+      await gate(forgedCall(BILL), hookApi(), CONTEXT);
+      expect(fixture.board.approvals.pendingApprovals()[0]?.facts).toBeNull();
+      approveOnly(fixture.board);
+      expect(await gate(forgedCall(BILL, "call-2"), hookApi(), CONTEXT)).toEqual({
+        arguments: BILL,
+      });
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it("is stripped from a granted call whose row holds no facts", async () => {
+    const fixture = openFixture();
+    try {
+      // A grant recorded before the reader existed: nobody was shown facts, so none are handed on.
+      const row = fixture.board.approvals.requestApproval(fixture.ticketId, {
+        tool: PAY,
+        args: BILL,
+        requestedBy: "bookkeeper",
+        approvalId: "any_payment",
+      });
+      fixture.board.approvals.decideApproval(row.id, { by: PERSON.id, decision: "approved" });
+      const gate = gateOf(fixture.board, [ANY_PAYMENT], {}, { any_payment: deskReader().read });
+      expect(await gate(forgedCall(BILL), hookApi(), CONTEXT)).toEqual({ arguments: BILL });
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it("never reaches the tool while the ask waits or after a person declined", async () => {
+    const fixture = openFixture();
+    try {
+      const gate = gateOf(fixture.board, [ANY_PAYMENT], {}, { any_payment: deskReader().read });
+      const pending = await gate(forgedCall(BILL), hookApi(), CONTEXT);
+      expect(pending).toEqual({ block: expect.stringContaining("has been asked") });
+      const row = fixture.board.approvals.pendingApprovals()[0];
+      fixture.board.approvals.decideApproval(String(row?.id), {
+        by: PERSON.id,
+        decision: "declined",
+      });
+      const declined = await gate(forgedCall(BILL, "call-2"), hookApi(), CONTEXT);
+      expect(declined).toEqual({
+        block: expect.stringContaining("declined these exact arguments"),
+      });
     } finally {
       fixture.close();
     }

@@ -443,6 +443,19 @@ function unifyInboundDedupe(database: DatabaseSync): void {
   `);
 }
 
+/**
+ * Migration 8 records what a person is asked to approve (RASF-3486). A role's facts reader reads the
+ * thing being approved from the role's own records — the bill, not just its id — and the office gate
+ * stores it on the request, so the Inbox can show it and a grant binds the tool to it.
+ *
+ * NULL is the honest value for every row that exists: nobody was shown facts when those were asked,
+ * and the gate hands a tool no facts from such a row rather than inventing them. `ALTER TABLE ADD
+ * COLUMN` is enough here; unlike migration 5 nothing about an existing constraint changes.
+ */
+function addApprovalFacts(database: DatabaseSync): void {
+  database.exec("ALTER TABLE approvals ADD COLUMN facts_json TEXT");
+}
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: createWorkboard },
   { version: 2, up: createRelay },
@@ -451,6 +464,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 5, up: rebuildApprovals },
   { version: 6, up: addSmsIntake },
   { version: 7, up: unifyInboundDedupe },
+  { version: 8, up: addApprovalFacts },
 ];
 
 for (const [index, migration] of MIGRATIONS.entries()) {
