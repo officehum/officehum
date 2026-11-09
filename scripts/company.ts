@@ -34,7 +34,7 @@ export const HANDBOOK_SKILL = "company-handbook";
  * The departments a person can work in. Roles find people by department (Purchasing's lead is the
  * person in `purchasing`), so a misspelt one would leave a role naming nobody.
  */
-export const DEPARTMENTS: readonly string[] = ["office", "maintenance", "purchasing"];
+export const DEPARTMENTS: readonly string[] = ["office", "maintenance", "purchasing", "field"];
 
 /** The program that writes the copies; named in every generated file's header. */
 export const GENERATOR = "scripts/sync-company.ts";

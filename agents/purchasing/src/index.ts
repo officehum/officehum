@@ -66,6 +66,7 @@ export {
   type PurchasingDesk,
   PurchasingDeskError,
   type RaisePurchaseOrderInput,
+  type RecalledOrder,
   type RecordReceiptInput,
   type StockLevel,
   type SupplierApproval,

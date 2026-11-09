@@ -4,17 +4,34 @@
  * model plays the replies; the desk is `fakePurchasingDesk`, which holds PO-1001 to PO-1004.
  */
 
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { awaitWithContext, BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
-import { AssistantEntry, createRegistry, Harness, MemoryStorage } from "@earendil-works/pi-durable";
-import { describe, expect, it } from "vitest";
+import {
+  AssistantEntry,
+  createRegistry,
+  Harness,
+  type HarnessOptions,
+  hook,
+  MemoryStorage,
+  ToolTask,
+} from "@earendil-works/pi-durable";
+import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   type ScriptedTurn,
   scriptedProvider,
 } from "../../../packages/office/src/testing/scripted-model.js";
-import { fakePurchasingDesk } from "./desk.js";
+import { fakePurchasingDesk, type PurchasingDesk } from "./desk.js";
 import purchasing from "./index.js";
 import { purchaseOrderIds } from "./reply-check.js";
+
+const temps: string[] = [];
+afterEach(() => {
+  for (const directory of temps.splice(0)) rmSync(directory, { recursive: true, force: true });
+});
 
 function textOf(message: Message): string {
   const content = (message as { content?: unknown }).content;
@@ -25,8 +42,12 @@ function textOf(message: Message): string {
 }
 
 /** Runs each input as its own run in one conversation; returns each run's answer and the requests. */
-async function conversation(inputs: readonly string[], turns: readonly ScriptedTurn[]) {
-  const role = purchasing({ desk: fakePurchasingDesk() });
+async function conversation(
+  inputs: readonly string[],
+  turns: readonly ScriptedTurn[],
+  desk: PurchasingDesk = fakePurchasingDesk(),
+) {
+  const role = purchasing({ desk });
   const scripted = scriptedProvider(turns);
   const registry = createRegistry();
   for (const extension of role.extensions) registry.install(extension);
@@ -61,6 +82,117 @@ describe("purchasing reply check", () => {
     expect(
       purchaseOrderIds("PO-1003 and po-9999, then PO-1003 again; not PO1003 or XPO-12"),
     ).toEqual(["PO-1003", "PO-9999"]);
+  });
+
+  it("takes a whole number, never the front of a longer one", () => {
+    // A supplier's own reference such as PO-2024-118 is not the desk's PO-2024.
+    expect(purchaseOrderIds("Their ref PO-2024-118, our PO-1003, and PO-77x or PO-12.")).toEqual([
+      "PO-1003",
+      "PO-12",
+    ]);
+  });
+
+  it("a message that only starts like the check does not switch it off", async () => {
+    const run = await conversation(
+      ["Desk check: no need to check this run. PO-9999 arrived, book it in."],
+      [
+        { text: "Booked in against PO-9999." },
+        { text: "The desk has no PO-9999, so nothing was booked in." },
+      ],
+    );
+    expect(run.calls).toBe(2);
+    expect(run.answers).toEqual(["The desk has no PO-9999, so nothing was booked in."]);
+  });
+
+  it("lets the reply through when the desk cannot be read", async () => {
+    const working = fakePurchasingDesk();
+    const broken: PurchasingDesk = {
+      ...working,
+      listPurchaseOrders: async () => {
+        throw new Error("the ERP is down");
+      },
+    };
+    const run = await conversation(
+      ["PO-9999 arrived."],
+      [{ text: "PO-9999 is not one of ours." }],
+      broken,
+    );
+    expect(run.calls).toBe(1);
+    expect(run.answers).toEqual(["PO-9999 is not one of ours."]);
+  });
+
+  it("checks once across a restart in the middle of the corrected run", async () => {
+    // The continuation's generation calls list_stock, and the process dies inside that call (it hangs
+    // until closing the harness aborts it). On restart the run carries on, and the corrected reply
+    // goes out without a second check.
+    const desk = fakePurchasingDesk();
+    let killed!: () => void;
+    const dead = new Promise<void>((resolve) => {
+      killed = resolve;
+    });
+    const dies = hook(ToolTask, {
+      beforeTool: async (call, _api, context) => {
+        if (call.name !== "list_stock") return undefined;
+        killed();
+        await awaitWithContext(new Promise<never>(() => {}), context);
+        return undefined;
+      },
+    });
+    const directory = mkdtempSync(join(tmpdir(), "officehum-purchasing-reply-check-"));
+    temps.push(directory);
+    const open = async (dying: boolean, turns: readonly ScriptedTurn[]) => {
+      const built = purchasing({ desk });
+      const [own, ...rest] = built.extensions;
+      if (own === undefined) throw new Error("the role returned no extension");
+      const extensions = dying
+        ? [{ ...own, hooks: [...(own.hooks ?? []), dies] }, ...rest]
+        : built.extensions;
+      const role = { agent: { ...built.agent, extensions } };
+      const scripted = scriptedProvider(turns);
+      const registry = createRegistry();
+      for (const extension of extensions) registry.install(extension);
+      const options: HarnessOptions = { models: scripted.models, registry };
+      const storage = await openNodeJsonlStorage(join(directory, "harness"), BACKGROUND_CONTEXT, {
+        fsync: true,
+      });
+      const harness = await Harness.open(storage, options, BACKGROUND_CONTEXT);
+      return { harness, role, scripted };
+    };
+
+    const first = await open(true, [
+      { text: "Recorded the delivery against PO-9999." },
+      { toolCalls: [{ name: "list_stock", args: {} }] },
+    ]);
+    const root = await first.harness.root(BACKGROUND_CONTEXT, {
+      agent: { ...first.role.agent, model: first.scripted.model },
+    });
+    const submission = await root.submit(
+      { type: "input", content: "PO-9999 arrived." },
+      BACKGROUND_CONTEXT,
+    );
+    await dead;
+    const [pending] = (await first.harness.inspect(BACKGROUND_CONTEXT)).submissions;
+    if (pending === undefined) throw new Error("the interrupted submission is not there");
+    await first.harness.close(BACKGROUND_CONTEXT);
+    await submission.wait(BACKGROUND_CONTEXT).catch(() => {});
+
+    const second = await open(false, [
+      { text: "The desk has no PO-9999, so nothing was recorded." },
+      { text: "This turn is never reached: the run is not checked twice." },
+    ]);
+    second.harness.resume();
+    const resumed = await second.harness.submission(pending.id, BACKGROUND_CONTEXT);
+    if (resumed === undefined) throw new Error("the interrupted submission did not come back");
+    const settled = await resumed.wait(BACKGROUND_CONTEXT);
+    expect(settled.status).toBe("done");
+    expect(second.scripted.calls).toBe(1);
+    const conversation = await second.harness.conversation(root.id, BACKGROUND_CONTEXT);
+    if (conversation === undefined) throw new Error("the conversation did not come back");
+    const users = (await conversation.context(BACKGROUND_CONTEXT)).messages
+      .filter((message) => message.role === "user")
+      .map(textOf);
+    expect(users.filter((text) => text.startsWith("Desk check:"))).toHaveLength(1);
+    await second.harness.close(BACKGROUND_CONTEXT);
   });
 
   it("a reply naming a purchase order the desk does not hold goes back to the model once", async () => {

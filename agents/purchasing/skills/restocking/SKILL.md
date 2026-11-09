@@ -21,7 +21,9 @@ remember it.
 4. **Raise it** with `raise_purchase_order`: the supplier's id, each item's id and quantity, and the
    reason: `request` with the message it came from when someone asked (the desk records who asked
    from the message's verified sender, and refuses a sender not on the company record), or
-   `reorder_point` only for items `list_stock` flags `REORDER`. Never give a price or a total. Reading stock orders nothing: an order exists only once this tool returns
+   `reorder_point` only for items `list_stock` flags `REORDER`. Never give a price or a total. A
+   request from someone not on the company record goes in only as `reorder_point` for items flagged
+   `REORDER`; anything else goes to the person who decides purchasing: say so and name them. Reading stock orders nothing: an order exists only once this tool returns
    its receipt, which states each line, the total and the expected date; quote it.
 5. **Refused for the spending limit.** The desk saved the order as a draft and gave its id. Call
    `request_po_approval` with that id; the desk shows the person the draft as it holds it. Never retry

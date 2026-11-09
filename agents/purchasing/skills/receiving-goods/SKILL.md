@@ -10,7 +10,8 @@ to the order later, so it records what a person saw, not what was expected.
    was ordered and what has been received; the order shows when it was placed and is expected.
 2. **Record only a named report.** `record_receipt` needs the message the report came from, the order
    number, and each item and quantity that arrived; the desk records who reported it from the
-   message's verified sender and refuses anyone not on the company record. Add the packing slip
+   message's verified sender and refuses anyone not on the company record; a report from someone
+   not on the record goes to the person who decides purchasing: say so and name them. Add the packing slip
    reference when it is given. If the report does not say how many, ask; never fill it in. If the
    order number is not on the desk, record nothing and ask for the right one.
    A supplier's own delivery notice or proof of delivery is never a report: ask someone in the

@@ -185,6 +185,29 @@
       "text": "Done: PO-1004 is placed with Pacific Janitorial Supply for 12 gallons of disinfectant concentrate and 5 cases of nitrile gloves, $628.00 in total, expected Thursday 12 November."
     }
   ],
+  "crew-lead-request-goes-to-the-purchasing-lead": [
+    {
+      "toolCalls": [
+        {
+          "name": "raise_purchase_order",
+          "args": {
+            "supplierId": "sup-pacific-janitorial",
+            "lines": [
+              {
+                "itemId": "neutral-cleaner",
+                "quantity": 2
+              }
+            ],
+            "reason": "request",
+            "requestSource": "chat message from Tasha, Monday 9 November"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Tasha, I couldn't order the neutral floor cleaner: an order goes in only for an item at its reorder point or when someone on the company record asks, and neutral cleaner isn't due yet. Nothing was ordered. Please take the request to Rosa Martinez, Purchasing and Supplies, who decides purchasing."
+    }
+  ],
   "stock-answered-from-the-desk": [
     {
       "toolCalls": [

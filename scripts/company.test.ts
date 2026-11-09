@@ -179,7 +179,7 @@ describe("the company package's own consistency", () => {
     });
     const issues = companyIssues(readSource(directory));
     expect(issues).toEqual([
-      'company/default/company.json: people[0] (dana-whitfield) has the department "warehouse"; use one of office, maintenance, purchasing',
+      'company/default/company.json: people[0] (dana-whitfield) has the department "warehouse"; use one of office, maintenance, purchasing, field',
     ]);
   });
 

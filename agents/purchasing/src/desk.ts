@@ -120,7 +120,17 @@ export interface PurchaseOrder {
    * order is a draft that is never placed on its own.
    */
   readonly recalledInto?: string;
+  /** On a refused split's draft: the orders recalled into it, with who asked for each. */
+  readonly recalled?: readonly RecalledOrder[];
 }
+
+/** An order a refused split recalled into a draft, and who had asked for it. */
+// A type, not an interface, so a tool can hand it to the model as JSON details.
+export type RecalledOrder = {
+  readonly id: string;
+  readonly requestedBy?: string;
+  readonly requestSource?: string;
+};
 
 /** Goods recorded as received against an order, and who said they arrived. */
 export interface GoodsReceipt {
@@ -233,9 +243,10 @@ export interface PurchasingDesk {
    * Prices and places an order inside the limit, or refuses it. A host desk must refuse with
    * `unrequested` an order whose reason is `reorder_point` for an item that is not at or below its
    * reorder point, or `request` with no `requestedBy`. When it refuses a split order (`split_order`),
-   * it must recall the orders placed with that supplier that day and not yet received into the
-   * refused draft, so the draft is the whole order a person approves, or refuse to place the split
-   * at all; it must never leave the first part out on its own.
+   * it must recall the orders placed with that supplier that day without a person's approval and not
+   * yet received into the refused draft, so the draft is the whole order a person approves, or refuse
+   * to place the split at all; it must never leave the first part out on its own. An order a person
+   * approved is never recalled: it stays placed.
    */
   raisePurchaseOrder(
     input: RaisePurchaseOrderInput,
@@ -470,6 +481,7 @@ interface OrderState {
   requestedBy?: string;
   requestSource?: string;
   recalledInto?: string;
+  recalled?: readonly RecalledOrder[];
 }
 
 /** An in-memory desk: the company's suppliers and catalogue, demonstration stock, nothing sent. */
@@ -514,6 +526,9 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
   const snapshot = (order: OrderState): PurchaseOrder => ({
     ...order,
     lines: order.lines.map((line) => ({ ...line })),
+    ...(order.recalled === undefined
+      ? {}
+      : { recalled: order.recalled.map((entry) => ({ ...entry })) }),
   });
 
   const findSupplier = (query: string): SupplierState => {
@@ -680,6 +695,15 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
       }
     }
     into.totalCents = into.lines.reduce((total, line) => total + line.lineTotalCents, 0);
+    // Who asked for the recalled part travels with its lines, so the draft still says who wanted it.
+    into.recalled = [
+      ...(into.recalled ?? []),
+      {
+        id: order.id,
+        ...(order.requestedBy === undefined ? {} : { requestedBy: order.requestedBy }),
+        ...(order.requestSource === undefined ? {} : { requestSource: order.requestSource }),
+      },
+    ];
     order.status = "draft";
     order.placedOn = null;
     order.expectedOn = null;
@@ -732,20 +756,25 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
 
     async listPurchaseOrders(filter: OrderFilter = {}): Promise<readonly PurchaseOrder[]> {
       const supplier = filter.supplier?.trim().toLowerCase();
-      return orders
-        .filter(
-          (order) =>
-            filter.id === undefined || order.id.toLowerCase() === filter.id.trim().toLowerCase(),
-        )
-        .filter(
-          (order) =>
-            supplier === undefined ||
-            supplier === "" ||
-            order.supplierId.toLowerCase() === supplier ||
-            order.supplierName.toLowerCase().includes(supplier),
-        )
-        .filter((order) => filter.status === undefined || order.status === filter.status)
-        .map(snapshot);
+      return (
+        orders
+          .filter(
+            (order) =>
+              filter.id === undefined || order.id.toLowerCase() === filter.id.trim().toLowerCase(),
+          )
+          .filter(
+            (order) =>
+              supplier === undefined ||
+              supplier === "" ||
+              order.supplierId.toLowerCase() === supplier ||
+              order.supplierName.toLowerCase().includes(supplier),
+          )
+          .filter((order) => filter.status === undefined || order.status === filter.status)
+          // A recalled order is a draft only on paper: its lines are on the draft that recalled it, so
+          // it is not one of the drafts waiting for a person. Asked for by its number, it still answers.
+          .filter((order) => filter.status !== "draft" || order.recalledInto === undefined)
+          .map(snapshot)
+      );
     },
 
     async raisePurchaseOrder(input, { requestId }): Promise<PurchaseOrder> {
@@ -799,19 +828,34 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
           { draftId: order.id, totalCents },
         );
       } else if (earlier + totalCents > limit) {
-        // The earlier parts that have not gone out for good come back into this draft, so the person
-        // approves the whole order and no part of a split is left placed on its own.
-        const recalled = placedToday.filter((other) => other.status === "placed");
+        // The split's earlier parts come back into this draft, so the person approves the whole order
+        // and no part of a split is left placed on its own. Only orders placed without a person's
+        // approval and not yet received are parts of a split: an order a person approved stays placed,
+        // because a routine call never undoes their decision, and goods that arrived stay received.
+        const recalled = placedToday.filter(
+          (other) => other.status === "placed" && !other.approved,
+        );
         for (const other of recalled) recall(other, order);
-        const kept = placedToday.filter((other) => other.status !== "draft");
+        const approvedKept = placedToday.filter(
+          (other) => other.status !== "draft" && other.approved,
+        );
+        const receivedKept = placedToday.filter(
+          (other) => other.status !== "draft" && !other.approved,
+        );
+        const ids = (list: readonly OrderState[]) => list.map((other) => other.id).join(", ");
         const recallText =
           recalled.length === 0
             ? ""
-            : ` ${recalled.map((other) => other.id).join(", ")}, placed earlier today, ${recalled.length === 1 ? "has" : "have"} been recalled into ${order.id}, which now holds the whole order for ${money(order.totalCents)}.`;
-        const keptText =
-          kept.length === 0
+            : ` ${ids(recalled)}, placed earlier today, ${recalled.length === 1 ? "has" : "have"} been recalled into ${order.id}, which now holds the whole order for ${money(order.totalCents)}.`;
+        const approvedText =
+          approvedKept.length === 0
             ? ""
-            : ` ${kept.map((other) => other.id).join(", ")} ${kept.length === 1 ? "has" : "have"} already been received in part or in full and stay${kept.length === 1 ? "s" : ""} as ${kept.length === 1 ? "it is" : "they are"}.`;
+            : ` ${ids(approvedKept)} ${approvedKept.length === 1 ? "was" : "were"} placed with a person's approval and stay${approvedKept.length === 1 ? "s" : ""} placed.`;
+        const receivedText =
+          receivedKept.length === 0
+            ? ""
+            : ` ${ids(receivedKept)} ${receivedKept.length === 1 ? "has" : "have"} already been received in part or in full and stay${receivedKept.length === 1 ? "s" : ""} as ${receivedKept.length === 1 ? "it is" : "they are"}.`;
+        const keptText = `${approvedText}${receivedText}`;
         refusal = new PurchasingDeskError(
           "split_order",
           `Needs approval: ${supplier.name} already has ${placedToday.map((other) => other.id).join(", ")} placed today for ${money(earlier)}; with this order (${money(totalCents)}) that is ${money(earlier + totalCents)}, over the ${money(limit)} a purchase order may reach without a person's approval. Orders are not split to stay under the limit.${recallText}${keptText} Draft ${order.id} is saved and has not been sent. Nothing was ordered.`,

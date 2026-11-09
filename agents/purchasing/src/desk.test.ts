@@ -374,6 +374,141 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     expect((await pacific.listPurchaseOrders({ id: "PO-1006" }))[0]?.totalCents).toBe(5 * 6800);
   });
 
+  it("a refused split never recalls an approved order", async () => {
+    // The reviewer's reproduction: a person approves and places PO-1004 ($2,172.00 to Cascade), then a
+    // $54 Cascade order the same day. The day is over the limit, so the small order goes to a person,
+    // but the order a person approved stays placed: a routine call never undoes their decision.
+    const purchasing = desk();
+    const placed = await purchasing.placeDraft(await approvedDraft(purchasing), {
+      requestId: "a1",
+    });
+    expect(placed).toMatchObject({ id: "PO-1004", status: "placed", approved: true });
+    const refused = await refusal(
+      purchasing.raisePurchaseOrder(
+        {
+          ...ASKED,
+          supplierId: "sup-cascade-paper",
+          lines: [{ itemId: "toilet-tissue", quantity: 1 }],
+        },
+        { requestId: "s1" },
+      ),
+    );
+    expect(refused.code).toBe("split_order");
+    expect(refused.draftId).toBe("PO-1005");
+    expect(refused.totalCents).toBe(5400);
+    expect(refused.message).toContain(
+      "PO-1004 was placed with a person's approval and stays placed",
+    );
+    expect(refused.message).not.toContain("recalled");
+    const [approved] = await purchasing.listPurchaseOrders({ id: "PO-1004" });
+    expect(approved).toMatchObject({ status: "placed", approved: true });
+    expect(approved?.recalledInto).toBeUndefined();
+    const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1005" });
+    expect(draft?.lines.map((line) => [line.itemId, line.quantity])).toEqual([
+      ["toilet-tissue", 1],
+    ]);
+  });
+
+  it("a refused split recalls only the unapproved part when an approved order is also out", async () => {
+    const purchasing = desk();
+    // A small order placed inside the limit, then the PO-1004 draft placed with a person's approval.
+    const small = await purchasing.raisePurchaseOrder(
+      { ...ASKED, supplierId: "sup-cascade-paper", lines: [{ itemId: "hand-soap", quantity: 2 }] },
+      { requestId: "w1" },
+    );
+    expect(small).toMatchObject({ id: "PO-1005", status: "placed", approved: false });
+    await purchasing.placeDraft(await approvedDraft(purchasing), { requestId: "w2" });
+    const refused = await refusal(
+      purchasing.raisePurchaseOrder(
+        {
+          ...ASKED,
+          supplierId: "sup-cascade-paper",
+          lines: [{ itemId: "trash-liners", quantity: 1 }],
+        },
+        { requestId: "w3" },
+      ),
+    );
+    expect(refused.code).toBe("split_order");
+    expect(refused.message).toContain(
+      "PO-1005, placed earlier today, has been recalled into PO-1006",
+    );
+    expect(refused.message).toContain(
+      "PO-1004 was placed with a person's approval and stays placed",
+    );
+    expect(await statusOf(purchasing, "PO-1004")).toBe("placed");
+    expect(await statusOf(purchasing, "PO-1005")).toBe("draft");
+    expect((await purchasing.listPurchaseOrders({ id: "PO-1006" }))[0]?.totalCents).toBe(
+      2 * 5200 + 3600,
+    );
+  });
+
+  it("carries a recalled order's requester onto the draft", async () => {
+    const purchasing = desk();
+    await purchasing.raisePurchaseOrder(
+      {
+        reason: "request",
+        requestedBy: "Sam Oduya",
+        requestSource: "chat message from Sam Oduya, 08:10",
+        supplierId: "sup-cascade-paper",
+        lines: [
+          { itemId: "toilet-tissue", quantity: 16 },
+          { itemId: "hand-towel", quantity: 12 },
+        ],
+      },
+      { requestId: "s1" },
+    );
+    await refusal(
+      purchasing.raisePurchaseOrder(
+        {
+          ...ASKED,
+          supplierId: "sup-cascade-paper",
+          lines: [{ itemId: "trash-liners", quantity: 20 }],
+        },
+        { requestId: "s2" },
+      ),
+    );
+    const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1006" });
+    expect(draft).toMatchObject({ requestedBy: ASKED.requestedBy });
+    expect(draft?.recalled).toEqual([
+      {
+        id: "PO-1005",
+        requestedBy: "Sam Oduya",
+        requestSource: "chat message from Sam Oduya, 08:10",
+      },
+    ]);
+  });
+
+  it("does not list a recalled order among the drafts waiting for a person", async () => {
+    const purchasing = desk();
+    await purchasing.raisePurchaseOrder(
+      {
+        ...ASKED,
+        supplierId: "sup-cascade-paper",
+        lines: [
+          { itemId: "toilet-tissue", quantity: 16 },
+          { itemId: "hand-towel", quantity: 12 },
+        ],
+      },
+      { requestId: "s1" },
+    );
+    await refusal(
+      purchasing.raisePurchaseOrder(
+        {
+          ...ASKED,
+          supplierId: "sup-cascade-paper",
+          lines: [{ itemId: "trash-liners", quantity: 20 }],
+        },
+        { requestId: "s2" },
+      ),
+    );
+    const drafts = await purchasing.listPurchaseOrders({ status: "draft" });
+    expect(drafts.map((order) => order.id)).toEqual(["PO-1004", "PO-1006"]);
+    // Asked for by its number, it still answers, noted where its lines went.
+    expect((await purchasing.listPurchaseOrders({ id: "PO-1005" }))[0]?.recalledInto).toBe(
+      "PO-1006",
+    );
+  });
+
   it("a replayed split refusal recalls once", async () => {
     const purchasing = desk();
     await purchasing.raisePurchaseOrder(

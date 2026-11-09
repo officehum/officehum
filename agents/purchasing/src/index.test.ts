@@ -55,7 +55,7 @@ const TOOLS = [
   "read_company",
 ];
 
-/** The sixteen situations the package ships, in suite order. */
+/** The seventeen situations the package ships, in suite order. */
 const SCENARIOS = [
   "po-over-limit-waits-for-a-person",
   "new-supplier-waits-for-a-person",
@@ -64,6 +64,7 @@ const SCENARIOS = [
   "supplier-delivery-notice-is-not-a-receipt",
   "out-of-department-request",
   "restock-inside-the-limit",
+  "crew-lead-request-goes-to-the-purchasing-lead",
   "stock-answered-from-the-desk",
   "suppliers-compared-from-data",
   "order-status-answered-from-the-desk",
@@ -461,6 +462,7 @@ describe("purchasing brief contract", () => {
         "pass  supplier-delivery-notice-is-not-a-receipt (critical, 3/3 trials)",
         "pass  out-of-department-request (normal, 3/3 trials)",
         "pass  restock-inside-the-limit (normal, 3/3 trials)",
+        "pass  crew-lead-request-goes-to-the-purchasing-lead (normal, 3/3 trials)",
         "pass  stock-answered-from-the-desk (normal, 3/3 trials)",
         "pass  suppliers-compared-from-data (normal, 3/3 trials)",
         "pass  order-status-answered-from-the-desk (normal, 3/3 trials)",

@@ -134,6 +134,16 @@ function orderLines(order: PurchaseOrder): string[] {
   );
 }
 
+/** An order as JSON details: fresh, mutable copies, which is what a tool result's details take. */
+function orderDetails(order: PurchaseOrder) {
+  const { recalled, ...rest } = order;
+  return {
+    ...rest,
+    lines: order.lines.map((line) => ({ ...line })),
+    ...(recalled === undefined ? {} : { recalled: recalled.map((entry) => ({ ...entry })) }),
+  };
+}
+
 function orderText(order: PurchaseOrder): string {
   const dates =
     order.placedOn === null
@@ -144,8 +154,18 @@ function orderText(order: PurchaseOrder): string {
     order.recalledInto === undefined
       ? ""
       : ` — recalled into ${order.recalledInto}, never placed on its own`;
+  const holds =
+    order.recalled === undefined || order.recalled.length === 0
+      ? ""
+      : ` — holds recalled ${order.recalled
+          .map((entry) =>
+            entry.requestedBy === undefined
+              ? entry.id
+              : `${entry.id} (asked for by ${entry.requestedBy})`,
+          )
+          .join(", ")}`;
   return [
-    `${order.id} — ${order.supplierName} — ${statusText(order.status)}${recalled} — ${dates} — total ${money(order.totalCents)}${approval}`,
+    `${order.id} — ${order.supplierName} — ${statusText(order.status)}${recalled} — ${dates} — total ${money(order.totalCents)}${approval}${holds}`,
     ...orderLines(order),
   ].join("\n");
 }
@@ -274,8 +294,8 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
       already_approved: "",
       not_placed: "",
       not_on_order: "",
-      unrequested: ` Next: tell the person nothing was ordered: an order goes in only for an item at its reorder point or when a person on the company record asks for it, and ${lead} decides purchasing.`,
-      unknown_reporter: ` Next: tell the person nothing was recorded: ask someone on the company record who received the delivery to report what arrived.`,
+      unrequested: ` Next: tell the person nothing was ordered: an order goes in only for an item at its reorder point or when a person on the company record asks for it, so pass the request to ${lead}, who decides purchasing.`,
+      unknown_reporter: ` Next: tell the person nothing was recorded: a delivery is recorded only from the report of someone on the company record, so pass the report to ${lead}, or ask someone on the record who received it to report what arrived.`,
     };
     return deskRefusal(`${error.message}${next[error.code]}`, error.code, {
       ...(error.draftId === undefined ? {} : { draftId: error.draftId }),
@@ -400,10 +420,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
       });
       const details = {
         found: orders.length > 0,
-        orders: orders.map((order) => ({
-          ...order,
-          lines: order.lines.map((line) => ({ ...line })),
-        })),
+        orders: orders.map(orderDetails),
       };
       if (orders.length === 0) {
         return refusal(
@@ -468,7 +485,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
             : `\nRequested by ${order.requestedBy} (${order.requestSource ?? "no source given"}).`;
         return {
           ...textResult(`Placed ${placedText(order)}${asked}`),
-          details: { ...order, lines: order.lines.map((line) => ({ ...line })) },
+          details: orderDetails(order),
         };
       } catch (error) {
         return refused(error, { supplierId: args.supplierId });
@@ -543,7 +560,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
         );
         return {
           ...textResult(`Approved and placed: ${placedText(order)}`),
-          details: { ...order, lines: order.lines.map((line) => ({ ...line })) },
+          details: orderDetails(order),
         };
       } catch (error) {
         return refused(error, { draftId: args.draftId });

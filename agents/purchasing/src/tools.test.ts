@@ -286,6 +286,18 @@ describe("raise_purchase_order", () => {
     );
   });
 
+  it("names whoever the company record puts in purchasing, not a fixed name", async () => {
+    const people = company.people.map((who) =>
+      who.department === "purchasing" ? { ...who, name: "Avery Lin", title: "Buyer" } : who,
+    );
+    const result = await purchasingTools({
+      desk: desk(),
+      company: { ...company, people },
+    }).recordReceipt.execute(RECEIPT, call("lead"), BACKGROUND_CONTEXT);
+    expect(text(result)).toContain("pass the report to Avery Lin, Buyer");
+    expect(text(result)).not.toContain("Rosa");
+  });
+
   it("refuses a request when the sender is not on record", async () => {
     for (const sender of [
       undefined,
@@ -307,7 +319,7 @@ describe("raise_purchase_order", () => {
       expect(isError(result)).toBe(true);
       expect(details(result).code).toBe("unrequested");
       expect(text(result)).toContain("Nothing was ordered.");
-      expect(text(result)).toContain(lead);
+      expect(text(result)).toContain(`pass the request to ${lead}`);
       expect(await purchasing.listPurchaseOrders()).toHaveLength(4);
     }
   });
@@ -683,6 +695,9 @@ describe("record_receipt", () => {
       expect(isError(result)).toBe(true);
       expect(details(result).code).toBe("unknown_reporter");
       expect(text(result)).toContain("Nothing was recorded.");
+      // Someone off the record is not a dead end: the report goes to the purchasing lead, named from
+      // the company record.
+      expect(text(result)).toContain(`pass the report to ${lead}`);
       const [order] = await purchasing.listPurchaseOrders({ id: "PO-1003" });
       expect(order?.lines[0]?.receivedQuantity).toBe(0);
     }
