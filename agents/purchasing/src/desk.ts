@@ -82,10 +82,18 @@ export interface PurchaseOrderLine {
 }
 
 /**
- * `draft`: refused for the spending limit and saved, not sent; only a person's approval places it.
- * `placed`: sent to the supplier. `partially_received` and `received` follow receipts.
+ * `draft`: refused for the spending limit and saved, not sent; only a person's approval places it. An
+ * order recalled into a refused split's draft is a draft too, noted with `recalledInto`, and is never
+ * placed on its own. `placed`: sent to the supplier. `partially_received` and `received` follow
+ * receipts.
  */
 export type OrderStatus = "draft" | "placed" | "partially_received" | "received";
+
+/**
+ * Why an order is raised: `reorder_point` for items the desk shows at or below their reorder point,
+ * `request` because a person on the company record asked for it.
+ */
+export type OrderReason = "reorder_point" | "request";
 
 export interface PurchaseOrder {
   readonly id: string;
@@ -101,7 +109,28 @@ export interface PurchaseOrder {
   readonly expectedOn: string | null;
   /** Placed over the limit with a person's approval. */
   readonly approved: boolean;
+  /** Why it was raised; absent on orders that predate the reason. */
+  readonly reason?: OrderReason;
+  /** For a `request`: the person on the company record who asked, as the host verified them. */
+  readonly requestedBy?: string;
+  /** For a `request`: the message the request came from. */
+  readonly requestSource?: string;
+  /**
+   * Set when a refused split recalled this order: the draft that now holds its lines. A recalled
+   * order is a draft that is never placed on its own.
+   */
+  readonly recalledInto?: string;
+  /** On a refused split's draft: the orders recalled into it, with who asked for each. */
+  readonly recalled?: readonly RecalledOrder[];
 }
+
+/** An order a refused split recalled into a draft, and who had asked for it. */
+// A type, not an interface, so a tool can hand it to the model as JSON details.
+export type RecalledOrder = {
+  readonly id: string;
+  readonly requestedBy?: string;
+  readonly requestSource?: string;
+};
 
 /** Goods recorded as received against an order, and who said they arrived. */
 export interface GoodsReceipt {
@@ -135,6 +164,34 @@ export interface SupplierApproval {
 export interface OrderLineInput {
   readonly itemId: string;
   readonly quantity: number;
+}
+
+/** An order to raise. The model names the supplier, items, quantities and reason; the tool the rest. */
+export interface RaisePurchaseOrderInput {
+  readonly supplierId: string;
+  readonly lines: readonly OrderLineInput[];
+  readonly reason: OrderReason;
+  /**
+   * For a `request`: the person on the company record who asked. Set by the tool from the verified
+   * sender, never by the model; absent when the sender is nobody on the record.
+   */
+  readonly requestedBy?: string;
+  /** For a `request`: the message the request came from. */
+  readonly requestSource?: string;
+}
+
+/** Goods to record as received against a placed order. */
+export interface RecordReceiptInput {
+  readonly purchaseOrderId: string;
+  readonly lines: readonly OrderLineInput[];
+  /**
+   * The person on the company record who reported the delivery. Set by the tool from the verified
+   * sender, never by the model; absent when the sender is nobody on the record.
+   */
+  readonly reportedBy?: string;
+  /** The message the report came from. */
+  readonly source: string;
+  readonly packingSlip?: string;
 }
 
 export interface OrderFilter {
@@ -182,8 +239,17 @@ export interface PurchasingDesk {
   listSuppliers(): Promise<readonly SupplierRecord[]>;
   compareSuppliers(itemId: string): Promise<SupplierComparison>;
   listPurchaseOrders(filter?: OrderFilter): Promise<readonly PurchaseOrder[]>;
+  /**
+   * Prices and places an order inside the limit, or refuses it. A host desk must refuse with
+   * `unrequested` an order whose reason is `reorder_point` for an item that is not at or below its
+   * reorder point, or `request` with no `requestedBy`. When it refuses a split order (`split_order`),
+   * it must recall the orders placed with that supplier that day without a person's approval and not
+   * yet received into the refused draft, so the draft is the whole order a person approves, or refuse
+   * to place the split at all; it must never leave the first part out on its own. An order a person
+   * approved is never recalled: it stays placed.
+   */
   raisePurchaseOrder(
-    input: { readonly supplierId: string; readonly lines: readonly OrderLineInput[] },
+    input: RaisePurchaseOrderInput,
     options: { readonly requestId: string },
   ): Promise<PurchaseOrder>;
   /**
@@ -209,14 +275,9 @@ export interface PurchasingDesk {
     },
     options: { readonly requestId: string },
   ): Promise<SupplierApproval>;
+  /** Records a receipt; refuses `unknown_reporter` when `reportedBy` is absent or blank. */
   recordReceipt(
-    input: {
-      readonly purchaseOrderId: string;
-      readonly lines: readonly OrderLineInput[];
-      readonly reportedBy: string;
-      readonly source: string;
-      readonly packingSlip?: string;
-    },
+    input: RecordReceiptInput,
     options: { readonly requestId: string },
   ): Promise<GoodsReceipt>;
 }
@@ -235,7 +296,9 @@ export type DeskRefusal =
   | "already_approved"
   | "not_placed"
   | "not_on_order"
-  | "over_received";
+  | "over_received"
+  | "unrequested"
+  | "unknown_reporter";
 
 /** A refusal the model reads: an unknown item, an order over the limit, more than was ordered. */
 export class PurchasingDeskError extends Error {
@@ -414,6 +477,11 @@ interface OrderState {
   placedOn: string | null;
   expectedOn: string | null;
   approved: boolean;
+  reason?: OrderReason;
+  requestedBy?: string;
+  requestSource?: string;
+  recalledInto?: string;
+  recalled?: readonly RecalledOrder[];
 }
 
 /** An in-memory desk: the company's suppliers and catalogue, demonstration stock, nothing sent. */
@@ -458,6 +526,9 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
   const snapshot = (order: OrderState): PurchaseOrder => ({
     ...order,
     lines: order.lines.map((line) => ({ ...line })),
+    ...(order.recalled === undefined
+      ? {}
+      : { recalled: order.recalled.map((entry) => ({ ...entry })) }),
   });
 
   const findSupplier = (query: string): SupplierState => {
@@ -512,6 +583,52 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
       .filter((line) => line.itemId === itemId)
       .reduce((total, line) => total + line.quantity - line.receivedQuantity, 0);
 
+  const needsReorder = (itemId: string, reorderPoint: number): boolean =>
+    (onHand.get(itemId) ?? 0) + onOrderOf(itemId) <= reorderPoint;
+
+  /**
+   * Refuses an order nobody asked for: a `request` with no person on the record behind it, or a
+   * `reorder_point` order for an item the stock does not show at or below its reorder point.
+   */
+  const requireAsked = (input: RaisePurchaseOrderInput): void => {
+    if (input.reason === "request") {
+      if ((input.requestedBy ?? "").trim() === "") {
+        throw new PurchasingDeskError(
+          "unrequested",
+          "Nobody on the company record asked for this order: the message it came from is not from a person the company record names, so it cannot go in as their request. Nothing was ordered.",
+        );
+      }
+      if ((input.requestSource ?? "").trim() === "") {
+        throw new PurchasingDeskError(
+          "invalid",
+          "Say which message the request came from (requestSource): its channel, sender and when. Nothing was ordered.",
+        );
+      }
+      return;
+    }
+    if (input.reason !== "reorder_point") {
+      throw new PurchasingDeskError(
+        "invalid",
+        `${JSON.stringify(input.reason)} is not a reason for an order: give reorder_point or request. Nothing was ordered.`,
+      );
+    }
+    const notDue = input.lines
+      .map((line) => findItem(line.itemId))
+      .filter((item) => !needsReorder(item.id, item.reorderPoint));
+    if (notDue.length > 0) {
+      const which = notDue
+        .map(
+          (item) =>
+            `${item.id} (${onHand.get(item.id) ?? 0} on hand, ${onOrderOf(item.id)} on order, reorder point ${item.reorderPoint})`,
+        )
+        .join(", ");
+      throw new PurchasingDeskError(
+        "unrequested",
+        `Not at its reorder point: ${which}. An order for it needs a person on the company record to ask for it. Nothing was ordered.`,
+      );
+    }
+  };
+
   /** Each line priced from the supplier's own price for it: the model never supplies a cost. */
   const price = (supplier: SupplierState, lines: readonly OrderLineInput[]) => {
     if (lines.length === 0) {
@@ -563,6 +680,36 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
     order.approved = approved;
   };
 
+  /**
+   * Takes a placed order back into a refused draft: its lines join the draft's (a repeated item adds
+   * its quantity), and the order becomes a draft noted with where its lines went.
+   */
+  const recall = (order: OrderState, into: OrderState): void => {
+    for (const line of order.lines) {
+      const same = into.lines.find((candidate) => candidate.itemId === line.itemId);
+      if (same === undefined) {
+        into.lines.push({ ...line, receivedQuantity: 0 });
+      } else {
+        same.quantity += line.quantity;
+        same.lineTotalCents += line.lineTotalCents;
+      }
+    }
+    into.totalCents = into.lines.reduce((total, line) => total + line.lineTotalCents, 0);
+    // Who asked for the recalled part travels with its lines, so the draft still says who wanted it.
+    into.recalled = [
+      ...(into.recalled ?? []),
+      {
+        id: order.id,
+        ...(order.requestedBy === undefined ? {} : { requestedBy: order.requestedBy }),
+        ...(order.requestSource === undefined ? {} : { requestSource: order.requestSource }),
+      },
+    ];
+    order.status = "draft";
+    order.placedOn = null;
+    order.expectedOn = null;
+    order.recalledInto = into.id;
+  };
+
   return {
     async listStock(): Promise<readonly StockLevel[]> {
       return catalog.map((item) => {
@@ -579,7 +726,7 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
           onOrder: ordered,
           reorderPoint: item.reorderPoint,
           reorderQuantity: item.reorderQuantity,
-          needsReorder: held + ordered <= item.reorderPoint,
+          needsReorder: needsReorder(item.id, item.reorderPoint),
         };
       });
     },
@@ -609,20 +756,25 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
 
     async listPurchaseOrders(filter: OrderFilter = {}): Promise<readonly PurchaseOrder[]> {
       const supplier = filter.supplier?.trim().toLowerCase();
-      return orders
-        .filter(
-          (order) =>
-            filter.id === undefined || order.id.toLowerCase() === filter.id.trim().toLowerCase(),
-        )
-        .filter(
-          (order) =>
-            supplier === undefined ||
-            supplier === "" ||
-            order.supplierId.toLowerCase() === supplier ||
-            order.supplierName.toLowerCase().includes(supplier),
-        )
-        .filter((order) => filter.status === undefined || order.status === filter.status)
-        .map(snapshot);
+      return (
+        orders
+          .filter(
+            (order) =>
+              filter.id === undefined || order.id.toLowerCase() === filter.id.trim().toLowerCase(),
+          )
+          .filter(
+            (order) =>
+              supplier === undefined ||
+              supplier === "" ||
+              order.supplierId.toLowerCase() === supplier ||
+              order.supplierName.toLowerCase().includes(supplier),
+          )
+          .filter((order) => filter.status === undefined || order.status === filter.status)
+          // A recalled order is a draft only on paper: its lines are on the draft that recalled it, so
+          // it is not one of the drafts waiting for a person. Asked for by its number, it still answers.
+          .filter((order) => filter.status !== "draft" || order.recalledInto === undefined)
+          .map(snapshot)
+      );
     },
 
     async raisePurchaseOrder(input, { requestId }): Promise<PurchaseOrder> {
@@ -638,6 +790,7 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
         );
       }
       const lines = price(supplier, input.lines);
+      requireAsked(input);
       const totalCents = lines.reduce((total, line) => total + line.lineTotalCents, 0);
       const today = isoDate(clock());
       const order: OrderState = {
@@ -651,6 +804,13 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
         placedOn: null,
         expectedOn: null,
         approved: false,
+        reason: input.reason,
+        ...(input.reason === "request" && input.requestedBy !== undefined
+          ? { requestedBy: input.requestedBy.trim() }
+          : {}),
+        ...(input.reason === "request" && input.requestSource !== undefined
+          ? { requestSource: input.requestSource.trim() }
+          : {}),
       };
 
       // The limit applies to what goes to one supplier in one day, so an order cut into pieces that
@@ -668,10 +828,38 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
           { draftId: order.id, totalCents },
         );
       } else if (earlier + totalCents > limit) {
+        // The split's earlier parts come back into this draft, so the person approves the whole order
+        // and no part of a split is left placed on its own. Only orders placed without a person's
+        // approval and not yet received are parts of a split: an order a person approved stays placed,
+        // because a routine call never undoes their decision, and goods that arrived stay received.
+        const recalled = placedToday.filter(
+          (other) => other.status === "placed" && !other.approved,
+        );
+        for (const other of recalled) recall(other, order);
+        const approvedKept = placedToday.filter(
+          (other) => other.status !== "draft" && other.approved,
+        );
+        const receivedKept = placedToday.filter(
+          (other) => other.status !== "draft" && !other.approved,
+        );
+        const ids = (list: readonly OrderState[]) => list.map((other) => other.id).join(", ");
+        const recallText =
+          recalled.length === 0
+            ? ""
+            : ` ${ids(recalled)}, placed earlier today, ${recalled.length === 1 ? "has" : "have"} been recalled into ${order.id}, which now holds the whole order for ${money(order.totalCents)}.`;
+        const approvedText =
+          approvedKept.length === 0
+            ? ""
+            : ` ${ids(approvedKept)} ${approvedKept.length === 1 ? "was" : "were"} placed with a person's approval and stay${approvedKept.length === 1 ? "s" : ""} placed.`;
+        const receivedText =
+          receivedKept.length === 0
+            ? ""
+            : ` ${ids(receivedKept)} ${receivedKept.length === 1 ? "has" : "have"} already been received in part or in full and stay${receivedKept.length === 1 ? "s" : ""} as ${receivedKept.length === 1 ? "it is" : "they are"}.`;
+        const keptText = `${approvedText}${receivedText}`;
         refusal = new PurchasingDeskError(
           "split_order",
-          `Needs approval: ${supplier.name} already has ${placedToday.map((other) => other.id).join(", ")} placed today for ${money(earlier)}; with this order (${money(totalCents)}) that is ${money(earlier + totalCents)}, over the ${money(limit)} a purchase order may reach without a person's approval. Orders are not split to stay under the limit. This one is saved as draft ${order.id} and has not been sent. Nothing was ordered.`,
-          { draftId: order.id, totalCents },
+          `Needs approval: ${supplier.name} already has ${placedToday.map((other) => other.id).join(", ")} placed today for ${money(earlier)}; with this order (${money(totalCents)}) that is ${money(earlier + totalCents)}, over the ${money(limit)} a purchase order may reach without a person's approval. Orders are not split to stay under the limit.${recallText}${keptText} Draft ${order.id} is saved and has not been sent. Nothing was ordered.`,
+          { draftId: order.id, totalCents: order.totalCents },
         );
       }
       orders.push(order);
@@ -690,6 +878,12 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
       if (prior !== undefined) return prior;
 
       const order = findOrder(input.draftId);
+      if (order.recalledInto !== undefined) {
+        throw new PurchasingDeskError(
+          "not_draft",
+          `${order.id} was recalled into ${order.recalledInto} when a split order was refused: its lines are on ${order.recalledInto}, so it is never placed on its own. Nothing was placed.`,
+        );
+      }
       if (order.status !== "draft") {
         throw new PurchasingDeskError(
           "not_draft",
@@ -759,21 +953,29 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
       const prior = receipts.get(requestId);
       if (prior !== undefined) return prior;
 
-      const reportedBy = input.reportedBy.trim();
+      const reportedBy = (input.reportedBy ?? "").trim();
       const source = input.source.trim();
-      if (reportedBy === "" || source === "") {
+      if (reportedBy === "") {
+        throw new PurchasingDeskError(
+          "unknown_reporter",
+          "A receipt is recorded only from the report of a person on the company record, and the message this one came from is not from anyone the record names. Nothing was recorded.",
+        );
+      }
+      if (source === "") {
         throw new PurchasingDeskError(
           "invalid",
-          "A receipt is recorded from a named person's report: give who reported the delivery (reportedBy) and the message the report came from (source). Nothing was recorded.",
+          "Say which message the report came from (source): its channel, sender and when. Nothing was recorded.",
         );
       }
       const order = findOrder(input.purchaseOrderId);
       if (order.status !== "placed" && order.status !== "partially_received") {
         throw new PurchasingDeskError(
           "not_placed",
-          order.status === "draft"
-            ? `${order.id} is a draft that has not been sent, so nothing can arrive against it.`
-            : `${order.id} is already fully received. Check the purchase order number on the packing slip.`,
+          order.recalledInto !== undefined
+            ? `${order.id} was recalled into ${order.recalledInto} and has not been sent, so nothing can arrive against it.`
+            : order.status === "draft"
+              ? `${order.id} is a draft that has not been sent, so nothing can arrive against it.`
+              : `${order.id} is already fully received. Check the purchase order number on the packing slip.`,
         );
       }
       if (input.lines.length === 0) {

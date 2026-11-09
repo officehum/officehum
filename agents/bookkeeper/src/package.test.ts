@@ -226,6 +226,20 @@ describe("bookkeeper package (RASF-3126)", () => {
     expect(roleManifest.id).toBe("bookkeeper");
   });
 
+  it("purchasingLead reads the department", () => {
+    // Retitled, the lead is still the person in purchasing; a title alone makes nobody the lead.
+    const people = company.people.map((who) =>
+      who.department === "purchasing"
+        ? { ...who, title: "Supplies Lead" }
+        : who.id === "noah-kim"
+          ? { ...who, title: "Purchasing Assistant" }
+          : who,
+    );
+    expect(purchasingLead({ ...company, people })?.id).toBe("rosa-martinez");
+    const nobody = people.filter((who) => who.department !== "purchasing");
+    expect(purchasingLead({ ...company, people: nobody })).toBeUndefined();
+  });
+
   it("takes suppliers and the catalogue from the company, and its demo bills and scripts agree", () => {
     expect(financeLead(company)).toBeDefined();
     expect(purchasingLead(company)).toBeDefined();

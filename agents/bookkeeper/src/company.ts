@@ -23,6 +23,8 @@ export interface Person {
   readonly id: string;
   readonly name: string;
   readonly title: string;
+  /** Where they work: `office`, `maintenance` or `purchasing`, as the company record lists them. */
+  readonly department: string;
   readonly email: string;
   readonly decides: readonly string[];
 }
@@ -72,9 +74,12 @@ export function financeLead(company: CompanyFacts): Person | undefined {
   return company.people.find((candidate) => /finance/i.test(candidate.title));
 }
 
-/** The person who decides purchasing, who owns a new supplier. Found the same way. */
+/**
+ * The person who decides purchasing, who owns a new supplier: whoever the company record puts in the
+ * `purchasing` department, so a retitled job still finds them.
+ */
 export function purchasingLead(company: CompanyFacts): Person | undefined {
-  return company.people.find((candidate) => /purchasing/i.test(candidate.title));
+  return company.people.find((candidate) => candidate.department === "purchasing");
 }
 
 export { personLabel };

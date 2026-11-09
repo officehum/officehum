@@ -19,10 +19,11 @@
  */
 
 import { fileURLToPath } from "node:url";
-import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
+import { type Approver, type DefinedRole, defineRole, type SenderResolver } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
 import { DEMO_NOW, fakePurchasingDesk, type PurchasingDesk } from "./desk.js";
+import { purchaseOrderReplyCheck } from "./reply-check.js";
 import { purchasingTools } from "./tools.js";
 
 export {
@@ -58,11 +59,15 @@ export {
   type OfferLine,
   type OrderFilter,
   type OrderLineInput,
+  type OrderReason,
   type OrderStatus,
   type PurchaseOrder,
   type PurchaseOrderLine,
   type PurchasingDesk,
   PurchasingDeskError,
+  type RaisePurchaseOrderInput,
+  type RecalledOrder,
+  type RecordReceiptInput,
   type StockLevel,
   type SupplierApproval,
   type SupplierComparison,
@@ -70,6 +75,7 @@ export {
   type SupplierRecord,
   supplierFacts,
 } from "./desk.js";
+export { purchaseOrderIds, purchaseOrderReplyCheck } from "./reply-check.js";
 export {
   type CompanySection,
   type PurchasingToolDependencies,
@@ -97,6 +103,12 @@ export interface PurchasingOptions {
    * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock with a host's desk.
    */
   readonly now?: () => Date;
+  /**
+   * Who each call's work came from, as the host verified it. An order's requester and a delivery's
+   * reporter are the person on the company record it names. Omitted: every sender is unknown, so a
+   * requested order and a receipt are both refused.
+   */
+  readonly sender?: SenderResolver;
 }
 
 export default function purchasing(options: PurchasingOptions = {}): DefinedRole {
@@ -108,7 +120,11 @@ export default function purchasing(options: PurchasingOptions = {}): DefinedRole
   // The demonstration desk prices and limits from the company's own catalogue and limit, so a first
   // run and a real one refuse the same order.
   const desk = options.desk ?? fakePurchasingDesk({ company, now });
-  const tools = purchasingTools({ desk, company });
+  const tools = purchasingTools({
+    desk,
+    company,
+    ...(options.sender === undefined ? {} : { sender: options.sender }),
+  });
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
@@ -132,6 +148,8 @@ export default function purchasing(options: PurchasingOptions = {}): DefinedRole
       po_over_limit: tools.poApprovalFacts,
       new_supplier: tools.newSupplierApprovalFacts,
     },
+    // A purchase order number named only in a reply reaches no tool; this checks it against the desk.
+    hooks: [purchaseOrderReplyCheck(desk)],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });
