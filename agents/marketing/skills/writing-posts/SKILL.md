@@ -20,9 +20,9 @@ approved exactly what it says.
    that channel and text and decides. If the desk says the text is not the draft's, use the text it
    gives back.
 6. **While it waits**, say it is with the person who approves marketing, by name, as the approval's
-   result names them; do not say when they will answer. **If approved**, give the publication's id from the receipt. **If
-   declined**, say plainly it was declined and has not been published. The decline is the
-   approver's own answer: never offer to take the same text back to them. Offer to edit the draft,
-   or to ask again later with something new.
+   result names them; do not say when they will answer. **If approved**, give the publication's id
+   from the receipt. **If declined**, say plainly it was declined and has not been published. The
+   decline is the approver's own answer: never offer to take the same text back to them. Offer to
+   edit the draft, or to ask again later with something new.
 
 A press release or a media request is the approver's: draft nothing for the media without them.
