@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { findPeople, loadCompanyFacts, personLabel } from "./company.js";
+import {
+  findPeople,
+  loadCompanyFacts,
+  personLabel,
+  senderPerson,
+  type VerifiedSender,
+} from "./company.js";
 
 function fileWith(content: string): URL {
   const path = join(mkdtempSync(join(tmpdir(), "company-")), "facts.json");
@@ -69,5 +75,37 @@ describe("personLabel", () => {
     expect(personLabel(undefined, "the person who owns finance")).toBe(
       "the person who owns finance",
     );
+  });
+});
+
+describe("senderPerson", () => {
+  const staff = {
+    people: [
+      { id: "dana", name: "Dana Reyes", title: "Managing Director", email: "dana@example.test" },
+      { id: "lee", name: "Lee Park", title: "Crew Lead", phone: "+1 503 555 0143" },
+    ],
+  };
+  const from = (origin: VerifiedSender["origin"], contact: string): VerifiedSender => ({
+    origin,
+    channel: "chat",
+    contact,
+  });
+
+  it("senderPerson matches an internal sender by person id", () => {
+    expect(senderPerson(staff, from("internal", "Dana"))?.id).toBe("dana");
+    // An id is an office-internal name: an outside contact that happens to spell one is nobody.
+    expect(senderPerson(staff, from("external", "dana"))).toBeUndefined();
+  });
+
+  it("matches an external sender by email ignoring case", () => {
+    expect(senderPerson(staff, from("external", "DANA@Example.test"))?.id).toBe("dana");
+    expect(senderPerson(staff, from("external", "+1 503 555 0143"))?.id).toBe("lee");
+  });
+
+  it("is undefined for an unknown contact", () => {
+    expect(senderPerson(staff, from("external", "someone@else.test"))).toBeUndefined();
+    // Exact, not partial: a contact that only contains an address is not that address.
+    expect(senderPerson(staff, from("external", "x-dana@example.test"))).toBeUndefined();
+    expect(senderPerson(staff, undefined)).toBeUndefined();
   });
 });

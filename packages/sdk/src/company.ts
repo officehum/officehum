@@ -16,6 +16,48 @@ export interface CompanyPerson {
   readonly aliases?: readonly string[];
 }
 
+/**
+ * Who is asking, as the host verified it: the channel the work arrived on and the contact it came
+ * from (a person's id for an internal ticket, an email address or phone number for an outside one).
+ * Office Hum reads it from the ticket's provenance; a role never takes it from a tool argument or
+ * from message text, which anyone can write.
+ */
+export interface VerifiedSender {
+  readonly origin: "internal" | "external";
+  readonly channel: string;
+  readonly contact: string;
+}
+
+/**
+ * The sender of the work a tool call or hook belongs to, given the call's conversation and task (a
+ * Pi Durable `HookApi` or tool context carries both). `undefined` when the host does not know: the
+ * sender is then unknown, exactly as for a role given no resolver at all.
+ */
+export type SenderResolver = (call: {
+  readonly conversationId: unknown;
+  readonly taskId: unknown;
+}) => Promise<VerifiedSender | undefined>;
+
+/**
+ * The person on the company record a verified sender is: by id for an internal sender, and by email
+ * or phone for any sender, each compared whole and ignoring case. `undefined` for no sender, or one
+ * the record does not know. An id only names a colleague inside the office, so an outside contact
+ * that happens to spell one is nobody.
+ */
+export function senderPerson<P extends CompanyPerson & { email?: string; phone?: string }>(
+  company: { readonly people: readonly P[] },
+  sender: VerifiedSender | undefined,
+): P | undefined {
+  if (sender === undefined) return undefined;
+  const contact = sender.contact.toLowerCase();
+  const same = (value: string | undefined): boolean =>
+    value !== undefined && value.toLowerCase() === contact;
+  return company.people.find(
+    (person) =>
+      (sender.origin === "internal" && same(person.id)) || same(person.email) || same(person.phone),
+  );
+}
+
 /** The company facts generated into a role package. Throws when the copy is missing or is not JSON. */
 export function loadCompanyFacts<T extends object>(url: URL): T {
   const path = fileURLToPath(url);

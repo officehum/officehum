@@ -56,6 +56,9 @@ export {
   findPeople,
   loadCompanyFacts,
   personLabel,
+  type SenderResolver,
+  senderPerson,
+  type VerifiedSender,
 } from "./company.js";
 export {
   type CommandEngineOptions,
