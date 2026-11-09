@@ -245,10 +245,22 @@ A call the approval does not apply to (its `when` holds false) gets no facts, so
 them refuses every call the condition exempts. Give a facts reader only to an approval that applies to
 every call of its tool, or let the tool proceed without facts when no approval applied. `defineRole`
 also exposes the readers as `DefinedRole.approvalFacts` (always set, `{}` when the role has none), so a
-host's own gate can read the same facts. The office gate does not use them yet: until it records
-facts with the request (RASF-3486, Task 6c), office mode shows the person only the tool's arguments
-(for `pay_vendor_bill`, `{ billId }`) and passes the tool no facts, so a gated tool that requires
-them refuses there.
+host's own gate can read the same facts.
+
+**The office gate uses the same readers** (RASF-3486). `loadRole` exposes them as
+`LoadedRole.approvalFacts`, and `registerOfficeHooks` passes them to the office's gate. When the gate
+records a request for a declaration with a reader, it reads the facts once and stores them on the
+board row (`approvals.facts_json`, board migration 8). The Inbox item carries them as `facts`
+(`{ summary, facts }`, or `null`), so a person sees the bill and not only `{ billId }`. A reader that
+throws blocks the call with its message and records nothing. A repeat of a waiting call is the same
+ask, and the desk is not read again. The arguments hash ignores `officehumApprovedFacts`. On a granted
+decision the gate returns the arguments with that key set to the row's stored facts, so the tool is
+bound to what the person saw, and its desk refuses if the record has changed since. The office gate
+strips a model-supplied key on every other path: no ticket, no declaration applies, a declaration with
+no reader, a granted row that holds no facts (rows asked before migration 8 read `facts: null`), and
+every blocked call. A red-team trial runs the office gate with the role's own gate omitted, so this
+gate must strip the key by itself. In office-mode evals, the runner's scripted decision reads the facts
+the same way before it writes its row, so a scripted yes binds the tool exactly as a person's would.
 
 Installing it on any Pi Durable harness:
 
