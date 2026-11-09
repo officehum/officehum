@@ -102,6 +102,18 @@ describe("senderPerson", () => {
     expect(senderPerson(staff, from("external", "+1 503 555 0143"))?.id).toBe("lee");
   });
 
+  it("matches an E.164 phone against a formatted one on the record", () => {
+    // The SMS gateway records `+15035550143`; the company record writes `+1 503 555 0143`.
+    expect(senderPerson(staff, from("external", "+15035550143"))?.id).toBe("lee");
+    expect(senderPerson(staff, from("external", "+1 (503) 555-0143"))?.id).toBe("lee");
+  });
+
+  it("does not match a phone that differs in a digit or is only a prefix", () => {
+    expect(senderPerson(staff, from("external", "+15035550144"))).toBeUndefined();
+    expect(senderPerson(staff, from("external", "+1503555014"))).toBeUndefined();
+    expect(senderPerson(staff, from("external", "15035550143"))).toBeUndefined();
+  });
+
   it("is undefined for an unknown contact", () => {
     expect(senderPerson(staff, from("external", "someone@else.test"))).toBeUndefined();
     // Exact, not partial: a contact that only contains an address is not that address.

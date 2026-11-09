@@ -29,9 +29,11 @@ export interface VerifiedSender {
 }
 
 /**
- * The sender of the work a tool call or hook belongs to, given the call's conversation and task (a
- * Pi Durable `HookApi` or tool context carries both). `undefined` when the host does not know: the
- * sender is then unknown, exactly as for a role given no resolver at all.
+ * The sender of the work a tool call or hook belongs to, given the call's conversation and task.
+ * Both are taken from the caller's Pi Durable hook or tool context (a `HookApi` carries both),
+ * never from a tool argument: an id the model chose could name another conversation's sender.
+ * `undefined` when the host does not know: the sender is then unknown, exactly as for a role given
+ * no resolver.
  */
 export type SenderResolver = (call: {
   readonly conversationId: unknown;
@@ -39,10 +41,11 @@ export type SenderResolver = (call: {
 }) => Promise<VerifiedSender | undefined>;
 
 /**
- * The person on the company record a verified sender is: by id for an internal sender, and by email
- * or phone for any sender, each compared whole and ignoring case. `undefined` for no sender, or one
- * the record does not know. An id only names a colleague inside the office, so an outside contact
- * that happens to spell one is nobody.
+ * The person on the company record a verified sender is: by id for an internal sender, by email for
+ * any sender (whole, ignoring case), and by phone for any sender, compared on a leading "+" and the
+ * digits only, so the gateway's E.164 `+15035550143` is the record's `+1 503 555 0143`. Every match
+ * is whole, never a prefix. `undefined` for no sender, or one the record does not know. An id only
+ * names a colleague inside the office, so an outside contact that happens to spell one is nobody.
  */
 export function senderPerson<P extends CompanyPerson & { email?: string; phone?: string }>(
   company: { readonly people: readonly P[] },
@@ -52,10 +55,22 @@ export function senderPerson<P extends CompanyPerson & { email?: string; phone?:
   const contact = sender.contact.toLowerCase();
   const same = (value: string | undefined): boolean =>
     value !== undefined && value.toLowerCase() === contact;
+  const phone = phoneDigits(sender.contact);
+  const samePhone = (value: string | undefined): boolean =>
+    phone !== undefined && value !== undefined && phoneDigits(value) === phone;
   return company.people.find(
     (person) =>
-      (sender.origin === "internal" && same(person.id)) || same(person.email) || same(person.phone),
+      (sender.origin === "internal" && same(person.id)) ||
+      same(person.email) ||
+      samePhone(person.phone),
   );
+}
+
+/** A phone number as a leading "+" and its digits; `undefined` when it holds no digit at all. */
+function phoneDigits(value: string): string | undefined {
+  const digits = value.replace(/\D/g, "");
+  if (digits === "") return undefined;
+  return value.trim().startsWith("+") ? `+${digits}` : digits;
 }
 
 /** The company facts generated into a role package. Throws when the copy is missing or is not JSON. */
