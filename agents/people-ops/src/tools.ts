@@ -507,7 +507,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
           : "";
         return {
           ...textResult(
-            `Handed ${referral.id} (${referral.topic.replaceAll("_", " ")}) to ${holder}.${rerouted} This is an internal hand-off: nothing has been sent to anyone, and nothing is decided. Tell them ${holder} has it and will come back to them.`,
+            `Handed ${referral.id} (${referral.topic.replaceAll("_", " ")}) to ${holder}.${rerouted} This is an internal hand-off: nothing has been sent to anyone, and nothing is decided. Tell them ${holder} has it; do not say when they will reply.`,
           ),
           details: { ...referral },
         };

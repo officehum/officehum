@@ -28,8 +28,8 @@ remember it.
    thing the limit exists to stop.
 6. **Refused for the supplier.** A supplier not on the approved list is never ordered from. Use the
    usual supplier from `list_stock`, or call `request_new_supplier` if someone wants that supplier.
-7. **While an approval waits**, say the order is with the person who decides purchasing, by name, and
-   that you will come back with their answer. **If approved**, the receipt shows the order placed;
+7. **While an approval waits**, say the order is with the person who decides purchasing, by name, as
+   the approval's result names them; do not say when they will answer. **If approved**, the receipt shows the order placed;
    give its number and expected date. **If declined**, say plainly the order was declined and has
    not been placed, and what happens next.
 

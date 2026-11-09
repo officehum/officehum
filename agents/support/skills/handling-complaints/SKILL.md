@@ -17,7 +17,8 @@ it, you do not remember it.
    `missed_visit`; an injury, a hazard, a chemical or a near miss is `safety`; broken or damaged
    property is `damage`; a charge is `billing`; a complaint about a person is `staff`.
 5. **Acknowledge it.** Apologise for the experience without admitting fault before a person has
-   looked at it. Give the case number and say who will come back and by when.
+   looked at it. Give the case number and name who decides it, from the handbook; say it has gone to
+   them only if a tool result says so.
 6. **Be fair to everyone.** Treat similar complaints alike. A client who complains is treated no
    differently afterwards. A member of staff complained about is never the person who reviews it.
 7. **Keep the client informed.** Answer "where is my case" from `list_cases`: what it waits for and

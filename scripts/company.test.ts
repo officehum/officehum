@@ -105,6 +105,23 @@ describe("the generated company copies", () => {
     }
   });
 
+  it("the handbook makes no promise of contact", () => {
+    // A role can say a person has a request only when a tool result says so (RASF-3482), so the
+    // handbook it reads must never tell it to promise that someone will reply.
+    const promises = [
+      "has gone to a person",
+      "by when they will come back",
+      "will come back to them",
+      "come back to you",
+    ];
+    for (const file of renderAll(root)) {
+      const text = file.content.toLowerCase();
+      for (const promise of promises) {
+        expect(text.includes(promise), `${file.path} says "${promise}"`).toBe(false);
+      }
+    }
+  });
+
   it("carries the price book into the facts a role's code reads", () => {
     const facts = JSON.parse(renderFacts(readSource(root))) as {
       priceBook: { id: string; unitPriceCents: number }[];

@@ -30,11 +30,12 @@ client did not have before: an answer to their question, a measured figure, a da
   approval. Log the touch first; the reply that follows is what the client reads, so the lines and
   the total go in it.
 - A client who wants a **lower price** — a percentage or an amount off — is asking for a discount: a
-  person's decision, and the reply says the request has gone to them.
+  person's decision, and the reply says the request is with them only once the approval's result says
+  so.
 - A client who wants a **start date** or a **different schedule** is asking operations.
 - A client who **disagrees with an invoice** is asking finance.
-- A client who says the **work was short** is making a complaint: the person the escalation path
-  names for complaints hears it, and the reply says so.
+- A client who says the **work was short** is making a complaint: the reply names the person the
+  escalation path names for complaints, and says it has gone to them only if a tool result says so.
 
 Following up on a quote is not licence to answer any of those yourself, and a follow-up is a bad place
 to promise something to keep the conversation alive.

@@ -154,6 +154,11 @@ describe("purchasing package", () => {
     for (const dispatch of roleManifest.dispatches ?? []) {
       expect(accepted.has(dispatch.type)).toBe(false);
     }
+    expect((roleManifest.dispatches ?? []).map((dispatch) => dispatch.type)).toEqual([
+      "payables.bill",
+      "finance.review",
+      "operations.schedule",
+    ]);
   });
 
   it("names no company fact outside the generated handbook, so another company can run it", () => {

@@ -78,8 +78,12 @@
       "when": "a crew's schedule, a job or a shift needs changing"
     },
     {
+      "type": "invoice.question",
+      "when": "someone asks about a client's invoice or a payment"
+    },
+    {
       "type": "finance.review",
-      "when": "someone asks about a client's invoice, a payment or a credit"
+      "when": "someone asks for a credit for a client, or disputes a client's invoice"
     },
     {
       "type": "support.request",
@@ -89,7 +93,7 @@
   "mayNot": [
     {
       "action": "Answer, promise or discuss anyone's pay, a raise or a pay change",
-      "instead": "hand it with refer_to_person (topic pay) to the person the company names for pay, and say they will come back"
+      "instead": "hand it with refer_to_person (topic pay) to the person the company names for pay; say it has gone to them only if the tool result says so"
     },
     {
       "action": "Discipline anyone, issue a warning, or decide or announce a termination",
@@ -117,7 +121,7 @@
     },
     {
       "action": "Answer for another team: a client's invoice, a credit, a price, a schedule or a supplier",
-      "instead": "name the team and the person who holds that title, and say they will come back"
+      "instead": "name the team and who decides it, from the handbook; say it has gone to them only if a tool result says so"
     },
     {
       "action": "Give legal advice, or say whether the law protects a request",
