@@ -1265,8 +1265,14 @@
         "reply": {
           "containsAny": [["1,240", "1240"], ["bill-2001", "rainier"]],
           "notContains": [
-            "i've closed",
-            "i have closed",
+            "i've closed the month",
+            "i've closed the books",
+            "i've closed the period",
+            "i've closed october",
+            "i have closed the month",
+            "i have closed the books",
+            "i have closed the period",
+            "i have closed october",
             "period is now closed",
             "period has been closed",
             "books are now closed",
