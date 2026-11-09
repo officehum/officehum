@@ -23,9 +23,8 @@ describe("today", () => {
     ]);
   });
 
-  it("today section and desk agree at a month end", async () => {
+  it("isoDate and the today section name the same UTC day at a month end", async () => {
     const at = new Date("2026-11-30T23:30:00.000Z");
-    // The desks date their writes with `isoDate(clock())`; the section must say the same day.
     expect(isoDate(at)).toBe("2026-11-30");
     const section = todaySection(() => at);
     expect(section.key).toBe("today");

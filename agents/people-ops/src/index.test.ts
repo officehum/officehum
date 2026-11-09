@@ -426,4 +426,15 @@ describe("people ops clock", () => {
     });
     expect(recorded.details.recordedOn).toBe("2026-11-09");
   });
+  it("the today section and the desk agree at a month end", async () => {
+    const role = peopleOps({ now: () => new Date("2026-11-30T23:30:00.000Z") });
+    expect(await todayOf(role)).toMatch(/^Today is 2026-11-30 \(Monday\)\./);
+    const recorded = await call(role, "record_time_off_request", {
+      employee: "Ana Lopez",
+      startDate: "2026-12-31",
+      endDate: "2026-12-31",
+      reasonCategory: "vacation",
+    });
+    expect(recorded.details.recordedOn).toBe("2026-11-30");
+  });
 });

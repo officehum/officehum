@@ -123,12 +123,12 @@ function personName(by: string): string {
  * This is how a person stops the chase: the invoice gets no reminder at any stage until someone
  * clears the dispute. It is not a tool, so the model cannot reach it, and a customer's message that
  * claims a dispute changes nothing until a person marks one. `by` is required — a marker nobody owns is
- * worse than none.
+ * worse than none — and so is `at`, the moment from the host's clock, never the system's by default.
  */
 export function dispute(
   ledger: CollectionsDocument,
   invoiceId: string,
-  decision: { readonly reason: string; readonly by: string },
+  decision: { readonly reason: string; readonly by: string; readonly at: Date },
 ): DisputeMark {
   const reason = decision.reason.trim();
   if (reason.length === 0) {
@@ -139,7 +139,7 @@ export function dispute(
     invoiceId,
     reason,
     by: personName(decision.by),
-    at: new Date().toISOString(),
+    at: decision.at.toISOString(),
   };
   ledger.disputes.push(mark);
   return mark;
@@ -153,13 +153,13 @@ export function dispute(
 export function clearDispute(
   ledger: CollectionsDocument,
   invoiceId: string,
-  decision: { readonly by: string },
+  decision: { readonly by: string; readonly at: Date },
 ): DisputeMark {
   const mark: DisputeMark = {
     kind: "clear",
     invoiceId,
     by: personName(decision.by),
-    at: new Date().toISOString(),
+    at: decision.at.toISOString(),
   };
   ledger.disputes.push(mark);
   return mark;

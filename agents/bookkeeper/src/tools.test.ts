@@ -25,6 +25,9 @@ const call = (callId: string) =>
 const day = (offset: number): string =>
   new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 
+/** The fixtures are dated from the system clock (see `day`), so the tools run on it too. */
+const SYSTEM_CLOCK = (): Date => new Date();
+
 const usd = (cents: number) => ({ cents, currency: "USD" });
 
 const DEMO_GUEST = {
@@ -90,7 +93,7 @@ function text(result: { output?: readonly unknown[] }): string {
 
 describe("find_customer", () => {
   it("finds a customer by part of its name, with the id and the email on file", async () => {
-    const tools = bookkeeperTools(seeded());
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
     const result = await tools.findCustomer.execute(
       { name: "demo" },
       call("find-1"),
@@ -101,7 +104,7 @@ describe("find_customer", () => {
   });
 
   it("finds a customer by email, whatever its case", async () => {
-    const tools = bookkeeperTools(seeded());
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
     const result = await tools.findCustomer.execute(
       { email: "GUEST@example.com" },
       call("find-2"),
@@ -111,7 +114,7 @@ describe("find_customer", () => {
   });
 
   it("refuses a search that matches nothing, and one with nothing to search by", async () => {
-    const tools = bookkeeperTools(seeded());
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
     const missing = await tools.findCustomer.execute(
       { name: "Nobody" },
       call("find-3"),
@@ -126,7 +129,7 @@ describe("find_customer", () => {
   });
 
   it("refuses every tool when the host bound no client", async () => {
-    const tools = bookkeeperTools(undefined);
+    const tools = bookkeeperTools(undefined, SYSTEM_CLOCK);
     await expect(
       tools.findCustomer.execute({ name: "Demo Guest" }, call("find-5"), BACKGROUND_CONTEXT),
     ).rejects.toThrow("No QuickBooks client is configured");
@@ -135,7 +138,7 @@ describe("find_customer", () => {
 
 describe("list_invoices", () => {
   it("lists a customer's invoices with the figures QuickBooks reports", async () => {
-    const tools = bookkeeperTools(seeded());
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
     const result = await tools.listInvoices.execute(
       { customer: "customer-1" },
       call("list-1"),
@@ -185,7 +188,7 @@ describe("list_invoices", () => {
       collections_second_days: 14,
       collections_final_days: 30,
     };
-    const tools = bookkeeperTools(late, () => cadence);
+    const tools = bookkeeperTools(late, SYSTEM_CLOCK, () => cadence);
     const result = await tools.listInvoices.execute(
       { status: "overdue" },
       call("list-late"),
@@ -197,7 +200,7 @@ describe("list_invoices", () => {
     expect(text(result)).toContain(`due ${day(-1)} — 1 day overdue, no reminder is due yet`);
 
     // With no cadence resolved, the days are still the tool's, and no stage is guessed.
-    const bare = await bookkeeperTools(late).listInvoices.execute(
+    const bare = await bookkeeperTools(late, SYSTEM_CLOCK).listInvoices.execute(
       { status: "overdue" },
       call("list-bare"),
       BACKGROUND_CONTEXT,
@@ -207,7 +210,7 @@ describe("list_invoices", () => {
   });
 
   it("filters by status and accepts a customer by its exact name", async () => {
-    const tools = bookkeeperTools(seeded());
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
     const overdue = await tools.listInvoices.execute(
       { customer: "Demo Guest", status: "overdue" },
       call("list-2"),
@@ -219,7 +222,7 @@ describe("list_invoices", () => {
   });
 
   it("reports no invoices for a customer that has none, and refuses an unknown customer", async () => {
-    const tools = bookkeeperTools(seeded());
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
     const none = await tools.listInvoices.execute(
       { customer: "customer-2" },
       call("list-3"),
@@ -244,7 +247,7 @@ describe("list_invoices", () => {
 
 describe("get_invoice", () => {
   it("reads one invoice by id, with the lines, total, balance and due date", async () => {
-    const tools = bookkeeperTools(seeded());
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
     const result = await tools.getInvoice.execute(
       { invoice: "1042" },
       call("get-1"),
@@ -267,7 +270,7 @@ describe("get_invoice", () => {
   });
 
   it("refuses an invoice that does not exist", async () => {
-    const tools = bookkeeperTools(seeded());
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
     const result = await tools.getInvoice.execute(
       { invoice: "9999" },
       call("get-2"),
@@ -282,7 +285,7 @@ describe("get_invoice", () => {
 describe("create_invoice", () => {
   it("creates an invoice from the job's lines, in integer cents, and reports the client's figures", async () => {
     const books = seeded();
-    const tools = bookkeeperTools(books);
+    const tools = bookkeeperTools(books, SYSTEM_CLOCK);
     const result = await tools.createInvoice.execute(
       {
         customer: "customer-1",
@@ -315,7 +318,7 @@ describe("create_invoice", () => {
 
   it("keeps a retried call to one invoice, and a different call to its own", async () => {
     const books = seeded();
-    const tools = bookkeeperTools(books);
+    const tools = bookkeeperTools(books, SYSTEM_CLOCK);
     const args = {
       customer: "customer-1",
       lines: [{ description: "On-site support", quantity: 1, unitPriceCents: 40000 }],
@@ -341,7 +344,7 @@ describe("create_invoice", () => {
 
 describe("send_invoice", () => {
   it("sends to the address on file when no other address is given", async () => {
-    const tools = bookkeeperTools(seeded());
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
     const result = await tools.sendInvoice.execute(
       { invoice: "1042" },
       call("send-1"),
@@ -352,7 +355,7 @@ describe("send_invoice", () => {
   });
 
   it("sends to another address when one is given, and reports it", async () => {
-    const tools = bookkeeperTools(seeded());
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
     const result = await tools.sendInvoice.execute(
       { invoice: "1042", to: "accounts@example.com" },
       call("send-2"),
@@ -362,7 +365,7 @@ describe("send_invoice", () => {
   });
 
   it("refuses an unknown invoice, and a customer with no address to send to", async () => {
-    const tools = bookkeeperTools(seeded());
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
     const unknown = await tools.sendInvoice.execute(
       { invoice: "9999" },
       call("send-3"),
@@ -385,7 +388,7 @@ describe("send_invoice", () => {
         },
       ],
     });
-    const addressless = await bookkeeperTools(books).sendInvoice.execute(
+    const addressless = await bookkeeperTools(books, SYSTEM_CLOCK).sendInvoice.execute(
       { invoice: "5001" },
       call("send-4"),
       BACKGROUND_CONTEXT,
@@ -400,7 +403,7 @@ describe("send_reminder", () => {
   // refusal of a stage whose day has not arrived, and its "already sent" answer all run against a
   // real Harness there. What stays here is the shape the manifest and the collections skill depend on.
   it("keeps its name, its replay policy and the tone a final notice is gated on", () => {
-    const tool = bookkeeperTools(seeded()).sendReminder;
+    const tool = bookkeeperTools(seeded(), SYSTEM_CLOCK).sendReminder;
     expect(tool.name).toBe("send_reminder");
     expect(tool.replay).toBe("unsafe");
     // `final_notice` is a manifest condition on this argument — `{ "arg": "tone", "op": "eq",

@@ -848,4 +848,11 @@ describe("bookkeeper clock", () => {
     expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
     expect((await call(role, "reconcile_summary", {})).details.period).toBe("2026-10");
   });
+
+  it("a host's QuickBooks connection runs on the system clock without now", async () => {
+    // Real QuickBooks dates are real, so the demo date would misdate them.
+    const role = bookkeeper({ quickbooks: books() });
+    const today = new Date().toISOString().slice(0, 10);
+    expect(await todayOf(role)).toContain(`Today is ${today} `);
+  });
 });
