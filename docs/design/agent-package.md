@@ -267,8 +267,9 @@ The office gate runs before the role's own gate, and it replaces `officehumAppro
 earlier hook set. So whenever a role gate with readers also runs, the office gate must be given the
 same readers. A host that installs the office gate for a loaded role must pass
 `loadedRole.approvalFacts` (`OfficeExtensionOptions.approvalFacts`, `OfficeHookSeam.approvalFacts`).
-Without it, no facts are recorded, and a tool that requires them refuses after a grant. In office-mode evals, the runner's scripted decision reads the facts
-the same way before it writes its row, so a scripted yes binds the tool exactly as a person's would.
+Without it, no facts are recorded, and a tool that requires them refuses after a grant. In
+office-mode evals, the runner's scripted decision reads the facts the same way before it writes its
+row, so a scripted yes binds the tool exactly as a person's would.
 
 Installing it on any Pi Durable harness:
 
