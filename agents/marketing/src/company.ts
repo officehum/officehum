@@ -77,7 +77,8 @@ export interface PriceBookLine {
 /** A customer's words the company holds on record, and may quote. */
 export interface Testimonial {
   readonly quote: string;
-  readonly by: string;
+  /** Who said it, as the company records them. */
+  readonly attribution: string;
 }
 
 /**

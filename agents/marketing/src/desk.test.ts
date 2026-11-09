@@ -138,6 +138,110 @@ describe("fakeMarketingDesk: drafting a post", () => {
     expect(dressed.claims?.[0]?.phrase).toBe("30%");
   });
 
+  describe("testimonials", () => {
+    const invented =
+      '"Northwind cut our sick days and the lobby has never looked this good." — Dana Reyes';
+    const recorded = company.marketing.testimonials?.[0];
+
+    it("holds a testimonial on record for the tests below", () => {
+      expect(recorded?.quote.split(/\s+/).length).toBeGreaterThanOrEqual(6);
+    });
+
+    it("refuses an invented testimonial, saves no draft, and gives no claim a person could approve", async () => {
+      const marketing = desk();
+      const error = await refusal(
+        marketing.draftPost(
+          { channel: "linkedin", text: `Hear it from a client. ${invented}` },
+          { requestId: "t1" },
+        ),
+      );
+      expect(error.code).toBe("unrecorded_testimonial");
+      expect(error.draftId).toBeUndefined();
+      expect(error.claims).toBeUndefined();
+      expect(error.message).toContain("Northwind cut our sick days");
+      expect(error.message).toContain("nothing was published");
+      // The same call replayed is the same refusal, and no draft was saved.
+      expect(
+        (
+          await refusal(
+            marketing.draftPost({ channel: "linkedin", text: invented }, { requestId: "t1" }),
+          )
+        ).code,
+      ).toBe("unrecorded_testimonial");
+      expect(await marketing.listDrafts({ id: "D-106" })).toEqual([]);
+      // With nothing held, a person is never asked to approve it.
+      expect(
+        (
+          await refusal(
+            marketing.approveClaim({ draftId: "D-106", approved: {} }, { requestId: "g" }),
+          )
+        ).code,
+      ).toBe("not_found");
+      // The refusal is for the quote even when the same text states a result claim.
+      const both = await refusal(
+        marketing.draftPost(
+          { channel: "facebook", text: `${invented} Our floors are 2x cleaner.` },
+          { requestId: "t2" },
+        ),
+      );
+      expect(both.code).toBe("unrecorded_testimonial");
+      expect(await marketing.listDrafts({ id: "D-106" })).toEqual([]);
+      // An invented quote in a campaign email is refused the same way.
+      const email = await refusal(
+        marketing.draftCampaignEmail(
+          { subject: "Kind words", body: invented, audienceId: "prospects" },
+          { requestId: "t3" },
+        ),
+      );
+      expect(email.code).toBe("unrecorded_testimonial");
+    });
+
+    it("never lets a held draft carrying an invented testimonial be approved or published", async () => {
+      const [seed] = demoDrafts(company);
+      if (seed === undefined) throw new Error("no demonstration draft");
+      const text = `${invented} Our floors are 2x cleaner.`;
+      const marketing = fakeMarketingDesk({
+        now: () => new Date(DEMO_NOW),
+        drafts: [
+          {
+            ...seed,
+            id: "D-300",
+            status: "held",
+            text,
+            finalText: text,
+            heldClaims: [{ claim: "Our floors are 2x cleaner.", phrase: "2x cleaner" }],
+          },
+        ],
+      });
+      const grant = await approvedClaims(marketing, "D-300");
+      expect((await refusal(marketing.approveClaim(grant, { requestId: "g" }))).code).toBe(
+        "unrecorded_testimonial",
+      );
+      const [after] = await marketing.listDrafts({ id: "D-300" });
+      expect(after?.status).toBe("held");
+    });
+
+    it("accepts a testimonial on record, word for word, and still holds a result claim in it", async () => {
+      if (recorded === undefined) throw new Error("the company records no testimonial");
+      const marketing = desk();
+      const draft = await marketing.draftPost(
+        { channel: "linkedin", text: `"${recorded.quote}" — ${recorded.attribution}` },
+        { requestId: "r1" },
+      );
+      expect(draft.status).toBe("draft");
+      const mixed = await refusal(
+        marketing.draftPost(
+          {
+            channel: "linkedin",
+            text: `"${recorded.quote} Our floors are 2x cleaner." — ${recorded.attribution}`,
+          },
+          { requestId: "r2" },
+        ),
+      );
+      expect(mixed.code).toBe("unrecorded_testimonial");
+    });
+  });
+
   it("allows an approved claim as written in the company data", async () => {
     const text = `${company.marketing.approvedClaims[0]} Ask us for a walkthrough.`;
     const draft = await desk().draftPost({ channel: "linkedin", text }, { requestId: "r1" });

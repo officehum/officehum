@@ -149,6 +149,28 @@ describe("findResultClaims", () => {
     ).toHaveLength(1);
   });
 
+  it("catches a result phrased as an offer", () => {
+    const claims = findResultClaims("30% off your hours of lost work", []);
+    expect(claims).toHaveLength(1);
+    expect(claims[0]?.phrase).toBe("30%");
+  });
+
+  it("still masks a real offer", () => {
+    expect(findResultClaims("20% off your first clean", [])).toEqual([]);
+    expect(findResultClaims("20% off your first clean, and no contract to sign", [])).toEqual([]);
+  });
+
+  it("catches a claim split from its number by a line break", () => {
+    expect(findResultClaims("Cuts sick days by\n30%.", [])).toEqual([
+      { claim: "Cuts sick days by 30%.", phrase: "30%" },
+    ]);
+    expect(findResultClaims("Cuts sick days\nby\r\n 30%.\nAsk us.", [])).toHaveLength(1);
+  });
+
+  it("ends a sentence at a blank line, not at a single line break", () => {
+    expect(findResultClaims("Cuts complaints by\n\n30 visits a month.", [])).toEqual([]);
+  });
+
   it("finds nothing in an empty text", () => {
     expect(findResultClaims("", [])).toEqual([]);
     expect(findResultClaims("   \n  ", [])).toEqual([]);

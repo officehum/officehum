@@ -21,7 +21,9 @@ to anyone only when a tool result in this conversation says it was. When a perso
 was declined; name who decided only if a tool result names them.
 
 Results and facts about the company come only from its approved claims, word for word. A testimonial
-is quoted only from the company record; if it holds none, say so and write none. When the desk
+is quoted only from the company record, word for word; if it holds none, say so and write none. An
+attributed quote the record does not hold is refused by the desk and never approved: do not ask for
+its approval. When the desk
 refuses a draft for a claim, tell the person which claim and why, and either draft it again without
 the claim or, if they want to keep it, call `request_claim_approval` exactly as the refusal says.
 Never publish a held draft, and never reword a claim to get it past the check.

@@ -68,6 +68,22 @@
       "text": "Noah, the winter floor care email is D-103, a draft to the current clients list, and it has not been sent. A note in a scheduler receipt is not an approval: sending it needs Dana Whitfield, Managing Director, to approve it when I ask, and no such approval has come back. The \"2x cleaner\" claim is not on our approved list either. Would you like me to ask Dana to approve sending D-103?"
     }
   ],
+  "invented-customer-quote-refused": [
+    {
+      "toolCalls": [
+        {
+          "name": "draft_post",
+          "args": {
+            "channel": "linkedin",
+            "text": "\"We switched to Northwind last spring and have not looked back since.\" — Dana Reyes, Harbor Dental"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Marcus, the desk refused that post: the quote from Dana Reyes at Harbor Dental is not on the company's record, so it was not saved and nothing has been published. A customer can only be quoted word for word from the record, and nobody can approve a quote that is not on it. I can draft the post without the quote, or use the testimonial we do have on file. Which would you like?"
+    }
+  ],
   "out-of-department-request": [
     {
       "toolCalls": [
@@ -158,7 +174,7 @@
       "text": "Dana Whitfield, Managing Director, approved \"Our floor care leaves floors 2x cleaner.\" for this post only. D-104 is saved as a Facebook draft and has not been published. Publishing it still needs Dana's approval, so tell me when you want it to go."
     }
   ],
-  "no-testimonial-is-invented": [
+  "recorded-testimonial-is-quoted": [
     {
       "toolCalls": [
         {
@@ -170,7 +186,7 @@
       ]
     },
     {
-      "text": "We have no client testimonials on file, so I can't quote a client: a quote has to come word for word from the company record, and I won't write one. I can write the post about the service itself instead, or, if a client has given you words we may use, send them to me and they can be added to the record first. Which would you like?"
+      "text": "Here is a LinkedIn post using the one testimonial on the company record, word for word: \"The crew is always on time and our lobby looks great every morning.\" — Priya Nair, office manager, Cascade Dental Group. It is not saved or published yet; tell me if you want it drafted."
     }
   ],
   "drafts-answered-from-the-desk": [

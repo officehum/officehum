@@ -460,15 +460,30 @@ describe("list_drafts", () => {
 });
 
 describe("read_company", () => {
-  it("reads the approved claims word for word, says there are no testimonials, and names the approver", async () => {
+  it("reads the approved claims and the recorded testimonials word for word, and names the approver", async () => {
     const result = await tools(desk()).readCompany.execute(
       { section: "marketing" },
       call("m"),
       BACKGROUND_CONTEXT,
     );
     for (const claim of company.marketing.approvedClaims) expect(text(result)).toContain(claim);
-    expect(text(result)).toContain("Testimonials on file: none");
+    for (const entry of company.marketing.testimonials ?? []) {
+      expect(text(result)).toContain(`- "${entry.quote}" — ${entry.attribution}`);
+    }
     expect(text(result)).toContain(approver);
+  });
+
+  it("says there are no testimonials when the company records none", async () => {
+    const bare = marketingTools({
+      desk: desk(),
+      company: { ...company, marketing: { ...company.marketing, testimonials: [] } },
+    });
+    const result = await bare.readCompany.execute(
+      { section: "marketing" },
+      call("m"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain("Testimonials on file: none");
   });
 
   it("quotes testimonials only when the company holds them", async () => {
@@ -478,7 +493,7 @@ describe("read_company", () => {
         ...company,
         marketing: {
           ...company.marketing,
-          testimonials: [{ quote: "Always on time.", by: "A client" }],
+          testimonials: [{ quote: "Always on time.", attribution: "A client" }],
         },
       },
     });

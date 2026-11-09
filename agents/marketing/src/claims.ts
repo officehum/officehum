@@ -17,7 +17,8 @@
  * **Not result claims**: an offer on a price — "20% off your first clean", "twenty percent off a
  * deep clean", "10% discount on your next visit", or "N% off" at the end of a sentence — and a price
  * ("$99", "from $185 a visit"). An offer is read as one only when what follows "off" or "discount" is
- * a price word or one of the company's service names: "30% off your sick days" is a result. A year
+ * a price word or one of the company's service names, and no result noun ({@link RESULT_NOUNS}) follows
+ * in the same phrase: "30% off your sick days" and "30% off your hours of lost work" are results. A year
  * ("for 2026") is not a numeric result either, but "$2000" is money. What the detector does not try to read —
  * "saves you money" with no figure, a superlative, a promise — is left to the instructions and to the
  * person who approves every publication.
@@ -68,6 +69,28 @@ const PRICE_WORDS = [
   "hour",
   "hours",
 ];
+
+/**
+ * Words that make what follows "off" a result, not a price: "30% off your hours of lost work", "20%
+ * off sick days". An offer is masked only when none of them follows inside the same phrase.
+ */
+export const RESULT_NOUNS: readonly string[] = [
+  "sick",
+  "lost",
+  "complaint",
+  "complaints",
+  "downtime",
+  "absence",
+  "absences",
+  "callback",
+  "callbacks",
+  "illness",
+  "illnesses",
+  "injuries",
+  "accidents",
+  "germs",
+];
+const RESULT_NOUN = new RegExp(String.raw`\b(?:${RESULT_NOUNS.join("|")})\b`, "i");
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -123,10 +146,15 @@ export function normalizeClaim(text: string): string {
     .trim();
 }
 
-/** Sentences, split at line breaks and after `.`, `!` or `?` followed by a space. */
+/**
+ * Sentences. A blank line ends one; a single line break does not, so "Cuts sick days by" and "30%" on
+ * the next line stay together. Whitespace is normalised to single spaces, then a sentence ends after
+ * `.`, `!` or `?` followed by a space.
+ */
 function sentences(text: string): string[] {
   return text
-    .split(/\n+|(?<=[.!?])\s+/)
+    .split(/\r?\n[^\S\r\n]*\r?\n\s*/)
+    .flatMap((paragraph) => paragraph.replace(/\s+/g, " ").split(/(?<=[.!?]) /))
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence !== "");
 }
@@ -136,7 +164,12 @@ function claimPhrase(sentence: string, offer: RegExp): string | undefined {
   // Fullwidth digits and signs read as the ASCII ones they are. Masking keeps offsets, so a phrase is
   // cut from the normalised sentence as the rules saw it.
   const normal = sentence.normalize("NFKC");
-  const masked = normal.replace(offer, (found) => " ".repeat(found.length));
+  const masked = normal.replace(offer, (found, ...rest) => {
+    // The phrase an offer sits in runs from "off" to the next comma, colon or sentence end.
+    const offset = rest.find((arg): arg is number => typeof arg === "number") ?? 0;
+    const phrase = normal.slice(offset + found.length).split(/[,;:.!?—–]/, 1)[0] ?? "";
+    return RESULT_NOUN.test(phrase) ? found : " ".repeat(found.length);
+  });
   for (const rule of RULES) {
     for (const match of masked.matchAll(rule)) {
       const { dollar, number } = match.groups ?? {};

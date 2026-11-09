@@ -463,6 +463,23 @@ function departmentIssues(
     }
   }
 
+  // Testimonials are optional, but one that is on record needs the words and who said them: the
+  // desk quotes a customer only from here.
+  const testimonials = asRecord(company.marketing)?.testimonials;
+  if (testimonials !== undefined) {
+    if (!Array.isArray(testimonials)) {
+      add("company.json", "marketing.testimonials must be a list of { quote, attribution }");
+    } else {
+      for (const [index, entry] of testimonials.entries()) {
+        for (const field of ["quote", "attribution"]) {
+          if (text(asRecord(entry)?.[field]) === undefined) {
+            add("company.json", `marketing.testimonials[${index}].${field} is empty`);
+          }
+        }
+      }
+    }
+  }
+
   if (!whole(asRecord(company.approvalLimits)?.purchaseOrderOverCents, 1)) {
     add(
       "company.json",

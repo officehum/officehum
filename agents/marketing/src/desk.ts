@@ -17,6 +17,7 @@
 import { sameFacts } from "@officehum/sdk";
 import { findResultClaims, type ResultClaim } from "./claims.js";
 import { type CompanyFacts, loadCompanyFacts, money, postalAddress } from "./company.js";
+import { findUnrecordedTestimonials } from "./testimonials.js";
 
 /** Where a post goes. A campaign email's channel is `email`. */
 export type PostChannel = "linkedin" | "facebook" | "instagram" | "website";
@@ -152,6 +153,7 @@ export type DeskRefusal =
   | "not_found"
   | "invalid"
   | "unapproved_claim"
+  | "unrecorded_testimonial"
   | "claim_not_held"
   | "draft_changed"
   | "not_ready"
@@ -397,6 +399,16 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
     return draft;
   };
 
+  /** Quoted, attributed passages in `text` that are not a testimonial on the company's record. */
+  const unrecordedQuotes = (text: string): string[] =>
+    findUnrecordedTestimonials(text, company.marketing.testimonials ?? []);
+
+  const quoteRefusal = (passages: readonly string[]): MarketingDeskError =>
+    new MarketingDeskError(
+      "unrecorded_testimonial",
+      `Refused: ${passages.map((passage) => `"${passage}"`).join("; ")} ${passages.length === 1 ? "is a quote" : "are quotes"} attributed to someone, and ${passages.length === 1 ? "it is" : "they are"} not a testimonial on the company's record. Nothing was saved and nothing was published. A customer is quoted only word for word from the record, and no one can approve a quote that is not on it.`,
+    );
+
   /** Saves a new draft, held when it states a claim not approved. Throws for a held one. */
   const save = (
     requestId: string,
@@ -412,6 +424,14 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
     >,
     checked: string,
   ): Draft => {
+    // An invented customer quote is refused outright: no draft is saved, so there is no held claim
+    // a person could be asked to approve.
+    const invented = unrecordedQuotes(checked);
+    if (invented.length > 0) {
+      const error = quoteRefusal(invented);
+      created.set(requestId, error);
+      throw error;
+    }
     // An offer may name one of the company's own services or price book lines after "off".
     const claims = findResultClaims(checked, company.marketing.approvedClaims, terms);
     const state: DraftState = {
@@ -522,6 +542,9 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
           `${draft.id} has no claim waiting for approval: it is ${draft.status}. Nothing was approved.`,
         );
       }
+      // A quote that is not on record is not a claim: no approval makes it publishable.
+      const invented = unrecordedQuotes(draft.finalText);
+      if (invented.length > 0) throw quoteRefusal(invented);
       // The person approved these claims in this text; anything else is not what they were shown.
       if (!sameFacts(input.approved, heldDraftFacts(snapshot(draft)))) {
         throw new MarketingDeskError(
@@ -558,6 +581,8 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
           { draftId: draft.id, claims: draft.heldClaims },
         );
       }
+      const invented = unrecordedQuotes(draft.finalText);
+      if (invented.length > 0) throw quoteRefusal(invented);
       // The person approved the draft as the gate read it. Publish only if it still is that draft.
       if (!sameFacts(input.approved, readyDraftFacts(snapshot(draft)))) {
         throw new MarketingDeskError(
