@@ -40,12 +40,12 @@
     {
       "name": "request_po_approval",
       "replay": "unsafe",
-      "description": "Ask a person to approve one draft purchase order that the desk refused for the spending limit, naming its supplier and total. Once approved, the desk places exactly that draft."
+      "description": "Ask a person to approve one draft purchase order that the desk refused for the spending limit, named by its id. The desk reads the draft's supplier, lines and total and shows them to the person; once approved, it places exactly that draft, and refuses if the draft changed since."
     },
     {
       "name": "request_new_supplier",
       "replay": "unsafe",
-      "description": "Ask a person to add a supplier to the approved list, with the reason. Once approved, the desk marks the supplier approved."
+      "description": "Ask a person to add a supplier on file to the approved list, named by its id, with the requester's reason, which may not be empty. The desk reads the supplier's record and shows it to the person; once approved, it marks the supplier approved, and refuses if the record changed since."
     },
     {
       "name": "record_receipt",
@@ -64,12 +64,12 @@
     {
       "id": "po_over_limit",
       "tool": "request_po_approval",
-      "description": "Approve placing this draft purchase order, with this supplier for this total in cents, which is over the spending limit"
+      "description": "Approve placing this draft purchase order as the desk holds it: its supplier, its lines and its total, which is over the spending limit"
     },
     {
       "id": "new_supplier",
       "tool": "request_new_supplier",
-      "description": "Approve adding this supplier to the approved list"
+      "description": "Approve adding this supplier to the approved list, as the desk holds its record: name, category, lead time and contact"
     }
   ],
   "channels": ["email", "chat"],

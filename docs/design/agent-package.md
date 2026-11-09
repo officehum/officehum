@@ -234,6 +234,12 @@ whatever the model sent, and strips it from any call it does not grant. The tool
 (`sameFacts`). Pi Durable 1.3 validates the arguments a `beforeTool` hook returns against the tool's
 parameters again, so a tool whose parameters refuse additional properties declares the key with
 `approvedFactsParameter()`. Accounting's `pay_vendor_bill` is the reference: it takes only `{ billId }`.
+Purchasing's `request_po_approval` (`{ draftId }`) and `request_new_supplier` (`{ supplierId, reason }`,
+the reason being the requester's words, not a desk fact) and Marketing's `request_claim_approval` and
+`publish` (`{ draftId }`) follow it. A record the gate reads must exist on the desk, so an eval scenario
+whose stubbed write "creates" the record the next gated call names relies on the demonstration desk
+holding it: Purchasing's draft PO-1004 and Marketing's held drafts D-104 and D-105 are seeded for
+that reason.
 
 A call the approval does not apply to (its `when` holds false) gets no facts, so a tool that requires
 them refuses every call the condition exempts. Give a facts reader only to an approval that applies to

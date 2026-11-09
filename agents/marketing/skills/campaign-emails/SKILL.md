@@ -18,8 +18,8 @@ The desk adds the unsubscribe line and the postal address to every one; you writ
 4. **Save it** with `draft_campaign_email`. The receipt shows the whole email as it would go out,
    subject, body and footer, between `<text>` and `</text>`. If the desk refuses a claim, follow
    `checking-claims`.
-5. **Send it** only when someone in the company asks: call `publish` with the draft's id, channel
-   `email` and the full text exactly as the desk gave it, footer included. A person decides.
+5. **Send it** only when someone in the company asks: call `publish` with the draft's id. The desk
+   shows the person the full text, footer included. A person decides.
 6. **After the answer**, say plainly what was decided: sent, with the publication's id, or declined
    and not sent.
 

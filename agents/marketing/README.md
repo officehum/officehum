@@ -60,8 +60,8 @@ claimed as passed on to anyone.
 | `read_services` | safe | — | The services, what each covers, and its price book lines and prices |
 | `draft_post` | unsafe | `noApproval`; the desk refuses an unapproved result claim and holds the draft | Save a post for linkedin, facebook, instagram or website |
 | `draft_campaign_email` | unsafe | `noApproval`; the desk adds the footer and checks claims | Save an email (subject, body, audience) |
-| `request_claim_approval` | unsafe | approval `claim`, every call | Approve one refused claim for the held draft it came from |
-| `publish` | unsafe | approval `publish`, every call; demonstration backend only | Publish one ready draft, named by id, channel and full text |
+| `request_claim_approval` | unsafe | approval `claim`, every call | Approve a held draft's refused claims, for that draft only, named by its id |
+| `publish` | unsafe | approval `publish`, every call; demonstration backend only | Publish one ready draft, named by its id |
 | `list_drafts` | safe | — | Drafts and publications with status and full text, and the audience lists |
 | `read_company` | safe | — | One section of the company record, including marketing |
 
@@ -90,21 +90,30 @@ out because "the lower 2 floors" and "save $50 on your first clean" are not resu
 from its verb by a line break, and "green" in a street name (refused; a person can approve it). The
 prompt and the person who approves every publication are the backstop.
 
-**A claim approval** names the held draft, the claim exactly as refused and the draft's full text, so
-the person reads the claim in context. The desk records it for that claim in that draft only; the same
-claim in a new draft is refused again. A draft with several claims stays held until each is approved.
+**A claim approval** names only the held draft. Its facts reader (`claimApprovalFacts`) reads the
+draft's full text and each held claim with its phrase, as the desk recorded them at refusal
+(`heldDraftFacts`), so the person reads every claim in context and approves them together. On a yes
+the gate hands the same facts to the tool, and the desk grants them for that draft only if it still
+equals them (`draft_changed` otherwise); the same claim in a new draft is refused again. A call with
+no approved facts approves nothing (`not_approved`).
 
 **Campaign emails** always end with a line saying how to unsubscribe and the company's postal address,
 built by the desk from the company record. The model writes only the subject and body, and `publish`
 publishes the text the desk holds, so the footer cannot be dropped.
 
-**Publishing** is approved on every call. The approval's arguments are the draft id, the channel and
-the full final text, which the model copies from the desk's own receipt; the desk publishes only when
-the channel and text are exactly the draft's as it holds it (line endings and trailing spaces aside),
-and otherwise refuses with `draft_changed` and the text it holds. So the person sees what goes out, and
-a grant never covers a draft that changed after they were asked. A held draft is refused until its
-claims are approved. The demonstration backend records the publication and posts nothing; a host that
-binds a real channel must refuse the same way.
+**Publishing** is approved on every call. The model names only the draft; the facts reader
+(`publishApprovalFacts`) reads its channel, audience and full final text, footer included
+(`readyDraftFacts`), and the person approves those. The desk publishes only when the draft still
+equals them, and otherwise refuses with `draft_changed` and the text it holds. So the person sees
+what goes out, and a grant never covers a draft that changed after they were asked. A held draft is
+refused until its claims are approved, and is never put to a person for publishing.
+
+The demonstration backend records the publication and posts nothing; a host that binds a real
+channel must refuse the same way.
+
+The demonstration desk holds two posts refused this morning: D-104 on Facebook for "2x cleaner" and
+D-105 on LinkedIn for "30%". The eval scenarios' stubbed refusals name those drafts, so the gate
+reads from the desk the draft the scenario is about.
 
 **Testimonials** are quoted only from the company record (`marketing.testimonials`, absent here), and
 `read_company` says when there are none. A testimonial that states a result is a result claim.

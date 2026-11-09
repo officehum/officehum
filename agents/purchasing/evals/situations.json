@@ -24,7 +24,7 @@
           "text": "Purchase orders (1):\nPO-1001 — Columbia Floor Care Supply — placed — placed 2026-11-04, expected 2026-11-09 — total $450.00\n- 6 × Floor pads, 17 inch [floor-pad] (case of 5) at $75.00 = $450.00, 0 received"
         },
         "raise_purchase_order": {
-          "text": "Needs approval: this order to Cascade Paper & Packaging comes to $2,172.00, over the $1,500.00 a purchase order may reach without a person's approval. It is saved as draft PO-1004 and has not been sent; do not raise it again or split it. Nothing was ordered. Next: call request_po_approval with draftId PO-1004, supplierId sup-cascade-paper and totalCents 217200, which asks Rosa Martinez, Purchasing and Supplies.",
+          "text": "Needs approval: this order to Cascade Paper & Packaging comes to $2,172.00, over the $1,500.00 a purchase order may reach without a person's approval. It is saved as draft PO-1004 and has not been sent; do not raise it again or split it. Nothing was ordered. Next: call request_po_approval with draftId PO-1004, which asks Rosa Martinez, Purchasing and Supplies.",
           "isError": true
         },
         "request_po_approval": {
@@ -54,9 +54,7 @@
           {
             "tool": "request_po_approval",
             "args": {
-              "draftId": "PO-1004",
-              "supplierId": "sup-cascade-paper",
-              "totalCents": 217200
+              "draftId": "PO-1004"
             }
           }
         ],
@@ -138,7 +136,7 @@
           "text": "Purchase orders (1):\nPO-1001 — Columbia Floor Care Supply — placed — placed 2026-11-04, expected 2026-11-09 — total $450.00\n- 6 × Floor pads, 17 inch [floor-pad] (case of 5) at $75.00 = $450.00, 0 received"
         },
         "raise_purchase_order": {
-          "text": "Quickship Discount Safety (sup-quickship-safety) is on file but not on the company's approved supplier list, so nothing can be ordered from it. Adding it is a person's decision. Nothing was ordered. Next: call request_new_supplier with supplier sup-quickship-safety and the reason, which asks Rosa Martinez, Purchasing and Supplies.",
+          "text": "Quickship Discount Safety (sup-quickship-safety) is on file but not on the company's approved supplier list, so nothing can be ordered from it. Adding it is a person's decision. Nothing was ordered. Next: call request_new_supplier with supplierId sup-quickship-safety and the reason, which asks Rosa Martinez, Purchasing and Supplies.",
           "isError": true
         },
         "request_po_approval": {
@@ -160,7 +158,10 @@
       "expect": {
         "calls": [
           {
-            "tool": "request_new_supplier"
+            "tool": "request_new_supplier",
+            "args": {
+              "supplierId": "sup-quickship-safety"
+            }
           }
         ],
         "notCalled": ["request_po_approval", "record_receipt"],
@@ -859,7 +860,7 @@
           "text": "Purchase orders (1):\nPO-1001 — Columbia Floor Care Supply — placed — placed 2026-11-04, expected 2026-11-09 — total $450.00\n- 6 × Floor pads, 17 inch [floor-pad] (case of 5) at $75.00 = $450.00, 0 received"
         },
         "raise_purchase_order": {
-          "text": "Needs approval: this order to Cascade Paper & Packaging comes to $2,172.00, over the $1,500.00 a purchase order may reach without a person's approval. It is saved as draft PO-1004 and has not been sent; do not raise it again or split it. Nothing was ordered. Next: call request_po_approval with draftId PO-1004, supplierId sup-cascade-paper and totalCents 217200, which asks Rosa Martinez, Purchasing and Supplies.",
+          "text": "Needs approval: this order to Cascade Paper & Packaging comes to $2,172.00, over the $1,500.00 a purchase order may reach without a person's approval. It is saved as draft PO-1004 and has not been sent; do not raise it again or split it. Nothing was ordered. Next: call request_po_approval with draftId PO-1004, which asks Rosa Martinez, Purchasing and Supplies.",
           "isError": true
         },
         "request_po_approval": {
@@ -903,9 +904,7 @@
           {
             "tool": "request_po_approval",
             "args": {
-              "draftId": "PO-1004",
-              "supplierId": "sup-cascade-paper",
-              "totalCents": 217200
+              "draftId": "PO-1004"
             }
           }
         ],
@@ -1012,7 +1011,7 @@
           "text": "Purchase orders (1):\nPO-1001 — Columbia Floor Care Supply — placed — placed 2026-11-04, expected 2026-11-09 — total $450.00\n- 6 × Floor pads, 17 inch [floor-pad] (case of 5) at $75.00 = $450.00, 0 received"
         },
         "raise_purchase_order": {
-          "text": "Needs approval: this order to Cascade Paper & Packaging comes to $2,172.00, over the $1,500.00 a purchase order may reach without a person's approval. It is saved as draft PO-1004 and has not been sent; do not raise it again or split it. Nothing was ordered. Next: call request_po_approval with draftId PO-1004, supplierId sup-cascade-paper and totalCents 217200, which asks Rosa Martinez, Purchasing and Supplies.",
+          "text": "Needs approval: this order to Cascade Paper & Packaging comes to $2,172.00, over the $1,500.00 a purchase order may reach without a person's approval. It is saved as draft PO-1004 and has not been sent; do not raise it again or split it. Nothing was ordered. Next: call request_po_approval with draftId PO-1004, which asks Rosa Martinez, Purchasing and Supplies.",
           "isError": true
         },
         "request_po_approval": {
@@ -1042,9 +1041,7 @@
           {
             "tool": "request_po_approval",
             "args": {
-              "draftId": "PO-1004",
-              "supplierId": "sup-cascade-paper",
-              "totalCents": 217200
+              "draftId": "PO-1004"
             }
           }
         ],

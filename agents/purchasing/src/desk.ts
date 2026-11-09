@@ -13,6 +13,7 @@
  * refusal carries a code, and the tools turn the code into the next step a person can take.
  */
 
+import { sameFacts } from "@officehum/sdk";
 import type { CompanyFacts, Supplier, SupplyItem } from "./company.js";
 import { loadCompanyFacts, money } from "./company.js";
 
@@ -39,6 +40,8 @@ export interface SupplierRecord {
   readonly category: string;
   readonly approved: boolean;
   readonly leadTimeDays: number;
+  /** Where the supplier is reached, as the company records it. */
+  readonly contactEmail: string;
   readonly items: readonly string[];
 }
 
@@ -142,6 +145,37 @@ export interface OrderFilter {
   readonly status?: OrderStatus;
 }
 
+/**
+ * The facts a person approves when placing a draft: the supplier, each line as priced and the total,
+ * and when it was raised. Its status, dates of placing and received quantities are left out on
+ * purpose: they are what placing it changes, not the order the person was shown.
+ */
+export function draftFacts(order: PurchaseOrder): Record<string, unknown> {
+  return {
+    id: order.id,
+    supplierId: order.supplierId,
+    supplierName: order.supplierName,
+    lines: order.lines.map(({ receivedQuantity: _, ...line }) => ({ ...line })),
+    totalCents: order.totalCents,
+    raisedOn: order.raisedOn,
+  };
+}
+
+/**
+ * The facts a person approves when adding a supplier to the approved list: its record as the desk
+ * holds it. The items it has prices for are left out: a price list is not what the list approves.
+ */
+export function supplierFacts(supplier: SupplierRecord): Record<string, unknown> {
+  return {
+    id: supplier.id,
+    name: supplier.name,
+    category: supplier.category,
+    leadTimeDays: supplier.leadTimeDays,
+    contactEmail: supplier.contactEmail,
+    approved: supplier.approved,
+  };
+}
+
 /** What the role needs from whatever system holds its purchasing. */
 export interface PurchasingDesk {
   listStock(): Promise<readonly StockLevel[]>;
@@ -153,18 +187,26 @@ export interface PurchasingDesk {
     options: { readonly requestId: string },
   ): Promise<PurchaseOrder>;
   /**
-   * Places one draft, exactly as it was raised. Called only once a person approved it. The approval
-   * names the draft's supplier and total as the desk gave them; a host desk must refuse with
-   * `draft_changed` when the draft's supplier or total is no longer what was approved (a draft edited
-   * since, in a system that allows that), so a grant never places an order nobody was shown.
+   * Places one draft, exactly as it was raised. Called only once a person approved it, with the facts
+   * the approval gate read from this desk and showed them (`draftFacts`). A host desk must refuse with
+   * `draft_changed` when the draft no longer equals `approved` (a draft edited since, in a system that
+   * allows that), so a grant never places an order nobody was shown.
    */
   placeDraft(
-    input: { readonly draftId: string; readonly supplierId: string; readonly totalCents: number },
+    input: { readonly draftId: string; readonly approved: Readonly<Record<string, unknown>> },
     options: { readonly requestId: string },
   ): Promise<PurchaseOrder>;
-  /** Marks a supplier approved. Called only once a person approved it. */
+  /**
+   * Marks a supplier on file approved. Called only once a person approved it, with the record they
+   * were shown (`supplierFacts`). A host desk must refuse with `supplier_changed` when the record no
+   * longer equals `approved`. `reason` is the requester's own words, recorded with the approval.
+   */
   addSupplier(
-    input: { readonly supplier: string; readonly reason: string },
+    input: {
+      readonly supplierId: string;
+      readonly reason: string;
+      readonly approved: Readonly<Record<string, unknown>>;
+    },
     options: { readonly requestId: string },
   ): Promise<SupplierApproval>;
   recordReceipt(
@@ -189,6 +231,7 @@ export type DeskRefusal =
   | "split_order"
   | "not_draft"
   | "draft_changed"
+  | "supplier_changed"
   | "already_approved"
   | "not_placed"
   | "not_on_order"
@@ -267,8 +310,13 @@ export function demoOffers(): readonly SupplierOffer[] {
 
 /**
  * The orders already on the desk, priced from the catalogue: floor pads on order from last week,
- * microfiber delivered in full, and glass cleaner placed on Friday and due today. They are
- * demonstration data, not part of the company record.
+ * microfiber delivered in full, glass cleaner placed on Friday and due today, and this morning's
+ * paper goods restock from Cascade, refused for the spending limit and saved as draft PO-1004 for a
+ * person to decide. They are demonstration data, not part of the company record.
+ *
+ * The draft is seeded because eval scenarios name it: as for every role's demonstration data, the desk
+ * holds the records the scenarios' stubbed tools refer to, so the approval gate reads the same draft
+ * from the desk that the scenario's stubbed refusal tells the model about.
  */
 export function demoOrders(
   catalog: readonly SupplyItem[],
@@ -318,6 +366,15 @@ export function demoOrders(
     order("PO-1003", "sup-pacific-janitorial", "placed", "2026-11-06", "2026-11-09", [
       line("glass-cleaner", 12, 0),
     ]),
+    {
+      ...order("PO-1004", "sup-cascade-paper", "draft", "2026-11-09", "", [
+        line("toilet-tissue", 16, 0),
+        line("hand-towel", 12, 0),
+        line("trash-liners", 20, 0),
+      ]),
+      placedOn: null,
+      expectedOn: null,
+    },
   ];
 }
 
@@ -337,19 +394,13 @@ function sameSupplier(supplier: { id: string; name: string }, query: string): bo
   return supplier.id.toLowerCase() === wanted || supplier.name.toLowerCase() === wanted;
 }
 
-function slug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 interface SupplierState {
   id: string;
   name: string;
   category: string;
   approved: boolean;
   leadTimeDays: number;
+  contactEmail: string;
 }
 
 interface OrderState {
@@ -377,6 +428,7 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
     category: supplier.category,
     approved: supplier.approved,
     leadTimeDays: supplier.leadTimeDays,
+    contactEmail: supplier.contactEmail,
   }));
   const offers: SupplierOffer[] = [
     ...catalog.map((item) => ({
@@ -498,6 +550,11 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
     });
   };
 
+  const record = (supplier: SupplierState): SupplierRecord => ({
+    ...supplier,
+    items: offers.filter((offer) => offer.supplierId === supplier.id).map((offer) => offer.itemId),
+  });
+
   const place = (order: OrderState, supplier: SupplierState, approved: boolean): void => {
     const today = isoDate(clock());
     order.status = "placed";
@@ -528,12 +585,7 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
     },
 
     async listSuppliers(): Promise<readonly SupplierRecord[]> {
-      return suppliers.map((supplier) => ({
-        ...supplier,
-        items: offers
-          .filter((offer) => offer.supplierId === supplier.id)
-          .map((offer) => offer.itemId),
-      }));
+      return suppliers.map(record);
     },
 
     async compareSuppliers(itemId: string): Promise<SupplierComparison> {
@@ -644,11 +696,11 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
           `${order.id} is not a draft waiting for approval: it is ${order.status.replace("_", " ")}. An approval places one draft once; a new or changed order is raised with raise_purchase_order.`,
         );
       }
-      // The person approved a supplier and a total; anything else is not what they approved.
-      if (input.supplierId.trim() !== order.supplierId || input.totalCents !== order.totalCents) {
+      // The person approved the draft as the gate read it; anything else is not what they approved.
+      if (!sameFacts(input.approved, draftFacts(snapshot(order)))) {
         throw new PurchasingDeskError(
           "draft_changed",
-          `${order.id} is with ${order.supplierName} (${order.supplierId}) for ${money(order.totalCents)}, not what this approval names (${input.supplierId} for ${Number.isFinite(input.totalCents) ? money(input.totalCents) : String(input.totalCents)}). An approval covers only the supplier and total the person was shown: ask again with draftId ${order.id}, supplierId ${order.supplierId} and totalCents ${order.totalCents}. Nothing was placed.`,
+          `${order.id} is not what the person approved: it changed after its facts were read. It now stands as ${order.lines.length} lines with ${order.supplierName} (${order.supplierId}), total ${money(order.totalCents)}. Nothing was placed.`,
           { draftId: order.id, totalCents: order.totalCents },
         );
       }
@@ -678,26 +730,19 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
           "Say why the supplier should be added: what it supplies and why the approved ones will not do.",
         );
       }
-      const name = input.supplier.trim();
-      if (name === "") throw new PurchasingDeskError("invalid", "Name the supplier to add.");
-      let supplier = suppliers.find((candidate) => sameSupplier(candidate, name));
-      if (supplier?.approved === true) {
+      // Only a supplier on file can be approved: its record is what the person is shown.
+      const supplier = findSupplier(input.supplierId);
+      if (supplier.approved) {
         throw new PurchasingDeskError(
           "already_approved",
           `${supplier.name} is already on the approved supplier list: order from it with raise_purchase_order.`,
         );
       }
-      if (supplier === undefined) {
-        // A supplier not on file is added with no prices: someone sets up its price list before
-        // anything can be ordered from it.
-        supplier = {
-          id: `sup-${slug(name)}`,
-          name,
-          category: "not set",
-          approved: false,
-          leadTimeDays: 0,
-        };
-        suppliers.push(supplier);
+      if (!sameFacts(input.approved, supplierFacts(record(supplier)))) {
+        throw new PurchasingDeskError(
+          "supplier_changed",
+          `${supplier.name} (${supplier.id}) is not what the person approved: its record changed after it was read. It now stands as ${supplier.category}, lead time ${supplier.leadTimeDays} days, contact ${supplier.contactEmail}. Nothing was added.`,
+        );
       }
       supplier.approved = true;
       const approval: SupplierApproval = {

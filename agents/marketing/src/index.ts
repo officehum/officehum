@@ -61,12 +61,13 @@ export {
   demoDrafts,
   type FakeMarketingDeskOptions,
   fakeMarketingDesk,
+  heldDraftFacts,
   type MarketingDesk,
   MarketingDeskError,
   POST_CHANNELS,
   type PostChannel,
   type Publication,
-  sameText,
+  readyDraftFacts,
 } from "./desk.js";
 export {
   type CompanySection,
@@ -122,7 +123,13 @@ export default function marketing(options: MarketingOptions = {}): DefinedRole {
       tools.readCompany,
     ],
     // Both approvals are `officehum.json`'s, on every call of their tool; the SDK's gate evaluates
-    // them here and in the office from the same declaration.
+    // them here and in the office from the same declaration. Neither has a `when`, so every call
+    // gets facts: the model names the draft, the gate reads what the person approves from the desk
+    // and hands it to the tool on a yes, and the desk writes only what they saw.
+    approvalFacts: {
+      claim: tools.claimApprovalFacts,
+      publish: tools.publishApprovalFacts,
+    },
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

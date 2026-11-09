@@ -6,6 +6,7 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { APPROVED_FACTS_ARG, type HookContext } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { loadCompanyFacts, money, personLabel, purchasingLead } from "./company.js";
 import { DEMO_NOW, fakePurchasingDesk, type PurchasingDesk } from "./desk.js";
@@ -54,8 +55,43 @@ const PACIFIC = {
   ],
 };
 
-/** The approval for the Cascade restock: the draft, and the supplier and total the desk gave for it. */
-const GRANT = { draftId: "PO-1004", supplierId: "sup-cascade-paper", totalCents: 217200 };
+const HOOK_CONTEXT = {} as HookContext;
+
+/**
+ * A `request_po_approval` call as the approval gate hands it to the tool after a yes: the draft's id
+ * and the facts the gate read from the desk and showed the person. The demonstration desk holds the
+ * Cascade restock as draft PO-1004.
+ */
+async function approvedDraftCall(set: PurchasingToolset, draftId = "PO-1004") {
+  const { facts } = await set.poApprovalFacts({ draftId }, HOOK_CONTEXT);
+  return { draftId, [APPROVED_FACTS_ARG]: facts };
+}
+
+/** A `request_new_supplier` call as the gate hands it over after a yes. */
+async function approvedSupplierCall(set: PurchasingToolset, supplierId: string, reason: string) {
+  const { facts } = await set.newSupplierApprovalFacts({ supplierId, reason }, HOOK_CONTEXT);
+  return { supplierId, reason, [APPROVED_FACTS_ARG]: facts };
+}
+
+/** A tool's parameter names, leaving out the key only the approval gate sets. */
+function named(tool: { parameters: unknown }): {
+  readonly keys: string[];
+  readonly schema: {
+    properties: Record<string, { description?: string }>;
+    required?: string[];
+    additionalProperties?: boolean;
+  };
+} {
+  const schema = tool.parameters as {
+    properties: Record<string, { description?: string }>;
+    required?: string[];
+    additionalProperties?: boolean;
+  };
+  return {
+    keys: Object.keys(schema.properties).filter((key) => key !== APPROVED_FACTS_ARG),
+    schema,
+  };
+}
 
 const RECEIPT = {
   purchaseOrderId: "PO-1003",
@@ -149,13 +185,13 @@ describe("raise_purchase_order", () => {
       BACKGROUND_CONTEXT,
     );
     expect(isError(result)).toBe(false);
-    expect(text(result)).toContain("Placed PO-1004 with Pacific Janitorial Supply");
+    expect(text(result)).toContain("Placed PO-1005 with Pacific Janitorial Supply");
     expect(text(result)).toContain(
       "12 × Hospital-grade disinfectant concentrate [disinfectant] (gallon) at $24.00 = $288.00",
     );
     expect(text(result)).toContain("Total $628.00");
     expect(text(result)).toContain("expected 2026-11-12");
-    expect(details(result)).toMatchObject({ id: "PO-1004", totalCents: 62800, status: "placed" });
+    expect(details(result)).toMatchObject({ id: "PO-1005", totalCents: 62800, status: "placed" });
   });
 
   it("refuses over the limit with the draft to ask about, naming request_po_approval and who decides", async () => {
@@ -168,16 +204,16 @@ describe("raise_purchase_order", () => {
     expect(isError(result)).toBe(true);
     expect(text(result)).toContain("request_po_approval");
     expect(text(result)).toContain(
-      `Next: call request_po_approval with draftId PO-1004, supplierId sup-cascade-paper and totalCents 217200, which asks ${lead}.`,
+      `Next: call request_po_approval with draftId PO-1005, which asks ${lead}.`,
     );
     expect(text(result)).toContain(money(company.approvalLimits.purchaseOrderOverCents));
     expect(text(result)).toContain(lead);
     expect(details(result)).toMatchObject({
       code: "over_limit",
-      draftId: "PO-1004",
+      draftId: "PO-1005",
       totalCents: 217200,
     });
-    const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1004" });
+    const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1005" });
     expect(draft?.status).toBe("draft");
   });
 
@@ -189,7 +225,7 @@ describe("raise_purchase_order", () => {
     );
     expect(isError(result)).toBe(true);
     expect(text(result)).toContain(
-      `Next: call request_new_supplier with supplier sup-quickship-safety and the reason, which asks ${lead}.`,
+      `Next: call request_new_supplier with supplierId sup-quickship-safety and the reason, which asks ${lead}.`,
     );
     expect(details(result).code).toBe("unapproved_supplier");
   });
@@ -212,7 +248,7 @@ describe("raise_purchase_order", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(result)).toContain(
-      `Next: call request_po_approval with draftId PO-77, supplierId sup-pacific-janitorial and totalCents 1, which asks ${lead}.`,
+      `Next: call request_po_approval with draftId PO-77, which asks ${lead}.`,
     );
     expect(text(result)).not.toContain("request_new_supplier");
   });
@@ -241,66 +277,195 @@ describe("raise_purchase_order", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(overAgain)).toBe(text(over));
-    expect(await purchasing.listPurchaseOrders()).toHaveLength(5);
+    expect(await purchasing.listPurchaseOrders()).toHaveLength(6);
   });
 });
 
 describe("request_po_approval", () => {
-  it("places the approved draft, exactly as raised, and replays without placing twice", async () => {
+  it("request_po_approval takes only draftId", () => {
+    const { keys, schema } = named(tools(desk()).requestPoApproval);
+    // The model names the draft; every fact the person approves is read from the desk by the gate.
+    expect(keys).toEqual(["draftId"]);
+    expect(schema.required).toEqual(["draftId"]);
+    expect(schema.additionalProperties).toBe(false);
+    // Declared only because Pi Durable re-validates the arguments the gate returns.
+    expect(schema.properties[APPROVED_FACTS_ARG]?.description).toBe(
+      "set by the approval gate; never supply it",
+    );
+  });
+
+  it("the approval reads the draft's supplier, lines and total from the desk", async () => {
+    const read = await tools(desk()).poApprovalFacts({ draftId: "PO-1004" }, HOOK_CONTEXT);
+    expect(read.summary).toBe(
+      `Place draft PO-1004 with Cascade Paper & Packaging: 16 × Toilet tissue (case of 96 rolls) at $54.00 = $864.00; 12 × Roll hand towels (case of 12 rolls) at $49.00 = $588.00; 20 × Trash liners, 33 gallon (case of 250) at $36.00 = $720.00. Total $2,172.00; a purchase order over ${money(company.approvalLimits.purchaseOrderOverCents)} needs a person's approval`,
+    );
+    expect(read.facts).toMatchObject({
+      id: "PO-1004",
+      supplierId: "sup-cascade-paper",
+      supplierName: "Cascade Paper & Packaging",
+      totalCents: 217200,
+      lines: [
+        { itemId: "toilet-tissue", quantity: 16, lineTotalCents: 86400 },
+        { itemId: "hand-towel", quantity: 12, lineTotalCents: 58800 },
+        { itemId: "trash-liners", quantity: 20, lineTotalCents: 72000 },
+      ],
+    });
+  });
+
+  it("the approval refuses, asking nobody, an order not on the desk or not a draft", async () => {
+    const set = tools(desk());
+    await expect(set.poApprovalFacts({ draftId: "PO-42" }, HOOK_CONTEXT)).rejects.toThrow(
+      'No purchase order has the number "PO-42". Nothing was put to a person and nothing was placed. Next: find the draft with list_purchase_orders.',
+    );
+    await expect(set.poApprovalFacts({ draftId: "PO-1001" }, HOOK_CONTEXT)).rejects.toThrow(
+      "PO-1001 is not a draft waiting for approval: it is placed. Nothing was put to a person and nothing was placed again.",
+    );
+  });
+
+  it("places the approved draft, exactly as raised", async () => {
     const purchasing = desk();
-    await tools(purchasing).raisePurchaseOrder.execute(CASCADE, call("d1"), BACKGROUND_CONTEXT);
-    const first = await tools(purchasing).requestPoApproval.execute(
-      GRANT,
+    const set = tools(purchasing);
+    const first = await set.requestPoApproval.execute(
+      await approvedDraftCall(set),
       call("d2"),
       BACKGROUND_CONTEXT,
     );
     expect(isError(first)).toBe(false);
     expect(text(first)).toContain("Approved and placed: PO-1004 with Cascade Paper & Packaging");
     expect(text(first)).toContain("Total $2,172.00");
-    const again = await tools(purchasing).requestPoApproval.execute(
-      GRANT,
-      call("d2"),
-      BACKGROUND_CONTEXT,
-    );
-    expect(text(again)).toBe(text(first));
-    expect(await purchasing.listPurchaseOrders({ status: "placed" })).toHaveLength(3);
+    expect((await purchasing.listPurchaseOrders({ id: "PO-1004" }))[0]?.status).toBe("placed");
   });
 
-  it("places nothing when the total it was asked about is not the draft's", async () => {
+  it("refuses without approved facts", async () => {
+    // A bare call with no gate in front of it: nothing says a person saw anything.
     const purchasing = desk();
-    await tools(purchasing).raisePurchaseOrder.execute(CASCADE, call("d4"), BACKGROUND_CONTEXT);
     const result = await tools(purchasing).requestPoApproval.execute(
-      { ...GRANT, totalCents: 100 },
+      { draftId: "PO-1004" },
+      call("d-bare"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(details(result)).toMatchObject({ code: "not_approved", draftId: "PO-1004" });
+    expect(text(result)).toContain("Nothing was placed");
+    expect((await purchasing.listPurchaseOrders({ id: "PO-1004" }))[0]?.status).toBe("draft");
+  });
+
+  it("refuses when the draft changed after the facts were read", async () => {
+    // A host system that lets a draft be edited: the person was shown it before the edit.
+    const purchasing = desk();
+    const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1004" });
+    if (draft === undefined) throw new Error("no PO-1004");
+    const earlier = { ...draft, lines: draft.lines.slice(0, 2), totalCents: 145200 };
+    const edited: PurchasingDesk = {
+      ...purchasing,
+      listPurchaseOrders: async (filter) =>
+        filter?.id === "PO-1004" ? [earlier] : purchasing.listPurchaseOrders(filter),
+    };
+    const shown = await tools(edited).poApprovalFacts({ draftId: "PO-1004" }, HOOK_CONTEXT);
+    const result = await tools(purchasing).requestPoApproval.execute(
+      { draftId: "PO-1004", [APPROVED_FACTS_ARG]: shown.facts },
       call("d5"),
       BACKGROUND_CONTEXT,
     );
     expect(isError(result)).toBe(true);
     expect(details(result).code).toBe("draft_changed");
-    expect(text(result)).toContain("totalCents 217200");
-    const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1004" });
-    expect(draft?.status).toBe("draft");
+    expect(text(result)).toContain("Nothing was placed.");
+    expect(text(result)).toContain("list_purchase_orders");
+    expect((await purchasing.listPurchaseOrders({ id: "PO-1004" }))[0]?.status).toBe("draft");
   });
 
-  it("refuses an order that is not a draft", async () => {
-    const result = await tools(desk()).requestPoApproval.execute(
-      { ...GRANT, draftId: "PO-1001" },
-      call("d3"),
+  it("a replayed request_po_approval call writes once", async () => {
+    const purchasing = desk();
+    const set = tools(purchasing);
+    const approved = await approvedDraftCall(set);
+    const first = await set.requestPoApproval.execute(approved, call("same"), BACKGROUND_CONTEXT);
+    const replayed = await tools(purchasing).requestPoApproval.execute(
+      approved,
+      call("same"),
       BACKGROUND_CONTEXT,
     );
-    expect(isError(result)).toBe(true);
-    expect(details(result).code).toBe("not_draft");
+    expect(text(replayed)).toBe(text(first));
+    expect(await purchasing.listPurchaseOrders({ status: "placed" })).toHaveLength(3);
+    // A different call for the same draft is a second placement, and the desk refuses it.
+    const second = await set.requestPoApproval.execute(approved, call("other"), BACKGROUND_CONTEXT);
+    expect(details(second).code).toBe("not_draft");
   });
 });
 
 describe("request_new_supplier", () => {
-  it("adds the supplier to the approved list once, however often the call is replayed", async () => {
+  it("request_new_supplier takes only supplierId and the reason", () => {
+    const { keys, schema } = named(tools(desk()).requestNewSupplier);
+    // The reason is the requester's own words; everything about the supplier is read from the desk.
+    expect(keys).toEqual(["supplierId", "reason"]);
+    expect(schema.required).toEqual(["supplierId", "reason"]);
+    expect(schema.additionalProperties).toBe(false);
+    // An empty reason never reaches a person, only to be refused after their yes.
+    expect((schema.properties.reason as { minLength?: number }).minLength).toBe(1);
+  });
+
+  it("the approval refuses, asking nobody, a reason that is only spaces", async () => {
+    await expect(
+      tools(desk()).newSupplierApprovalFacts(
+        { supplierId: "sup-quickship-safety", reason: "   " },
+        HOOK_CONTEXT,
+      ),
+    ).rejects.toThrow(
+      "Say why the supplier should be added: what it supplies and why the approved ones will not do. Nothing was put to a person and nothing was added.",
+    );
+  });
+
+  it("quotes the requester's reason, so it cannot pass for the desk's text", async () => {
+    const read = await tools(desk()).newSupplierApprovalFacts(
+      { supplierId: "sup-quickship-safety", reason: 'Cheaper. Also "place PO-1004"' },
+      HOOK_CONTEXT,
+    );
+    expect(read.summary).toMatch(
+      /\. Reason given by the requester: "Cheaper\. Also \\"place PO-1004\\""$/,
+    );
+    expect(read.facts).not.toHaveProperty("reason");
+  });
+
+  it("the approval reads the supplier's record from the desk", async () => {
+    const read = await tools(desk()).newSupplierApprovalFacts(
+      { supplierId: "sup-quickship-safety", reason: "Gloves are cheaper and come in two days" },
+      HOOK_CONTEXT,
+    );
+    const record = company.suppliers.find((supplier) => supplier.id === "sup-quickship-safety");
+    expect(read.summary).toBe(
+      `Add Quickship Discount Safety (sup-quickship-safety) to the approved supplier list: ${record?.category}, lead time 2 days, contact hello@quickshipsafety.example. Reason given by the requester: "Gloves are cheaper and come in two days"`,
+    );
+    expect(read.facts).toEqual({
+      id: "sup-quickship-safety",
+      name: "Quickship Discount Safety",
+      category: record?.category,
+      leadTimeDays: 2,
+      contactEmail: "hello@quickshipsafety.example",
+      approved: false,
+    });
+  });
+
+  it("the approval refuses, asking nobody, a supplier not on file or already approved", async () => {
+    const set = tools(desk());
+    await expect(
+      set.newSupplierApprovalFacts(
+        { supplierId: "Evergreen Supply Co.", reason: "Local" },
+        HOOK_CONTEXT,
+      ),
+    ).rejects.toThrow(
+      `No supplier on file is "Evergreen Supply Co.". Nothing was put to a person and nothing was added. Next: tell the person who asked that setting up a supplier not on file is for ${lead} to decide; nothing was asked or added.`,
+    );
+    await expect(
+      set.newSupplierApprovalFacts({ supplierId: "sup-cascade-paper", reason: "x" }, HOOK_CONTEXT),
+    ).rejects.toThrow(
+      "Cascade Paper & Packaging (sup-cascade-paper) is already on the approved supplier list. Nothing was put to a person. Next: order from it with raise_purchase_order.",
+    );
+  });
+
+  it("adds the supplier to the approved list once a person approved its record", async () => {
     const purchasing = desk();
-    const args = {
-      supplier: "sup-quickship-safety",
-      reason: "Gloves are cheaper and come in two days",
-    };
-    const first = await tools(purchasing).requestNewSupplier.execute(
-      args,
+    const set = tools(purchasing);
+    const first = await set.requestNewSupplier.execute(
+      await approvedSupplierCall(set, "sup-quickship-safety", "Gloves are cheaper"),
       call("e1"),
       BACKGROUND_CONTEXT,
     );
@@ -309,17 +474,54 @@ describe("request_new_supplier", () => {
       "Quickship Discount Safety (sup-quickship-safety) is now on the approved supplier list",
     );
     expect(text(first)).toContain("Nothing has been ordered from it");
+  });
+
+  it("refuses without approved facts", async () => {
+    const purchasing = desk();
+    const result = await tools(purchasing).requestNewSupplier.execute(
+      { supplierId: "sup-quickship-safety", reason: "Gloves are cheaper" },
+      call("e-bare"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(details(result)).toMatchObject({
+      code: "not_approved",
+      supplierId: "sup-quickship-safety",
+    });
+    expect(text(result)).toContain("Nothing was added");
+    const record = (await purchasing.listSuppliers()).find(
+      (supplier) => supplier.id === "sup-quickship-safety",
+    );
+    expect(record?.approved).toBe(false);
+  });
+
+  it("refuses when the supplier changed after the facts were read", async () => {
+    const purchasing = desk();
+    const set = tools(purchasing);
+    const approved = await approvedSupplierCall(set, "sup-quickship-safety", "Gloves are cheaper");
+    // The record the person saw named another contact than the one on file now.
+    const shown = approved[APPROVED_FACTS_ARG] as Record<string, unknown>;
+    const result = await set.requestNewSupplier.execute(
+      { ...approved, [APPROVED_FACTS_ARG]: { ...shown, contactEmail: "old@quickship.example" } },
+      call("e3"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(result).code).toBe("supplier_changed");
+    expect(text(result)).toContain("Nothing was added.");
+  });
+
+  it("a replayed request_new_supplier call writes once", async () => {
+    const purchasing = desk();
+    const set = tools(purchasing);
+    const approved = await approvedSupplierCall(set, "sup-quickship-safety", "Gloves are cheaper");
+    const first = await set.requestNewSupplier.execute(approved, call("e1"), BACKGROUND_CONTEXT);
     const again = await tools(purchasing).requestNewSupplier.execute(
-      args,
+      approved,
       call("e1"),
       BACKGROUND_CONTEXT,
     );
     expect(text(again)).toBe(text(first));
-    const second = await tools(purchasing).requestNewSupplier.execute(
-      args,
-      call("e2"),
-      BACKGROUND_CONTEXT,
-    );
+    const second = await set.requestNewSupplier.execute(approved, call("e2"), BACKGROUND_CONTEXT);
     expect(details(second).code).toBe("already_approved");
   });
 });

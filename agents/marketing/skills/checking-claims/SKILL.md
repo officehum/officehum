@@ -24,11 +24,11 @@ it word for word, and those are the only results and facts you state without a p
    price book or the person who asked for the piece gave you.
 4. **When the desk refuses**, it names the sentence and the phrase and holds the draft. Tell the
    person who asked which claim was refused and why. Then either draft it again without the claim, or,
-   if they want to keep it, call `request_claim_approval` with the held draft's id, the claim and the
-   draft text exactly as the refusal gave them. Never reword a claim to get past the check: "fewer sick
+   if they want to keep it, call `request_claim_approval` with the held draft's id; the desk shows the
+   person the draft and every held phrase. Never reword a claim to get past the check: "fewer sick
    days" without a figure still promises a result nobody measured.
-5. **A grant covers one claim in one draft.** The same claim in a new draft is refused again and needs
-   its own approval. A held draft is never published until every claim in it is approved.
+5. **A grant covers the held claims in one draft.** The same claim in a new draft is refused again and
+   needs its own approval. A held draft is never published until its claims are approved.
 6. **Testimonials.** Quote a customer only word for word from the testimonials `read_company`
    (marketing) lists. If it lists none, say the company has none on file; never write one, and never
    paraphrase praise into a quote. A testimonial that states a result is a result claim like any other.

@@ -6,9 +6,10 @@
  * checks every claim and holds a draft that states one not on the approved list, and it adds the
  * unsubscribe line and postal address to every email. `request_claim_approval` and `publish` wait for
  * a person on every call; their approvals are `officehum.json`'s, evaluated by the SDK's gate before
- * the tool runs. Each one's arguments carry the full text the person is approving, as the desk gave
- * it, and the desk refuses a grant whose text is not the draft's, so a person never approves one
- * thing and gets another.
+ * the tool runs. Each one names only the draft: `claimApprovalFacts` and `publishApprovalFacts` read
+ * what the person approves (the full text, the held phrases, the channel) from the desk, the gate
+ * hands those facts to the tool on a yes, and the desk refuses when the draft no longer equals them,
+ * so a person never approves one thing and gets another.
  *
  * Every price a tool speaks comes from the price book, every claim rule from the desk, and every name
  * from the company record.
@@ -16,18 +17,28 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
-import { deskRefusal, refusal, requestId, textResult } from "@officehum/sdk";
+import {
+  APPROVED_FACTS_ARG,
+  type ApprovalFactsReader,
+  approvedFacts,
+  approvedFactsParameter,
+  deskRefusal,
+  refusal,
+  requestId,
+  textResult,
+} from "@officehum/sdk";
 import { type CompanyFacts, marketingApprover, money, person, personLabel } from "./company.js";
 import {
-  type Channel,
   type DeskRefusal,
   type Draft,
   type DraftStatus,
+  heldDraftFacts,
   type MarketingDesk,
   MarketingDeskError,
   POST_CHANNELS,
   type PostChannel,
   type Publication,
+  readyDraftFacts,
 } from "./desk.js";
 
 /** What the tools need: the desk, and the company being marketed. */
@@ -36,7 +47,10 @@ export interface MarketingToolDependencies {
   readonly company: CompanyFacts;
 }
 
-/** The seven tools, named, so the factory places each one where the manifest declares it. */
+/**
+ * The seven tools, named, so the factory places each one where the manifest declares it, and the
+ * readers the two approvals ask with.
+ */
 export interface MarketingToolset {
   readonly readServices: ToolRegistration;
   readonly draftPost: ToolRegistration;
@@ -45,6 +59,10 @@ export interface MarketingToolset {
   readonly publish: ToolRegistration;
   readonly listDrafts: ToolRegistration;
   readonly readCompany: ToolRegistration;
+  /** Reads a held draft's text and held phrases from the desk for the person approving them. */
+  readonly claimApprovalFacts: ApprovalFactsReader;
+  /** Reads a ready draft's channel and full text from the desk for the person approving it. */
+  readonly publishApprovalFacts: ApprovalFactsReader;
 }
 
 /** The company section `read_company` can answer for. */
@@ -70,7 +88,6 @@ const SECTIONS: readonly CompanySection[] = [
 ];
 
 const STATUSES: readonly DraftStatus[] = ["held", "draft", "published"];
-const CHANNELS: readonly Channel[] = [...POST_CHANNELS, "email"];
 
 /** The desk, or a refusal: a host with no desk gets no read and no write. */
 function requireDesk(dependencies: MarketingToolDependencies): MarketingDesk {
@@ -200,6 +217,8 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
   const { company } = dependencies;
   const approver = personLabel(marketingApprover(company));
 
+  const NOT_READY = ` Next: each held claim needs request_claim_approval first, which asks ${approver}; or draft it again without the claim.`;
+
   /** A desk refusal as the model reads it, with the next step that a person can take. */
   const refused = (error: unknown, extra: JsonObject) => {
     if (!(error instanceof MarketingDeskError)) throw error;
@@ -207,9 +226,9 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     const draftId = error.draftId === undefined ? "" : ` with draftId ${error.draftId}`;
     const text = error.finalText === undefined ? "" : `\n${block(error.finalText)}`;
     const next: Record<DeskRefusal, string> = {
-      unapproved_claim: ` Next: tell the person who asked which claim was refused and why. Take the claim out and draft again, or, if they have said they want to keep it (ask them first if they have not), call request_claim_approval${draftId}, the claim exactly as quoted and draftText exactly as below, which asks ${approver}. Never publish it as it is.${text}`,
-      not_ready: ` Next: each held claim needs request_claim_approval first, which asks ${approver}; or draft it again without the claim.`,
-      draft_changed: ` Next: give the text exactly as the desk holds it, below.${text}`,
+      unapproved_claim: ` Next: tell the person who asked which claim was refused and why. Take the claim out and draft again, or, if they have said they want to keep it (ask them first if they have not), call request_claim_approval${draftId}, which asks ${approver} and shows them the draft as the desk holds it. Never publish it as it is.${text}`,
+      not_ready: NOT_READY,
+      draft_changed: ` Next: tell the person ${error.draftId ?? "the draft"} changed after it was put to a person, so nothing was approved or published; read it again with list_drafts before anything else.${text}`,
       // The desk's own message already says what to do for these.
       not_found: "",
       invalid: "",
@@ -305,40 +324,71 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     },
   });
 
+  /** One draft from the desk for an approval reader, or a refusal that asks nobody. */
+  const readDraft = async (args: Readonly<Record<string, unknown>>, what: string) => {
+    const desk = requireDesk(dependencies);
+    const draftId = String(args.draftId);
+    const [draft] = await desk.listDrafts({ id: draftId });
+    if (draft === undefined) {
+      throw new Error(
+        `No draft has the id ${JSON.stringify(draftId)}. Nothing was put to a person and nothing was ${what}. Next: find the draft with list_drafts.`,
+      );
+    }
+    return draft;
+  };
+
+  /**
+   * The `claim` approval's facts: the held draft's text and each held phrase, as the desk recorded
+   * them at refusal. A draft with nothing held has nothing to approve, so it throws and the gate asks
+   * nobody.
+   */
+  const claimApprovalFacts: ApprovalFactsReader = async (args) => {
+    const draft = await readDraft(args, "approved");
+    if (draft.heldClaims.length === 0) {
+      throw new Error(
+        `${draft.id} has no claim waiting for approval: it is ${draft.status}. Nothing was put to a person and nothing was approved.`,
+      );
+    }
+    const claims = draft.heldClaims
+      .map((entry) => `"${entry.claim}" (the phrase "${entry.phrase}")`)
+      .join("; ");
+    return {
+      summary: `Approve for ${draft.id} only: ${claims}, in this ${where(draft)}:\n${draft.finalText}`,
+      facts: heldDraftFacts(draft),
+    };
+  };
+
   const requestClaimApproval = defineTool({
     name: "request_claim_approval",
     description:
-      "Ask a person to approve one claim the desk refused, with the held draft it came from: the draft's id, the claim exactly as the refusal quoted it, and the draft's full text exactly as the desk gave it, so the person reads it in context. Every call waits for a person. A grant covers that exact claim in that draft only; it publishes nothing.",
+      "Ask a person to approve the claims the desk refused in one held draft, named by its id from the refusal. The desk shows the person the draft's full text and each held phrase as it holds them. Every call waits for a person. A grant covers those claims in that draft only; it publishes nothing.",
     parameters: Type.Object(
       {
         draftId: Type.String({ description: "The held draft's id from the refusal, e.g. D-104" }),
-        claim: Type.String({
-          minLength: 1,
-          description: "The claim's sentence exactly as the refusal quoted it",
-        }),
-        draftText: Type.String({
-          minLength: 1,
-          description:
-            "The draft's full text exactly as the desk gave it, between <text> and </text>",
-        }),
+        // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared.
+        [APPROVED_FACTS_ARG]: approvedFactsParameter(),
       },
       { additionalProperties: false },
     ),
     replay: "unsafe",
     execute: async (args, api) => {
       const desk = requireDesk(dependencies);
+      const approved = approvedFacts(args);
+      if (approved === undefined) {
+        return refusal(
+          `Nothing was approved: this call for ${args.draftId} carries no facts a person approved. A claim is approved only after the approval gate has put the draft to a person and they said yes. Next: tell the person the claim needs a person's approval and nothing was approved.`,
+          { code: "not_approved", draftId: args.draftId },
+        );
+      }
       try {
         const draft = await desk.approveClaim(
-          { draftId: args.draftId, claim: args.claim, draftText: args.draftText },
+          { draftId: args.draftId, approved },
           { requestId: requestId("claim", api) },
         );
-        const next =
-          draft.status === "draft"
-            ? `${draft.id} is now a draft ready to publish; publishing it still asks ${approver}.`
-            : `${draft.id} is still held for its other claims.`;
+        const granted = draft.grantedClaims.map((claim) => `"${claim}"`).join("; ");
         return {
           ...textResult(
-            `Approved: "${args.claim}" may be used in ${draft.id}, and in no other draft. Nothing was published. ${next}\n${draftText(draft)}`,
+            `Approved: ${granted} may be used in ${draft.id}, and in no other draft. Nothing was published. ${draft.id} is now a draft ready to publish; publishing it still asks ${approver}.\n${draftText(draft)}`,
           ),
           details: details(draft),
         };
@@ -348,31 +398,62 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     },
   });
 
+  /**
+   * The `publish` approval's facts: the draft's channel and full text exactly as it would go out. A
+   * draft already published or still held has nothing to approve, so it throws and the gate asks
+   * nobody.
+   */
+  const publishApprovalFacts: ApprovalFactsReader = async (args) => {
+    const draft = await readDraft(args, "published");
+    if (draft.status === "published") {
+      throw new Error(
+        `${draft.id} was already published on ${draft.publishedOn ?? "an earlier day"} (${draft.publicationId ?? "no record"}). Nothing was put to a person and nothing was published again.`,
+      );
+    }
+    if (draft.status === "held") {
+      throw new Error(
+        `${draft.id} is held: ${draft.heldClaims.map((entry) => `"${entry.claim}" (the phrase "${entry.phrase}")`).join("; ")} still needs a person's approval. Nothing was put to a person and nothing was published.${NOT_READY}`,
+      );
+    }
+    let summary = `Publish ${draft.id} on ${draft.channel}, exactly as below:\n${draft.finalText}`;
+    if (draft.kind === "email") {
+      // The person reads the list's name as the desk holds it, not its id.
+      const audiences = await requireDesk(dependencies).listAudiences();
+      const audience = audiences.find((entry) => entry.id === draft.audienceId);
+      const to =
+        audience === undefined
+          ? "with no audience list on file"
+          : `to the ${audience.name} list (${audience.description})`;
+      summary = `Send ${draft.id} by email ${to}, exactly as below, with the unsubscribe line and postal address the desk added:\n${draft.finalText}`;
+    }
+    return { summary, facts: readyDraftFacts(draft) };
+  };
+
   const publish = defineTool({
     name: "publish",
     description:
-      "Publish one saved draft on its channel. Give the draft's id, its channel and its full text exactly as list_drafts or the drafting tool gave it (between <text> and </text>), so the person approving sees exactly what goes out. Every call waits for a person. The desk publishes only if the channel and text are the draft's as it holds it; a held draft is refused.",
+      "Publish one saved draft on its channel, named by its id from list_drafts or the drafting tool. The desk shows the person the draft's channel and full text exactly as it would go out. Every call waits for a person. Once approved, the desk publishes exactly that draft, and refuses if it changed since the person saw it; a held draft is refused.",
     parameters: Type.Object(
       {
         draftId: Type.String({ description: "The draft's id, e.g. D-102" }),
-        channel: Type.Union(
-          CHANNELS.map((channel) => Type.Literal(channel)),
-          { description: "The draft's channel, as the desk gave it" },
-        ),
-        text: Type.String({
-          minLength: 1,
-          description:
-            "The draft's full text exactly as the desk gave it, between <text> and </text>",
-        }),
+        // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared.
+        [APPROVED_FACTS_ARG]: approvedFactsParameter(),
       },
       { additionalProperties: false },
     ),
     replay: "unsafe",
     execute: async (args, api) => {
       const desk = requireDesk(dependencies);
+      const approved = approvedFacts(args);
+      if (approved === undefined) {
+        return refusal(
+          `Nothing was published: this call to publish ${args.draftId} carries no facts a person approved. A draft is published only after the approval gate has put it to a person and they said yes. Next: tell the person publishing it needs a person's approval and nothing was published.`,
+          { code: "not_approved", draftId: args.draftId },
+        );
+      }
       try {
         const publication: Publication = await desk.publish(
-          { draftId: args.draftId, channel: args.channel as Channel, text: args.text },
+          { draftId: args.draftId, approved },
           { requestId: requestId("publish", api) },
         );
         const backend =
@@ -464,5 +545,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     publish,
     listDrafts,
     readCompany,
+    claimApprovalFacts,
+    publishApprovalFacts,
   };
 }

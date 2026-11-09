@@ -31,12 +31,12 @@
     {
       "name": "request_claim_approval",
       "replay": "unsafe",
-      "description": "Ask a person to approve one claim the desk refused, with the draft it came from. A grant covers that exact claim in that draft only."
+      "description": "Ask a person to approve the claims the desk refused in one held draft, named by its id. The desk shows the person the draft's full text and each held phrase; a grant covers those claims in that draft only, and is refused if the draft changed since."
     },
     {
       "name": "publish",
       "replay": "unsafe",
-      "description": "Publish one saved draft on its channel, exactly as the desk holds it. Every call waits for a person, who sees the channel and the full text."
+      "description": "Publish one saved draft on its channel, named by its id, exactly as the desk holds it. Every call waits for a person, who sees the channel and the full text the desk reads; the desk refuses if the draft changed since."
     },
     {
       "name": "list_drafts",
@@ -54,12 +54,12 @@
     {
       "id": "claim",
       "tool": "request_claim_approval",
-      "description": "Approve using this exact claim in this one draft, whose full text is shown"
+      "description": "Approve using these claims in this one draft, as the desk holds it: its full text and each held phrase"
     },
     {
       "id": "publish",
       "tool": "publish",
-      "description": "Publish this draft on this channel with exactly this text"
+      "description": "Publish this draft as the desk holds it: on its channel, with exactly its full text"
     }
   ],
   "channels": ["email", "chat"],

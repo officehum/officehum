@@ -29,10 +29,10 @@ and any claim not on the company's approved list, is named in the handbook and b
    remove them.
 4. If the desk refuses a draft for a claim, it names the phrase and holds the draft. Tell the person
    who asked which claim was refused. Draft it again without the claim, or, if they want to keep it,
-   call `request_claim_approval` with the held draft's id, the claim and the draft text exactly as the
-   refusal gave them. Never reword a claim to slip past the check.
-5. To publish, call `publish` with the draft's id, channel and full text exactly as the desk gave
-   them. A person decides every publication.
+   call `request_claim_approval` with the held draft's id. Never reword a claim to slip past the
+   check.
+5. To publish, call `publish` with the draft's id. The desk shows the person its channel and full
+   text. A person decides every publication.
 6. Answer where a draft stands with `list_drafts`.
 7. Then reply: your final message is the whole answer and nothing else.
 
