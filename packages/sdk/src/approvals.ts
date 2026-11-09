@@ -214,7 +214,13 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
         }
         if (!decision.approved) {
           const reason = decision.note === null ? "" : `: ${decision.note}`;
-          return { block: `A person declined this action (${approval.description})${reason}.` };
+          // Models otherwise name the approver they asked as the one who said no, a claim
+          // nothing in this result supports.
+          return {
+            block:
+              `A person declined this action (${approval.description})${reason}. ` +
+              "This result does not say who declined, so name no one as the person who declined.",
+          };
         }
       }
       return undefined;
