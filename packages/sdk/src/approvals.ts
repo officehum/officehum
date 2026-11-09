@@ -219,7 +219,7 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
           return {
             block:
               `A person declined this action (${approval.description})${reason}. ` +
-              "This result does not say who declined, so name no one as the person who declined.",
+              "Say it was declined. This result does not say who declined, so name no one as the person who did.",
           };
         }
       }
