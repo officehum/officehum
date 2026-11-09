@@ -16,6 +16,7 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
+import { deskRefusal, refusal, requestId, textResult } from "@officehum/sdk";
 import { type CompanyFacts, escalationOwner, money, person, personLabel } from "./company.js";
 import {
   CASE_CATEGORIES,
@@ -83,14 +84,6 @@ function requireDesk(dependencies: SupportToolDependencies): SupportDesk {
     throw new Error("No support desk is configured for this role.");
   }
   return dependencies.desk;
-}
-
-function textResult(value: string) {
-  return { output: [{ type: "text" as const, text: value }] };
-}
-
-function refusal<TDetails extends JsonObject>(value: string, details: TDetails) {
-  return { ...textResult(value), isError: true, details };
 }
 
 /** A desk record as plain JSON for a result's details. */
@@ -205,12 +198,6 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     "the person who handles safety",
   );
 
-  /** The durable call identity, so a retried call is answered with what it already did. */
-  const requestId = (
-    kind: string,
-    api: { conversationId: unknown; taskId: unknown; callId: string },
-  ) => `${kind}:${String(api.conversationId)}:${String(api.taskId)}:${api.callId}`;
-
   /** A desk refusal as the model reads it, with the next step chosen from its code. */
   const refused = (error: unknown, extra: { readonly caseId?: string } & JsonObject) => {
     if (!(error instanceof SupportDeskError)) throw error;
@@ -241,9 +228,8 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
       closed: "",
       not_a_complaint: "",
     };
-    return refusal<JsonObject>(`${error.message}${next[error.code]}`, {
+    return deskRefusal(`${error.message}${next[error.code]}`, error.code, {
       ...extra,
-      code: error.code,
       ...(error.quote === undefined ? {} : plain(error.quote)),
     });
   };

@@ -14,6 +14,7 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
+import { refusal, requestId, textResult } from "@officehum/sdk";
 import {
   type CompanyFacts,
   escalationRule,
@@ -79,16 +80,6 @@ function requireDesk(dependencies: SalesToolDependencies): SalesDesk {
     throw new Error("No sales desk is configured for this role.");
   }
   return dependencies.desk;
-}
-
-/** The one result shape every tool reports, so a UI reads the same fields either way. */
-function textResult(value: string) {
-  return { output: [{ type: "text" as const, text: value }] };
-}
-
-/** A refusal the model reads, with the same details shape a success carries. */
-function refusal<TDetails extends Record<string, unknown>>(value: string, details: TDetails) {
-  return { ...textResult(value), isError: true, details };
 }
 
 /** A lead as a UI reads it, amounts in integer cents and nothing optional. */
@@ -454,7 +445,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
           },
           // The durable call identity, so a retried call is answered with the quote it already made
           // rather than a second draft of the same quote.
-          { requestId: `quote:${String(api.conversationId)}:${String(api.taskId)}:${api.callId}` },
+          { requestId: requestId("quote", api) },
         );
         return { ...textResult(quoteReceipt(quote)), details: quoteDetails(quote) };
       } catch (error) {
@@ -489,7 +480,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
         const activity = await desk.logActivity(
           { leadId: args.leadId, kind: args.kind as ActivityKind, summary: args.summary },
           {
-            requestId: `activity:${String(api.conversationId)}:${String(api.taskId)}:${api.callId}`,
+            requestId: requestId("activity", api),
           },
         );
         return {

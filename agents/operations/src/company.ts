@@ -10,8 +10,7 @@
  * `company` to the factory instead, and nothing in this file runs.
  */
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { loadCompanyFacts as loadFacts, personLabel as sharedPersonLabel } from "@officehum/sdk";
 
 /** Where the generated facts live, from either `src/company.ts` or `dist/company.js`. */
 export const COMPANY_FACTS_URL = new URL(
@@ -120,22 +119,7 @@ export interface CompanyFacts {
 }
 
 /** The company facts generated into this package. Throws when the copy is missing or is not JSON. */
-export function loadCompanyFacts(): CompanyFacts {
-  const path = fileURLToPath(COMPANY_FACTS_URL);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(COMPANY_FACTS_URL, "utf8")) as unknown;
-  } catch (error) {
-    throw new Error(
-      `${path} could not be read: ${error instanceof Error ? error.message : String(error)}. ` +
-        "It is generated: run `npm run sync-company` in the repository this package came from.",
-    );
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`${path} must hold a JSON object.`);
-  }
-  return parsed as CompanyFacts;
-}
+export const loadCompanyFacts = (): CompanyFacts => loadFacts<CompanyFacts>(COMPANY_FACTS_URL);
 
 /** One person by id, or `undefined` when nobody here has that id. */
 export function person(company: CompanyFacts, id: string): Person | undefined {
@@ -157,6 +141,5 @@ export function scheduleOwner(company: CompanyFacts): Person | undefined {
 }
 
 /** "Name, Title", or the title-free fallback when the company names nobody. */
-export function personLabel(owner: Person | undefined): string {
-  return owner === undefined ? "the person who owns the schedule" : `${owner.name}, ${owner.title}`;
-}
+export const personLabel = (who: Person | undefined): string =>
+  sharedPersonLabel(who, "the person who owns the schedule");

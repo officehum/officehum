@@ -14,6 +14,7 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
+import { deskRefusal, refusal, requestId, textResult } from "@officehum/sdk";
 import { type CompanyFacts, type Person, peopleOwner, person, personLabel } from "./company.js";
 import {
   type Candidate,
@@ -92,14 +93,6 @@ function requireDesk(dependencies: PeopleOpsToolDependencies): PeopleOpsDesk {
   return dependencies.desk;
 }
 
-function textResult(value: string) {
-  return { output: [{ type: "text" as const, text: value }] };
-}
-
-function refusal<TDetails extends JsonObject>(value: string, details: TDetails) {
-  return { ...textResult(value), isError: true, details };
-}
-
 const reasonWords = (reason: ReasonCategory): string => reason.replaceAll("_", " ");
 
 /**
@@ -152,7 +145,9 @@ function availabilityText(crews: readonly CrewAvailability[]): string {
 function timeOffText(entry: TimeOffRequest): string {
   const span = `${entry.employeeName}, ${entry.startDate} to ${entry.endDate} (${entry.days} ${entry.days === 1 ? "day" : "days"}), ${reasonWords(entry.reasonCategory)}`;
   const decides =
-    entry.decidesTitle === "" ? entry.decidesName : `${entry.decidesName} (${entry.decidesTitle})`;
+    entry.decidesTitle === ""
+      ? entry.decidesName
+      : personLabel({ id: "", name: entry.decidesName, title: entry.decidesTitle });
   if (entry.status === "approved") {
     return `Approved by a person and recorded: ${entry.id}, ${span}, with ${entry.daysNotice} days' notice.`;
   }
@@ -234,11 +229,6 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
   const hints = HINTS(company);
   const hiring = personLabel(peopleOwner(company), "the person who decides hiring");
 
-  const requestId = (
-    kind: string,
-    api: { conversationId: unknown; taskId: unknown; callId: string },
-  ) => `${kind}:${String(api.conversationId)}:${String(api.taskId)}:${api.callId}`;
-
   /** A desk refusal as the model reads it, with the next step its code names. */
   const refused = (error: unknown, extra: JsonObject) => {
     if (!(error instanceof PeopleOpsDeskError)) throw error;
@@ -250,8 +240,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     if (error.code === "late_notice" && error.mayBeProtected === true) {
       next += ` The reason given says too little to rule out one the law may protect. If the employee's reason is illness or injury, disability, pregnancy or a new child, military service, jury duty, caring for family or bereavement, it may be protected: call record_time_off_request again with that reasonCategory instead, and the desk sends it to ${personLabel(person(company, company.staffPolicies.protectedLeaveTo))} whatever the notice. Do not ask for medical details.`;
     }
-    return refusal<JsonObject>(`${error.message}${next}`, {
-      code: error.code,
+    return deskRefusal(`${error.message}${next}`, error.code, {
       ...(error.daysNotice === undefined ? {} : { daysNotice: error.daysNotice }),
       ...(error.mayBeProtected === undefined ? {} : { mayBeProtected: error.mayBeProtected }),
       ...extra,
@@ -512,7 +501,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
           },
           { requestId: requestId("refer", api) },
         );
-        const holder = `${referral.toName} (${referral.toTitle})`;
+        const holder = personLabel({ id: "", name: referral.toName, title: referral.toTitle });
         const rerouted = referral.rerouted
           ? " It names the person it would normally go to, so it is with someone else: never say it is with anyone it names."
           : "";

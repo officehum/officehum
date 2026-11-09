@@ -19,7 +19,7 @@ import { createHash } from "node:crypto";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { Customer, Invoice, InvoiceDraft, Money, QuickBooks } from "@officehum/quickbooks";
-import type { ApprovalCondition } from "@officehum/sdk";
+import { type ApprovalCondition, textResult } from "@officehum/sdk";
 import {
   CollectionsDoc,
   disputed,
@@ -239,15 +239,6 @@ function invoiceJson(invoice: Invoice): InvoiceDetails {
 /** Two addresses that differ only in surrounding whitespace or case are the same address. */
 function sameAddress(left: string, right: string): boolean {
   return left.trim().toLowerCase() === right.trim().toLowerCase();
-}
-
-/**
- * One line of text for the model. Every tool reports the same way, so the shape a tool returns never
- * varies: `output` (never the 1.2.0 `content`, which the SDK's guard refuses), `details`, and
- * `isError` only when the call failed.
- */
-function textResult(value: string) {
-  return { output: [{ type: "text" as const, text: value }] };
 }
 
 /**

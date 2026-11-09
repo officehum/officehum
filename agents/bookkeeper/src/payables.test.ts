@@ -186,7 +186,27 @@ describe("pay_vendor_bill", () => {
       "Paid BILL-2001 (Rainier Cleaning Tools, supplier invoice RT-5520): $648.00, the bill's own total",
     );
     expect(text(result)).toContain("no money moved");
-    expect(details(result)).toMatchObject({ amountCents: 64800, demo: true });
+    expect(details(result)).toMatchObject({ amountCents: 64800, backend: "demo" });
+  });
+
+  it("a host backend payment does not say no money moved", async () => {
+    const accounts = desk();
+    const hostDesk: FakeAccountingDesk = {
+      ...accounts,
+      payVendorBill: async (...args) => ({
+        ...(await accounts.payVendorBill(...args)),
+        backend: "host",
+      }),
+    };
+    const result = await tools(hostDesk).payVendorBill.execute(
+      RAINIER,
+      call("p-host"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(false);
+    expect(text(result)).not.toContain("no money moved");
+    expect(text(result)).not.toContain("Demonstration backend");
+    expect(details(result)).toMatchObject({ backend: "host" });
   });
 
   it("pays nothing when the facts named are not the bill's, and says where to read them", async () => {

@@ -13,6 +13,7 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
+import { deskRefusal, refusal, requestId, textResult } from "@officehum/sdk";
 import { type CompanyFacts, person, personLabel, scheduleOwner } from "./company.js";
 import {
   type Assignment,
@@ -74,14 +75,6 @@ function requireDesk(dependencies: OperationsToolDependencies): OperationsDesk {
     throw new Error("No operations desk is configured for this role.");
   }
   return dependencies.desk;
-}
-
-function textResult(value: string) {
-  return { output: [{ type: "text" as const, text: value }] };
-}
-
-function refusal<TDetails extends JsonObject>(value: string, details: TDetails) {
-  return { ...textResult(value), isError: true, details };
 }
 
 /** Hours as a person reads them. */
@@ -205,12 +198,6 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
   const { company } = dependencies;
   const owner = personLabel(scheduleOwner(company));
 
-  /** The durable call identity, so a retried call is answered with what it already did. */
-  const requestId = (
-    kind: string,
-    api: { conversationId: unknown; taskId: unknown; callId: string },
-  ) => `${kind}:${String(api.conversationId)}:${String(api.taskId)}:${api.callId}`;
-
   /** A desk refusal as the model reads it, with the next step that a person can take. */
   const refused = (error: unknown, extra: JsonObject) => {
     // Typed loosely on purpose: a refusal's details and a receipt's share one tool, so neither may
@@ -229,8 +216,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
       fits: "",
       one_off: "",
     };
-    return refusal<JsonObject>(`${error.message}${next[error.code]}`, {
-      code: error.code,
+    return deskRefusal(`${error.message}${next[error.code]}`, error.code, {
       ...(error.overtimeHoursNeeded === undefined
         ? {}
         : { overtimeHoursNeeded: error.overtimeHoursNeeded }),

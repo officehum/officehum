@@ -11,8 +11,7 @@
  * passes `company` to the factory instead, and nothing in this file runs.
  */
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { findPeople, loadCompanyFacts as loadFacts, personLabel } from "@officehum/sdk";
 
 /** Where the generated facts live, from either `src/company.ts` or `dist/company.js`. */
 export const COMPANY_FACTS_URL = new URL(
@@ -119,22 +118,7 @@ export interface CompanyFacts {
 }
 
 /** The company facts generated into this package. Throws when the copy is missing or is not JSON. */
-export function loadCompanyFacts(): CompanyFacts {
-  const path = fileURLToPath(COMPANY_FACTS_URL);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(COMPANY_FACTS_URL, "utf8")) as unknown;
-  } catch (error) {
-    throw new Error(
-      `${path} could not be read: ${error instanceof Error ? error.message : String(error)}. ` +
-        "It is generated: run `npm run sync-company` in the repository this package came from.",
-    );
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`${path} must hold a JSON object.`);
-  }
-  return parsed as CompanyFacts;
-}
+export const loadCompanyFacts = (): CompanyFacts => loadFacts<CompanyFacts>(COMPANY_FACTS_URL);
 
 const CURRENCY = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
@@ -146,43 +130,6 @@ export function money(cents: number): string {
 /** One person by id, or `undefined` when nobody here has that id. */
 export function person(company: Pick<CompanyFacts, "people">, id: string): Person | undefined {
   return company.people.find((candidate) => candidate.id === id);
-}
-
-/** "Name, Title", or the fallback when the company names nobody. */
-export function personLabel(who: Person | undefined, fallback = "a person"): string {
-  return who === undefined ? fallback : `${who.name}, ${who.title}`;
-}
-
-/**
- * Every person the company record names, by id, full name, title, surname or first name, each matched as
- * whole words anywhere in the text, ignoring case: how a client or colleague refers to someone
- * ("the client services lead", "Mr" and a surname, a first name). A word that only contains a name
- * does not match. Empty when the words name nobody on the record, such as a crew member the record
- * does not list. Used to keep a complaint away from the person it is about, so matching
- * eagerly only ever sends a case to someone else.
- */
-export function findPeople(
-  company: Pick<CompanyFacts, "people">,
-  words: string,
-): readonly Person[] {
-  const wanted = words.trim().toLowerCase();
-  if (wanted === "") return [];
-  const has = (phrase: string): boolean => {
-    const escaped = phrase
-      .trim()
-      .toLowerCase()
-      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return escaped !== "" && new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`).test(wanted);
-  };
-  return company.people.filter((candidate) => {
-    const parts = candidate.name.split(" ");
-    return (
-      candidate.id.toLowerCase() === wanted ||
-      has(candidate.name) ||
-      has(candidate.title) ||
-      parts.some((part) => has(part))
-    );
-  });
 }
 
 /** The person whose escalation topic this is, or `undefined` when the record has no such topic. */
@@ -203,3 +150,5 @@ export function companyHead(company: Pick<CompanyFacts, "people">): Person | und
     /\b(managing director|director|owner|president|chief executive)\b/i.test(candidate.title),
   );
 }
+
+export { findPeople, personLabel };

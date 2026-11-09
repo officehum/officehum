@@ -200,7 +200,7 @@ describe("payVendorBill", () => {
       billId: "BILL-2001",
       amountCents: 64800,
       paidOn: "2026-11-09",
-      demo: true,
+      backend: "demo",
     });
     const [bill] = await accounts.listVendorBills({ billId: "BILL-2001" });
     expect(bill).toMatchObject({ status: "paid", paymentId: payment.id });
