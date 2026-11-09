@@ -48,7 +48,8 @@ export async function recordingRole(source: string): Promise<RecordingRole> {
     [
       `import factory from ${JSON.stringify(original)};`,
       "export default function recording(options: Record<string, unknown>) {",
-      `  (globalThis as any)[Symbol.for("officehum.testing.recordingRole")]?.set(${JSON.stringify(dir)}, options);`,
+      '  const recordings = (globalThis as any)[Symbol.for("officehum.testing.recordingRole")];',
+      `  recordings?.set(${JSON.stringify(dir)}, options);`,
       "  return factory(options as never);",
       "}",
       "",

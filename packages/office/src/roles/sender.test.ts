@@ -1,4 +1,4 @@
-/** The verified sender a role's tools read: the board's provenance row for the conversation's ticket. */
+/** The verified sender a role's tools read: the provenance row of the conversation's ticket. */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

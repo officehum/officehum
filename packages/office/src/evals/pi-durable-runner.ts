@@ -28,11 +28,11 @@
  * description and parameters and returns the scenario's text. A call to a declared tool the scenario
  * does not stub stops the trial. `read_skill` is not declared, so it is left alone and runs for real.
  * An approval the scenario does not script is never guessed: the trial stops. The role is handed a
- * verified sender as production would hand it one: in office mode the board's (the scenario's `from`
- * and `channel` are written to the ticket's provenance), in bare mode the scenario's `from` as an
- * outside contact, and unknown when the scenario names nobody. Each trial opens its own
- * office and conversation, so an index-based scripted provider must be rebuilt per trial — hence the
- * `model` factory rather than a single provider.
+ * verified sender as production would hand it one: in office mode the board's (the scenario's
+ * `from` and `channel` are written to the ticket's provenance; an inbound email keeps `email`), in
+ * bare mode the scenario's `from` as an outside contact, and unknown when the scenario names
+ * nobody. Each trial opens its own office and conversation, so an index-based scripted provider
+ * must be rebuilt per trial — hence the `model` factory rather than a single provider.
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -304,8 +304,9 @@ async function runTrial(
   };
 
   const officeMode = options.mode === "office";
-  // Office mode's sender is the board's, as in production. The role is loaded before its office opens
-  // (the ticket type comes from the role's manifest), so the resolver reads the board once it exists.
+  // Office mode's sender is the board's, as in production. The role is loaded before its office
+  // opens (the ticket type comes from the role's manifest), so the resolver reads the board once it
+  // exists.
   let officeSender: SenderResolver | undefined;
   const sender: SenderResolver = officeMode
     ? async (call) => officeSender?.(call)
@@ -506,7 +507,9 @@ function ticketPlan(scenario: Scenario, type: string, options: PiDurableRunnerOp
     provenance: inbound
       ? {
           origin: "external",
-          sourceChannel: channel ?? "email",
+          // An email whatever the scenario's `channel` says: the channel records how the work
+          // arrived, and an inbound-email trial arrived by email.
+          sourceChannel: "email",
           sourceContact: sender ?? "customer@example.test",
         }
       : {
@@ -652,9 +655,9 @@ function openEvalOffice(
 }
 
 /**
- * Bare mode's sender: the scenario's `from`, on its channel, as an outside contact — there is no board
- * to have verified it, and an unverified asker is never a colleague. A scenario that names nobody
- * leaves the sender unknown, as a role given no resolver would see it.
+ * Bare mode's sender: the scenario's `from`, on its channel, as an outside contact — there is no
+ * board to have verified it, and an unverified asker is never a colleague. A scenario that names
+ * nobody leaves the sender unknown, as a role given no resolver would see it.
  */
 function bareSender(input: Scenario["input"]): SenderResolver {
   const sender =

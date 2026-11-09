@@ -8,9 +8,10 @@
  * checked against the manifest (`checkAgent`).
  *
  * The factory is a role package's default export. It is called with the caller's overlays, approver,
- * clock (`now`), verified sender (`sender`), an engine built from the manifest when the package declares one, and the named app
- * clients the caller passes (`calendar`, `quickbooks`, …). A role package keeps its own app clients;
- * the host decides which concrete client each name resolves to. See docs/design/agent-package.md.
+ * clock (`now`), verified sender (`sender`), an engine built from the manifest when the package
+ * declares one, and the named app clients the caller passes (`calendar`, `quickbooks`, …). A role
+ * package keeps its own app clients; the host decides which concrete client each name resolves to.
+ * See docs/design/agent-package.md.
  */
 
 import { readFile } from "node:fs/promises";

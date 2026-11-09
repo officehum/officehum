@@ -9,6 +9,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import {
   type EvalSuite,
@@ -21,6 +22,7 @@ import {
 } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWorkboard } from "../board/testing.js";
+import { boardSenderResolver } from "../roles/sender.js";
 import { recordingRole } from "../testing/recording-role.js";
 import {
   type ScriptedModel,
@@ -270,7 +272,11 @@ describe("the sender a trial's role is handed", () => {
     expect(await unnamed?.({ conversationId: 1, taskId: 1 })).toBeUndefined();
   });
 
-  it("office mode puts from on the ticket's provenance", async () => {
+  /**
+   * Runs `fromDana` in office mode on a board file the test keeps, then reopens the board and reads
+   * the ticket's provenance and what the office's resolver answers for the trial's conversation.
+   */
+  async function officeTrial(delivery: "internal-message" | "inbound-email") {
     const recording = await recordingRole(stockroom);
     temps.push(recording.dir);
     const boardDir = mkdtempSync(join(tmpdir(), "officehum-sender-board-"));
@@ -279,21 +285,56 @@ describe("the sender a trial's role is handed", () => {
     await piDurableRunner({
       dir: recording.dir,
       mode: "office",
-      office: { boardFile },
+      office: { boardFile, delivery },
       model: levelsThenAnswer,
     }).run(fromDana, 1);
-
     expect(typeof recording.options()?.sender).toBe("function");
+
+    // The board lists no bindings, so the trial's conversation id is read from the file.
+    const database = new DatabaseSync(boardFile);
+    const bound = database.prepare("SELECT conversation_id FROM ticket_conversations").all() as {
+      conversation_id: number;
+    }[];
+    database.close();
+    expect(bound).toHaveLength(1);
+    const conversationId = bound[0]?.conversation_id;
+
     const board = createWorkboard(boardFile);
     try {
       const [ticket] = board.list({});
-      expect(ticket === undefined ? undefined : board.provenance(ticket.id)).toEqual({
-        origin: "internal",
-        sourceChannel: "sms",
-        sourceContact: "+1 503 555 0143",
-      });
+      return {
+        provenance: ticket === undefined ? undefined : board.provenance(ticket.id),
+        resolved: await boardSenderResolver(board)({ conversationId, taskId: 1 }),
+      };
     } finally {
       board.close();
     }
+  }
+
+  it("office mode puts from on the ticket's provenance", async () => {
+    const internal = await officeTrial("internal-message");
+    expect(internal.provenance).toEqual({
+      origin: "internal",
+      sourceChannel: "sms",
+      sourceContact: "+1 503 555 0143",
+    });
+    expect(internal.resolved).toEqual({
+      origin: "internal",
+      channel: "sms",
+      contact: "+1 503 555 0143",
+    });
+
+    // An inbound email stays an email whatever the scenario's channel; `from` is still the contact.
+    const inbound = await officeTrial("inbound-email");
+    expect(inbound.provenance).toEqual({
+      origin: "external",
+      sourceChannel: "email",
+      sourceContact: "+1 503 555 0143",
+    });
+    expect(inbound.resolved).toEqual({
+      origin: "external",
+      channel: "email",
+      contact: "+1 503 555 0143",
+    });
   });
 });
