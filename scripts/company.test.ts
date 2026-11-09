@@ -183,6 +183,22 @@ describe("the company package's own consistency", () => {
     ]);
   });
 
+  it("accepts a crew lead on record in the field department", () => {
+    const directory = withFile("company.json", (body) => {
+      const company = JSON.parse(body) as { people: Record<string, unknown>[] };
+      company.people.push({
+        id: "tasha-crew-lead",
+        name: "Tasha Reyes",
+        title: "Crew lead, North",
+        department: "field",
+        email: "tasha@example.com",
+      });
+      return JSON.stringify(company, null, 2);
+    });
+    const issues = companyIssues(readSource(directory));
+    expect(issues.filter((issue) => issue.includes("department"))).toEqual([]);
+  });
+
   it("refuses a headcount that the field structure does not add up to", () => {
     const directory = withFile("company.json", (body) => {
       const company = JSON.parse(body) as { profile: { headcount: number } };
