@@ -162,7 +162,8 @@ Creating an invoice, sending one, sending a reminder and paying a supplier bill 
   (`Pay BILL-2001 to Rainier Cleaning Tools, supplier invoice RT-5520: $648.00, recorded by Eileen
   Hart from …`) and the bill's facts. A bill not on the desk or already paid blocks the call and asks
   nobody. On a yes the gate hands those facts to the tool under `officehumApprovedFacts`, overwriting
-  anything the model sent there; a call with no approved facts (no gate in front of it) pays nothing.
+  anything the model sent there; a call with no approved facts (no gate in front of it) pays nothing
+  and `pay_vendor_bill` refuses with `not_approved`, a tool-level code (not a desk one).
   The desk pays the bill's own total, never a figure from the model, and refuses with
   `bill_changed` when the bill no longer equals what was approved, so a grant covers exactly the bill
   the person saw. A retried call, or one recovered after a restart, pays once.

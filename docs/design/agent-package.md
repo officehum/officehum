@@ -235,6 +235,15 @@ whatever the model sent, and strips it from any call it does not grant. The tool
 parameters again, so a tool whose parameters refuse additional properties declares the key with
 `approvedFactsParameter()`. Accounting's `pay_vendor_bill` is the reference: it takes only `{ billId }`.
 
+A call the approval does not apply to (its `when` holds false) gets no facts, so a tool that requires
+them refuses every call the condition exempts. Give a facts reader only to an approval that applies to
+every call of its tool, or let the tool proceed without facts when no approval applied. `defineRole`
+also exposes the readers as `DefinedRole.approvalFacts` (always set, `{}` when the role has none), so a
+host's own gate can read the same facts. The office gate does not use them yet: until it records
+facts with the request (RASF-3486, Task 6c), office mode shows the person only the tool's arguments
+(for `pay_vendor_bill`, `{ billId }`) and passes the tool no facts, so a gated tool that requires
+them refuses there.
+
 Installing it on any Pi Durable harness:
 
 ```ts
