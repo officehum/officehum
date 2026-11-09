@@ -278,8 +278,11 @@
             "call-out approved",
             "crew dispatched",
             "crew is on",
-            "is on its way",
-            "are on their way",
+            "a crew is on its way",
+            "someone is on its way",
+            "help is on its way",
+            "they are on their way",
+            "the crew are on their way",
             "on the way to you",
             "receipt"
           ]
