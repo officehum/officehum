@@ -204,12 +204,18 @@
             "quickship has been approved",
             "quickship is now approved",
             "quickship is now on",
-            "added quickship",
+            "i've added quickship",
+            "i have added quickship",
+            "we've added quickship",
             "quickship has been added",
             "quickship was added",
-            "order has been placed with quickship",
-            "i've ordered",
-            "i have ordered"
+            "an order has been placed with quickship",
+            "the order has been placed with quickship",
+            "order has now been placed with quickship",
+            "i've ordered the",
+            "i've ordered 10",
+            "i have ordered the",
+            "i have ordered 10"
           ]
         }
       }
