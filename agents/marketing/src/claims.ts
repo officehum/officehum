@@ -17,9 +17,10 @@
  * **Not result claims**: an offer on a price — "20% off your first clean", "twenty percent off a
  * deep clean", "10% discount on your next visit", or "N% off" at the end of a sentence — and a price
  * ("$99", "from $185 a visit"). An offer is read as one only when what follows "off" or "discount" is
- * a price word or one of the company's service names, and no result noun ({@link RESULT_NOUNS}) follows
- * in the same phrase: "30% off your sick days" and "30% off your hours of lost work" are results. A year
- * ("for 2026") is not a numeric result either, but "$2000" is money. What the detector does not try to read —
+ * a price word or one of the company's service names, and no result noun ({@link RESULT_NOUNS}) is in
+ * the same phrase or just before it: "30% off your sick days", "30% off your hours of overtime" and
+ * "Sick days, 30% off." are results. A year ("for 2026") is not a numeric result either, but "$2000" is
+ * money. What the detector does not try to read —
  * "saves you money" with no figure, a superlative, a promise — is left to the instructions and to the
  * person who approves every publication.
  *
@@ -66,31 +67,32 @@ const PRICE_WORDS = [
   "bill",
   "site",
   "sites",
-  "hour",
-  "hours",
+  "month",
+  "months",
 ];
 
 /**
- * Words that make what follows "off" a result, not a price: "30% off your hours of lost work", "20%
- * off sick days". An offer is masked only when none of them follows inside the same phrase.
+ * Stems of the words that make an offer a result, not a price: "30% off your hours of lost work",
+ * "20% off sick days", "30% off staff sickness hours". Each is a stem, so a word that starts with it
+ * counts: "sick" covers "sickness", "injur" covers "injury" and "injuries". An offer is masked only
+ * when none of them is in its phrase, or just before it ("Sick days, 30% off.").
  */
 export const RESULT_NOUNS: readonly string[] = [
   "sick",
   "lost",
-  "complaint",
-  "complaints",
+  "complain",
   "downtime",
-  "absence",
-  "absences",
+  "absen",
+  "overtime",
+  "turnover",
   "callback",
-  "callbacks",
   "illness",
-  "illnesses",
-  "injuries",
-  "accidents",
-  "germs",
+  "injur",
+  "accident",
+  "infect",
+  "germ",
 ];
-const RESULT_NOUN = new RegExp(String.raw`\b(?:${RESULT_NOUNS.join("|")})\b`, "i");
+const RESULT_NOUN = new RegExp(String.raw`\b(?:${RESULT_NOUNS.join("|")})\w*`, "i");
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -99,17 +101,19 @@ function escapeRegExp(text: string): string {
 /**
  * An offer: a percentage taken off a price. It is masked before the rules run only when "off" or
  * "discount" ends the sentence, or is followed, after an optional determiner and up to two words, by a
- * price word or one of the company's own service names.
+ * price word or one of the company's own service names. "Hours" is a price ("10% off day porter
+ * hours") only when nothing follows it, or a service name does ("hours of a day porter"); "hours of
+ * overtime" is a result.
  */
 function offerPattern(terms: readonly string[]): RegExp {
-  const targets = [
-    ...PRICE_WORDS,
-    ...terms
-      .map((term) => escapeRegExp(term.trim()).replace(/\s+/g, "\\s+"))
-      .filter((term) => term !== ""),
-  ].join("|");
+  const services = terms
+    .map((term) => escapeRegExp(term.trim()).replace(/\s+/g, "\\s+"))
+    .filter((term) => term !== "");
+  const targets = [...PRICE_WORDS, ...services].join("|");
+  const service = services.length === 0 ? "(?!)" : `(?:${services.join("|")})`;
+  const hours = String.raw`hours?(?=\s*(?:[,;:.!?]|$)|\s+(?:of|from|with)\s+(?:(?:a|an|the|your|our)\s+)?${service}\b)`;
   return new RegExp(
-    String.raw`\b${PERCENT}\s+(?:off|discount)(?=\s*(?:[.!?]|$)|\s+(?:(?:on|for|of|from)\s+)?(?:(?:your|our|the|a|an|any|every|each)\s+)?(?:[\w-]+\s+){0,2}?(?:${targets})\b)`,
+    String.raw`\b${PERCENT}\s+(?:off|discount)(?=\s*(?:[.!?]|$)|\s+(?:(?:on|for|of|from)\s+)?(?:(?:your|our|the|a|an|any|every|each)\s+)?(?:[\w-]+\s+){0,2}?(?:(?:${targets})\b|${hours}))`,
     "gi",
   );
 }
@@ -168,7 +172,11 @@ function claimPhrase(sentence: string, offer: RegExp): string | undefined {
     // The phrase an offer sits in runs from "off" to the next comma, colon or sentence end.
     const offset = rest.find((arg): arg is number => typeof arg === "number") ?? 0;
     const phrase = normal.slice(offset + found.length).split(/[,;:.!?—–]/, 1)[0] ?? "";
-    return RESULT_NOUN.test(phrase) ? found : " ".repeat(found.length);
+    // An offer that opens its clause takes its object from the clause before: "Sick days, 30% off."
+    const clauses = normal.slice(0, offset).split(/[,;:—–]/);
+    const own = clauses.pop() ?? "";
+    const lead = own.trim() === "" ? (clauses.pop() ?? "") : own;
+    return RESULT_NOUN.test(phrase) || RESULT_NOUN.test(lead) ? found : " ".repeat(found.length);
   });
   for (const rule of RULES) {
     for (const match of masked.matchAll(rule)) {

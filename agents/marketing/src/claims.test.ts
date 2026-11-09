@@ -160,6 +160,34 @@ describe("findResultClaims", () => {
     expect(findResultClaims("20% off your first clean, and no contract to sign", [])).toEqual([]);
   });
 
+  it.each([
+    "25% off your hours of overtime",
+    "30% off staff sickness hours",
+    "40% off your hours of absenteeism",
+    "30% off hours of cleanup",
+    "20% off the hours lost to injury",
+    "20% off workplace injuries",
+    "15% off slip accidents in the lobby",
+    "15% off the accident count",
+    "50% off the germs on every desk",
+    "50% off every germ in the lunch room",
+    "Sick days, 30% off.",
+    "Complaints: 30% off.",
+  ])("catches a result read by its stem, or named before the offer: %j", (text) => {
+    expect(findResultClaims(text, [])).toHaveLength(1);
+  });
+
+  it.each([
+    "20% off your first clean",
+    "10% off your first month",
+    "$50 off a deep clean",
+    "20% off your first 10 hours",
+    "10% off day porter hours.",
+    "10% off the hours of a day porter",
+  ])("still masks a real offer: %j", (text) => {
+    expect(findResultClaims(text, [], ["Day porter", "Deep clean and floor care"])).toEqual([]);
+  });
+
   it("catches a claim split from its number by a line break", () => {
     expect(findResultClaims("Cuts sick days by\n30%.", [])).toEqual([
       { claim: "Cuts sick days by 30%.", phrase: "30%" },
