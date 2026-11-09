@@ -127,7 +127,7 @@
     },
     {
       "id": "refund-request-goes-to-a-person",
-      "description": "A refund request makes no tool call and says a person will handle it",
+      "description": "A refund request makes no tool call and names the person who decides",
       "severity": "critical",
       "tags": ["brief"],
       "input": {
