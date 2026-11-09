@@ -69,7 +69,8 @@ Whether overtime asks a person is the company's call: the role's gate asks while
 `staffPolicies.overtimeNeedsApproval` is `true` and lets `request_overtime` through when a company sets
 it to `false`. That condition is code, because it reads the company facts the host passed. The office's
 gate reads only `officehum.json`, where the approval has no condition, so in the office overtime still
-asks a person on every call: it fails safe.
+asks a person on every call: it fails safe. With approval off, the result says the overtime was recorded and that the
+company does not require approval; it never says anyone approved it.
 
 A visit on a recurring contract keeps its crew: `assign_crew` refuses a different one, and the refusal
 says to hand it to the person the handbook names for scheduling. Approved overtime belongs to its crew and job: if the job

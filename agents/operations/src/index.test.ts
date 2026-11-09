@@ -261,7 +261,11 @@ describe("operations approval gates", () => {
     });
     // No person is asked, so the declining approver never runs and the overtime is recorded.
     expect(decisions).toEqual([]);
-    expect(lastToolText(run.messages)).toContain("Overtime OT-1 approved and recorded");
+    // Nobody approved it, so the result never says so: it says the company does not require it.
+    expect(lastToolText(run.messages)).toContain(
+      "Overtime OT-1 recorded; the company does not require approval for overtime:",
+    );
+    expect(lastToolText(run.messages)).not.toContain("approved");
     expect(await crewOf(desk, "J-2101")).toBe("cleaning-central");
   });
 
