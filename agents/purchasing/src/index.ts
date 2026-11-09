@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
-import { fakePurchasingDesk, type PurchasingDesk } from "./desk.js";
+import { DEMO_NOW, fakePurchasingDesk, type PurchasingDesk } from "./desk.js";
 import { purchasingTools } from "./tools.js";
 
 export {
@@ -90,17 +90,27 @@ export interface PurchasingOptions {
   readonly overlays?: readonly string[];
   /** Decides every gated action. Omitted: an order over the limit and a new supplier are both blocked. */
   readonly approve?: Approver;
+  /**
+   * The host's clock. The prompt's `today` section and the demonstration desk read it. Omitted: the
+   * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock with a host's desk.
+   */
+  readonly now?: () => Date;
 }
 
 export default function purchasing(options: PurchasingOptions = {}): DefinedRole {
+  // The demonstration data is dated around DEMO_NOW, so its desk keeps that date unless the host
+  // passes a clock; a host's own desk runs on the system clock. The prompt reads the same clock.
+  const now =
+    options.now ?? (options.desk === undefined ? () => new Date(DEMO_NOW) : () => new Date());
   const company = options.company ?? loadCompanyFacts();
   // The demonstration desk prices and limits from the company's own catalogue and limit, so a first
   // run and a real one refuse the same order.
-  const desk = options.desk ?? fakePurchasingDesk({ company });
+  const desk = options.desk ?? fakePurchasingDesk({ company, now });
   const tools = purchasingTools({ desk, company });
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
+    now,
     tools: [
       tools.listStock,
       tools.listSuppliers,

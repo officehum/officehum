@@ -62,6 +62,9 @@ afterEach(async () => {
 const day = (offset: number): string =>
   new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 
+/** The fixtures are dated from the system clock (see `day`), so the tools run on it too. */
+const SYSTEM_CLOCK = (): Date => new Date();
+
 const usd = (cents: number) => ({ cents, currency: "USD" });
 
 const DEMO_GUEST = {
@@ -361,7 +364,7 @@ describe("the collections ledger", () => {
   it("records the stage with the receipt, and answers the same stage without touching QuickBooks", async () => {
     const counted = counting(overdueBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
 
     const sent = await tools.sendReminder.execute(
       { invoice: "1042", tone: "firm" },
@@ -417,7 +420,7 @@ describe("the collections ledger", () => {
   it("sends a different stage through, and records it beside the first", async () => {
     const counted = counting(overdueBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
 
     await tools.sendReminder.execute(
       { invoice: "1042", tone: "firm" },
@@ -441,7 +444,7 @@ describe("the collections ledger", () => {
   it("leaves a paid invoice alone and refuses an unknown one", async () => {
     const counted = counting(overdueBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
 
     const paid = await tools.sendReminder.execute(
       { invoice: "1044", tone: "final" },
@@ -481,6 +484,7 @@ describe("the collections ledger", () => {
     );
     const noEmail = await bookkeeperTools(
       addressless.books,
+      SYSTEM_CLOCK,
       () => CADENCE_LIMITS,
     ).sendReminder.execute(
       { invoice: "5001", tone: "friendly" },
@@ -495,7 +499,7 @@ describe("the collections ledger", () => {
   it("refuses a stage whose day has not arrived, and names the one that is due", async () => {
     const counted = counting(freshBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
 
     const early = await tools.sendReminder.execute(
       { invoice: "1042", tone: "firm" },
@@ -522,7 +526,7 @@ describe("the collections ledger", () => {
     const counted = counting(overdueBooks());
     const { api } = await withHarness();
     // A host that reads no limits — and a cadence out of order — is a cadence the code cannot read.
-    const noLimits = await bookkeeperTools(counted.books).sendReminder.execute(
+    const noLimits = await bookkeeperTools(counted.books, SYSTEM_CLOCK).sendReminder.execute(
       { invoice: "1042", tone: "firm" },
       api("no-limits"),
       BACKGROUND_CONTEXT,
@@ -530,7 +534,7 @@ describe("the collections ledger", () => {
     expect(noLimits.isError).toBe(true);
     expect(text(noLimits)).toContain("cadence could not be read");
 
-    const unordered = await bookkeeperTools(counted.books, () => ({
+    const unordered = await bookkeeperTools(counted.books, SYSTEM_CLOCK, () => ({
       ...CADENCE_LIMITS,
       collections_second_days: 2,
     })).sendReminder.execute(
@@ -807,7 +811,7 @@ describe("a reminder's identity (RASF-3393)", () => {
     const counted = counting(overdueBooks());
     // One conversation's run...
     const first = await withHarness();
-    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
     const sent = await tools.sendReminder.execute(
       { invoice: "1042", tone: "firm" },
       first.api("firm-first"),
@@ -819,7 +823,11 @@ describe("a reminder's identity (RASF-3393)", () => {
     // ...and a different conversation, whose ledger starts empty, retrying the same stage. Its call
     // identity differs, so only the requestId can keep this to one reminder.
     const second = await withHarness();
-    const again = await bookkeeperTools(counted.books, () => CADENCE_LIMITS).sendReminder.execute(
+    const again = await bookkeeperTools(
+      counted.books,
+      SYSTEM_CLOCK,
+      () => CADENCE_LIMITS,
+    ).sendReminder.execute(
       { invoice: "1042", tone: "firm" },
       second.api("firm-second"),
       BACKGROUND_CONTEXT,
@@ -842,7 +850,7 @@ describe("a reminder's identity (RASF-3393)", () => {
   it("still sends a genuinely different stage", async () => {
     const counted = counting(overdueBooks());
     const { api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
 
     await tools.sendReminder.execute(
       { invoice: "1042", tone: "firm" },
@@ -889,11 +897,12 @@ describe("a disputed invoice (RASF-3394)", () => {
   it("gets no reminder at any stage, and every refusal says who disputed it and why", async () => {
     const counted = counting(finishedBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
     await asPerson(harness, root.id, (ledger) =>
       dispute(ledger, "1042", {
         reason: "The customer says the second visit was never agreed",
         by: ADA,
+        at: SYSTEM_CLOCK(),
       }),
     );
 
@@ -936,7 +945,11 @@ describe("a disputed invoice (RASF-3394)", () => {
       agent: { ...role.agent, model: scripted.model },
     });
     await asPerson(harness, root.id, (ledger) =>
-      dispute(ledger, "1042", { reason: "Cheque posted, not cleared", by: ADA }),
+      dispute(ledger, "1042", {
+        reason: "Cheque posted, not cleared",
+        by: ADA,
+        at: SYSTEM_CLOCK(),
+      }),
     );
 
     const submission = await root.submit(
@@ -958,14 +971,18 @@ describe("a disputed invoice (RASF-3394)", () => {
   it("resumes at the stage the invoice's age calls for once a person clears it", async () => {
     const counted = counting(overdueBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
     // Twenty days overdue: the firm stage is the one the cadence names, not the first one.
-    const overdueBy = daysOverdue(day(-20));
+    const overdueBy = daysOverdue(day(-20), SYSTEM_CLOCK());
     if (overdueBy === undefined) throw new Error("the seeded due date is not a date");
     expect(collectionsStage(overdueBy, CADENCE)).toBe("firm");
 
     await asPerson(harness, root.id, (ledger) =>
-      dispute(ledger, "1042", { reason: "Customer is querying the call-out charge", by: ADA }),
+      dispute(ledger, "1042", {
+        reason: "Customer is querying the call-out charge",
+        by: ADA,
+        at: SYSTEM_CLOCK(),
+      }),
     );
     const refused = await tools.sendReminder.execute(
       { invoice: "1042", tone: "firm" },
@@ -975,7 +992,9 @@ describe("a disputed invoice (RASF-3394)", () => {
     expect(refused.isError).toBe(true);
     expect(counted.sends).toBe(0);
 
-    await asPerson(harness, root.id, (ledger) => clearDispute(ledger, "1042", { by: ADA }));
+    await asPerson(harness, root.id, (ledger) =>
+      clearDispute(ledger, "1042", { by: ADA, at: SYSTEM_CLOCK() }),
+    );
     const sent = await tools.sendReminder.execute(
       { invoice: "1042", tone: "firm" },
       api("after-clear"),
@@ -1005,11 +1024,11 @@ describe("a disputed invoice (RASF-3394)", () => {
   it("still leaves a paid invoice alone, as it did before the marker existed", async () => {
     const counted = counting(overdueBooks());
     const { api } = await withHarness();
-    const paid = await bookkeeperTools(counted.books, () => CADENCE_LIMITS).sendReminder.execute(
-      { invoice: "1044", tone: "final" },
-      api("paid"),
-      BACKGROUND_CONTEXT,
-    );
+    const paid = await bookkeeperTools(
+      counted.books,
+      SYSTEM_CLOCK,
+      () => CADENCE_LIMITS,
+    ).sendReminder.execute({ invoice: "1044", tone: "final" }, api("paid"), BACKGROUND_CONTEXT);
     expect(paid.isError).toBe(true);
     expect(text(paid)).toContain("it is paid");
     expect(text(paid)).not.toContain("in dispute");
@@ -1019,9 +1038,13 @@ describe("a disputed invoice (RASF-3394)", () => {
 
   it("is a person's decision: no tool marks or clears one, and a mark needs a name", async () => {
     const ledger: CollectionsDocument = { sent: [], disputes: [] };
-    expect(() => dispute(ledger, "1042", { reason: "Not agreed", by: "   " })).toThrow(/by/);
-    expect(() => dispute(ledger, "1042", { reason: " ", by: ADA })).toThrow(/reason/);
-    expect(() => clearDispute(ledger, "1042", { by: "" })).toThrow(/by/);
+    expect(() =>
+      dispute(ledger, "1042", { reason: "Not agreed", by: "   ", at: SYSTEM_CLOCK() }),
+    ).toThrow(/by/);
+    expect(() => dispute(ledger, "1042", { reason: " ", by: ADA, at: SYSTEM_CLOCK() })).toThrow(
+      /reason/,
+    );
+    expect(() => clearDispute(ledger, "1042", { by: "", at: SYSTEM_CLOCK() })).toThrow(/by/);
     expect(ledger.disputes).toEqual([]);
     expect(disputed(ledger, "1042")).toBeUndefined();
 
@@ -1044,5 +1067,60 @@ describe("a disputed invoice (RASF-3394)", () => {
       "send_invoice",
       "send_reminder",
     ]);
+  });
+});
+
+describe("the host clock (RASF-3484)", () => {
+  const LATER = new Date("2027-02-01T09:00:00.000Z");
+  /** Due on a fixed day, so the days overdue depend only on the clock the role is given. */
+  const fixedBooks = (): QuickBooks =>
+    fakeQuickBooks({ customers: [DEMO_GUEST], invoices: [invoice("1042", "2026-10-01", 12000)] });
+  const role = (books: QuickBooks) => bookkeeper({ quickbooks: books, now: () => LATER });
+
+  it("dates a new invoice's due date from the host clock", async () => {
+    const { api } = await withHarness();
+    const created = await toolNamed(role(fixedBooks()), "create_invoice").execute(
+      {
+        customer: "customer-1",
+        lines: [{ description: "On-site support", quantity: 1, unitPriceCents: 4000 }],
+        dueInDays: 30,
+      },
+      api("create-1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(created)).toContain("due 2027-03-03");
+  });
+
+  it("counts days overdue from the host clock", async () => {
+    const { api } = await withHarness();
+    const listed = await toolNamed(role(fixedBooks()), "list_invoices").execute(
+      {},
+      api("list-1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(listed)).toContain("due 2026-10-01 — 123 days overdue");
+  });
+
+  it("stamps a reminder's sentAt from the host clock", async () => {
+    const { harness, root, api } = await withHarness();
+    const sent = await toolNamed(role(fixedBooks()), "send_reminder").execute(
+      { invoice: "1042", tone: "final" },
+      api("remind-1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(sent)).toContain("Sent a final reminder");
+    const ledger = await harness.snapshot(CollectionsDoc, root.id, BACKGROUND_CONTEXT);
+    expect(ledger?.sent[0]?.sentAt).toBe("2027-02-01T09:00:00.000Z");
+  });
+
+  it("stamps a person's dispute and clear marks with the time the host gives", () => {
+    const ledger: CollectionsDocument = { sent: [], disputes: [] };
+    const marked = dispute(ledger, "1042", { reason: "Not agreed", by: ADA, at: LATER });
+    const cleared = clearDispute(ledger, "1042", {
+      by: ADA,
+      at: new Date("2027-02-02T10:00:00.000Z"),
+    });
+    expect(marked.at).toBe("2027-02-01T09:00:00.000Z");
+    expect(cleared.at).toBe("2027-02-02T10:00:00.000Z");
   });
 });

@@ -186,8 +186,11 @@ export function collectionsCadence(
   return { firstDays: first, secondDays: second, finalDays: final };
 }
 
-/** Whole days from a `YYYY-MM-DD` due date to today, in UTC; undefined when the date is not one. */
-export function daysOverdue(dueOn: string, now: Date = new Date()): number | undefined {
+/**
+ * Whole days from a `YYYY-MM-DD` due date to `now`'s day, in UTC; undefined when the date is not one.
+ * `now` is the host's clock, never the system's by default.
+ */
+export function daysOverdue(dueOn: string, now: Date): number | undefined {
   const due = Date.parse(`${dueOn}T00:00:00.000Z`);
   const today = Date.parse(`${now.toISOString().slice(0, 10)}T00:00:00.000Z`);
   if (!Number.isFinite(due) || !Number.isFinite(today)) return undefined;
@@ -268,9 +271,9 @@ function alreadySentResult(
   };
 }
 
-/** `YYYY-MM-DD`, `days` from today in UTC: the only date form QuickBooks accepts. */
-function dueDate(days: number): string {
-  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+/** `YYYY-MM-DD`, `days` from `now` in UTC: the only date form QuickBooks accepts. */
+function dueDate(days: number, now: Date): string {
+  return new Date(now.getTime() + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 /**
@@ -330,16 +333,18 @@ const lineParameters = Type.Object(
 );
 
 /**
- * Builds the six tools over one client and the business's limits. Every one is plain Pi Durable: it
+ * Builds the six tools over one client, the host's clock and the business's limits. Every one is plain Pi Durable: it
  * installs into any harness, and a bare harness with no client builds the same tools and refuses at
  * the point of use.
  *
  * `limits` is read at every call, so an overlay's change to the collections cadence takes effect on
  * reload, like the prompt sections. A host that passes none resolves no cadence, and a reminder then
- * refuses rather than guessing a stage.
+ * refuses rather than guessing a stage. `now` dates new invoices, counts days overdue and stamps
+ * reminders; it is required so no caller falls back to the system clock unnoticed.
  */
 export function bookkeeperTools(
   quickbooks: QuickBooks | undefined,
+  now: () => Date,
   limits: () => Readonly<Record<string, number>> = () => ({}),
 ): BookkeeperToolset {
   const findCustomer = defineTool({
@@ -413,7 +418,7 @@ export function bookkeeperTools(
    */
   const lateness = (invoice: Invoice): string => {
     if (invoice.status !== "overdue") return "";
-    const days = daysOverdue(invoice.dueOn);
+    const days = daysOverdue(invoice.dueOn, now());
     if (days === undefined) return "";
     const late = ` — ${days} ${days === 1 ? "day" : "days"} overdue`;
     const cadence = collectionsCadence(limits());
@@ -578,7 +583,7 @@ export function bookkeeperTools(
           unitPrice: { cents: line.unitPriceCents, currency },
           ...(line.itemId === undefined ? {} : { itemId: line.itemId }),
         })),
-        ...(args.dueInDays === undefined ? {} : { dueOn: dueDate(args.dueInDays) }),
+        ...(args.dueInDays === undefined ? {} : { dueOn: dueDate(args.dueInDays, now()) }),
         ...(args.jobReference === undefined ? {} : { number: args.jobReference }),
       };
       const requestId = writeRequestId(api);
@@ -746,7 +751,7 @@ export function bookkeeperTools(
       // The cadence is the business's, read resolved from its own limits on every call: the numbers
       // the skill's reference holds are the defaults, not the law. A stage whose day has not arrived
       // is refused here rather than sent early, and a cadence that did not resolve sends nothing.
-      const days = daysOverdue(invoice.dueOn);
+      const days = daysOverdue(invoice.dueOn, now());
       const cadence = collectionsCadence(limits());
       if (days === undefined || cadence === undefined) {
         return {
@@ -781,7 +786,7 @@ export function bookkeeperTools(
         reference,
         tone: args.tone,
         to: customer.email,
-        sentAt: new Date().toISOString(),
+        sentAt: now().toISOString(),
       };
       // The stage is recorded in the same commit that produces the receipt the model reads, so
       // nothing can be killed between the reminder being counted and the run knowing it was sent: a

@@ -362,3 +362,53 @@ describe("support brief contract", () => {
     expect(scriptFile.endsWith("evals/situations.json")).toBe(false);
   });
 });
+
+describe("support clock", () => {
+  const LATER = () => new Date("2027-02-01T09:00:00.000Z");
+
+  async function todayOf(role: ReturnType<typeof support>): Promise<string | undefined> {
+    const today = role.extensions[0]?.sections?.find((section) => section.key === "today");
+    return today?.render({} as never, {} as never);
+  }
+
+  async function call(
+    role: ReturnType<typeof support>,
+    name: string,
+    args: Record<string, unknown>,
+  ) {
+    const tool = role.extensions
+      .flatMap((extension) => extension.tools ?? [])
+      .find((candidate) => candidate.name === name);
+    if (tool === undefined) throw new Error(`missing ${name}`);
+    const result = await tool.execute(
+      args as never,
+      { conversationId: 1, taskId: 1, callId: "clock" } as never,
+      BACKGROUND_CONTEXT,
+    );
+    const text = (result.output ?? [])
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("\n");
+    return { text, details: (result.details ?? {}) as Record<string, unknown> };
+  }
+
+  const CASE = {
+    clientId: "CL-101",
+    kind: "question",
+    category: "other",
+    summary: "Asked about holiday visits.",
+    reportedBy: "Grace Liu",
+    source: "Email from Grace Liu",
+  };
+
+  it("the today section and the desk use the host clock", async () => {
+    const role = support({ now: LATER });
+    expect(await todayOf(role)).toMatch(/^Today is 2027-02-01 \(Monday\)\./);
+    expect((await call(role, "log_case", CASE)).details.openedOn).toBe("2027-02-01");
+  });
+
+  it("the demo desk keeps the demo date without now", async () => {
+    const role = support({});
+    expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
+    expect((await call(role, "log_case", CASE)).details.openedOn).toBe("2026-11-09");
+  });
+});

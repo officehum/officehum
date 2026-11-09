@@ -20,7 +20,7 @@ import type { QuickBooks } from "@officehum/quickbooks";
 import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
-import { type AccountingDesk, fakeAccountingDesk } from "./desk.js";
+import { type AccountingDesk, DEMO_NOW, fakeAccountingDesk } from "./desk.js";
 import { payablesTools } from "./payables.js";
 import { bookkeeperTools, largeInvoiceCondition, newRecipientCondition } from "./tools.js";
 
@@ -129,27 +129,42 @@ export interface BookkeeperOptions {
    * and every supplier payment are all blocked.
    */
   readonly approve?: Approver;
+  /**
+   * The host's clock. The prompt's `today` section, the demonstration desk and the QuickBooks tools
+   * (due dates, days overdue, reminder times) read it. Omitted: the demonstration date (`DEMO_NOW`)
+   * when neither a desk nor a QuickBooks connection is given, the system clock otherwise.
+   */
+  readonly now?: () => Date;
 }
 
 export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
+  // The demonstration data is dated around DEMO_NOW, so a role on it keeps that date unless the host
+  // passes a clock. A host's own desk or QuickBooks connection holds real dates, so it runs on the
+  // system clock. The prompt, the desk and the QuickBooks tools all read this one clock.
+  const now =
+    options.now ??
+    (options.desk === undefined && options.quickbooks === undefined
+      ? () => new Date(DEMO_NOW)
+      : () => new Date());
   // The collections cadence is read from the role's own resolved limits at every call, so an
   // overlay's value is what a reminder is measured against and a reload needs no rebuild. The
   // reader is bound to the role this call returns; before it exists no cadence resolves, and a
   // reminder then refuses rather than guessing a stage.
   let role: DefinedRole | undefined;
   const limits = () => role?.current().limits ?? {};
-  const tools = bookkeeperTools(options.quickbooks, limits);
+  const tools = bookkeeperTools(options.quickbooks, now, limits);
   const company = options.company ?? loadCompanyFacts();
   // The demonstration desk prices bills from the company's own catalogue, so a first run and a real
   // one refuse the same supplier. The major-item limit is read live, like the collections cadence.
   const payables = payablesTools({
-    desk: options.desk ?? fakeAccountingDesk({ company }),
+    desk: options.desk ?? fakeAccountingDesk({ company, now }),
     company,
     limits,
   });
   const created = defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
+    now,
     tools: [
       tools.findCustomer,
       tools.listInvoices,

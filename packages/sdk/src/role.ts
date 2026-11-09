@@ -35,6 +35,7 @@ import { formatIssue, type Issue } from "./issues.js";
 import { validateManifest } from "./manifest.js";
 import { type ResolvedRole, resolveRoleFiles } from "./resources.js";
 import { readSkillFile } from "./skills.js";
+import { todaySection } from "./today.js";
 import { guardToolResult } from "./tool-result.js";
 
 /** The section keys a role's prompt renders under, in order. */
@@ -66,6 +67,12 @@ export interface DefineRoleOptions {
   readonly hooks?: readonly HookRegistration[];
   /** Durable tasks the role's tools start. */
   readonly tasks?: readonly AnyTask[];
+  /**
+   * The host's clock. Set, the prompt gains a `today` section rendered from it at every request:
+   * today and the next 14 dates with their weekdays, so the model reads dates rather than working
+   * them out. Pass the same clock to the role's desk so the two agree. Omitted: no section.
+   */
+  readonly now?: (() => Date) | undefined;
 }
 
 /** A role bundle that can re-read its files when an overlay changes. */
@@ -177,6 +184,8 @@ export function defineRole(options: DefineRoleOptions): DefinedRole {
       section("agents_md", () => current.agents.map((part) => part.text).join("\n\n")),
       section("skills", () => skillIndex(current)),
       section("append_system", () => current.appendSystem?.text),
+      // Last, so the stable sections above stay a cacheable prefix when the date changes.
+      ...(options.now === undefined ? [] : [todaySection(options.now)]),
     ],
     tools: [...roleTools, readSkill].map(guardToolResult),
     hooks: [
