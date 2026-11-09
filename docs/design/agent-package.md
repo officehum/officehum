@@ -238,7 +238,8 @@ Purchasing's `request_po_approval` (`{ draftId }`) and `request_new_supplier` (`
 the reason being the requester's words, not a desk fact) and Marketing's `request_claim_approval` and
 `publish` (`{ draftId }`) follow it. A record the gate reads must exist on the desk, so an eval scenario
 whose stubbed write "creates" the record the next gated call names relies on the demonstration desk
-holding it: Purchasing's draft PO-1004 and Marketing's held draft D-104 are seeded for that reason.
+holding it: Purchasing's draft PO-1004 and Marketing's held drafts D-104 and D-105 are seeded for
+that reason.
 
 A call the approval does not apply to (its `when` holds false) gets no facts, so a tool that requires
 them refuses every call the condition exempts. Give a facts reader only to an approval that applies to
