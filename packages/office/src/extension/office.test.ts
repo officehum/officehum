@@ -31,7 +31,7 @@ import type { AgentManifest } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Office, openOffice } from "../adapter/index.js";
 import type { Board } from "../board/index.js";
-import { createWorkboard } from "../board/testing.js";
+import { createWorkboard, seedPerson } from "../board/testing.js";
 import { openGuards } from "../relay/guards.js";
 import type { RelayProvenance } from "../relay/message.js";
 import { createRelay, type Relay, type RelayRole, relayTicketKey } from "../relay/relay.js";
@@ -53,6 +53,7 @@ import {
   type OfficeExtensionSettings,
   type OfficeToolCall,
   officeExtension,
+  type PersonRoute,
   TEAM_SECTION_KEY,
 } from "./index.js";
 
@@ -74,6 +75,9 @@ const FRONT_TYPE = "booking.request";
 const BOOK = "bookkeeper";
 const TYPE = "invoice.create";
 const UNKNOWN_TYPE = "mystery.thing";
+/** A type no role accepts, which this office routes to a person. */
+const REVIEW_TYPE = "finance.review";
+const EILEEN = { id: "eileen-hart", name: "Eileen Hart" };
 
 const REQUEST = "Please invoice job 42.";
 const DELEGATE_RESULT = "Invoice 42 is paid.";
@@ -288,9 +292,15 @@ async function openFixture(options: {
   readonly frontSettings?: Partial<OfficeExtensionSettings>;
   /** Set before any delivery, so the relay's conversations carry the office tools. */
   readonly bookSettings?: Partial<OfficeExtensionSettings>;
+  /** The delegator's person routes. */
+  readonly personRoutes?: readonly PersonRoute[];
+  /** People seeded onto the board before it opens. */
+  readonly seed?: readonly { readonly id: string; readonly name: string }[];
 }): Promise<Fixture> {
   const scripted = options.scripted ?? scriptedProvider(options.script);
-  const board = createWorkboard(join(options.directory, "office.sqlite"));
+  const boardFile = join(options.directory, "office.sqlite");
+  for (const person of options.seed ?? []) seedPerson(boardFile, person.id, person.name);
+  const board = createWorkboard(boardFile);
   const office = await openOffice({
     storage: { sqlite: join(options.directory, "harness.sqlite") },
     models: scripted.models,
@@ -350,6 +360,7 @@ async function openFixture(options: {
     role: FRONT,
     people,
     settings: { provenance: PROVENANCE, name: OFFICE_EXTENSION_NAME, ...options.frontSettings },
+    ...(options.personRoutes === undefined ? {} : { personRoutes: options.personRoutes }),
   });
   const book = officeExtension({
     board,
@@ -601,6 +612,134 @@ describe("agent_dispatch", () => {
       // The child inherits the external origin, not this office's internal one: a customer's words
       // stay fenced wherever the work is handed on.
       expect(fixture.board.provenance(child.id)?.origin).toBe("external");
+    } finally {
+      await fixture.close();
+    }
+  });
+});
+
+describe("agent_dispatch with person routes", () => {
+  const ROUTES: readonly PersonRoute[] = [{ type: REVIEW_TYPE, personId: EILEEN.id }];
+  const REVIEW = {
+    type: REVIEW_TYPE,
+    title: "Credit for job 42",
+    detail: "The client disputes it.",
+  };
+
+  it("dispatches a person-routed type to that person", async () => {
+    const fixture = await openFixture({
+      directory: DIRECTORY(),
+      script: () => ({ text: "Ready." }),
+      personRoutes: ROUTES,
+      seed: [EILEEN],
+    });
+    try {
+      const result = await call(toolOf(fixture.front, "agent_dispatch"), REVIEW, OFFICE_CALL);
+      expect(result.isError).toBeUndefined();
+      const ticketId = String(detailsOf(result).ticketId);
+      expect(callText(result)).toBe(
+        `Handed ${ticketId} (${REVIEW_TYPE}) to Eileen Hart on the board; it is with them now.`,
+      );
+      expect(detailsOf(result).personId).toBe(EILEEN.id);
+      expect(ticketOf(fixture.board, ticketId).assignee).toBe(EILEEN.id);
+
+      // The relay leaves a person's ticket alone: nothing is delivered to an agent.
+      await fixture.relay.pollOnce();
+      expect(
+        fixture.board.relay.deliveriesForTicket(ticketId).map((delivery) => delivery.state),
+      ).toEqual(["skipped"]);
+      expect(ticketOf(fixture.board, ticketId).assignee).toBe(EILEEN.id);
+
+      // And the model is told who takes the type.
+      const submission = await fixture.office.submit(fixture.frontConversation, {
+        input: "Anything for me?",
+        requestId: "req-people",
+      });
+      await submission.wait(BACKGROUND_CONTEXT);
+      const team = fixture.scripted.requests[0]?.sections[TEAM_SECTION_KEY] ?? "";
+      expect(team).toContain(`People: ${REVIEW_TYPE}`);
+      expect(team).toContain("Eileen Hart");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("refuses a person route whose person is not on the board", async () => {
+    const fixture = await openFixture({
+      directory: DIRECTORY(),
+      script: () => ({ text: "unused" }),
+      personRoutes: ROUTES,
+    });
+    try {
+      const result = await call(toolOf(fixture.front, "agent_dispatch"), REVIEW, OFFICE_CALL);
+      expect(result.isError).toBe(true);
+      expect(callText(result)).toContain(EILEEN.id);
+      expect(callText(result)).not.toContain("with them now");
+      expect(fixture.board.list({ type: REVIEW_TYPE })).toHaveLength(0);
+      expect(fixture.board.eventsAfter(0)).toHaveLength(0);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("refuses a type with no role and no person route", async () => {
+    const fixture = await openFixture({
+      directory: DIRECTORY(),
+      script: () => ({ text: "unused" }),
+      personRoutes: [{ type: "payroll.review", personId: EILEEN.id }],
+      seed: [EILEEN],
+    });
+    try {
+      const result = await call(toolOf(fixture.front, "agent_dispatch"), REVIEW, OFFICE_CALL);
+      expect(result.isError).toBe(true);
+      const text = callText(result);
+      expect(text).toContain(REVIEW_TYPE);
+      // The refusal lists both what roles accept and what people take.
+      expect(text).toContain(TYPE);
+      expect(text).toContain("payroll.review");
+      expect(text).not.toContain("with them now");
+      expect(fixture.board.eventsAfter(0)).toHaveLength(0);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("a role that accepts the type wins over a person route", async () => {
+    const fixture = await openFixture({
+      directory: DIRECTORY(),
+      script: () => ({ text: "unused" }),
+      personRoutes: [{ type: TYPE, personId: EILEEN.id }],
+      seed: [EILEEN],
+    });
+    try {
+      const result = await call(
+        toolOf(fixture.front, "agent_dispatch"),
+        { type: TYPE, title: "Invoice job 42", detail: REQUEST },
+        OFFICE_CALL,
+      );
+      expect(result.isError).toBeUndefined();
+      expect(detailsOf(result).role).toBe(BOOK);
+      expect(detailsOf(result).personId).toBeUndefined();
+      expect(ticketOf(fixture.board, String(detailsOf(result).ticketId)).assignee).toBeNull();
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("a retried call creates one ticket", async () => {
+    const fixture = await openFixture({
+      directory: DIRECTORY(),
+      script: () => ({ text: "unused" }),
+      personRoutes: ROUTES,
+      seed: [EILEEN],
+    });
+    try {
+      const dispatch = toolOf(fixture.front, "agent_dispatch");
+      const first = await call(dispatch, REVIEW, OFFICE_CALL);
+      const second = await call(dispatch, REVIEW, OFFICE_CALL);
+      expect(detailsOf(second).ticketId).toBe(detailsOf(first).ticketId);
+      expect(callText(second)).toBe(callText(first));
+      expect(fixture.board.list({ type: REVIEW_TYPE })).toHaveLength(1);
     } finally {
       await fixture.close();
     }

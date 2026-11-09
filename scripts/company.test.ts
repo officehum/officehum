@@ -184,6 +184,9 @@ describe("the company package's own consistency", () => {
       expect(facts.marketing.approvedClaims.length).toBeGreaterThan(3);
       expect(facts.marketing.approverId).toBe("dana-whitfield");
       expect(facts.approvalLimits.purchaseOrderOverCents).toBe(150000);
+      expect(facts.ticketRoutes).toEqual([
+        expect.objectContaining({ type: "finance.review", toPersonId: "eileen-hart" }),
+      ]);
     });
 
     it("refuses a catalog item whose supplier is unknown", () => {
@@ -285,6 +288,27 @@ describe("the company package's own consistency", () => {
       expect(companyIssues(readSource(directory)).join("\n")).toContain(
         "does not name the supplier Pacific Janitorial Supply",
       );
+    });
+
+    it("refuses a ticket route to an unknown person", () => {
+      const issues = issuesAfter((c) => {
+        c.ticketRoutes[0].toPersonId = "nobody";
+      });
+      expect(issues).toContain("ticketRoutes[0] goes to nobody, who is not one of the people");
+    });
+
+    it("refuses a duplicate ticket route", () => {
+      const issues = issuesAfter((c) => {
+        c.ticketRoutes.push({ ...c.ticketRoutes[0], toPersonId: "dana-whitfield" });
+      });
+      expect(issues).toContain("ticketRoutes[1] repeats the type finance.review");
+    });
+
+    it("refuses a ticket route whose type is not a ticket type", () => {
+      const issues = issuesAfter((c) => {
+        c.ticketRoutes[0].type = "Finance Review";
+      });
+      expect(issues).toContain('ticketRoutes[0] has the type "Finance Review"');
     });
 
     it("refuses a purchase-order limit the policies do not state", () => {

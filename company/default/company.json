@@ -412,6 +412,13 @@
       "An apology that admits fault before a person has looked at the visit."
     ]
   },
+  "ticketRoutes": [
+    {
+      "type": "finance.review",
+      "toPersonId": "eileen-hart",
+      "when": "A credit, refund or invoice dispute an agent hands on: Finance and Billing owns disputes and credit notes, and passes a refund to the person who decides money back."
+    }
+  ],
   "escalation": [
     {
       "topic": "discount-request",

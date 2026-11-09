@@ -177,6 +177,33 @@ export function companyIssues(source: CompanySource): readonly string[] {
     }
   }
 
+  // A ticket type no role accepts goes to the person named here (the office extension's person routes,
+  // RASF-3490). A route to nobody, or two routes for one type, would leave the hand-off ambiguous.
+  const routes = company.ticketRoutes;
+  if (routes !== undefined && asArray(routes) === undefined) {
+    add("company.json", "ticketRoutes must be a list");
+  }
+  const routedTypes = new Set<string>();
+  for (const [index, entry] of (asArray(routes) ?? []).entries()) {
+    const route = asRecord(entry);
+    const type = route === undefined ? undefined : text(route.type);
+    if (type === undefined || !ROUTE_TYPE.test(type)) {
+      add(
+        "company.json",
+        `ticketRoutes[${index}] has the type ${JSON.stringify(type ?? route?.type)}, which is not a ticket type like finance.review`,
+      );
+    } else if (routedTypes.has(type)) {
+      add("company.json", `ticketRoutes[${index}] repeats the type ${type}; route each type once`);
+    } else {
+      routedTypes.add(type);
+    }
+    const person = route === undefined ? undefined : text(route.toPersonId);
+    if (person === undefined) add("company.json", `ticketRoutes[${index}] names no one`);
+    else if (!personIds.has(person)) {
+      add("company.json", `ticketRoutes[${index}] goes to ${person}, who is not one of the people`);
+    }
+  }
+
   // The policy record names its deciders by id too: a policy that points at nobody is a dead end.
   const policies = asRecord(company.policies);
   for (const [section, value] of Object.entries(policies ?? {})) {
@@ -231,6 +258,9 @@ export function companyIssues(source: CompanySource): readonly string[] {
 
   return issues;
 }
+
+/** A routed ticket type: lowercase words joined by dots, at least one dot. */
+const ROUTE_TYPE = /^[a-z]+(\.[a-z-]+)+$/;
 
 /** The sentences policies.md uses for each value of staffPolicies.overtimeNeedsApproval. */
 const OVERTIME_NEEDS_APPROVAL = "Overtime needs a person's approval before it is worked.";

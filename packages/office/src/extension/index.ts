@@ -11,7 +11,9 @@
  *   tool reads the accepted types from the installed manifests and refuses a type nobody accepts with
  *   the list of what exists (the relay's triage fallback is for tickets that arrive by other means).
  *   It creates the ticket through the board and lets the relay deliver it; with `wait: true` the call
- *   blocks on the relay's durable wait and returns the delegate's result.
+ *   blocks on the relay's durable wait and returns the delegate's result. A type no role accepts may
+ *   still be routed to a named person (`personRoutes`, RASF-3490): the ticket goes on the board
+ *   assigned to them, the relay leaves it alone, and the result says it is with them.
  * - `agent_inbox` reads the tickets waiting for this agent, plus the answers to the tickets this agent
  *   opened. Read-only: it never writes to the board.
  * - `agent_reply` completes a ticket this agent is working on, taking it (`claim`) when the relay has
@@ -38,7 +40,13 @@ import {
   type ToolExecutionApi,
 } from "@earendil-works/pi-durable";
 import type { AgentManifest, Approver } from "@officehum/sdk";
-import { type Board, BoardError, type Ticket, type TicketStatus } from "../board/index.js";
+import {
+  type Board,
+  BoardError,
+  type Person,
+  type Ticket,
+  type TicketStatus,
+} from "../board/index.js";
 import type { RelayProvenance } from "../relay/message.js";
 import type { Relay } from "../relay/relay.js";
 import { type OfficeBusiness, officeSection, registerOfficeHooks } from "./office-extension.js";
@@ -92,6 +100,15 @@ export interface OfficeExtensionSettings {
   readonly name?: string;
 }
 
+/**
+ * A ticket type the office hands to a named person rather than a role: the company data's
+ * `ticketRoutes`, with `personId` a `people.id` on the board. A role that accepts the type still wins.
+ */
+export interface PersonRoute {
+  readonly type: string;
+  readonly personId: string;
+}
+
 export interface OfficeExtensionOptions {
   /** The office's workboard: where dispatched tickets are created and replies complete them. */
   readonly board: Board;
@@ -105,6 +122,8 @@ export interface OfficeExtensionOptions {
    * `people()` are the humans the office knows; these are the agents.
    */
   readonly people: readonly AgentManifest[];
+  /** Ticket types no role accepts that go to a person on the board. Omitted: none. */
+  readonly personRoutes?: readonly PersonRoute[];
   readonly settings: OfficeExtensionSettings;
   /**
    * Which business this is: a name and a sentence, for the `office` section (RASF-3133). Omitted, the
@@ -162,23 +181,50 @@ function acceptedList(manifest: AgentManifest): string {
 }
 
 /**
+ * `ticket type → person id` for the person routes no role overrides: a role that accepts the type
+ * wins, so a route only ever covers work no agent here can take. First route for a type wins.
+ */
+function personRouted(
+  routes: readonly PersonRoute[],
+  accepted: ReadonlyMap<string, string>,
+): Map<string, string> {
+  const byType = new Map<string, string>();
+  for (const route of routes) {
+    if (!accepted.has(route.type) && !byType.has(route.type)) {
+      byType.set(route.type, route.personId);
+    }
+  }
+  return byType;
+}
+
+/**
  * The `team` section: the colleagues and the ticket types they accept, each with the description its
- * manifest gives, in a stable order. An agent dispatches by type, so the types are the point of the
- * line and the role names are only there to be read.
+ * manifest gives, in a stable order, then a `People:` line for each type routed to a person. An agent
+ * dispatches by type, so the types are the point of the line and the names are only there to be read.
  *
  * `@officehum/sdk`'s `formatCardLine` is the card's one-liner, but it lists type names without their
  * descriptions and this section has to carry them, so the line is written here.
  */
-function teamText(people: readonly AgentManifest[], role: string): string | undefined {
+function teamText(
+  people: readonly AgentManifest[],
+  role: string,
+  routed: ReadonlyMap<string, string>,
+  boardPeople: readonly Person[],
+): string | undefined {
   const colleagues = [...people]
     .filter((manifest) => manifest.id !== role)
     .sort((left, right) => left.id.localeCompare(right.id));
-  if (colleagues.length === 0) return undefined;
+  if (colleagues.length === 0 && routed.size === 0) return undefined;
+  const nameOf = (id: string): string => boardPeople.find((person) => person.id === id)?.name ?? id;
   return [
     "Your colleagues. Hand work on with agent_dispatch by ticket type, never by role name:",
     "",
     ...colleagues.map(
       (manifest) => `- ${manifest.name} (${manifest.id}): ${acceptedList(manifest)}`,
+    ),
+    ...[...routed].map(
+      ([type, personId]) =>
+        `- People: ${type} goes to ${nameOf(personId)} (${personId}) on the board`,
     ),
   ].join("\n");
 }
@@ -206,7 +252,7 @@ function inboxLine(ticket: Ticket, assigned: boolean, answer: string | undefined
 export function officeExtension(options: OfficeExtensionOptions): Extension {
   const { board, relay, role, settings } = options;
   const accepted = dispatchable(options.people, role);
-  const team = teamText(options.people, role);
+  const routed = personRouted(options.personRoutes ?? [], accepted);
 
   const agentDispatch = defineTool({
     name: "agent_dispatch",
@@ -237,14 +283,30 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
     replay: "unsafe",
     execute: async (args, api) => {
       const target = accepted.get(args.type);
-      if (target === undefined) {
-        const list =
+      const personId = target === undefined ? routed.get(args.type) : undefined;
+      if (target === undefined && personId === undefined) {
+        const roles =
           accepted.size === 0
-            ? "no other role is installed, so no ticket type can be dispatched"
-            : [...accepted.keys()].join(", ");
+            ? "no other role is installed, so no role takes any ticket type"
+            : `roles accept ${[...accepted.keys()].join(", ")}`;
+        const people = routed.size === 0 ? "" : `; people take ${[...routed.keys()].join(", ")}`;
         return toolError(
-          `No role accepts ticket type "${args.type}", so nothing was dispatched. Work goes by type; this office accepts: ${list}.`,
+          `No role accepts ticket type "${args.type}" and no person route covers it, so nothing was dispatched. Work goes by type; ${roles}${people}.`,
         );
+      }
+      // The person is read from the board at call time: people are the office's to manage, and a route
+      // to someone the board does not know must refuse before any ticket exists.
+      let destination: { readonly role: string } | { readonly person: Person };
+      if (target !== undefined) {
+        destination = { role: target };
+      } else {
+        const person = board.people().find((candidate) => candidate.id === personId);
+        if (person === undefined) {
+          return toolError(
+            `Ticket type "${args.type}" is routed to the person ${personId}, who is not on this board, so nothing was dispatched. Add ${personId} to the office's people or correct the route.`,
+          );
+        }
+        destination = { person };
       }
 
       // The dedupe key is the tool call's own identity, the same shape the role tools use: a retry of
@@ -265,6 +327,9 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
             // root case's provenance and nothing more.
             provenance: settings.provenance,
             ...(parentId === undefined ? {} : { parentId }),
+            ...("person" in destination
+              ? { assignee: { kind: "person" as const, id: destination.person.id } }
+              : {}),
           },
           callerKey,
         );
@@ -272,15 +337,40 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
         return boardRefusal(error, "dispatch");
       }
 
+      // A person answers outside the harness, on their own time, so `wait` does not block a run on them:
+      // the result says only what is true now, that the ticket is on their board.
+      if ("person" in destination) {
+        const { person } = destination;
+        return {
+          output: [
+            {
+              type: "text" as const,
+              text: `Handed ${ticket.id} (${ticket.type}) to ${person.name} on the board; it is with them now.`,
+            },
+          ],
+          details: {
+            ticketId: ticket.id,
+            type: ticket.type,
+            status: ticket.status,
+            personId: person.id,
+          },
+        };
+      }
+
       if (args.wait !== true) {
         return {
           output: [
             {
               type: "text" as const,
-              text: `Dispatched ${ticket.id} (${ticket.type}) to ${target}. It runs without you; nothing comes back unless you wait for it.`,
+              text: `Dispatched ${ticket.id} (${ticket.type}) to ${destination.role}. It runs without you; nothing comes back unless you wait for it.`,
             },
           ],
-          details: { ticketId: ticket.id, type: ticket.type, status: ticket.status, role: target },
+          details: {
+            ticketId: ticket.id,
+            type: ticket.type,
+            status: ticket.status,
+            role: destination.role,
+          },
         };
       }
 
@@ -423,7 +513,8 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
   return defineExtension({
     name: settings.name ?? OFFICE_EXTENSION_NAME,
     sections: [
-      section(TEAM_SECTION_KEY, () => team),
+      // Rendered per turn because the people's names are the board's, and the board can change.
+      section(TEAM_SECTION_KEY, () => teamText(options.people, role, routed, board.people())),
       officeSection({
         board,
         people: options.people,
