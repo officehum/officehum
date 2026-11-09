@@ -19,8 +19,8 @@ Run it before `create_quote`, and again on the receipt before the quote is descr
 - [ ] The receipt came back with a quote number. A quote is done when the tool says so, not before.
 - [ ] Any minimum the desk applied is mentioned, not hidden.
 - [ ] The total in the reply is the receipt's total, to the cent, in the same currency.
-- [ ] If an approval was raised, the reply says who has it and when they will answer — and does not
-      call the quote agreed, accepted or held.
+- [ ] If an approval was raised, the reply says who has it, as the approval's result names them, and
+      not when they will answer — and does not call the quote agreed, accepted or held.
 - [ ] `log_activity` records what was quoted and what happens next.
 
 ## Worked shape

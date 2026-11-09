@@ -19,8 +19,8 @@ approved exactly what it says.
    and its full text exactly as the desk gave it (from the receipt or `list_drafts`). A person sees
    that channel and text and decides. If the desk says the text is not the draft's, use the text it
    gives back.
-6. **While it waits**, say it is with the person who approves marketing, by name, and that you will
-   come back with their answer. **If approved**, give the publication's id from the receipt. **If
+6. **While it waits**, say it is with the person who approves marketing, by name, as the approval's
+   result names them; do not say when they will answer. **If approved**, give the publication's id from the receipt. **If
    declined**, say plainly it was declined and has not been published. The decline is the
    approver's own answer: never offer to take the same text back to them. Offer to edit the draft,
    or to ask again later with something new.

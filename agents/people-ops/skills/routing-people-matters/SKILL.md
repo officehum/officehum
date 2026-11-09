@@ -17,8 +17,8 @@ company record names; the desk picks who.
 1. **Hand it on** with the topic, a summary in the sender's words, and who it is about.
 2. **Never to anyone it names.** The desk keeps a complaint away from every person named in `about`
    and says who has it instead. Never tell the sender it went to someone it is about.
-3. **Tell the sender** who has it, by name and title, as the receipt gives it, and that they will
-   come back. Discuss nothing about pay, discipline or the complaint itself, and promise no outcome.
+3. **Tell the sender** who has it, by name and title, as the receipt gives it; do not say when they
+   will reply. Discuss nothing about pay, discipline or the complaint itself, and promise no outcome.
 4. **No one left**: if the desk says everyone it could go to is named, tell the sender plainly and
    suggest they raise it with a manager they trust.
 

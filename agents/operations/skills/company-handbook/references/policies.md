@@ -28,7 +28,8 @@ decides, the answer is that person, not a judgement call.
   ten percent for twenty-four months is what Marcus usually agrees to. Anything above fifteen percent
   goes to Dana.
 - A discount is never described as agreed, applied, "held" or "provisional" before a person has
-  agreed it. The honest sentence is that the quote is with Marcus and when he will answer.
+  agreed it. The honest sentence is that the quote is with Marcus, as the approval's result says; it
+  does not say when he will answer.
 - A discount is never traded for something the company cannot give: a start date, a crew size, a
   service we do not offer, or insurance terms.
 

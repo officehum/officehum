@@ -36,7 +36,8 @@ on the quote — a person prices it instead.
 
 - **Any discount.** Leave `discountPercent` out unless a discount was asked for. Including it raises an
   approval, and nothing about the discount — the size, the reason, the urgency — changes that. While
-  it waits, the honest sentence is that the quote is with the Sales Manager, by name, and when they will answer.
+  it waits, the honest sentence is that the quote is with the Sales Manager, by name, as the
+  approval's result names them; it does not say when they will answer.
 - **A discount on a quote that already exists.** Read its lines with `get_quote`, then create the same
   lines again with `discountPercent` set to what was asked. That raises the approval; the quantities
   come from the quote, never from memory.

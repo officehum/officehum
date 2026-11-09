@@ -21,8 +21,8 @@ company record by the reason.
 2. **Escalate** with the case, the reason and a note: what happened, what the client wants, and
    anything already done. For a complaint about someone, `about` names them; the desk never hands it
    to that person, and says who has it instead.
-3. **Tell the client** who has it, by name and title, as the receipt gives it, and that they will
-   come back. Never say a person has it before the receipt says so, and never say what they will
+3. **Tell the client** who has it, by name and title, as the receipt gives it; do not say when they
+   will reply. Never say a person has it before the receipt says so, and never say what they will
    decide.
 4. **An escalated case is theirs.** You do not close it; answer the client's follow-ups from
    `list_cases`.
