@@ -229,4 +229,35 @@ describe("the approvals inbox", () => {
       fixture.close();
     }
   });
+
+  it("an inbox item carries the facts summary", () => {
+    const fixture = openFixture();
+    try {
+      const inbox = openApprovalInbox(fixture.board);
+      const facts = {
+        summary: "Pay BILL-2001 to Rainier Cleaning Tools, supplier invoice RT-5520: $648.00",
+        facts: { id: "BILL-2001", totalCents: 64_800 },
+      };
+      // The arguments are only the bill's id; the facts are what the person can actually judge.
+      const paid = fixture.board.approvals.requestApproval(fixture.ticketId, {
+        tool: "pay_vendor_bill",
+        args: { billId: "BILL-2001" },
+        requestedBy: "bookkeeper",
+        facts,
+      });
+      const bare = fixture.board.approvals.requestApproval(fixture.ticketId, {
+        tool: "issue_refund",
+        args: { amount: 500 },
+        requestedBy: "bookkeeper",
+      });
+
+      const items = inbox.list();
+      expect(items.find((item) => item.id === paid.id)?.facts).toEqual(facts);
+      expect(items.find((item) => item.id === bare.id)?.facts).toBeNull();
+      expect(inbox.get(paid.id)?.facts?.summary).toBe(facts.summary);
+      expect(inbox.decide(paid.id, { by: PERSON.id, decision: "approved" }).facts).toEqual(facts);
+    } finally {
+      fixture.close();
+    }
+  });
 });

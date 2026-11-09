@@ -14,6 +14,7 @@
  * decides; the store owns the write and its refusals, and this module adds the context back to the
  * answer it returns.
  */
+import type { ApprovalFacts } from "@officehum/sdk";
 import type {
   Approval,
   ApprovalDecisionInput,
@@ -38,6 +39,13 @@ export interface ApprovalInboxItem {
   readonly args: unknown;
   /** The digest the gate matches on. Shown so two cards can be told apart at a glance. */
   readonly argsHash: string;
+  /**
+   * What the person is approving, read from the role's records when the request was made: `summary`
+   * is the line to show, `facts` what a yes binds the tool to. A screen shows the summary ahead of
+   * the arguments, which for a role with a facts reader are often only an id (`{ billId }`). Null
+   * when the role reads no facts for this approval, and on rows asked before facts were recorded.
+   */
+  readonly facts: ApprovalFacts | null;
   /** The agent waiting on this decision, or null on a row written before requesters were recorded. */
   readonly requestedBy: string | null;
   /** The person the request is addressed to, or null when the office named nobody. */
@@ -99,6 +107,7 @@ export function openApprovalInbox(board: Board, options: ApprovalInboxOptions = 
       tool: approval.tool,
       args: approval.args,
       argsHash: approval.argsHash,
+      facts: approval.facts,
       requestedBy: approval.requestedBy,
       awaiting:
         approval.assignee === null

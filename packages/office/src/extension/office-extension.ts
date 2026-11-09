@@ -27,7 +27,13 @@ import {
   type PromptSection,
   section,
 } from "@earendil-works/pi-durable";
-import type { AgentManifest, ApprovalDeclaration, Approver, RoleBundle } from "@officehum/sdk";
+import type {
+  AgentManifest,
+  ApprovalDeclaration,
+  ApprovalFactsReader,
+  Approver,
+  RoleBundle,
+} from "@officehum/sdk";
 import { approvalHooks } from "../approvals/gate.js";
 import type { Board } from "../board/index.js";
 
@@ -207,6 +213,12 @@ export interface OfficeHookSeam {
   readonly limits?: Readonly<Record<string, number>>;
   /** How long a request waits for a decision. Omitted: until someone decides or the ticket is cancelled. */
   readonly approvalTtlMs?: number;
+  /**
+   * This agent's approval facts readers, keyed by approval id: `LoadedRole.approvalFacts`. The gate
+   * records what each reads with the request and binds a granted call to it. Omitted: no facts, so a
+   * tool that requires them refuses after a grant.
+   */
+  readonly approvalFacts?: Readonly<Record<string, ApprovalFactsReader>>;
 }
 
 /** The installed manifest for `role`, when the office knows it. */
@@ -257,6 +269,7 @@ export function registerOfficeHooks(seam: OfficeHookSeam): readonly HookRegistra
       declarations,
       limits: seam.limits ?? (manifest === undefined ? {} : declaredLimits(manifest)),
       ...(seam.approvalTtlMs === undefined ? {} : { ttlMs: seam.approvalTtlMs }),
+      ...(seam.approvalFacts === undefined ? {} : { facts: seam.approvalFacts }),
     }),
     ...supplied,
   ];

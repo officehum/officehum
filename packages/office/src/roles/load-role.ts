@@ -18,6 +18,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   type AgentManifest,
+  type ApprovalFactsReader,
   type Approver,
   checkAgent,
   checkRuntimes,
@@ -62,6 +63,12 @@ export interface LoadedRole {
   readonly bundle: RoleBundle;
   /** The engine built from the manifest, when it declares one; the operator commands use it too. */
   readonly engine?: Engine;
+  /**
+   * The role's approval facts readers, keyed by approval id, when its factory returned a `defineRole`
+   * result (`DefinedRole.approvalFacts`); `{}` otherwise. The office's gate reads the same facts the
+   * role's own gate does, so the Inbox shows what a person approves and a grant binds the tool to it.
+   */
+  readonly approvalFacts: Readonly<Record<string, ApprovalFactsReader>>;
   /**
    * Re-reads the role's files and overlays, when the factory returned a `defineRole` result. The host
    * reconfigures the conversation with `bundle.agent` so any change takes effect.
@@ -198,9 +205,22 @@ export async function loadRole(dir: string, options: LoadRoleOptions = {}): Prom
     package: rolePackage,
     manifest,
     bundle,
+    approvalFacts: approvalFactsOf(bundle),
     ...(engine === undefined ? {} : { engine }),
     ...(typeof reload === "function"
       ? { reload: () => (bundle as unknown as { reload: () => readonly Issue[] }).reload() }
       : {}),
   };
+}
+
+/**
+ * The readers a bundle exposes, keyed by approval id. Read by shape rather than by type: the bundle
+ * may come from a different copy of the SDK than this host's, and a reader is only ever a function.
+ */
+function approvalFactsOf(bundle: RoleBundle): Readonly<Record<string, ApprovalFactsReader>> {
+  const declared = (bundle as unknown as { approvalFacts?: unknown }).approvalFacts;
+  if (declared === null || typeof declared !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(declared).filter(([, reader]) => typeof reader === "function"),
+  ) as Record<string, ApprovalFactsReader>;
 }

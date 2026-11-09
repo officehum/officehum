@@ -427,4 +427,67 @@ describe("the approvals store", () => {
       fixture.close();
     }
   });
+
+  it("stores and returns approval facts", () => {
+    const fixture = openFixture();
+    try {
+      const { approvals } = fixture.board;
+      const facts = {
+        summary: "Refund $500 to Acme for the duplicate deposit",
+        facts: { invoice: "1042", amountCents: 50000, lines: [{ sku: "deposit", qty: 1 }] },
+      };
+      const asked = approvals.requestApproval(fixture.ticketId, {
+        tool: REFUND,
+        args: { invoice: "1042" },
+        requestedBy: "bookkeeper",
+        facts,
+      });
+      expect(asked.facts).toEqual(facts);
+
+      // The facts are what a person decides on, so they survive the decision and a reopen unchanged.
+      approvals.decideApproval(asked.id, { by: PERSON.id, decision: "approved" });
+      expect(approvals.approvalCovering(fixture.ticketId, REFUND, asked.argsHash)?.facts).toEqual(
+        facts,
+      );
+
+      // A request with no reader behind it records none, and reads back as null, not as `{}`.
+      const bare = approvals.requestApproval(fixture.ticketId, {
+        tool: REFUND,
+        args: { invoice: "1043" },
+        requestedBy: "bookkeeper",
+      });
+      expect(bare.facts).toBeNull();
+
+      // Facts a person cannot read are refused with the path to the problem, like arguments are.
+      const refused = refusalOf(() =>
+        approvals.requestApproval(fixture.ticketId, {
+          tool: REFUND,
+          args: { invoice: "1044" },
+          requestedBy: "bookkeeper",
+          facts: { summary: " ", facts: {} },
+        }),
+      );
+      expect(refused.kind).toBe("invalid_argument");
+      expect(refused.message).toContain("summary");
+      expect(
+        refusalOf(() =>
+          approvals.requestApproval(fixture.ticketId, {
+            tool: REFUND,
+            args: { invoice: "1044" },
+            requestedBy: "bookkeeper",
+            facts: { summary: "Refund", facts: { amount: Number.NaN } },
+          }),
+        ).message,
+      ).toContain("facts.amount");
+      expect(rows(fixture.file)).toBe(2);
+    } finally {
+      fixture.close();
+    }
+    const reopened = openBoard(fixture.file);
+    try {
+      expect(reopened.approvals.pendingApprovals().map((row) => row.facts)).toEqual([null]);
+    } finally {
+      reopened.close();
+    }
+  });
 });

@@ -159,6 +159,8 @@ describe("board migrations", () => {
       "requested_by",
       "assignee",
       "expires_at",
+      // Added by migration 8 (RASF-3486): what a person was shown, as the role's records held it.
+      "facts_json",
     ]);
     expect(columns(database, "people")).toEqual(["id", "name", "roles"]);
     expect(columns(database, "channel_inbound")).toEqual(["channel", "external_id", "received_at"]);
@@ -317,6 +319,55 @@ describe("board migrations", () => {
       expect(upgraded.prepare("SELECT COUNT(*) AS n FROM channel_inbound").get()).toEqual({ n: 3 });
       // And the old name still reads the same three rows.
       expect(upgraded.prepare("SELECT COUNT(*) AS n FROM sms_inbound").get()).toEqual({ n: 3 });
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("migrates an existing board: its approval rows read facts: null (migration 8)", () => {
+    const file = boardFile();
+    const at = "2026-10-20T00:00:00.000Z";
+    const old = new DatabaseSync(file);
+    for (const migration of MIGRATIONS.filter((step) => step.version <= 7)) migration.up(old);
+    old.exec("PRAGMA user_version = 7");
+    old
+      .prepare(
+        `INSERT INTO tickets (id, type, title, payload, status, assignee, created_by, created_at,
+                              updated_at)
+         VALUES ('t1', 'payables.bill', 'Pay the Rainier bill', '{}', 'claimed', 'bookkeeper',
+                 'front-desk', ?, ?)`,
+      )
+      .run(at, at);
+    const args = { billId: "BILL-2001" };
+    old
+      .prepare(
+        `INSERT INTO approvals
+           (id, ticket_id, approval_id, tool, args_json, status, decided_by, decided_at,
+            decided_note, created_at, args_hash, requested_by, assignee, expires_at)
+         VALUES ('a1', 't1', 'any_payment', 'pay_vendor_bill', ?, 'approved', 'maria', ?, NULL, ?,
+                 ?, 'bookkeeper', NULL, NULL)`,
+      )
+      .run(JSON.stringify(args), at, at, argsHash(args));
+    old.close();
+
+    const board = openBoard(file);
+    try {
+      // A row asked before facts were recorded keeps its decision, and says plainly it has no facts:
+      // the gate then hands the tool none, so a tool that needs them refuses rather than guessing.
+      const row = board.approvals.approvalCovering("t1", "pay_vendor_bill", argsHash(args));
+      expect(row).toMatchObject({ id: "a1", status: "approved", decidedBy: "maria", facts: null });
+    } finally {
+      board.close();
+    }
+
+    const upgraded = new DatabaseSync(file);
+    try {
+      expect(
+        (upgraded.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+      ).toBe(MIGRATIONS.length);
+      expect(upgraded.prepare("SELECT facts_json FROM approvals").all()).toEqual([
+        { facts_json: null },
+      ]);
     } finally {
       upgraded.close();
     }

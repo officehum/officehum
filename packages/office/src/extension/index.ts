@@ -39,7 +39,7 @@ import {
   section,
   type ToolExecutionApi,
 } from "@earendil-works/pi-durable";
-import type { AgentManifest, Approver } from "@officehum/sdk";
+import type { AgentManifest, ApprovalFactsReader, Approver } from "@officehum/sdk";
 import {
   type Board,
   BoardError,
@@ -140,6 +140,11 @@ export interface OfficeExtensionOptions {
    * gate that consumes it is 3073's to build.
    */
   readonly approve?: Approver;
+  /**
+   * This agent's approval facts readers (`LoadedRole.approvalFacts`), which the office's gate uses to
+   * record what a person is asked to approve and to bind a granted call to it (RASF-3486).
+   */
+  readonly approvalFacts?: Readonly<Record<string, ApprovalFactsReader>>;
 }
 
 /** What the extension reports a refused tool call as. */

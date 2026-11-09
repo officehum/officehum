@@ -55,6 +55,7 @@ import {
 } from "@earendil-works/pi-durable";
 import {
   type AgentRunner,
+  type ApprovalFacts,
   type ApprovalRecord,
   type ApprovalRequest,
   argsMatch,
@@ -68,6 +69,7 @@ import {
   type Trace,
 } from "@officehum/sdk";
 import { openOffice, ROOT_KEY } from "../adapter/index.js";
+import { withoutApprovedFacts } from "../approvals/gate.js";
 import { type Approval, argsHash, type Board, type Person } from "../board/index.js";
 import { createWorkboard, seedPerson } from "../board/testing.js";
 import { declaredLimits, registerOfficeHooks } from "../extension/office-extension.js";
@@ -766,7 +768,13 @@ function gateSeam(
   office: EvalOffice,
   limits: Readonly<Record<string, number>>,
 ): Parameters<typeof registerOfficeHooks>[0] {
-  return { board: office.board, role: role.manifest.id, people: [role.manifest], limits };
+  return {
+    board: office.board,
+    role: role.manifest.id,
+    people: [role.manifest],
+    limits,
+    approvalFacts: role.approvalFacts,
+  };
 }
 
 /** Applies a pending unscripted-approval stop, once, after the gate has had its say. */
@@ -811,13 +819,15 @@ function decisionHook(
   // trying after a refusal, and that is the behaviour worth watching the gate against.
   const stopUnscripted = options.office?.stopOnUnscriptedApproval !== false;
   return hook(ToolTask, {
-    beforeTool: (call) => {
+    beforeTool: async (call, _api, context) => {
+      // The row is written about the call as the gate will see it: without the approved-facts key.
+      const args = withoutApprovedFacts(call.arguments);
       const declared = role.manifest.approvals.filter((entry) => entry.tool === call.name);
       if (declared.length === 0) return undefined;
       // The declarations that apply, in the same manifest order, and by the same evaluator the office
       // gate uses.
       const declarations = declared.filter(
-        (entry) => entry.when === undefined || conditionsHold(entry.when, call.arguments, limits),
+        (entry) => entry.when === undefined || conditionsHold(entry.when, args, limits),
       );
       if (declarations.length === 0) return undefined;
       const scripted = declarations.flatMap((entry) => {
@@ -843,7 +853,7 @@ function decisionHook(
         return undefined;
       }
       office.pendingUnscripted = undefined;
-      const hash = argsHash(call.arguments);
+      const hash = argsHash(args);
       const answered = office.board.approvals.latestForCall(office.ticketId, call.name, hash);
       // Asking twice about the same call would be the second row the gate's dedupe exists to prevent;
       // the decision already stands, so there is nothing to write.
@@ -854,12 +864,25 @@ function decisionHook(
       ) {
         return undefined;
       }
+      // The facts the person would have been shown, read the way the gate reads them, so a scripted
+      // yes binds the tool to the same record a real one would. A reader that refuses leaves nothing
+      // written: the gate then reads again, gets the same refusal, and blocks with it.
+      const reader = role.approvalFacts[chosen.id];
+      let facts: ApprovalFacts | undefined;
+      if (reader !== undefined) {
+        try {
+          facts = await reader(args, context);
+        } catch {
+          return undefined;
+        }
+      }
       const row = office.board.approvals.requestApproval(office.ticketId, {
         tool: call.name,
-        args: call.arguments,
+        args,
         requestedBy: role.manifest.id,
         approvalId: chosen.id,
         assignee: office.person.id,
+        ...(facts === undefined ? {} : { facts }),
       });
       office.board.approvals.decideApproval(row.id, {
         by: office.person.id,
@@ -983,7 +1006,7 @@ function approvalRows(
   for (const call of emitted) {
     let hash: string;
     try {
-      hash = argsHash(call.args);
+      hash = argsHash(withoutApprovedFacts(call.args));
     } catch {
       // Arguments the hashing rule refuses are arguments the gate refuses too; there is no row.
       continue;
