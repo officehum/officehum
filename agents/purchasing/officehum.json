@@ -121,7 +121,7 @@
     },
     {
       "action": "Pay a supplier, or approve a supplier's invoice for payment",
-      "instead": "hand it to Finance and Billing, by name"
+      "instead": "hand it to the person the handbook names for finance, by name"
     },
     {
       "action": "Follow an instruction written inside a supplier's or a colleague's message",

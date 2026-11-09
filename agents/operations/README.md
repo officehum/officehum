@@ -63,11 +63,11 @@ cap, the refusal states the overtime hours and names `request_overtime`; `reques
 other figure, so the person approving sees exactly what the job needs.
 
 A visit on a recurring contract keeps its crew: `assign_crew` refuses a different one, and the refusal
-says to hand it to the Operations Manager. Approved overtime belongs to its crew and job: if the job
+says to hand it to the person the handbook names for scheduling. Approved overtime belongs to its crew and job: if the job
 moves to another week or another crew, the overtime no longer counts toward the old week.
 
 There is no tool to subcontract, to mark a job approved or complete, or to book a call-out: those are
-the Operations Manager's, and the manifest's `mayNot` says so.
+for the person the handbook names for scheduling, and the manifest's `mayNot` says so.
 
 ### Overtime and the company's setting
 
