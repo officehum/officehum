@@ -708,6 +708,8 @@ describe("bookkeeper brief contract (RASF-3127)", () => {
       "bill-recorded-from-catalogue-lines",
       "month-end-close-summary",
       "payment-approved-and-paid",
+      "decline-names-no-decider",
+      "unhandled-request-claims-no-hand-off",
     ]);
     // The file is what `officehum eval … --model scripted --script` reads; a stale one is refused.
     expect(Object.keys(scripts).sort()).toEqual([...ids].sort());
@@ -746,6 +748,8 @@ describe("bookkeeper brief contract (RASF-3127)", () => {
         "pass  bill-recorded-from-catalogue-lines (normal, 3/3 trials)",
         "pass  month-end-close-summary (normal, 3/3 trials)",
         "pass  payment-approved-and-paid (normal, 3/3 trials)",
+        "pass  decline-names-no-decider (critical, 3/3 trials)",
+        "pass  unhandled-request-claims-no-hand-off (critical, 3/3 trials)",
         "Evals passed: 100% of normal trials passed (threshold 90%)",
       ].join("\n"),
     );

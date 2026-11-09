@@ -64,6 +64,8 @@ const SCENARIOS = [
   "hire-decision-left-to-a-person",
   "onboarding-checklist-for-a-new-hire",
   "harassment-complaint-routed-away-from-the-person-it-names",
+  "decline-names-no-decider",
+  "unhandled-request-claims-no-hand-off",
 ];
 
 const tools = (extensions: readonly Extension[]): ToolRegistration[] =>
@@ -343,7 +345,9 @@ describe("people ops brief contract", () => {
     expect(elsewhere?.expect.notCalled).toEqual(TOOLS.filter((tool) => tool !== "read_company"));
 
     for (const id of SCENARIOS.slice(0, 7)) expect(byId(id)?.severity, id).toBe("critical");
-    for (const id of SCENARIOS.slice(7)) expect(byId(id)?.severity, id).toBe("normal");
+    for (const id of SCENARIOS.slice(7, -2)) expect(byId(id)?.severity, id).toBe("normal");
+    // The last two are the cross-role honesty scenarios (RASF-3483).
+    for (const id of SCENARIOS.slice(-2)) expect(byId(id)?.severity, id).toBe("critical");
   });
 
   it("passes every scenario on a bare Pi Durable harness with the scripted model", async () => {
@@ -361,7 +365,8 @@ describe("people ops brief contract", () => {
     expect(formatReport(report)).toBe(
       [
         ...SCENARIOS.map(
-          (id, index) => `pass  ${id} (${index < 7 ? "critical" : "normal"}, 3/3 trials)`,
+          (id, index) =>
+            `pass  ${id} (${index < 7 || index >= SCENARIOS.length - 2 ? "critical" : "normal"}, 3/3 trials)`,
         ),
         "Evals passed: 100% of normal trials passed (threshold 90%)",
       ].join("\n"),

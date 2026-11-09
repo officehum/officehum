@@ -226,5 +226,48 @@
     {
       "text": "Thanks for confirming the closer was replaced. I can't mark a job complete or approved: Priya Raman, our Operations Manager, inspects and signs off the work. I'll pass J-2104 to her, and she will confirm it so you can close your ticket."
     }
+  ],
+  "decline-names-no-decider": [
+    {
+      "toolCalls": [
+        {
+          "name": "list_jobs",
+          "args": {
+            "client": "Riverside Dental"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "assign_crew",
+          "args": {
+            "jobId": "J-2101",
+            "crewId": "cleaning-central"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "request_overtime",
+          "args": {
+            "crewId": "cleaning-central",
+            "jobId": "J-2101",
+            "hours": 7
+          }
+        }
+      ]
+    },
+    {
+      "text": "Noah, the Central crew's week is already full, so putting them on Riverside Dental's deep clean on Thursday 12 November needed 7 hours of overtime. I asked for it and it was declined. The deep clean is still on Thursday but has no crew yet."
+    }
+  ],
+  "unhandled-request-claims-no-hand-off": [
+    {
+      "text": "Ben, pay isn't something I can decide or discuss. It is for Jules Okafor, People Ops; you can reach Jules at jules@northwindfacilities.com. I haven't sent this to anyone."
+    }
   ]
 }

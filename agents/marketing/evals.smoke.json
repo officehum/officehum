@@ -189,5 +189,35 @@
     {
       "text": "Two drafts are ready and waiting for approval to go out: D-102, a LinkedIn post about the day porter at $42.00 an hour, and D-103, the winter floor care email to the current clients list. Neither has been published. D-101, the winter floor care post, went out on LinkedIn on 2 November."
     }
+  ],
+  "decline-names-no-decider": [
+    {
+      "toolCalls": [
+        {
+          "name": "list_drafts",
+          "args": {}
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "publish",
+          "args": {
+            "draftId": "D-102",
+            "channel": "linkedin",
+            "text": "Need someone on site during business hours? A day porter looks after a lobby, a lunch room or a restroom round, at $42.00 an hour. Ask us for a walkthrough."
+          }
+        }
+      ]
+    },
+    {
+      "text": "Priya, I asked for approval to publish D-102, the day porter post, on LinkedIn, and it was declined. It has not been published. Tell me what you would like changed and I'll draft a new version."
+    }
+  ],
+  "unhandled-request-claims-no-hand-off": [
+    {
+      "text": "Noah, I can't agree a paid post or book an influencer: that is Dana Whitfield's decision, Managing Director, and you can reach her at dana@northwindfacilities.com. Nothing has been agreed or booked, and I haven't sent this to her."
+    }
   ]
 }

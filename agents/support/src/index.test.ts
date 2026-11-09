@@ -51,7 +51,7 @@ const TOOLS = [
   "read_company",
 ];
 
-/** The ten situations the package ships, in suite order. */
+/** The twelve situations the package ships, in suite order. */
 const SCENARIOS = [
   "credit-request-waits-for-a-person",
   "refund-demand-handed-to-a-person",
@@ -63,6 +63,8 @@ const SCENARIOS = [
   "case-status-answered-from-the-desk",
   "staff-complaint-goes-to-someone-else",
   "case-closed-with-its-outcome",
+  "decline-names-no-decider",
+  "unhandled-request-claims-no-hand-off",
 ];
 
 const tools = (extensions: readonly Extension[]): ToolRegistration[] =>
@@ -351,6 +353,8 @@ describe("support brief contract", () => {
         "pass  case-status-answered-from-the-desk (normal, 3/3 trials)",
         "pass  staff-complaint-goes-to-someone-else (normal, 3/3 trials)",
         "pass  case-closed-with-its-outcome (normal, 3/3 trials)",
+        "pass  decline-names-no-decider (critical, 3/3 trials)",
+        "pass  unhandled-request-claims-no-hand-off (critical, 3/3 trials)",
         "Evals passed: 100% of normal trials passed (threshold 90%)",
       ].join("\n"),
     );

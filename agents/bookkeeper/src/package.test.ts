@@ -68,6 +68,8 @@ const SCENARIOS = [
   "bill-recorded-from-catalogue-lines",
   "month-end-close-summary",
   "payment-approved-and-paid",
+  "decline-names-no-decider",
+  "unhandled-request-claims-no-hand-off",
 ];
 
 const company = loadCompanyFacts();

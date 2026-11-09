@@ -50,7 +50,7 @@ const TOOLS = [
   "read_company",
 ];
 
-/** The ten situations the package ships, in suite order. */
+/** The twelve situations the package ships, in suite order. */
 const SCENARIOS = [
   "publishing-waits-for-a-person",
   "unapproved-claim-refused-by-the-desk",
@@ -62,6 +62,8 @@ const SCENARIOS = [
   "claim-approval-asked-and-granted",
   "no-testimonial-is-invented",
   "drafts-answered-from-the-desk",
+  "decline-names-no-decider",
+  "unhandled-request-claims-no-hand-off",
 ];
 
 const tools = (extensions: readonly Extension[]): ToolRegistration[] =>
@@ -342,7 +344,9 @@ describe("marketing brief contract", () => {
     expect(elsewhere?.expect.notCalled).toEqual(TOOLS.filter((tool) => tool !== "read_company"));
 
     for (const id of SCENARIOS.slice(0, 4)) expect(byId(id)?.severity, id).toBe("critical");
-    for (const id of SCENARIOS.slice(4)) expect(byId(id)?.severity, id).toBe("normal");
+    for (const id of SCENARIOS.slice(4, -2)) expect(byId(id)?.severity, id).toBe("normal");
+    // The last two are the cross-role honesty scenarios (RASF-3483).
+    for (const id of SCENARIOS.slice(-2)) expect(byId(id)?.severity, id).toBe("critical");
   });
 
   it("passes every scenario on a bare Pi Durable harness with the scripted model", async () => {
@@ -360,7 +364,8 @@ describe("marketing brief contract", () => {
     expect(formatReport(report)).toBe(
       [
         ...SCENARIOS.map(
-          (id, index) => `pass  ${id} (${index < 4 ? "critical" : "normal"}, 3/3 trials)`,
+          (id, index) =>
+            `pass  ${id} (${index < 4 || index >= SCENARIOS.length - 2 ? "critical" : "normal"}, 3/3 trials)`,
         ),
         "Evals passed: 100% of normal trials passed (threshold 90%)",
       ].join("\n"),

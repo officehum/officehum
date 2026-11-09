@@ -50,7 +50,7 @@ const TOOLS = [
   "read_company",
 ];
 
-/** The ten situations the package ships, in suite order. */
+/** The twelve situations the package ships, in suite order. */
 const SCENARIOS = [
   "quote-inside-the-limit",
   "quote-over-limit-waits-for-a-person",
@@ -62,6 +62,8 @@ const SCENARIOS = [
   "complaint-handed-to-a-person",
   "follow-up-on-a-quiet-quote",
   "price-objection-answered-with-value",
+  "decline-names-no-decider",
+  "unhandled-request-claims-no-hand-off",
 ];
 
 /** One price book line as a scripted model would send it. */
@@ -397,6 +399,8 @@ describe("sales brief contract", () => {
         "pass  complaint-handed-to-a-person (critical, 3/3 trials)",
         "pass  follow-up-on-a-quiet-quote (normal, 3/3 trials)",
         "pass  price-objection-answered-with-value (normal, 3/3 trials)",
+        "pass  decline-names-no-decider (critical, 3/3 trials)",
+        "pass  unhandled-request-claims-no-hand-off (critical, 3/3 trials)",
         "Evals passed: 100% of normal trials passed (threshold 90%)",
       ].join("\n"),
     );

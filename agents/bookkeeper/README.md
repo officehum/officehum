@@ -312,6 +312,6 @@ scope, so the marker belongs to the conversation's run, like the record of the s
 | `src/company.ts` | The generated company facts this role reads: suppliers, catalogue, people |
 | `src/collections.ts` | The `bookkeeper.collections` ledger: the stages sent, and the dispute marker a person owns |
 | `src/collections.test.ts` | The ledger: a repeated run, a restart, a kill mid-send, a dispute, and the cadence from limits |
-| `evals/situations.json` | The nineteen eval scenarios |
+| `evals/situations.json` | The twenty-one eval scenarios |
 | `evals.smoke.json` | The turns `--model scripted` plays back for them |
 | `skills/` | `invoicing`, `collections`, `billing-questions`, `paying-suppliers` and `month-end-close`, plus the generated `company-handbook` |

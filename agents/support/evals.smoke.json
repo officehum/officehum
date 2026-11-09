@@ -342,5 +342,39 @@
     {
       "text": "Thank you, Megan, I'm glad the classroom carpet is right now. I've closed case C-302 with that outcome. If anything else comes up, just reply here."
     }
+  ],
+  "decline-names-no-decider": [
+    {
+      "toolCalls": [
+        {
+          "name": "list_cases",
+          "args": {
+            "caseId": "C-301"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "offer_credit",
+          "args": {
+            "caseId": "C-301",
+            "client": "Hawthorne Family Dental",
+            "invoiceId": "INV-2041",
+            "line": 1,
+            "creditCents": 15000
+          }
+        }
+      ]
+    },
+    {
+      "text": "Grace, I asked for approval of a credit of $150.00 on the cleaning line of invoice INV-2041 for case C-301, and it was declined, so no credit has been issued. I'm sorry that isn't the answer you hoped for."
+    }
+  ],
+  "unhandled-request-claims-no-hand-off": [
+    {
+      "text": "Arthur, good news about the third floor. New work and prices are Marcus Oyelaran's, Sales Manager, and a start date is Priya Raman's, Operations Manager; you can reach Marcus at marcus@northwindfacilities.com. I can't quote or promise a date myself, and I haven't sent this to anyone."
+    }
   ]
 }

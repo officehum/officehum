@@ -208,5 +208,66 @@
     {
       "text": "Nina, quote Q-3047 comes to $3,135.00 and covers three things: the first deep clean of the 12,000 sq ft across the sites at $1,440.00, restroom sanitising for 24 restrooms at $1,560.00, and 3 HVAC filter changes at $135.00. It does not include recurring nightly cleaning or any window work. The quote is valid until 14 November; if you'd like to talk through the scope, I'm here."
     }
+  ],
+  "decline-names-no-decider": [
+    {
+      "toolCalls": [
+        {
+          "name": "list_leads",
+          "args": {
+            "query": "Bramble & Co"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "get_quote",
+          "args": {
+            "quoteId": "Q-3047"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "create_quote",
+          "args": {
+            "leadId": "L-211",
+            "lines": [
+              {
+                "priceBookItemId": "clean-deep-sqft",
+                "description": "Deep clean, first visit, 12,000 sq ft across the three sites",
+                "quantity": 12000,
+                "unitPriceCents": 12
+              },
+              {
+                "priceBookItemId": "restroom-sanitise",
+                "description": "Restroom sanitising, 24 restroom visits",
+                "quantity": 24,
+                "unitPriceCents": 6500
+              },
+              {
+                "priceBookItemId": "hvac-filter",
+                "description": "HVAC filter change, three units",
+                "quantity": 3,
+                "unitPriceCents": 4500
+              }
+            ],
+            "discountPercent": 10
+          }
+        }
+      ]
+    },
+    {
+      "text": "Nina, I asked for the ten percent on Q-3047 and it was declined, so the quote stands at the standard price of $3,135.00 with the same scope."
+    }
+  ],
+  "unhandled-request-claims-no-hand-off": [
+    {
+      "text": "Owen, I'm sorry about the missed visits. I can't agree money back: a refund is Dana Whitfield's decision, Managing Director, and complaints about a visit are Tom Becker's, Client Services Lead. You can reach Dana at dana@northwindfacilities.com. Nothing has been agreed, and I haven't sent this to anyone."
+    }
   ]
 }

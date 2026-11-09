@@ -304,5 +304,51 @@
     {
       "text": "Thanks, Dev. A claim, a credit or replacements from a supplier are Rosa Martinez's call as Purchasing and Supplies, so I'll pass this to her with what you've reported about the fraying cloths on PO-1002, and she will take it up with Rainier Cleaning Tools."
     }
+  ],
+  "decline-names-no-decider": [
+    {
+      "toolCalls": [
+        {
+          "name": "raise_purchase_order",
+          "args": {
+            "supplierId": "sup-cascade-paper",
+            "lines": [
+              {
+                "itemId": "toilet-tissue",
+                "quantity": 16
+              },
+              {
+                "itemId": "hand-towel",
+                "quantity": 12
+              },
+              {
+                "itemId": "trash-liners",
+                "quantity": 20
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "request_po_approval",
+          "args": {
+            "draftId": "PO-1004",
+            "supplierId": "sup-cascade-paper",
+            "totalCents": 217200
+          }
+        }
+      ]
+    },
+    {
+      "text": "Dev, the paper restock from Cascade (16 cases of toilet tissue, 12 of roll hand towels and 20 of liners) comes to $2,172.00, which is over the limit an order can reach without approval. I asked for approval and it was declined. The order has not been placed."
+    }
+  ],
+  "unhandled-request-claims-no-hand-off": [
+    {
+      "text": "Dev, paying a supplier isn't something I can do. Supplier bills are for Eileen Hart, Finance and Billing; you can reach her at eileen@northwindfacilities.com. Nothing has been paid, and I haven't sent this to anyone."
+    }
   ]
 }
