@@ -19,7 +19,7 @@ building Office Hum, including what it may do without asking).
 | `packages/office` | `@officehum/office`: the host runtime. The only package that opens and drives a Pi Durable `Harness`. Calendar, messaging and email adapters, solo mode. |
 | `packages/cli` | `@officehum/cli`: operator commands and the Paper Ultramarine model provider. |
 | `packages/google-calendar` | Portable Google Calendar client and fake. |
-| `agents/<role>` | One role package each (`agents/frontdesk` is the only one built so far). |
+| `agents/<role>` | One role package each; the catalog is in `agents/README.md`. |
 | `docs/design/` | Accepted designs. `docs/superpowers/specs/` and `plans/` hold per-feature specs and plans. |
 
 ## Commands
