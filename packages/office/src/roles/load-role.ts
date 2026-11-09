@@ -8,9 +8,9 @@
  * checked against the manifest (`checkAgent`).
  *
  * The factory is a role package's default export. It is called with the caller's overlays, approver,
- * an engine built from the manifest when the package declares one, and the named app clients the
- * caller passes (`calendar`, `quickbooks`, …). A role package keeps its own app clients; the host
- * decides which concrete client each name resolves to. See docs/design/agent-package.md.
+ * clock (`now`), an engine built from the manifest when the package declares one, and the named app
+ * clients the caller passes (`calendar`, `quickbooks`, …). A role package keeps its own app clients;
+ * the host decides which concrete client each name resolves to. See docs/design/agent-package.md.
  */
 
 import { readFile } from "node:fs/promises";
@@ -33,7 +33,7 @@ import {
 import { PI_DURABLE_VERSION } from "../version.js";
 
 /** The names `loadRole` passes to a role factory itself; a client may not reuse them. */
-export const RESERVED_ROLE_OPTIONS = ["overlays", "approve", "engine"] as const;
+export const RESERVED_ROLE_OPTIONS = ["overlays", "approve", "engine", "now"] as const;
 
 /** Options a host gives `loadRole`; everything here reaches the role's factory. */
 export interface LoadRoleOptions {
@@ -45,6 +45,11 @@ export interface LoadRoleOptions {
   readonly dataDir?: string;
   /** The host's working directory, given to the engine as `OFFICEHUM_WORK_DIR`. */
   readonly workDir?: string;
+  /**
+   * The host's clock, passed to the factory as `now`: the role dates its prompt's `today` section
+   * and its desk's records from it. Omitted: the role's own default.
+   */
+  readonly now?: () => Date;
   /** Named app clients the factory receives, e.g. `{ calendar, quickbooks }`. */
   readonly clients?: Readonly<Record<string, unknown>>;
 }
@@ -168,6 +173,7 @@ export async function loadRole(dir: string, options: LoadRoleOptions = {}): Prom
   if (options.overlays !== undefined) factoryOptions.overlays = options.overlays;
   if (options.approve !== undefined) factoryOptions.approve = options.approve;
   if (engine !== undefined) factoryOptions.engine = engine;
+  if (options.now !== undefined) factoryOptions.now = options.now;
 
   const entry = await entryPoint(dir);
   const module = (await loadEntry(entry, rolePackage.name)) as { default?: unknown };

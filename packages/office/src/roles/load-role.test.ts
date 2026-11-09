@@ -115,6 +115,23 @@ describe("loadRole", () => {
     );
   });
 
+  it("loadRole passes now to the factory", async () => {
+    const loaded = await loadRole(sampleDesk, {
+      clients: { calendar },
+      now: () => new Date("2027-02-01T09:00:00.000Z"),
+    });
+    const today = loaded.bundle.extensions[0]?.sections?.find((section) => section.key === "today");
+    expect(await today?.render({} as never, {} as never)).toMatch(
+      /^Today is 2027-02-01 \(Monday\)\./,
+    );
+  });
+
+  it("a client named now is refused", async () => {
+    await expect(
+      loadRole(sampleDesk, { clients: { calendar, now: () => new Date() } }),
+    ).rejects.toThrow(/The client named "now" is reserved/);
+  });
+
   it("refuses a client named after a factory option loadRole sets itself", async () => {
     await expect(loadRole(sampleDesk, { clients: { calendar, overlays: [] } })).rejects.toThrow(
       /The client named "overlays" is reserved/,

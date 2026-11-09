@@ -220,6 +220,7 @@ export {
   type Skill,
   skillFolders,
 } from "./skills.js";
+export { isoDate, todaySection, todayText } from "./today.js";
 export {
   deskRefusal,
   guardToolResult,

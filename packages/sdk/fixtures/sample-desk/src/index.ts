@@ -26,6 +26,8 @@ export interface SampleDeskOptions {
   readonly overlays?: readonly string[];
   /** Decides after-hours bookings. Omitted: they are blocked. */
   readonly approve?: Approver;
+  /** The host's clock, for the prompt's `today` section. Omitted: no section. */
+  readonly now?: () => Date;
 }
 
 export default function sampleDesk(options: SampleDeskOptions): DefinedRole {
@@ -60,6 +62,7 @@ export default function sampleDesk(options: SampleDeskOptions): DefinedRole {
     manifest,
     overlays: options.overlays,
     approve: options.approve,
+    now: options.now,
     tools: [checkSchedule, bookAppointment],
     when: { book_after_hours: (args) => Number(String(args.start).slice(11, 13)) >= 18 },
   });
