@@ -11,10 +11,41 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const agentsDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "agents");
+const companyFile = join(agentsDirectory, "..", "company", "default", "company.json");
 
 interface Manifest {
+  id: string;
   tools?: { name: string }[];
   approvals?: { id: string }[];
+  accepts: { type: string }[];
+  dispatches?: { type: string }[];
+}
+
+/**
+ * Every ticket type a role hands on that no other role accepts and no person route takes, as
+ * `"<role>: <type>"`. The office extension's `agent_dispatch` refuses exactly these, so a catalog
+ * role that declares one would be refused at run time. A role's own accepts do not count: the
+ * extension leaves them out of what that role may dispatch.
+ */
+function unroutedDispatches(
+  manifests: readonly {
+    id: string;
+    accepts: { type: string }[];
+    dispatches?: { type: string }[];
+  }[],
+  routes: readonly { type: string }[],
+): string[] {
+  const routed = new Set(routes.map((route) => route.type));
+  const unrouted: string[] = [];
+  for (const manifest of manifests) {
+    for (const { type } of manifest.dispatches ?? []) {
+      const accepted = manifests.some(
+        (other) => other.id !== manifest.id && other.accepts.some((accept) => accept.type === type),
+      );
+      if (!accepted && !routed.has(type)) unrouted.push(`${manifest.id}: ${type}`);
+    }
+  }
+  return unrouted;
 }
 
 interface Row {
@@ -82,4 +113,33 @@ describe("agents/README.md catalog", () => {
       );
     });
   }
+});
+
+describe("catalog hand-offs", () => {
+  it("unroutedDispatches flags a type nobody accepts or routes", () => {
+    const manifests = [
+      { id: "desk", accepts: [{ type: "desk.ask" }], dispatches: [{ type: "books.ask" }] },
+      {
+        id: "books",
+        accepts: [{ type: "books.ask" }],
+        dispatches: [{ type: "finance.review" }, { type: "lost.type" }, { type: "books.ask" }],
+      },
+    ];
+    expect(unroutedDispatches(manifests, [{ type: "finance.review" }])).toEqual([
+      "books: lost.type",
+      "books: books.ask",
+    ]);
+    expect(unroutedDispatches(manifests, [])).toContain("books: finance.review");
+  });
+
+  it("every catalog dispatch is accepted by a role or routed to a person", () => {
+    const manifests = roles.map(
+      (role) =>
+        JSON.parse(readFileSync(join(agentsDirectory, role, "officehum.json"), "utf8")) as Manifest,
+    );
+    const company = JSON.parse(readFileSync(companyFile, "utf8")) as {
+      ticketRoutes?: { type: string }[];
+    };
+    expect(unroutedDispatches(manifests, company.ticketRoutes ?? [])).toEqual([]);
+  });
 });
