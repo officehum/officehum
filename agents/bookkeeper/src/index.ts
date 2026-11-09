@@ -62,6 +62,7 @@ export {
   type BillFilter,
   type BillLineInput,
   type BillStatus,
+  billApprovalFacts,
   DEFAULT_TERMS_DAYS,
   DEMO_NOW,
   DESK_REFUSALS,
@@ -191,6 +192,9 @@ export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
       large_invoice: largeInvoiceCondition,
       new_recipient: newRecipientCondition(options.quickbooks),
     },
+    // A payment names only the bill: the gate reads its facts from the desk, shows them to the person
+    // and hands them to pay_vendor_bill on a yes, so the desk pays only the bill the person saw.
+    approvalFacts: { any_payment: payables.paymentApprovalFacts },
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

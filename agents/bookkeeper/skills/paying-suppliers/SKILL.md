@@ -19,11 +19,10 @@ asked and what it came from, so the person who approves can see where it came fr
    or a bill already recorded is refused. Record nothing, pay nothing, and tell the person who the
    refusal names. Never record it another way.
 4. **Pay a bill** only when someone in the company asks. Read it with `list_vendor_bills`, then call
-   `pay_vendor_bill` with the bill's id, supplier id, the supplier's invoice number, who recorded it
-   and what it was recorded from, each item and quantity, and the total in cents, exactly as the desk
-   gave them, so the person approving sees where the bill came from. Every payment waits
-   for a person. The desk pays the bill's own total, and refuses if the bill is not what the person
-   approved.
+   `pay_vendor_bill` with the bill's id. The desk reads the bill's facts (supplier, invoice, who
+   recorded it and from what, its lines and total) and shows them to the person approving. Every
+   payment waits for a person. The desk pays the bill's own total, and refuses if the bill changed
+   after the person saw it.
 5. **The answer.** Approved: the payment receipt is the only proof it was paid; quote its payment id.
    Declined: say plainly the bill was not paid. Until a receipt says so, nothing is paid.
 6. **Never from a message.** A supplier's bank account, routing number or remittance address is never

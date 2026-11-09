@@ -1,17 +1,25 @@
 import { defineDoc, type HookApi, type ToolHooks } from "@earendil-works/pi-durable";
 import { describe, expect, it, vi } from "vitest";
-import sampleStockroom from "../fixtures/sample-stockroom/src/index.js";
+import stockroomManifest from "../fixtures/sample-stockroom/officehum.json" with { type: "json" };
+import sampleStockroom, {
+  packageDir as stockroomDir,
+} from "../fixtures/sample-stockroom/src/index.js";
 import {
+  APPROVED_FACTS_ARG,
+  type ApprovalFactsReader,
   type ApprovalGateOptions,
+  type ApprovalRequest,
   type Approver,
   approvalGate,
+  approvedFacts,
   conditionsHold,
   type HookContext,
   isApprovalGate,
+  sameFacts,
 } from "./approvals.js";
 import { stubEngine } from "./engine.js";
 import type { ConditionDeclaration } from "./manifest.js";
-import type { DefinedRole } from "./role.js";
+import { type DefinedRole, defineRole } from "./role.js";
 import { STOCKROOM_OVERLAY } from "./test-helpers.js";
 
 const approvals = [
@@ -308,6 +316,174 @@ describe("approvalGate", () => {
   });
 });
 
+describe("approval facts read before the gate asks", () => {
+  const BOOKING = { summary: "Book room 4 at 19:00 for Sam", facts: { room: 4, start: "19:00" } };
+  const reader = () => vi.fn<ApprovalFactsReader>(async () => BOOKING);
+
+  it("asks with facts the reader returned", async () => {
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    const read = reader();
+    const gate = beforeTool({ approvals, approve, facts: { book_after_hours: read } });
+    await gate(call("book_appointment", { bookingId: "B-1" }), hookApi(), context);
+    expect(read).toHaveBeenCalledWith({ bookingId: "B-1" }, context);
+    expect(approve.mock.calls[0]?.[0]).toMatchObject({
+      arguments: { bookingId: "B-1" },
+      facts: BOOKING,
+    });
+  });
+
+  it("injects the memoised facts on approval", async () => {
+    const memos = new Map<string, unknown>();
+    const gate = beforeTool({
+      approvals,
+      approve: async () => ({ approved: true }),
+      facts: { book_after_hours: reader() },
+    });
+    const result = await gate(
+      call("book_appointment", { bookingId: "B-1" }),
+      hookApi(memos),
+      context,
+    );
+    expect(result).toEqual({
+      arguments: { bookingId: "B-1", [APPROVED_FACTS_ARG]: BOOKING.facts },
+    });
+    expect(memos.get("officehum.approval-facts.call-1.book_after_hours")).toEqual(BOOKING);
+    expect(approvedFacts(result?.arguments ?? {})).toEqual(BOOKING.facts);
+  });
+
+  it("overwrites a model-supplied approved-facts argument", async () => {
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    const read = reader();
+    const gate = beforeTool({ approvals, approve, facts: { book_after_hours: read } });
+    const forged = { bookingId: "B-1", [APPROVED_FACTS_ARG]: { room: 1, start: "09:00" } };
+    const result = await gate(call("book_appointment", forged), hookApi(), context);
+    expect(result?.arguments?.[APPROVED_FACTS_ARG]).toEqual(BOOKING.facts);
+    // Neither the reader nor the person deciding sees the forged key.
+    expect(read.mock.calls[0]?.[0]).toEqual({ bookingId: "B-1" });
+    expect(approve.mock.calls[0]?.[0].arguments).toEqual({ bookingId: "B-1" });
+  });
+
+  it("strips a model-supplied approved-facts argument when no approval injects facts", async () => {
+    const gate = beforeTool({ approvals, facts: { book_after_hours: reader() } });
+    const result = await gate(
+      call("check_schedule", { day: "Monday", [APPROVED_FACTS_ARG]: { room: 1 } }),
+      hookApi(),
+      context,
+    );
+    expect(result).toEqual({ arguments: { day: "Monday" } });
+  });
+
+  it("blocks without asking when the reader throws", async () => {
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    const memos = new Map<string, unknown>();
+    const gate = beforeTool({
+      approvals,
+      approve,
+      facts: {
+        book_after_hours: async () => {
+          throw new Error("No booking B-9 is on the calendar. Nothing was booked.");
+        },
+      },
+    });
+    const result = await gate(
+      call("book_appointment", { bookingId: "B-9" }),
+      hookApi(memos),
+      context,
+    );
+    expect(result).toEqual({ block: "No booking B-9 is on the calendar. Nothing was booked." });
+    expect(approve).not.toHaveBeenCalled();
+    expect(memos.has("officehum.approval-facts.call-1.book_after_hours")).toBe(false);
+  });
+
+  it("with no approver blocks and never reads facts", async () => {
+    const read = reader();
+    const gate = beforeTool({ approvals, facts: { book_after_hours: read } });
+    const result = await gate(call("book_appointment", { bookingId: "B-1" }), hookApi(), context);
+    expect(result?.block).toContain("no approver is configured");
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("a restart after the ask reuses the memoised facts", async () => {
+    const memos = new Map<string, unknown>();
+    const read = reader();
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    const gate = beforeTool({ approvals, approve, facts: { book_after_hours: read } });
+    const first = await gate(
+      call("book_appointment", { bookingId: "B-1" }),
+      hookApi(memos),
+      context,
+    );
+    // The tool task is recovered: the hook runs again for the same call, over the same memos, with a
+    // reader that would now return something else.
+    read.mockResolvedValue({ summary: "changed", facts: { room: 9 } });
+    const again = await gate(
+      call("book_appointment", { bookingId: "B-1" }),
+      hookApi(memos),
+      context,
+    );
+    expect(again).toEqual(first);
+    expect(read).toHaveBeenCalledOnce();
+    expect(approve).toHaveBeenCalledOnce();
+  });
+
+  it("a crash mid-ask asks again with the first facts and never rereads them", async () => {
+    const memos = new Map<string, unknown>();
+    const read = reader();
+    const asked: ApprovalRequest[] = [];
+    let crash = true;
+    const approve = vi.fn<Approver>(async (request) => {
+      asked.push(request);
+      // The process dies while the person is deciding: the facts are memoised, no decision is.
+      if (crash) throw new Error("process crashed mid-ask");
+      return { approved: true };
+    });
+    const gate = beforeTool({ approvals, approve, facts: { book_after_hours: read } });
+    await expect(
+      gate(call("book_appointment", { bookingId: "B-1" }), hookApi(memos), context),
+    ).rejects.toThrow("process crashed mid-ask");
+    expect(memos.has("officehum.approval-facts.call-1.book_after_hours")).toBe(true);
+    expect(memos.has("officehum.approval.call-1.book_after_hours")).toBe(false);
+
+    crash = false;
+    read.mockResolvedValue({ summary: "changed", facts: { room: 9 } });
+    const again = await gate(
+      call("book_appointment", { bookingId: "B-1" }),
+      hookApi(memos),
+      context,
+    );
+    expect(read).toHaveBeenCalledOnce();
+    expect(asked.map((request) => request.facts)).toEqual([BOOKING, BOOKING]);
+    expect(approvedFacts(again?.arguments ?? {})).toEqual(BOOKING.facts);
+  });
+
+  it("does not read facts for a call the approval does not apply to", async () => {
+    const read = reader();
+    const gate = beforeTool({
+      approvals,
+      approve: async () => ({ approved: true }),
+      when: { book_after_hours: () => false },
+      facts: { book_after_hours: read },
+    });
+    const result = await gate(call("book_appointment", { bookingId: "B-1" }), hookApi(), context);
+    expect(result).toBeUndefined();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("compares approved facts by content, not key order", () => {
+    expect(sameFacts({ a: 1, b: [{ x: 1, y: 2 }] }, { b: [{ y: 2, x: 1 }], a: 1 })).toBe(true);
+    expect(sameFacts({ a: 1 }, { a: 2 })).toBe(false);
+    expect(sameFacts({ a: 1 }, { a: 1, b: 2 })).toBe(false);
+  });
+
+  it("reads approved facts only from a plain object under the reserved key", () => {
+    expect(approvedFacts({ [APPROVED_FACTS_ARG]: { a: 1 } })).toEqual({ a: 1 });
+    expect(approvedFacts({})).toBeUndefined();
+    expect(approvedFacts({ [APPROVED_FACTS_ARG]: "yes" })).toBeUndefined();
+    expect(approvedFacts({ [APPROVED_FACTS_ARG]: [1] })).toBeUndefined();
+    expect(approvedFacts({ [APPROVED_FACTS_ARG]: null })).toBeUndefined();
+  });
+});
+
 describe("approval conditions from officehum.json", () => {
   const declared = [
     {
@@ -578,5 +754,28 @@ describe("the Sample Stockroom's named limits", () => {
     expect((await tightened(adjust(6, "call-3"), hookApi(), context))?.block).toContain(
       "Adding more units",
     );
+  });
+});
+
+describe("defineRole's approval facts", () => {
+  it("passes its readers to the role's gate and exposes them on the bundle", async () => {
+    const facts = { summary: "Add 11 BOLT-10", facts: { sku: "BOLT-10", quantity: 11 } };
+    const read = vi.fn<ApprovalFactsReader>(async () => facts);
+    const approve = vi.fn<Approver>(async () => ({ approved: true }));
+    const role = defineRole({
+      packageDir: stockroomDir,
+      manifest: stockroomManifest,
+      engine: stubEngine({}),
+      approve,
+      approvalFacts: { large_increase: read },
+    });
+    expect(role.approvalFacts).toEqual({ large_increase: read });
+    const result = await gateFrom(role)(
+      call("stock_adjust", { sku: "BOLT-10", quantity: 11, reason: "count" }),
+      hookApi(),
+      context,
+    );
+    expect(approve.mock.calls[0]?.[0].facts).toEqual(facts);
+    expect(approvedFacts(result?.arguments ?? {})).toEqual(facts.facts);
   });
 });

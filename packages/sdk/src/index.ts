@@ -22,16 +22,22 @@ export {
   skillExtensionName,
 } from "./agent.js";
 export {
+  APPROVED_FACTS_ARG,
   type ApprovalCondition,
   type ApprovalConditionContext,
   type ApprovalDecision,
+  type ApprovalFacts,
+  type ApprovalFactsReader,
   type ApprovalGateOptions,
   type ApprovalRequest,
   type Approver,
   approvalGate,
+  approvedFacts,
+  approvedFactsParameter,
   conditionsHold,
   type HookContext,
   isApprovalGate,
+  sameFacts,
   type ToolArguments,
 } from "./approvals.js";
 export {

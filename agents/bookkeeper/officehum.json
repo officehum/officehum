@@ -56,7 +56,7 @@
     {
       "name": "pay_vendor_bill",
       "replay": "unsafe",
-      "description": "Ask a person to approve paying one supplier bill, naming the bill and its facts as the desk holds them. Once approved, the desk pays the bill's own total. Demonstration backend only: no money moves."
+      "description": "Ask a person to approve paying one supplier bill, named by its id. The desk reads the bill's facts and shows them to the person; once approved, it pays the bill's own total, and refuses if the bill changed since. Demonstration backend only: no money moves."
     },
     {
       "name": "reconcile_summary",
@@ -124,7 +124,7 @@
     {
       "id": "any_payment",
       "tool": "pay_vendor_bill",
-      "description": "Approve paying this supplier bill: this supplier and invoice, recorded by this person from this source, with these lines and this total in cents, as the desk holds it. Demo: no money moves."
+      "description": "Approve paying this supplier bill as the desk holds it: its supplier and invoice, who recorded it and from what, its lines and its total. Demo: no money moves."
     }
   ],
   "channels": ["email"],

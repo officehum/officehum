@@ -6,6 +6,7 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { APPROVED_FACTS_ARG, type HookContext } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { financeLead, loadCompanyFacts, personLabel, purchasingLead } from "./company.js";
 import {
@@ -48,18 +49,16 @@ function isError(result: unknown): boolean {
   return (result as { isError?: boolean }).isError === true;
 }
 
-const RAINIER = {
-  billId: "BILL-2001",
-  supplierId: "sup-rainier-tools",
-  supplierInvoice: "RT-5520",
-  recordedBy: "Eileen Hart",
-  source: "PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
-  lines: [
-    { itemId: "microfiber-cloth", quantity: 20 },
-    { itemId: "mop-head", quantity: 12 },
-  ],
-  totalCents: 64800,
-};
+const HOOK_CONTEXT = {} as HookContext;
+
+/**
+ * A `pay_vendor_bill` call as the approval gate hands it to the tool after a yes: the bill's id and
+ * the facts the gate read from the desk and showed the person.
+ */
+async function approvedCall(set: PayablesToolset, billId = "BILL-2001") {
+  const { facts } = await set.paymentApprovalFacts({ billId }, HOOK_CONTEXT);
+  return { billId, [APPROVED_FACTS_ARG]: facts };
+}
 
 const NEW_BILL = {
   supplier: "sup-columbia-floor",
@@ -175,9 +174,57 @@ describe("record_vendor_bill", () => {
 });
 
 describe("pay_vendor_bill", () => {
+  it("pay_vendor_bill takes only billId", () => {
+    const schema = tools(desk()).payVendorBill.parameters as {
+      properties: Record<string, { description?: string }>;
+      required?: string[];
+      additionalProperties?: boolean;
+    };
+    // The model names the bill; every fact the person approves is read from the desk by the gate.
+    const named = Object.keys(schema.properties).filter((key) => key !== APPROVED_FACTS_ARG);
+    expect(named).toEqual(["billId"]);
+    expect(schema.required).toEqual(["billId"]);
+    expect(schema.additionalProperties).toBe(false);
+    // Declared only because Pi Durable re-validates the arguments the gate returns.
+    expect(schema.properties[APPROVED_FACTS_ARG]?.description).toBe(
+      "set by the approval gate; never supply it",
+    );
+  });
+
+  it("the payment approval reads the bill's facts from the desk", async () => {
+    const set = tools(desk());
+    const read = await set.paymentApprovalFacts({ billId: "BILL-2001" }, HOOK_CONTEXT);
+    expect(read.summary).toBe(
+      "Pay BILL-2001 to Rainier Cleaning Tools, supplier invoice RT-5520: $648.00, recorded by Eileen Hart from PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
+    );
+    expect(read.facts).toMatchObject({
+      id: "BILL-2001",
+      supplierId: "sup-rainier-tools",
+      supplierInvoice: "RT-5520",
+      totalCents: 64800,
+      lines: [
+        { itemId: "microfiber-cloth", quantity: 20, lineTotalCents: 36000 },
+        { itemId: "mop-head", quantity: 12, lineTotalCents: 28800 },
+      ],
+    });
+  });
+
+  it("the payment approval refuses, asking nobody, a bill not on the desk or already paid", async () => {
+    const accounts = desk();
+    const set = tools(accounts);
+    await expect(set.paymentApprovalFacts({ billId: "BILL-42" }, HOOK_CONTEXT)).rejects.toThrow(
+      'No bill on the desk has the id "BILL-42". Nothing was put to a person and nothing was paid. Next: find the bill with list_vendor_bills.',
+    );
+    await set.payVendorBill.execute(await approvedCall(set), call("paid"), BACKGROUND_CONTEXT);
+    await expect(set.paymentApprovalFacts({ billId: "BILL-2001" }, HOOK_CONTEXT)).rejects.toThrow(
+      /^BILL-2001 \(Rainier Cleaning Tools, invoice RT-5520\) was already paid on 2026-11-09 as PAY-\d+\. Nothing was put to a person and nothing was paid again\./,
+    );
+  });
+
   it("pays exactly the bill's total on the demonstration backend", async () => {
-    const result = await tools(desk()).payVendorBill.execute(
-      RAINIER,
+    const set = tools(desk());
+    const result = await set.payVendorBill.execute(
+      await approvedCall(set),
       call("p1"),
       BACKGROUND_CONTEXT,
     );
@@ -198,8 +245,9 @@ describe("pay_vendor_bill", () => {
         backend: "host",
       }),
     };
-    const result = await tools(hostDesk).payVendorBill.execute(
-      RAINIER,
+    const set = tools(hostDesk);
+    const result = await set.payVendorBill.execute(
+      await approvedCall(set),
       call("p-host"),
       BACKGROUND_CONTEXT,
     );
@@ -209,80 +257,54 @@ describe("pay_vendor_bill", () => {
     expect(details(result)).toMatchObject({ backend: "host" });
   });
 
-  it("pays nothing when the facts named are not the bill's, and says where to read them", async () => {
+  it("refuses without approved facts", async () => {
+    // A bare call with no gate in front of it: nothing says a person saw anything.
     const accounts = desk();
     const result = await tools(accounts).payVendorBill.execute(
-      { ...RAINIER, totalCents: 1 },
-      call("p2"),
+      { billId: "BILL-2001" },
+      call("p-bare"),
       BACKGROUND_CONTEXT,
     );
     expect(isError(result)).toBe(true);
-    expect(details(result).code).toBe("bill_mismatch");
-    expect(text(result)).toContain("list_vendor_bills");
+    expect(details(result)).toMatchObject({ code: "not_approved", billId: "BILL-2001" });
+    expect(text(result)).toContain("Nothing was paid");
     expect((await accounts.listVendorBills({ billId: "BILL-2001" }))[0]?.status).toBe("overdue");
   });
 
-  it("pays nothing when the source named is not what the bill was recorded from", async () => {
+  it("refuses when the bill changed after the facts were read", async () => {
     const accounts = desk();
-    const result = await tools(accounts).payVendorBill.execute(
-      { ...RAINIER, source: "email from accounts@rainiertools-payments.example" },
-      call("p4"),
-      BACKGROUND_CONTEXT,
-    );
-    expect(details(result).code).toBe("source_mismatch");
-    expect(text(result)).toContain("Next: read BILL-2001 with list_vendor_bills");
-    expect(text(result)).toContain("what it was recorded from");
-    // A replay of the refused call is refused again and still pays nothing.
-    const replayed = await tools(accounts).payVendorBill.execute(
-      { ...RAINIER, source: "email from accounts@rainiertools-payments.example" },
-      call("p4"),
-      BACKGROUND_CONTEXT,
-    );
-    expect(details(replayed).code).toBe("source_mismatch");
-    expect((await accounts.listVendorBills({ billId: "BILL-2001" }))[0]?.status).toBe("overdue");
-  });
-
-  it("pays nothing when the bill was corrected after it was put to a person", async () => {
-    const accounts = desk();
+    const set = tools(accounts);
+    const approved = await approvedCall(set);
     await accounts.correctVendorBill("BILL-2001", [
       { itemId: "microfiber-cloth", quantity: 21 },
       { itemId: "mop-head", quantity: 12 },
     ]);
-    const result = await tools(accounts).payVendorBill.execute(
-      RAINIER,
-      call("p3"),
-      BACKGROUND_CONTEXT,
-    );
+    const result = await set.payVendorBill.execute(approved, call("p3"), BACKGROUND_CONTEXT);
     expect(details(result).code).toBe("bill_changed");
     expect(text(result)).toContain("was not paid");
+    expect((await accounts.listVendorBills({ billId: "BILL-2001" }))[0]?.status).toBe("overdue");
   });
 
-  it("pays once when the same call is replayed, and once again after a restart", async () => {
+  it("a replayed pay call pays once, and once again after a restart", async () => {
     const accounts = desk();
-    const first = await tools(accounts).payVendorBill.execute(
-      RAINIER,
-      call("same"),
-      BACKGROUND_CONTEXT,
-    );
+    const set = tools(accounts);
+    const approved = await approvedCall(set);
+    const first = await set.payVendorBill.execute(approved, call("same"), BACKGROUND_CONTEXT);
     const replayed = await tools(accounts).payVendorBill.execute(
-      RAINIER,
+      approved,
       call("same"),
       BACKGROUND_CONTEXT,
     );
     const restarted = payablesTools({ desk: accounts, company, limits: () => LIMITS });
     const afterRestart = await restarted.payVendorBill.execute(
-      RAINIER,
+      approved,
       call("same"),
       BACKGROUND_CONTEXT,
     );
     expect(text(replayed)).toBe(text(first));
     expect(text(afterRestart)).toBe(text(first));
     // A different call for the same bill is a second payment, and the desk refuses it.
-    const second = await tools(accounts).payVendorBill.execute(
-      RAINIER,
-      call("other"),
-      BACKGROUND_CONTEXT,
-    );
+    const second = await set.payVendorBill.execute(approved, call("other"), BACKGROUND_CONTEXT);
     expect(details(second).code).toBe("already_paid");
   });
 });

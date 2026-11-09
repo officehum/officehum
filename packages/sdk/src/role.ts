@@ -29,7 +29,12 @@ import {
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { type RoleBundle, skillExtensionName } from "./agent.js";
-import { type ApprovalCondition, type Approver, approvalGate } from "./approvals.js";
+import {
+  type ApprovalCondition,
+  type ApprovalFactsReader,
+  type Approver,
+  approvalGate,
+} from "./approvals.js";
 import { type Engine, engineTools } from "./engine.js";
 import { formatIssue, type Issue } from "./issues.js";
 import { validateManifest } from "./manifest.js";
@@ -63,6 +68,11 @@ export interface DefineRoleOptions {
   readonly approve?: Approver | undefined;
   /** When each approval applies, keyed by approval id. */
   readonly when?: Readonly<Record<string, ApprovalCondition>>;
+  /**
+   * What each approval asks a person to approve, read from the role's records, keyed by approval id.
+   * The gate asks with the facts and, on a yes, passes them to the tool under `APPROVED_FACTS_ARG`.
+   */
+  readonly approvalFacts?: Readonly<Record<string, ApprovalFactsReader>>;
   /** More hooks for the role extension, after the approval gate. */
   readonly hooks?: readonly HookRegistration[];
   /** Durable tasks the role's tools start. */
@@ -77,6 +87,8 @@ export interface DefineRoleOptions {
 
 /** A role bundle that can re-read its files when an overlay changes. */
 export interface DefinedRole extends RoleBundle {
+  /** The role's approval facts readers, keyed by approval id, so a host's own gate can read them too. */
+  readonly approvalFacts: Readonly<Record<string, ApprovalFactsReader>>;
   /** What the agent currently sees. */
   current(): ResolvedRole;
   /**
@@ -193,6 +205,7 @@ export function defineRole(options: DefineRoleOptions): DefinedRole {
         approvals: manifest.approvals,
         approve: options.approve,
         ...(options.when ? { when: options.when } : {}),
+        ...(options.approvalFacts ? { facts: options.approvalFacts } : {}),
         // Live, so an overlay's limit change takes effect on reload, like the prompt sections.
         get limits() {
           return current.limits;
@@ -232,6 +245,7 @@ export function defineRole(options: DefineRoleOptions): DefinedRole {
   };
 
   const bundle: DefinedRole = {
+    approvalFacts: options.approvalFacts ?? {},
     extensions: [role, ...skillExtensions] as readonly Extension[],
     get agent() {
       return agentSettings();

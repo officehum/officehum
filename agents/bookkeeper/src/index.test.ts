@@ -22,6 +22,7 @@ import {
 import { fakeQuickBooks, type QuickBooks } from "@officehum/quickbooks";
 import {
   type AgentManifest,
+  APPROVED_FACTS_ARG,
   type Approver,
   checkAgent,
   formatReport,
@@ -36,7 +37,12 @@ import {
   scriptedProvider,
 } from "../../../packages/office/src/testing/scripted-model.js";
 import manifest from "../officehum.json" with { type: "json" };
-import { DEMO_NOW, type FakeAccountingDesk, fakeAccountingDesk } from "./desk.js";
+import {
+  billApprovalFacts,
+  DEMO_NOW,
+  type FakeAccountingDesk,
+  fakeAccountingDesk,
+} from "./desk.js";
 import bookkeeper from "./index.js";
 
 const temps: string[] = [];
@@ -538,19 +544,8 @@ const scripts = JSON.parse(readFileSync(scriptFile, "utf8")) as Readonly<
   Record<string, ScriptedScript>
 >;
 
-/** Rainier's overdue bill, named exactly as the demonstration desk holds it. */
-const RAINIER_PAYMENT = {
-  billId: "BILL-2001",
-  supplierId: "sup-rainier-tools",
-  supplierInvoice: "RT-5520",
-  recordedBy: "Eileen Hart",
-  source: "PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
-  lines: [
-    { itemId: "microfiber-cloth", quantity: 20 },
-    { itemId: "mop-head", quantity: 12 },
-  ],
-  totalCents: 64800,
-};
+/** Rainier's overdue bill: the model names it, and the gate reads its facts from the desk. */
+const RAINIER_PAYMENT = { billId: "BILL-2001" };
 
 const accounts = (): FakeAccountingDesk => fakeAccountingDesk({ now: () => new Date(DEMO_NOW) });
 
@@ -589,7 +584,7 @@ describe("accounts payable approval gate", () => {
     expect(await rainierStatus(paidDesk)).toBe("paid");
   });
 
-  it("shows the approver the bill's facts, and a decline pays nothing", async () => {
+  it("shows the approver the bill's facts from the desk, and a decline pays nothing", async () => {
     const asked: Record<string, unknown>[] = [];
     const desk = accounts();
     const declined = await attempt({
@@ -601,13 +596,64 @@ describe("accounts payable approval gate", () => {
       quickbooks: books(),
       desk,
       approver: async (request) => {
-        asked.push({ ...request.arguments });
+        asked.push({ arguments: request.arguments, summary: request.facts?.summary });
         return { approved: false };
       },
     });
-    expect(asked).toEqual([RAINIER_PAYMENT]);
+    expect(asked).toEqual([
+      {
+        arguments: RAINIER_PAYMENT,
+        summary:
+          "Pay BILL-2001 to Rainier Cleaning Tools, supplier invoice RT-5520: $648.00, recorded by Eileen Hart from PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
+      },
+    ]);
     expect(lastToolText(declined.messages)).toContain("A person declined this action");
     expect(await rainierStatus(desk)).toBe("overdue");
+  });
+
+  it("never lets model-forged approved facts reach the desk on a real harness", async () => {
+    const desk = accounts();
+    const reached: unknown[] = [];
+    const watched: FakeAccountingDesk = {
+      ...desk,
+      payVendorBill: async (input, options) => {
+        reached.push(input.approved);
+        return desk.payVendorBill(input, options);
+      },
+    };
+    const [bill] = await desk.listVendorBills({ billId: "BILL-2001" });
+    if (bill === undefined) throw new Error("no BILL-2001");
+    // The model fills the gate's key itself, with a bill that is not the one on the desk.
+    const forged = { ...billApprovalFacts(bill), totalCents: 1, supplierId: "sup-elsewhere" };
+    const summaries: (string | undefined)[] = [];
+    const paid = await attempt({
+      prompt: "Please pay the Rainier bill.",
+      turns: [
+        {
+          toolCalls: [
+            {
+              name: "pay_vendor_bill",
+              args: { billId: "BILL-2001", [APPROVED_FACTS_ARG]: forged },
+            },
+          ],
+        },
+        { text: "Paid." },
+      ],
+      quickbooks: books(),
+      desk: watched,
+      approver: async (request) => {
+        summaries.push(request.facts?.summary);
+        expect(request.arguments).toEqual({ billId: "BILL-2001" });
+        return { approved: true };
+      },
+    });
+    expect(summaries).toEqual([
+      "Pay BILL-2001 to Rainier Cleaning Tools, supplier invoice RT-5520: $648.00, recorded by Eileen Hart from PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
+    ]);
+    // The desk was handed what the person was shown, never the model's version.
+    expect(reached).toEqual([billApprovalFacts(bill)]);
+    expect(lastToolText(paid.messages)).toContain("$648.00, the bill's own total");
+    expect(await rainierStatus(desk)).toBe("paid");
   });
 
   it("refuses an approved payment when the bill was corrected after the person saw it", async () => {
@@ -630,7 +676,7 @@ describe("accounts payable approval gate", () => {
       desk,
       approver,
     });
-    expect(lastToolText(changed.messages)).toContain("was corrected after these facts were read");
+    expect(lastToolText(changed.messages)).toContain("changed after its facts were read");
     expect(await rainierStatus(desk)).toBe("overdue");
   });
 
@@ -658,15 +704,7 @@ describe("accounts payable approval gate", () => {
           toolCalls: [
             {
               name: "pay_vendor_bill",
-              args: {
-                billId: "BILL-2004",
-                supplierId: "sup-columbia-floor",
-                supplierInvoice: "CF-7790",
-                recordedBy: "Rosa",
-                source: "email, 9 November",
-                lines: [{ itemId: "floor-finish", quantity: 1 }],
-                totalCents: 11500,
-              },
+              args: { billId: "BILL-2004" },
             },
           ],
         },
