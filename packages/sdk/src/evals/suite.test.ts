@@ -78,4 +78,13 @@ describe("validateSuite stubs", () => {
       "scenarios[0].stubs.run_report.byArgs[0].args.perod",
     ]);
   });
+
+  it("skips the argument-name check for a tool whose manifest names no parameters", () => {
+    const result = validateSuite(
+      suiteWith({ get_invoice: { byArgs: [{ args: { anything: "x" }, text: "{}" }] }, ...plain }),
+      manifest,
+      "x",
+    );
+    expect(result.issues).toEqual([]);
+  });
 });
