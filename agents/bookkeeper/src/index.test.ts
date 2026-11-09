@@ -806,3 +806,46 @@ describe("bookkeeper brief contract (RASF-3127)", () => {
     expect(scriptFile.endsWith("evals/situations.json")).toBe(false);
   });
 });
+
+describe("bookkeeper clock", () => {
+  const LATER = () => new Date("2027-02-01T09:00:00.000Z");
+
+  async function todayOf(role: ReturnType<typeof bookkeeper>): Promise<string | undefined> {
+    const today = role.extensions[0]?.sections?.find((section) => section.key === "today");
+    return today?.render({} as never, {} as never);
+  }
+
+  async function call(
+    role: ReturnType<typeof bookkeeper>,
+    name: string,
+    args: Record<string, unknown>,
+  ) {
+    const tool = role.extensions
+      .flatMap((extension) => extension.tools ?? [])
+      .find((candidate) => candidate.name === name);
+    if (tool === undefined) throw new Error(`missing ${name}`);
+    const result = await tool.execute(
+      args as never,
+      { conversationId: 1, taskId: 1, callId: "clock" } as never,
+      BACKGROUND_CONTEXT,
+    );
+    const text = (result.output ?? [])
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("\n");
+    return { text, details: (result.details ?? {}) as Record<string, unknown> };
+  }
+
+  it("the today section and the desk use the host clock", async () => {
+    const role = bookkeeper({ now: LATER });
+    expect(await todayOf(role)).toMatch(/^Today is 2027-02-01 \(Monday\)\./);
+    // The desk's default period is the month before its today: January 2027, with no statement.
+    const summary = await call(role, "reconcile_summary", {});
+    expect(summary.text).toContain("No bank statement for 2027-01");
+  });
+
+  it("the demo desk keeps the demo date without now", async () => {
+    const role = bookkeeper({});
+    expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
+    expect((await call(role, "reconcile_summary", {})).details.period).toBe("2026-10");
+  });
+});

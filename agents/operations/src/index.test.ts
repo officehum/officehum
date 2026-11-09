@@ -365,3 +365,46 @@ describe("operations brief contract", () => {
     expect(scriptFile.endsWith("evals/situations.json")).toBe(false);
   });
 });
+
+describe("operations clock", () => {
+  const LATER = () => new Date("2027-02-01T09:00:00.000Z");
+
+  async function todayOf(role: ReturnType<typeof operations>): Promise<string | undefined> {
+    const today = role.extensions[0]?.sections?.find((section) => section.key === "today");
+    return today?.render({} as never, {} as never);
+  }
+
+  async function call(
+    role: ReturnType<typeof operations>,
+    name: string,
+    args: Record<string, unknown>,
+  ) {
+    const tool = role.extensions
+      .flatMap((extension) => extension.tools ?? [])
+      .find((candidate) => candidate.name === name);
+    if (tool === undefined) throw new Error(`missing ${name}`);
+    const result = await tool.execute(
+      args as never,
+      { conversationId: 1, taskId: 1, callId: "clock" } as never,
+      BACKGROUND_CONTEXT,
+    );
+    const text = (result.output ?? [])
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("\n");
+    return { text, details: (result.details ?? {}) as Record<string, unknown> };
+  }
+
+  it("the today section and the desk use the host clock", async () => {
+    const role = operations({ now: LATER });
+    expect(await todayOf(role)).toMatch(/^Today is 2027-02-01 \(Monday\)\./);
+    const refused = await call(role, "reschedule_job", { jobId: "J-2103", newDate: "2027-01-29" });
+    expect(refused.text).toContain("2027-01-29 has already passed (today is 2027-02-01)");
+  });
+
+  it("the demo desk keeps the demo date without now", async () => {
+    const role = operations({});
+    expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
+    const refused = await call(role, "reschedule_job", { jobId: "J-2103", newDate: "2026-11-06" });
+    expect(refused.text).toContain("2026-11-06 has already passed (today is 2026-11-09)");
+  });
+});

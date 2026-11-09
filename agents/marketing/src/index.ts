@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
-import { fakeMarketingDesk, type MarketingDesk } from "./desk.js";
+import { DEMO_NOW, fakeMarketingDesk, type MarketingDesk } from "./desk.js";
 import { marketingTools } from "./tools.js";
 
 export { findResultClaims, normalizeClaim, type ResultClaim } from "./claims.js";
@@ -91,17 +91,27 @@ export interface MarketingOptions {
   readonly overlays?: readonly string[];
   /** Decides every gated action. Omitted: every claim approval and every publication is blocked. */
   readonly approve?: Approver;
+  /**
+   * The host's clock. The prompt's `today` section and the demonstration desk read it. Omitted: the
+   * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock with a host's desk.
+   */
+  readonly now?: () => Date;
 }
 
 export default function marketing(options: MarketingOptions = {}): DefinedRole {
+  // The demonstration data is dated around DEMO_NOW, so its desk keeps that date unless the host
+  // passes a clock; a host's own desk runs on the system clock. The prompt reads the same clock.
+  const now =
+    options.now ?? (options.desk === undefined ? () => new Date(DEMO_NOW) : () => new Date());
   const company = options.company ?? loadCompanyFacts();
   // The demonstration desk checks claims against the company's own list and signs emails with its
   // own address, so a first run and a real one refuse the same draft.
-  const desk = options.desk ?? fakeMarketingDesk({ company });
+  const desk = options.desk ?? fakeMarketingDesk({ company, now });
   const tools = marketingTools({ desk, company });
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
+    now,
     tools: [
       tools.readServices,
       tools.draftPost,

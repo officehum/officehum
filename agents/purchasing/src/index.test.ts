@@ -393,3 +393,49 @@ describe("purchasing brief contract", () => {
     expect(scriptFile.endsWith("evals/situations.json")).toBe(false);
   });
 });
+
+describe("purchasing clock", () => {
+  const LATER = () => new Date("2027-02-01T09:00:00.000Z");
+
+  async function todayOf(role: ReturnType<typeof purchasing>): Promise<string | undefined> {
+    const today = role.extensions[0]?.sections?.find((section) => section.key === "today");
+    return today?.render({} as never, {} as never);
+  }
+
+  async function call(
+    role: ReturnType<typeof purchasing>,
+    name: string,
+    args: Record<string, unknown>,
+  ) {
+    const tool = role.extensions
+      .flatMap((extension) => extension.tools ?? [])
+      .find((candidate) => candidate.name === name);
+    if (tool === undefined) throw new Error(`missing ${name}`);
+    const result = await tool.execute(
+      args as never,
+      { conversationId: 1, taskId: 1, callId: "clock" } as never,
+      BACKGROUND_CONTEXT,
+    );
+    const text = (result.output ?? [])
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("\n");
+    return { text, details: (result.details ?? {}) as Record<string, unknown> };
+  }
+
+  const ORDER = {
+    supplierId: "sup-willamette-filters",
+    lines: [{ itemId: "hvac-filter-stock", quantity: 4 }],
+  };
+
+  it("the today section and the desk use the host clock", async () => {
+    const role = purchasing({ now: LATER });
+    expect(await todayOf(role)).toMatch(/^Today is 2027-02-01 \(Monday\)\./);
+    expect((await call(role, "raise_purchase_order", ORDER)).details.placedOn).toBe("2027-02-01");
+  });
+
+  it("the demo desk keeps the demo date without now", async () => {
+    const role = purchasing({});
+    expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
+    expect((await call(role, "raise_purchase_order", ORDER)).details.placedOn).toBe("2026-11-09");
+  });
+});

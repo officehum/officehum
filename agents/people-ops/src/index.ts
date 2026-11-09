@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
-import { fakePeopleOpsDesk, type PeopleOpsDesk } from "./desk.js";
+import { DEMO_NOW, fakePeopleOpsDesk, type PeopleOpsDesk } from "./desk.js";
 import { peopleOpsTools } from "./tools.js";
 
 export {
@@ -95,17 +95,27 @@ export interface PeopleOpsOptions {
   readonly overlays?: readonly string[];
   /** Decides every gated action. Omitted: every short-notice time-off exception is blocked. */
   readonly approve?: Approver;
+  /**
+   * The host's clock. The prompt's `today` section and the demonstration desk read it. Omitted: the
+   * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock with a host's desk.
+   */
+  readonly now?: () => Date;
 }
 
 export default function peopleOps(options: PeopleOpsOptions = {}): DefinedRole {
+  // The demonstration data is dated around DEMO_NOW, so its desk keeps that date unless the host
+  // passes a clock; a host's own desk runs on the system clock. The prompt reads the same clock.
+  const now =
+    options.now ?? (options.desk === undefined ? () => new Date(DEMO_NOW) : () => new Date());
   const company = options.company ?? loadCompanyFacts();
   // The demonstration desk applies the company's own notice period and routes to its own people, so a
   // first run and a real one refuse and route the same way.
-  const desk = options.desk ?? fakePeopleOpsDesk({ company });
+  const desk = options.desk ?? fakePeopleOpsDesk({ company, now });
   const tools = peopleOpsTools({ desk, company });
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
+    now,
     tools: [
       tools.listCandidates,
       tools.updateCandidateStage,

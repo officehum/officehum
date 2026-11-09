@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
-import { fakeOperationsDesk, type OperationsDesk } from "./desk.js";
+import { DEMO_NOW, fakeOperationsDesk, type OperationsDesk } from "./desk.js";
 import { operationsTools } from "./tools.js";
 
 export {
@@ -84,17 +84,27 @@ export interface OperationsOptions {
   readonly overlays?: readonly string[];
   /** Decides every gated action. Omitted: overtime and a contract visit's move are both blocked. */
   readonly approve?: Approver;
+  /**
+   * The host's clock. The prompt's `today` section and the demonstration desk read it. Omitted: the
+   * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock with a host's desk.
+   */
+  readonly now?: () => Date;
 }
 
 export default function operations(options: OperationsOptions = {}): DefinedRole {
+  // The demonstration data is dated around DEMO_NOW, so its desk keeps that date unless the host
+  // passes a clock; a host's own desk runs on the system clock. The prompt reads the same clock.
+  const now =
+    options.now ?? (options.desk === undefined ? () => new Date(DEMO_NOW) : () => new Date());
   const company = options.company ?? loadCompanyFacts();
   // The demonstration desk schedules the company's own crews against their own caps, so a first run
   // and a real one refuse the same week.
-  const desk = options.desk ?? fakeOperationsDesk({ crews: company.crews });
+  const desk = options.desk ?? fakeOperationsDesk({ crews: company.crews, now });
   const tools = operationsTools({ desk, company });
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
+    now,
     tools: [
       tools.listJobs,
       tools.listCrews,
