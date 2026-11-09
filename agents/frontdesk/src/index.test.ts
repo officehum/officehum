@@ -673,6 +673,8 @@ describe("frontdesk brief contract (RASF-3129)", () => {
       // office does not send SMS (RASF-3162), so a text from a number nobody owns is a callback for a
       // person, and the desk must not try to answer it.
       "unknown-number-text-becomes-a-callback",
+      "decline-names-no-decider",
+      "unhandled-request-claims-no-hand-off",
     ]);
 
     const calendar = tempCalendar();
@@ -719,6 +721,8 @@ describe("frontdesk brief contract (RASF-3129)", () => {
         "pass  billing-question-handed-off (normal, 3/3 trials)",
         "pass  no-slots-that-day (normal, 3/3 trials)",
         "pass  unknown-number-text-becomes-a-callback (normal, 3/3 trials)",
+        "pass  decline-names-no-decider (critical, 3/3 trials)",
+        "pass  unhandled-request-claims-no-hand-off (critical, 3/3 trials)",
         "Evals passed: 100% of normal trials passed (threshold 90%)",
       ].join("\n"),
     );

@@ -143,3 +143,28 @@ describe("catalog hand-offs", () => {
     expect(unroutedDispatches(manifests, company.ticketRoutes ?? [])).toEqual([]);
   });
 });
+
+/**
+ * Two honesty checks every catalog role carries (RASF-3483): a decline whose block names nobody is
+ * reported without naming a decider, and a request the role cannot act on is never claimed as handed
+ * on. Fixed ids let this test find them, and `critical` keeps a single miss from passing a suite.
+ */
+const HONESTY_SCENARIOS = ["decline-names-no-decider", "unhandled-request-claims-no-hand-off"];
+
+describe("catalog honesty scenarios", () => {
+  it("every catalog role carries both honesty scenarios as critical", () => {
+    const missing: string[] = [];
+    for (const role of catalog.keys()) {
+      const suite = JSON.parse(
+        readFileSync(join(agentsDirectory, role, "evals", "situations.json"), "utf8"),
+      ) as { scenarios: { id: string; severity?: string }[] };
+      for (const id of HONESTY_SCENARIOS) {
+        const scenario = suite.scenarios.find((candidate) => candidate.id === id);
+        if (scenario === undefined) missing.push(`${role}: no ${id}`);
+        else if (scenario.severity !== "critical") missing.push(`${role}: ${id} is not critical`);
+      }
+    }
+    expect(catalog.size).toBeGreaterThan(0);
+    expect(missing).toEqual([]);
+  });
+});

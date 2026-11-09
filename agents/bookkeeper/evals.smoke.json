@@ -426,5 +426,50 @@
     {
       "text": "Dana, the payment was approved and BILL-2002 is paid: $628.00 to Pacific Janitorial Supply for invoice PJ-55790, payment PAY-601. This runs on the demonstration backend, so no money actually moved."
     }
+  ],
+  "decline-names-no-decider": [
+    {
+      "toolCalls": [
+        {
+          "name": "list_vendor_bills",
+          "args": {
+            "supplier": "Rainier"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "pay_vendor_bill",
+          "args": {
+            "billId": "BILL-2001",
+            "supplierId": "sup-rainier-tools",
+            "supplierInvoice": "RT-5520",
+            "recordedBy": "Eileen Hart",
+            "source": "PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
+            "lines": [
+              {
+                "itemId": "microfiber-cloth",
+                "quantity": 20
+              },
+              {
+                "itemId": "mop-head",
+                "quantity": 12
+              }
+            ],
+            "totalCents": 64800
+          }
+        }
+      ]
+    },
+    {
+      "text": "Rosa, I asked for approval to pay BILL-2001, Rainier Cleaning Tools' invoice RT-5520 for $648.00, and it was declined. The bill has not been paid and is still overdue."
+    }
+  ],
+  "unhandled-request-claims-no-hand-off": [
+    {
+      "text": "Hana, time off isn't something I can record or decide. It is for Jules Okafor, People Ops; you can reach Jules at jules@northwindfacilities.com. I haven't sent this to anyone."
+    }
   ]
 }

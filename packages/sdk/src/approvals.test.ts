@@ -99,7 +99,8 @@ describe("approvalGate", () => {
     });
     const result = await gate(call("book_appointment", {}), hookApi(), context);
     expect(result?.block).toBe(
-      "A person declined this action (Bookings after 18:00): We close at 6.",
+      "A person declined this action (Bookings after 18:00): We close at 6. " +
+        "Say it was declined. This result does not say who declined, so name no one as the person who did.",
     );
   });
 

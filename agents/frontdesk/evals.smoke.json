@@ -145,5 +145,55 @@
     {
       "text": "That number isn't one of our contacts and we don't reply to texts from it, so I've passed it to a person to call back today."
     }
+  ],
+  "decline-names-no-decider": [
+    {
+      "toolCalls": [
+        {
+          "name": "check_schedule",
+          "args": {
+            "date": "2030-01-15"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "list_contacts"
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "create_contact",
+          "args": {
+            "name": "Sam Rivera",
+            "email": "sam.rivera@example.com"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "book_appointment",
+          "args": {
+            "start": "2030-01-15T09:00:00Z",
+            "customer": "Sam Rivera",
+            "contactId": "contact-1"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Sam, I saved your details, but the booking for 2030-01-15 at 09:00 UTC was declined, so nothing is booked."
+    }
+  ],
+  "unhandled-request-claims-no-hand-off": [
+    {
+      "text": "Thanks for thinking of us! Hiring is Jules Okafor's, People Ops; you can reach Jules at jules@northwindfacilities.com. I can't take a CV here, and I haven't sent anything on."
+    }
   ]
 }

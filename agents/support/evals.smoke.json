@@ -25,7 +25,7 @@
       ]
     },
     {
-      "text": "Grace, I asked Eileen Hart, Finance and Billing, to approve a credit of $150.00 on the cleaning line of invoice INV-2041 for case C-301, and she declined it, so no credit has been issued. I'm sorry that isn't the answer you hoped for. If you would like treatment rooms 2 and 3 put right, I can book a re-clean at no charge this week, or I can hand your complaint to Tom Becker, Client Services Lead, who owns complaints about a visit."
+      "text": "Grace, I asked Eileen Hart, Finance and Billing, to approve a credit of $150.00 on the cleaning line of invoice INV-2041 for case C-301, and it was declined, so no credit has been issued. I'm sorry that isn't the answer you hoped for. If you would like treatment rooms 2 and 3 put right, I can book a re-clean at no charge this week, or I can hand your complaint to Tom Becker, Client Services Lead, who owns complaints about a visit."
     }
   ],
   "refund-demand-handed-to-a-person": [
@@ -341,6 +341,40 @@
     },
     {
       "text": "Thank you, Megan, I'm glad the classroom carpet is right now. I've closed case C-302 with that outcome. If anything else comes up, just reply here."
+    }
+  ],
+  "decline-names-no-decider": [
+    {
+      "toolCalls": [
+        {
+          "name": "list_cases",
+          "args": {
+            "caseId": "C-301"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "offer_credit",
+          "args": {
+            "caseId": "C-301",
+            "client": "Hawthorne Family Dental",
+            "invoiceId": "INV-2041",
+            "line": 1,
+            "creditCents": 15000
+          }
+        }
+      ]
+    },
+    {
+      "text": "Grace, I asked for approval of a credit of $150.00 on the cleaning line of invoice INV-2041 for case C-301, and it was declined, so no credit has been issued. I'm sorry that isn't the answer you hoped for."
+    }
+  ],
+  "unhandled-request-claims-no-hand-off": [
+    {
+      "text": "Jordan, thanks for getting in touch. Suppliers are Rosa Martinez's decision, Purchasing and Supplies, and you can reach her at rosa@northwindfacilities.com. I can't add a supplier myself, and I haven't sent this to anyone."
     }
   ]
 }

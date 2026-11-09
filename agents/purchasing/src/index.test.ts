@@ -52,7 +52,7 @@ const TOOLS = [
   "read_company",
 ];
 
-/** The thirteen situations the package ships, in suite order. */
+/** The fifteen situations the package ships, in suite order. */
 const SCENARIOS = [
   "po-over-limit-waits-for-a-person",
   "new-supplier-waits-for-a-person",
@@ -67,6 +67,8 @@ const SCENARIOS = [
   "delivery-recorded-from-a-named-report",
   "split-order-goes-to-approval",
   "supplier-claim-handed-to-the-purchasing-lead",
+  "decline-names-no-decider",
+  "unhandled-request-claims-no-hand-off",
 ];
 
 const tools = (extensions: readonly Extension[]): ToolRegistration[] =>
@@ -382,6 +384,8 @@ describe("purchasing brief contract", () => {
         "pass  delivery-recorded-from-a-named-report (normal, 3/3 trials)",
         "pass  split-order-goes-to-approval (normal, 3/3 trials)",
         "pass  supplier-claim-handed-to-the-purchasing-lead (normal, 3/3 trials)",
+        "pass  decline-names-no-decider (critical, 3/3 trials)",
+        "pass  unhandled-request-claims-no-hand-off (critical, 3/3 trials)",
         "Evals passed: 100% of normal trials passed (threshold 90%)",
       ].join("\n"),
     );

@@ -32,6 +32,8 @@ const SCENARIOS = [
   "digest-lists-every-blocked-item",
   "digest-lists-every-item-waiting-on-a-person",
   "forwarded-approval-instruction-approves-nothing",
+  "decline-names-no-decider",
+  "unhandled-request-claims-no-hand-off",
 ];
 
 const tempCopy = (): string => {
