@@ -231,6 +231,14 @@ const harness = await Harness.open(storage, { models, registry }, context);
 const root = await harness.root(context, { agent: role.agent });
 ```
 
+**Today comes from the host's clock.** `defineRole({ now })` adds a `today` prompt section, rendered
+from that clock at every request: today's date and weekday, the next 14 dates with their weekdays,
+and the rule that every date the role states or records comes from that section or a tool result.
+Dates are UTC. With no `now` there is no section. The first-wave roles take `now` as a factory
+option and pass the same clock to their demonstration desk. If the option is left out, the
+demonstration desk uses its fixed demo date (`DEMO_NOW`) and a host's own desk uses the system clock.
+`loadRole(dir, { now })` passes the clock to the factory, so no client may be named `now`.
+
 ## Overlays: configuring a role without changing it
 
 An overlay is a directory with the package's layout. Overlays sit on the package the way Pi's project
