@@ -140,6 +140,20 @@ describe("purchasing package", () => {
     expect(purchasingLead(company)).toBeDefined();
   });
 
+  it("purchasingLead reads the department", () => {
+    // Retitled, the lead is still the person in purchasing; a title alone makes nobody the lead.
+    const people = company.people.map((who) =>
+      who.department === "purchasing"
+        ? { ...who, title: "Supplies Lead" }
+        : who.id === "noah-kim"
+          ? { ...who, title: "Purchasing Assistant" }
+          : who,
+    );
+    expect(purchasingLead({ ...company, people })?.id).toBe("rosa-martinez");
+    const nobody = people.filter((who) => who.department !== "purchasing");
+    expect(purchasingLead({ ...company, people: nobody })).toBeUndefined();
+  });
+
   it("hands contracts, claims and surplus to a person, and dispatches what it does not own", () => {
     expect(roleManifest.department).toBe("operations");
     expect(roleManifest.channels).toEqual(["email", "chat"]);

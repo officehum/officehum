@@ -170,6 +170,19 @@ describe("the company package's own consistency", () => {
     expect(issues.some((issue) => issue.includes("escalation[0] goes to nobody"))).toBe(true);
   });
 
+  it("refuses an unknown department", () => {
+    const directory = withFile("company.json", (body) => {
+      const company = JSON.parse(body) as { people: { department: string }[] };
+      const first = company.people[0];
+      if (first !== undefined) first.department = "warehouse";
+      return JSON.stringify(company, null, 2);
+    });
+    const issues = companyIssues(readSource(directory));
+    expect(issues).toEqual([
+      'company/default/company.json: people[0] (dana-whitfield) has the department "warehouse"; use one of office, maintenance, purchasing',
+    ]);
+  });
+
   it("refuses a headcount that the field structure does not add up to", () => {
     const directory = withFile("company.json", (body) => {
       const company = JSON.parse(body) as { profile: { headcount: number } };

@@ -30,6 +30,12 @@ export const COMPANY_DIRECTORY = "company/default";
 /** The skill name every role gets: the folder, and the `name` in its frontmatter. */
 export const HANDBOOK_SKILL = "company-handbook";
 
+/**
+ * The departments a person can work in. Roles find people by department (Purchasing's lead is the
+ * person in `purchasing`), so a misspelt one would leave a role naming nobody.
+ */
+export const DEPARTMENTS: readonly string[] = ["office", "maintenance", "purchasing"];
+
 /** The program that writes the copies; named in every generated file's header. */
 export const GENERATOR = "scripts/sync-company.ts";
 
@@ -119,6 +125,13 @@ export function companyIssues(source: CompanySource): readonly string[] {
     personIds.add(id);
     if (text(asRecord(person)?.email) === undefined) {
       add("company.json", `people[${index}] (${id}) has no email`);
+    }
+    const department = asRecord(person)?.department;
+    if (typeof department !== "string" || !DEPARTMENTS.includes(department)) {
+      add(
+        "company.json",
+        `people[${index}] (${id}) has the department ${JSON.stringify(department)}; use one of ${DEPARTMENTS.join(", ")}`,
+      );
     }
   }
 

@@ -51,7 +51,11 @@ export interface Person {
   readonly id: string;
   readonly name: string;
   readonly title: string;
+  /** Where they work: `office`, `maintenance` or `purchasing`, as the company record lists them. */
+  readonly department: string;
   readonly email: string;
+  /** As the company records it; a verified sender's phone matches it on "+" and digits. */
+  readonly phone?: string;
   readonly decides: readonly string[];
 }
 
@@ -138,13 +142,14 @@ export function person(company: CompanyFacts, id: string): Person | undefined {
 }
 
 /**
- * The person who decides purchasing: whoever holds the purchasing title. The sources call that person
- * the purchasing manager; a small company gives the job its own title, so it is found by the word in
- * the title, and the name comes from the company rather than from this package. An order over the
- * limit, a new supplier, a supplier contract, a claim and surplus stock all go to them.
+ * The person who decides purchasing: whoever the company record puts in the `purchasing` department.
+ * The sources call that person the purchasing manager; a small company gives the job its own title,
+ * so the record's department says who it is, not a word in the title, and the name comes from the
+ * company rather than from this package. An order over the limit, a new supplier, a supplier contract,
+ * a claim and surplus stock all go to them.
  */
 export function purchasingLead(company: CompanyFacts): Person | undefined {
-  return company.people.find((candidate) => /purchasing/i.test(candidate.title));
+  return company.people.find((candidate) => candidate.department === "purchasing");
 }
 
 /** "Name, Title", or the title-free fallback when the company names nobody. */
