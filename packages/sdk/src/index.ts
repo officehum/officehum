@@ -37,6 +37,7 @@ export {
   conditionsHold,
   type HookContext,
   isApprovalGate,
+  sameFacts,
   type ToolArguments,
 } from "./approvals.js";
 export {

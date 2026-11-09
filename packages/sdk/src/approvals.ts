@@ -97,6 +97,18 @@ export function approvedFacts(args: ToolArguments): Record<string, unknown> | un
   return facts as Record<string, unknown>;
 }
 
+/**
+ * Whether approved facts still equal a record's facts now, by content and not by key order. A desk
+ * uses it to refuse a write when the thing a person approved changed after its facts were read.
+ */
+export function sameFacts(approved: unknown, current: unknown): boolean {
+  try {
+    return canonicalJson(approved) === canonicalJson(current);
+  } catch {
+    return false;
+  }
+}
+
 /** What the approver is asked to decide. */
 export interface ApprovalRequest {
   /** The approval id from `officehum.json`. */

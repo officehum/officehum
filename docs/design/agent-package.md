@@ -149,7 +149,7 @@ not load these files (Pi's coding agent does), so `defineRole` brings them to Pi
 | `skills/*/SKILL.md` | The `skills` section lists each enabled skill's name and description; the agent loads the instructions (and reference files) on demand with the safe `read_skill` tool, as Pi does |
 | `APPEND_SYSTEM.md` | The `append_system` section, last of the role's sections |
 | Tools | `defineTool` with `replay` written out; a skill's tools live in a `<role>.<skill>` extension selected only while the skill is on |
-| Approvals | `approvalGate()` in the role extension; applicability and decisions kept in separate tool-task memos |
+| Approvals | `approvalGate()` in the role extension; applicability, facts and decisions kept in separate tool-task memos |
 
 A role gets no shell or file-editing tools. Pi Durable's own `instructions` stay free for the host's
 per-conversation notes.
@@ -221,6 +221,19 @@ Predicate errors, rejected promises, and nonboolean results require approval, wh
 cancellation propagates. This keeps a previously declined call declined even when another call later
 changes the durable history that the predicate reads, and a condition that names a limit it cannot
 resolve waits for a person, like any other error.
+
+An approval can also have a **facts reader** (`approvalFacts` in `defineRole`, keyed by approval
+id), so the person approves what the role's records hold rather than what the model typed. After
+applicability, and only when an approver is configured, the gate calls the reader with the call's
+arguments, memoises the result under `officehum.approval-facts.<callId>.<approvalId>` (first write
+wins) and asks with it as `ApprovalRequest.facts` (`{ summary, facts }`). A reader that throws blocks
+the call with its message and asks nobody. On a yes the gate returns the arguments with
+`officehumApprovedFacts` (`APPROVED_FACTS_ARG`) set to the memoised facts; it overwrites that key
+whatever the model sent, and strips it from any call it does not grant. The tool reads it with
+`approvedFacts(args)`, refuses without it, and its desk refuses when the record no longer equals it
+(`sameFacts`). Pi Durable 1.3 validates the arguments a `beforeTool` hook returns against the tool's
+parameters again, so a tool whose parameters refuse additional properties declares the key with
+`approvedFactsParameter()`. Accounting's `pay_vendor_bill` is the reference: it takes only `{ billId }`.
 
 Installing it on any Pi Durable harness:
 

@@ -14,6 +14,7 @@ import {
   conditionsHold,
   type HookContext,
   isApprovalGate,
+  sameFacts,
 } from "./approvals.js";
 import { stubEngine } from "./engine.js";
 import type { ConditionDeclaration } from "./manifest.js";
@@ -435,6 +436,12 @@ describe("approval facts read before the gate asks", () => {
     const result = await gate(call("book_appointment", { bookingId: "B-1" }), hookApi(), context);
     expect(result).toBeUndefined();
     expect(read).not.toHaveBeenCalled();
+  });
+
+  it("compares approved facts by content, not key order", () => {
+    expect(sameFacts({ a: 1, b: [{ x: 1, y: 2 }] }, { b: [{ y: 2, x: 1 }], a: 1 })).toBe(true);
+    expect(sameFacts({ a: 1 }, { a: 2 })).toBe(false);
+    expect(sameFacts({ a: 1 }, { a: 1, b: 2 })).toBe(false);
   });
 
   it("reads approved facts only from a plain object under the reserved key", () => {
