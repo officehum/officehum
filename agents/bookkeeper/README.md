@@ -61,7 +61,7 @@ listPayments(filter?: { customerId?: string; since?: string }): Promise<Payment[
 ```ts
 listVendorBills(filter?: { status?: "unpaid" | "due" | "overdue" | "open" | "paid"; supplier?: string; billId?: string }): Promise<VendorBill[]>;
 recordVendorBill(input: { supplier, supplierInvoice, lines: { itemId, quantity }[], recordedBy, source, termsDays? }, options: { requestId }): Promise<VendorBill>;
-payVendorBill(input: { billId, supplierId, supplierInvoice, recordedBy, source, lines, totalCents }, options: { requestId }): Promise<VendorPayment>;
+payVendorBill(input: { billId, approved }, options: { requestId }): Promise<VendorPayment>;
 reconcile(input: { month?: number; majorOverCents: number | null }): Promise<Reconciliation>;
 ```
 
@@ -70,9 +70,10 @@ and the due date (the recorded date plus the bill's terms, 30 days when it state
 whether a bill is open, due within seven days, overdue or paid from its own clock, pays exactly a
 bill's own total, and matches the statement against the books. A refusal is an `AccountingDeskError`
 with a code (`unknown_supplier`, `unapproved_supplier`, `not_supplied`, `duplicate_bill`,
-`already_paid`, `bill_mismatch`, `source_mismatch`, `bill_changed`, `no_statement`, `not_found`, `invalid`); the tools
-turn each code into the next step, never by reading the message. A host desk must refuse a payment
-with `bill_changed` when the bill was corrected after the facts in the call were read.
+`already_paid`, `bill_changed`, `no_statement`, `not_found`, `invalid`); the tools turn each code
+into the next step, never by reading the message. `approved` is the bill's facts as a person approved
+them (`billApprovalFacts(bill)`, read by the approval gate before it asked); a host desk must refuse
+a payment with `bill_changed` when the bill's facts no longer equal it.
 
 Amounts cross the QuickBooks boundary as integer **cents** plus a currency, never a float; an invoice's `status`
 is derived from its balance and due date, because QuickBooks stores no status field. The client owns
@@ -156,14 +157,15 @@ Creating an invoice, sending one, sending a reminder and paying a supplier bill 
   `final` waits for a person; `friendly` and `firm` do not.
 
 - **`any_payment`** (`pay_vendor_bill`) — no condition: **every** payment waits for a person, whatever
-  its size. The call names the bill and the facts the person approves (supplier id, the supplier's
-  invoice number, who recorded it and what it was recorded from, each item and quantity, and the
-  total in cents) exactly as `list_vendor_bills` gave them, so the approval request shows them,
-  including where the bill came from. The desk pays the bill's own total, never a figure from the
-  model, and refuses the payment when the source is not what the bill was recorded from
-  (`source_mismatch`), when the other facts are not the bill's (`bill_mismatch`), or when the bill
-  was corrected after they were read (`bill_changed`), so a grant covers exactly the bill and total
-  the person saw. A retried call pays once.
+  its size. The call names only the bill. The approval's facts reader (`approvalFacts` in
+  `defineRole`) reads the bill from the desk before anyone is asked: the request carries a summary
+  (`Pay BILL-2001 to Rainier Cleaning Tools, supplier invoice RT-5520: $648.00, recorded by Eileen
+  Hart from …`) and the bill's facts. A bill not on the desk or already paid blocks the call and asks
+  nobody. On a yes the gate hands those facts to the tool under `officehumApprovedFacts`, overwriting
+  anything the model sent there; a call with no approved facts (no gate in front of it) pays nothing.
+  The desk pays the bill's own total, never a figure from the model, and refuses with
+  `bill_changed` when the bill no longer equals what was approved, so a grant covers exactly the bill
+  the person saw. A retried call, or one recovered after a restart, pays once.
 
 Two clocks in the demonstration: the shipped desk's bills are aged against its fixed clock (Monday 9
 November 2026), while `list_invoices` ages QuickBooks invoices against today. A real desk uses the
@@ -220,7 +222,7 @@ Ten tools, each declaring its replay policy exactly as `officehum.json` does:
 | `send_reminder` | unsafe | `{ invoice, tone }` — `friendly`, `firm` or `final`, once per invoice per stage (this one belongs to the collections skill) |
 | `list_vendor_bills` | safe | `{ status?, supplier?, billId? }` — `unpaid`, `due`, `overdue`, `open` or `paid` |
 | `record_vendor_bill` | unsafe | `{ supplier, supplierInvoice, lines: { itemId, quantity }[], recordedBy, source, termsDays? }` — no approval: the desk refuses a supplier not on file or not approved and prices every line |
-| `pay_vendor_bill` | unsafe | `{ billId, supplierId, supplierInvoice, recordedBy, source, lines, totalCents }` — `any_payment` on every call; demonstration backend |
+| `pay_vendor_bill` | unsafe | `{ billId }` — `any_payment` on every call, asked with the bill's facts read from the desk; demonstration backend |
 | `reconcile_summary` | safe | `{ month? }` — the month's number (10 for October); the desk works out the year as the last such month that has ended, or the last full month when omitted |
 
 No tool takes a bank account, a routing number or a remittance address: a supplier's payment details

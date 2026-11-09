@@ -5,8 +5,9 @@
  * with no approval: the desk refuses a supplier that is not on file or not approved, prices every line
  * from the supply catalogue, and works out the total and the due date. `pay_vendor_bill` waits for a
  * person on every call (`any_payment` in `officehum.json`, evaluated by the SDK's gate before the
- * tool runs); it names the bill and the facts the person approves, and the desk pays the bill's own
- * total and refuses when the bill is not what was approved.
+ * tool runs). The model names only the bill: `paymentApprovalFacts` reads its facts from the desk for
+ * the person to approve, the gate hands those facts to the tool on a yes, and the desk pays the bill's
+ * own total and refuses when the bill no longer equals what was approved.
  *
  * No tool takes a bank account, a routing number or a remittance address: a supplier's payment
  * details never come from a message. Every amount a tool speaks comes back from the desk, and every
@@ -15,12 +16,22 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
-import { deskRefusal, refusal, requestId, textResult } from "@officehum/sdk";
+import {
+  APPROVED_FACTS_ARG,
+  type ApprovalFactsReader,
+  approvedFacts,
+  approvedFactsParameter,
+  deskRefusal,
+  refusal,
+  requestId,
+  textResult,
+} from "@officehum/sdk";
 import { type CompanyFacts, financeLead, money, personLabel, purchasingLead } from "./company.js";
 import {
   type AccountingDesk,
   AccountingDeskError,
   type BillStatus,
+  billApprovalFacts,
   type DeskRefusal,
   type Reconciliation,
   type VendorBill,
@@ -37,12 +48,17 @@ export interface PayablesToolDependencies {
   readonly limits: () => Readonly<Record<string, number>>;
 }
 
-/** The four tools, named, so the factory places each one where the manifest declares it. */
+/**
+ * The four tools, named, so the factory places each one where the manifest declares it, and the
+ * reader the `any_payment` approval asks with.
+ */
 export interface PayablesToolset {
   readonly listVendorBills: ToolRegistration;
   readonly recordVendorBill: ToolRegistration;
   readonly payVendorBill: ToolRegistration;
   readonly reconcileSummary: ToolRegistration;
+  /** Reads a bill's facts from the desk for the person approving its payment. */
+  readonly paymentApprovalFacts: ApprovalFactsReader;
 }
 
 const STATUSES: readonly (BillStatus | "unpaid")[] = ["unpaid", "due", "overdue", "open", "paid"];
@@ -129,10 +145,6 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
     duplicate_bill: (billId) =>
       ` Next: use ${billId ?? "the bill already on the desk"}; do not record it again.`,
     already_paid: () => " Next: tell the person it is already paid; there is nothing to pay.",
-    bill_mismatch: (billId) =>
-      ` Next: read ${billId ?? "the bill"} with list_vendor_bills and name its facts exactly as the desk holds them.`,
-    source_mismatch: (billId) =>
-      ` Next: read ${billId ?? "the bill"} with list_vendor_bills and name what it was recorded from exactly as the desk shows it, so the person approving sees where it came from.`,
     bill_changed: (billId) =>
       ` Next: tell the person ${billId ?? "the bill"} changed after it was put to a person, so it was not paid; read it again with list_vendor_bills before anything else.`,
     no_statement: () => " Next: ask which of the periods on file is wanted.",
@@ -249,46 +261,56 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
     },
   });
 
+  /**
+   * The `any_payment` approval's facts: the bill as the desk holds it, read before anyone is asked. A
+   * bill that is not on the desk or is already paid has nothing to approve, so it throws and the gate
+   * asks nobody.
+   */
+  const paymentApprovalFacts: ApprovalFactsReader = async (args) => {
+    const desk = requireDesk(dependencies);
+    const billId = String(args.billId);
+    const [bill] = await desk.listVendorBills({ billId });
+    if (bill === undefined) {
+      throw new Error(
+        `No bill on the desk has the id ${JSON.stringify(billId)}. Nothing was put to a person and nothing was paid.${NEXT.not_found(billId)}`,
+      );
+    }
+    if (bill.status === "paid") {
+      throw new Error(
+        `${bill.id} (${bill.supplierName}, invoice ${bill.supplierInvoice}) was already paid on ${bill.paidOn ?? "an earlier date"}${bill.paymentId === null ? "" : ` as ${bill.paymentId}`}. Nothing was put to a person and nothing was paid again.${NEXT.already_paid(bill.id)}`,
+      );
+    }
+    return {
+      summary: `Pay ${bill.id} to ${bill.supplierName}, supplier invoice ${bill.supplierInvoice}: ${money(bill.totalCents)}, recorded by ${bill.recordedBy} from ${bill.source}`,
+      facts: billApprovalFacts(bill),
+    };
+  };
+
   const payVendorBill = defineTool({
     name: "pay_vendor_bill",
     description:
-      "Ask a person to approve paying one supplier bill, naming the bill and its facts exactly as list_vendor_bills gave them (supplier id, the supplier's invoice number, who recorded it and from what, each item and quantity, and the total in cents), so the person sees what they approve. Every call waits for a person. Once approved, the desk pays the bill's own total, and refuses if the bill is not what the approval named or changed since. Demonstration backend: no money moves.",
+      "Ask a person to approve paying one supplier bill, named by its id from list_vendor_bills. The desk reads the bill's facts (supplier, invoice, who recorded it and from what, its lines and total) and shows them to the person; every call waits for a person. Once approved, the desk pays the bill's own total, and refuses if the bill changed since the person saw it. Demonstration backend: no money moves.",
     parameters: Type.Object(
       {
         billId: Type.String({ description: "The bill's id, e.g. BILL-2001" }),
-        supplierId: Type.String({
-          description: "The bill's supplier id, e.g. sup-rainier-tools",
-        }),
-        supplierInvoice: Type.String({
-          description: "The supplier's invoice number on the bill, e.g. RT-5520",
-        }),
-        recordedBy: Type.String({ description: "Who recorded the bill, as the desk shows it" }),
-        source: Type.String({
-          description:
-            "What the bill was recorded from, exactly as the desk shows it after 'from', e.g. PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
-        }),
-        lines: LINES,
-        totalCents: Type.Integer({
-          minimum: 1,
-          description: "The bill's total in cents, exactly as the desk gave it, e.g. 64800",
-        }),
+        // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared.
+        [APPROVED_FACTS_ARG]: approvedFactsParameter(),
       },
       { additionalProperties: false },
     ),
     replay: "unsafe",
     execute: async (args, api) => {
       const desk = requireDesk(dependencies);
+      const approved = approvedFacts(args);
+      if (approved === undefined) {
+        return refusal(
+          `Nothing was paid: this call to pay ${args.billId} carries no facts a person approved. A payment runs only after the approval gate has put the bill to a person and they said yes. Next: tell the person paying it needs a person's approval and nothing was paid.`,
+          { code: "not_approved", billId: args.billId },
+        );
+      }
       try {
         const payment = await desk.payVendorBill(
-          {
-            billId: args.billId,
-            supplierId: args.supplierId,
-            supplierInvoice: args.supplierInvoice,
-            recordedBy: args.recordedBy,
-            source: args.source,
-            lines: args.lines,
-            totalCents: args.totalCents,
-          },
+          { billId: args.billId, approved },
           { requestId: requestId("pay-bill", api) },
         );
         return { ...textResult(paymentText(payment)), details: { ...payment } };
@@ -360,5 +382,11 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
     },
   });
 
-  return { listVendorBills, recordVendorBill, payVendorBill, reconcileSummary };
+  return {
+    listVendorBills,
+    recordVendorBill,
+    payVendorBill,
+    reconcileSummary,
+    paymentApprovalFacts,
+  };
 }

@@ -216,22 +216,7 @@
         {
           "name": "pay_vendor_bill",
           "args": {
-            "billId": "BILL-2001",
-            "supplierId": "sup-rainier-tools",
-            "supplierInvoice": "RT-5520",
-            "recordedBy": "Eileen Hart",
-            "source": "PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
-            "lines": [
-              {
-                "itemId": "microfiber-cloth",
-                "quantity": 20
-              },
-              {
-                "itemId": "mop-head",
-                "quantity": 12
-              }
-            ],
-            "totalCents": 64800
+            "billId": "BILL-2001"
           }
         }
       ]
@@ -403,22 +388,7 @@
         {
           "name": "pay_vendor_bill",
           "args": {
-            "billId": "BILL-2002",
-            "supplierId": "sup-pacific-janitorial",
-            "supplierInvoice": "PJ-55790",
-            "recordedBy": "Eileen Hart",
-            "source": "paper invoice PJ-55790 delivered with the goods on 2026-10-16",
-            "lines": [
-              {
-                "itemId": "disinfectant",
-                "quantity": 12
-              },
-              {
-                "itemId": "nitrile-gloves",
-                "quantity": 5
-              }
-            ],
-            "totalCents": 62800
+            "billId": "BILL-2002"
           }
         }
       ]
@@ -443,22 +413,7 @@
         {
           "name": "pay_vendor_bill",
           "args": {
-            "billId": "BILL-2001",
-            "supplierId": "sup-rainier-tools",
-            "supplierInvoice": "RT-5520",
-            "recordedBy": "Eileen Hart",
-            "source": "PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
-            "lines": [
-              {
-                "itemId": "microfiber-cloth",
-                "quantity": 20
-              },
-              {
-                "itemId": "mop-head",
-                "quantity": 12
-              }
-            ],
-            "totalCents": 64800
+            "billId": "BILL-2001"
           }
         }
       ]

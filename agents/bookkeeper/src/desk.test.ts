@@ -8,31 +8,24 @@ import { describe, expect, it } from "vitest";
 import { loadCompanyFacts } from "./company.js";
 import {
   AccountingDeskError,
+  billApprovalFacts,
   DEMO_NOW,
   demoBills,
   demoBooks,
   demoStatements,
   type FakeAccountingDesk,
   fakeAccountingDesk,
-  type PaymentInput,
 } from "./desk.js";
 
 const company = loadCompanyFacts();
 const desk = (): FakeAccountingDesk => fakeAccountingDesk({ now: () => new Date(DEMO_NOW) });
 
-/** Rainier's overdue bill, named exactly as the desk holds it. */
-const RAINIER: PaymentInput = {
-  billId: "BILL-2001",
-  supplierId: "sup-rainier-tools",
-  supplierInvoice: "RT-5520",
-  recordedBy: "Eileen Hart",
-  source: "PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
-  lines: [
-    { itemId: "microfiber-cloth", quantity: 20 },
-    { itemId: "mop-head", quantity: 12 },
-  ],
-  totalCents: 64800,
-};
+/** A payment of one bill, carrying the facts a person approved as the desk held them then. */
+async function approvedPayment(accounts: FakeAccountingDesk, billId = "BILL-2001") {
+  const [bill] = await accounts.listVendorBills({ billId });
+  if (bill === undefined) throw new Error(`no ${billId} on the desk`);
+  return { billId, approved: billApprovalFacts(bill) };
+}
 
 const NEW_BILL = {
   supplier: "sup-columbia-floor",
@@ -195,7 +188,9 @@ describe("recordVendorBill", () => {
 describe("payVendorBill", () => {
   it("pays the bill's own total, marks it paid and puts the payment in the books", async () => {
     const accounts = desk();
-    const payment = await accounts.payVendorBill(RAINIER, { requestId: "p1" });
+    const payment = await accounts.payVendorBill(await approvedPayment(accounts), {
+      requestId: "p1",
+    });
     expect(payment).toMatchObject({
       billId: "BILL-2001",
       amountCents: 64800,
@@ -206,67 +201,77 @@ describe("payVendorBill", () => {
     expect(bill).toMatchObject({ status: "paid", paymentId: payment.id });
   });
 
-  it("refuses a total that is not the bill's, paying nothing", async () => {
-    const accounts = desk();
-    const error = await refusal(
-      accounts.payVendorBill({ ...RAINIER, totalCents: 6480 }, { requestId: "p2" }),
-    );
-    expect(error.code).toBe("bill_mismatch");
-    const [bill] = await accounts.listVendorBills({ billId: "BILL-2001" });
-    expect(bill?.status).toBe("overdue");
-  });
-
-  it("refuses another supplier, invoice, recorder or line set than the bill's", async () => {
-    for (const changed of [
-      { supplierId: "sup-columbia-floor" },
-      { supplierInvoice: "RT-9999" },
-      { recordedBy: "Someone Else" },
-      { lines: [{ itemId: "microfiber-cloth", quantity: 20 }] },
-    ]) {
-      const error = await refusal(
-        desk().payVendorBill({ ...RAINIER, ...changed }, { requestId: "p3" }),
-      );
-      expect(error.code, JSON.stringify(changed)).toBe("bill_mismatch");
+  it("approves the bill's recorded facts, not where it stands on the desk's clock", async () => {
+    const [bill] = await desk().listVendorBills({ billId: "BILL-2001" });
+    if (bill === undefined) throw new Error("no BILL-2001");
+    const facts = billApprovalFacts(bill);
+    expect(facts).toMatchObject({
+      id: "BILL-2001",
+      supplierId: "sup-rainier-tools",
+      supplierName: "Rainier Cleaning Tools",
+      supplierInvoice: "RT-5520",
+      totalCents: 64800,
+      recordedBy: "Eileen Hart",
+      source: "PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
+      revision: 1,
+    });
+    // A day passing between the ask and the yes changes the status, not the bill.
+    for (const moving of ["status", "daysUntilDue", "paidOn", "paymentId"]) {
+      expect(facts, moving).not.toHaveProperty(moving);
     }
   });
 
-  it("refuses a source that is not what the bill was recorded from, under its own code", async () => {
-    const accounts = desk();
-    const error = await refusal(
-      accounts.payVendorBill(
-        { ...RAINIER, source: "email from accounts@rainiertools-payments.example" },
-        { requestId: "p8" },
-      ),
-    );
-    expect(error.code).toBe("source_mismatch");
-    expect(error.billId).toBe("BILL-2001");
-    expect(error.message).toContain("PDF invoice RT-5520 emailed by sales@rainiertools.example");
-    expect((await accounts.listVendorBills({ billId: "BILL-2001" }))[0]?.status).toBe("overdue");
+  it("refuses facts that are not the bill as it stands, as changed, paying nothing", async () => {
+    for (const changed of [
+      { totalCents: 6480 },
+      { supplierId: "sup-columbia-floor" },
+      { supplierInvoice: "RT-9999" },
+      { recordedBy: "Someone Else" },
+      { source: "email from accounts@rainiertools-payments.example" },
+      { lines: [] },
+    ]) {
+      const accounts = desk();
+      const payment = await approvedPayment(accounts);
+      const error = await refusal(
+        accounts.payVendorBill(
+          { ...payment, approved: { ...payment.approved, ...changed } },
+          { requestId: "p2" },
+        ),
+      );
+      expect(error.code, JSON.stringify(changed)).toBe("bill_changed");
+      expect(error.billId).toBe("BILL-2001");
+      expect((await accounts.listVendorBills({ billId: "BILL-2001" }))[0]?.status).toBe("overdue");
+    }
   });
 
   it("refuses a bill corrected after the facts were read, as changed", async () => {
     const accounts = desk();
+    const payment = await approvedPayment(accounts);
     await accounts.correctVendorBill("BILL-2001", [
       { itemId: "microfiber-cloth", quantity: 20 },
       { itemId: "mop-head", quantity: 14 },
     ]);
-    const error = await refusal(accounts.payVendorBill(RAINIER, { requestId: "p4" }));
+    const error = await refusal(accounts.payVendorBill(payment, { requestId: "p4" }));
     expect(error.code).toBe("bill_changed");
+    expect(error.message).toContain("Nothing was paid.");
     const [bill] = await accounts.listVendorBills({ billId: "BILL-2001" });
     expect(bill).toMatchObject({ status: "overdue", revision: 2, totalCents: 64800 + 2 * 2400 });
   });
 
   it("refuses a bill already paid, and pays once for a replayed request id", async () => {
     const accounts = desk();
-    const first = await accounts.payVendorBill(RAINIER, { requestId: "p5" });
-    expect(await accounts.payVendorBill(RAINIER, { requestId: "p5" })).toEqual(first);
-    const error = await refusal(accounts.payVendorBill(RAINIER, { requestId: "p6" }));
+    const payment = await approvedPayment(accounts);
+    const first = await accounts.payVendorBill(payment, { requestId: "p5" });
+    expect(await accounts.payVendorBill(payment, { requestId: "p5" })).toEqual(first);
+    const error = await refusal(accounts.payVendorBill(payment, { requestId: "p6" }));
     expect(error.code).toBe("already_paid");
   });
 
   it("refuses an unknown bill", async () => {
+    const accounts = desk();
+    const payment = await approvedPayment(accounts);
     expect(
-      (await refusal(desk().payVendorBill({ ...RAINIER, billId: "BILL-9" }, { requestId: "p7" })))
+      (await refusal(accounts.payVendorBill({ ...payment, billId: "BILL-9" }, { requestId: "p7" })))
         .code,
     ).toBe("not_found");
   });

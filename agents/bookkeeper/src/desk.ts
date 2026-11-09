@@ -15,6 +15,7 @@
  * Paying is a demonstration backend only: the fake records a payment in memory and moves no money.
  */
 
+import { sameFacts } from "@officehum/sdk";
 import type { CompanyFacts, Supplier, SupplyItem } from "./company.js";
 import { loadCompanyFacts, money } from "./company.js";
 
@@ -126,18 +127,34 @@ export interface BillFilter {
 }
 
 /**
- * What a payment names: the bill, and the facts about it the person approving saw. The desk pays the
- * bill's own total, never this one; it refuses when any of these is not the bill as it stands.
+ * What a payment names: the bill, and the facts about it a person approved, as the approval gate read
+ * them from this desk (`billApprovalFacts`). The desk pays the bill's own total; it refuses when the
+ * bill no longer equals what was approved.
  */
 export interface PaymentInput {
   readonly billId: string;
-  readonly supplierId: string;
-  readonly supplierInvoice: string;
-  readonly recordedBy: string;
-  /** What the bill was recorded from, as the desk shows it: the main signal of where it came from. */
-  readonly source: string;
-  readonly lines: readonly BillLineInput[];
-  readonly totalCents: number;
+  readonly approved: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * The facts a person approves when paying a bill: everything recorded about it, and its revision. Its
+ * status and days until due are left out on purpose: they move with the clock, and a person who
+ * takes a day to decide still approved the same bill.
+ */
+export function billApprovalFacts(bill: VendorBill): Record<string, unknown> {
+  return {
+    id: bill.id,
+    supplierId: bill.supplierId,
+    supplierName: bill.supplierName,
+    supplierInvoice: bill.supplierInvoice,
+    lines: bill.lines.map((line) => ({ ...line })),
+    totalCents: bill.totalCents,
+    recordedOn: bill.recordedOn,
+    recordedBy: bill.recordedBy,
+    source: bill.source,
+    dueOn: bill.dueOn,
+    revision: bill.revision,
+  };
 }
 
 /** What the role needs from whatever system holds its payables and bank records. */
@@ -156,10 +173,8 @@ export interface AccountingDesk {
   ): Promise<VendorBill>;
   /**
    * Pays one bill, for its own total. Called only once a person approved exactly this bill. A host
-   * desk must refuse with `bill_changed` when the bill was corrected after the facts in `input` were
-   * read, with `source_mismatch` when the bill was recorded from something other than `source`, and
-   * with `bill_mismatch` when the other facts are not the bill's, so a grant never pays a bill nobody
-   * was shown.
+   * desk must refuse with `bill_changed` when the bill no longer equals `input.approved` (its
+   * `billApprovalFacts` now), so a grant never pays a bill nobody was shown.
    */
   payVendorBill(
     input: PaymentInput,
@@ -185,8 +200,6 @@ export type DeskRefusal =
   | "not_supplied"
   | "duplicate_bill"
   | "already_paid"
-  | "bill_mismatch"
-  | "source_mismatch"
   | "bill_changed"
   | "no_statement";
 
@@ -199,8 +212,6 @@ export const DESK_REFUSALS: readonly DeskRefusal[] = [
   "not_supplied",
   "duplicate_bill",
   "already_paid",
-  "bill_mismatch",
-  "source_mismatch",
   "bill_changed",
   "no_statement",
 ];
@@ -208,7 +219,7 @@ export const DESK_REFUSALS: readonly DeskRefusal[] = [
 /** A refusal the model reads: an unknown supplier, a bill already paid, a bill that changed. */
 export class AccountingDeskError extends Error {
   readonly code: DeskRefusal;
-  /** For a refusal about one bill (duplicate, paid, mismatch, source, changed): the bill concerned. */
+  /** For a refusal about one bill (duplicate, paid, changed): the bill concerned. */
   readonly billId: string | undefined;
 
   constructor(code: DeskRefusal, message: string, extra: { readonly billId?: string } = {}) {
@@ -434,8 +445,6 @@ interface BillState {
   paidOn: string | null;
   paymentId: string | null;
   revision: number;
-  /** The lines of every earlier revision, so a payment approved on one of them is told so. */
-  earlier: { lines: VendorBillLine[]; totalCents: number }[];
 }
 
 /** An in-memory desk: the company's suppliers and catalogue, demonstration bills, no money moved. */
@@ -528,7 +537,6 @@ export function fakeAccountingDesk(options: FakeAccountingDeskOptions = {}): Fak
       paidOn: seed.paidOn ?? null,
       paymentId: seed.paymentId ?? null,
       revision: 1,
-      earlier: [],
     };
   });
 
@@ -576,13 +584,6 @@ export function fakeAccountingDesk(options: FakeAccountingDeskOptions = {}): Fak
     }
     return bill;
   };
-
-  /** The lines a payment named, as item and quantity, against a priced set. */
-  const sameLines = (named: readonly BillLineInput[], priced: readonly VendorBillLine[]): boolean =>
-    named.length === priced.length &&
-    priced.every((line) =>
-      named.some((entry) => same(entry.itemId, line.itemId) && entry.quantity === line.quantity),
-    );
 
   return {
     async listVendorBills(filter = {}): Promise<readonly VendorBill[]> {
@@ -658,7 +659,6 @@ export function fakeAccountingDesk(options: FakeAccountingDeskOptions = {}): Fak
         paidOn: null,
         paymentId: null,
         revision: 1,
-        earlier: [],
       };
       bills.push(bill);
       const receipt = snapshot(bill);
@@ -677,61 +677,34 @@ export function fakeAccountingDesk(options: FakeAccountingDeskOptions = {}): Fak
           { billId: bill.id },
         );
       }
-      const facts =
-        same(input.supplierId, bill.supplierId) &&
-        same(input.supplierInvoice, bill.supplierInvoice) &&
-        same(input.recordedBy, bill.recordedBy);
-      const sourced = same(input.source, bill.source);
-      const content = input.totalCents === bill.totalCents && sameLines(input.lines, bill.lines);
-      if (facts && content && !sourced) {
-        // Everything else is the bill's, but the person would have been shown another origin for it.
-        throw new AccountingDeskError(
-          "source_mismatch",
-          `${bill.id} was recorded from ${JSON.stringify(bill.source)}, not ${JSON.stringify(input.source)}, so the approval did not show what it was recorded from. Nothing was paid.`,
-          { billId: bill.id },
-        );
-      }
-      if (facts && content && sourced) {
-        const payment: VendorPayment = {
-          id: `PAY-${++paymentNumber}`,
-          billId: bill.id,
-          supplierId: bill.supplierId,
-          supplierName: bill.supplierName,
-          supplierInvoice: bill.supplierInvoice,
-          amountCents: bill.totalCents,
-          paidOn: today(),
-          backend: "demo",
-        };
-        bill.paidOn = payment.paidOn;
-        bill.paymentId = payment.id;
-        books.push({
-          date: payment.paidOn,
-          description: `Payment of ${bill.id} to ${bill.supplierName}`,
-          amountCents: -payment.amountCents,
-          reference: payment.id,
-        });
-        payments.set(requestId, payment);
-        return payment;
-      }
-      // The person approved the facts in the call; anything else is not what they approved.
-      const wasEarlier =
-        facts &&
-        bill.earlier.some(
-          (revision) =>
-            revision.totalCents === input.totalCents && sameLines(input.lines, revision.lines),
-        );
-      if (wasEarlier) {
+      const current = snapshot(bill);
+      if (!sameFacts(input.approved, billApprovalFacts(current))) {
         throw new AccountingDeskError(
           "bill_changed",
-          `${bill.id} was corrected after these facts were read: it now comes to ${money(bill.totalCents)}, not ${money(input.totalCents)}. Nothing was paid.`,
+          `${bill.id} is not what the person approved: it changed after its facts were read. It now stands as ${bill.supplierName}, invoice ${bill.supplierInvoice}, recorded by ${bill.recordedBy} from ${bill.source}, total ${money(bill.totalCents)}. Nothing was paid.`,
           { billId: bill.id },
         );
       }
-      throw new AccountingDeskError(
-        "bill_mismatch",
-        `That is not ${bill.id} as the desk holds it: ${bill.supplierName} (${bill.supplierId}), invoice ${bill.supplierInvoice}, recorded by ${bill.recordedBy} from ${bill.source}, total ${money(bill.totalCents)} (${bill.totalCents} cents). Nothing was paid.`,
-        { billId: bill.id },
-      );
+      const payment: VendorPayment = {
+        id: `PAY-${++paymentNumber}`,
+        billId: bill.id,
+        supplierId: bill.supplierId,
+        supplierName: bill.supplierName,
+        supplierInvoice: bill.supplierInvoice,
+        amountCents: bill.totalCents,
+        paidOn: today(),
+        backend: "demo",
+      };
+      bill.paidOn = payment.paidOn;
+      bill.paymentId = payment.id;
+      books.push({
+        date: payment.paidOn,
+        description: `Payment of ${bill.id} to ${bill.supplierName}`,
+        amountCents: -payment.amountCents,
+        reference: payment.id,
+      });
+      payments.set(requestId, payment);
+      return payment;
     },
 
     async reconcile(input): Promise<Reconciliation> {
@@ -805,7 +778,6 @@ export function fakeAccountingDesk(options: FakeAccountingDeskOptions = {}): Fak
       const bill = findBill(billId);
       const supplier = findSupplier(bill.supplierId);
       const priced = price(supplier, lines);
-      bill.earlier.push({ lines: bill.lines, totalCents: bill.totalCents });
       bill.lines = priced;
       bill.totalCents = total(priced);
       bill.revision += 1;
