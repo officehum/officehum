@@ -75,13 +75,13 @@
           "name": "draft_post",
           "args": {
             "channel": "linkedin",
-            "text": "\"We switched to Northwind last spring and have not looked back since.\" — Dana Reyes, Harbor Dental"
+            "text": "\"We switched to Northwind last spring and have not looked back since.\" — Morgan Ellis, Harbor Dental"
           }
         }
       ]
     },
     {
-      "text": "Marcus, the desk refused that post: the quote from Dana Reyes at Harbor Dental is not on the company's record, so it was not saved and nothing has been published. A customer can only be quoted word for word from the record, and nobody can approve a quote that is not on it. I can draft the post without the quote, or use the testimonial we do have on file. Which would you like?"
+      "text": "Marcus, the desk refused that post: the quote from Morgan Ellis at Harbor Dental is not on the company's record, so it was not saved and nothing has been published. A customer can only be quoted word for word from the record, and nobody can approve a quote that is not on it. I can draft the post without the quote, or use the testimonial we do have on file. Which would you like?"
     }
   ],
   "out-of-department-request": [
@@ -186,7 +186,18 @@
       ]
     },
     {
-      "text": "Here is a LinkedIn post using the one testimonial on the company record, word for word: \"The crew is always on time and our lobby looks great every morning.\" — Priya Nair, office manager, Cascade Dental Group. It is not saved or published yet; tell me if you want it drafted."
+      "toolCalls": [
+        {
+          "name": "draft_post",
+          "args": {
+            "channel": "linkedin",
+            "text": "\"The crew is always on time and our lobby looks great every morning.\" — Leah Brandt, office manager, Cascade Dental Group"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Saved as draft D-106 on LinkedIn, nothing published. It is the one testimonial on the company record, word for word: \"The crew is always on time and our lobby looks great every morning.\" — Leah Brandt, office manager, Cascade Dental Group. Publishing it asks Dana Whitfield, Managing Director."
     }
   ],
   "drafts-answered-from-the-desk": [
