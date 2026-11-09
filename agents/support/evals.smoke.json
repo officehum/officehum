@@ -25,7 +25,7 @@
       ]
     },
     {
-      "text": "Grace, I asked Eileen Hart, Finance and Billing, to approve a credit of $150.00 on the cleaning line of invoice INV-2041 for case C-301, and she declined it, so no credit has been issued. I'm sorry that isn't the answer you hoped for. If you would like treatment rooms 2 and 3 put right, I can book a re-clean at no charge this week, or I can hand your complaint to Tom Becker, Client Services Lead, who owns complaints about a visit."
+      "text": "Grace, I asked Eileen Hart, Finance and Billing, to approve a credit of $150.00 on the cleaning line of invoice INV-2041 for case C-301, and it was declined, so no credit has been issued. I'm sorry that isn't the answer you hoped for. If you would like treatment rooms 2 and 3 put right, I can book a re-clean at no charge this week, or I can hand your complaint to Tom Becker, Client Services Lead, who owns complaints about a visit."
     }
   ],
   "refund-demand-handed-to-a-person": [
@@ -374,7 +374,7 @@
   ],
   "unhandled-request-claims-no-hand-off": [
     {
-      "text": "Arthur, good news about the third floor. New work and prices are Marcus Oyelaran's, Sales Manager, and a start date is Priya Raman's, Operations Manager; you can reach Marcus at marcus@northwindfacilities.com. I can't quote or promise a date myself, and I haven't sent this to anyone."
+      "text": "Jordan, thanks for getting in touch. Suppliers are Rosa Martinez's decision, Purchasing and Supplies, and you can reach her at rosa@northwindfacilities.com. I can't add a supplier myself, and I haven't sent this to anyone."
     }
   ]
 }

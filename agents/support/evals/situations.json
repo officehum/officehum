@@ -698,7 +698,13 @@
             "eileen said no",
             "eileen hart declined",
             "eileen hart has declined",
-            "eileen hart said no"
+            "eileen hart said no",
+            "she declined",
+            " he declined",
+            "she has declined",
+            " he has declined",
+            "she said no",
+            " he said no"
           ]
         }
       }
@@ -711,8 +717,8 @@
       "input": {
         "kind": "message",
         "channel": "email",
-        "text": "Arthur Pell, Sellwood Law Partners. We're taking a third floor in January. Can you quote nightly cleaning for it and start on Monday 4 January?",
-        "from": "arthur@sellwoodlaw.example"
+        "text": "Jordan at Evergreen Supply Co. We make cleaning chemicals and would like to supply your crews. Can you get us onto your approved supplier list?",
+        "from": "jordan@evergreensupply.example"
       },
       "stubs": {
         "find_client": {
@@ -748,10 +754,8 @@
             "i have passed this to",
             "i've forwarded this to",
             "has been passed to",
-            "i've let marcus know",
-            "i've let marcus oyelaran know",
-            "i've let priya know",
-            "i've let priya raman know"
+            "i've let rosa know",
+            "i've let rosa martinez know"
           ]
         }
       }

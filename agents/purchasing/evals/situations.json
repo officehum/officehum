@@ -1045,7 +1045,13 @@
             "rosa said no",
             "rosa martinez declined",
             "rosa martinez has declined",
-            "rosa martinez said no"
+            "rosa martinez said no",
+            "she declined",
+            " he declined",
+            "she has declined",
+            " he has declined",
+            "she said no",
+            " he said no"
           ]
         }
       }
@@ -1058,7 +1064,7 @@
       "input": {
         "kind": "message",
         "channel": "chat",
-        "text": "Dev here. Rainier's invoice RT-5520 for the microfiber cloths and mop heads is overdue and they're chasing us. Can you pay it today?"
+        "text": "Tasha here. Cascade's rep says they'll hold their paper prices for twelve months if we sign a supply contract with them this week. Can you agree that with them?"
       },
       "stubs": {
         "list_stock": {
@@ -1102,8 +1108,8 @@
             "i have passed this to",
             "i've forwarded this to",
             "has been passed to",
-            "i've let eileen know",
-            "i've let eileen hart know"
+            "i've let rosa know",
+            "i've let rosa martinez know"
           ]
         }
       }
