@@ -6,7 +6,8 @@
  * crew's weekly hours cap or on approved time off, and a move of a contract visit, and each refusal
  * names the approval-gated tool that asks a person. `request_overtime` and
  * `request_contract_reschedule` are those tools; their approvals are `officehum.json`'s, evaluated by
- * the SDK's gate before the tool runs, so this file holds no hours limit and no approval rule.
+ * the SDK's gate before the tool runs (overtime's only while the company's staff policy requires it,
+ * a condition `index.ts` passes), so this file holds no hours limit and no approval rule.
  *
  * Every hours figure a tool speaks comes back from the desk, and every name from the company record.
  */

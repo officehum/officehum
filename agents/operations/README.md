@@ -53,7 +53,7 @@ member's pay rise the role cannot decide, never claimed as passed on to anyone.
 | `list_jobs` | safe | — | The schedule, by date, crew or client: hours, crew, one-off or contract visit |
 | `list_crews` | safe | — | Each crew's week: hours booked, cap, approved overtime, hours left, time off |
 | `assign_crew` | unsafe | `noApproval`; the desk refuses past the cap, on time off, or a different crew on a contract visit | Put a crew on a job |
-| `request_overtime` | unsafe | approval `overtime`, every call | Overtime so a crew can take a job its cap cannot hold |
+| `request_overtime` | unsafe | approval `overtime`, every call while the company's `staffPolicies.overtimeNeedsApproval` holds | Overtime so a crew can take a job its cap cannot hold |
 | `reschedule_job` | unsafe | `noApproval`; the desk refuses a contract visit | Move a one-off job |
 | `request_contract_reschedule` | unsafe | approval `contract_reschedule`, every call | Move a visit on a recurring contract |
 | `record_callout` | unsafe | `noApproval`: an internal record | Record a call-out request; it books nothing |
@@ -64,6 +64,12 @@ job would take it past its cap, and the overtime that would need. The caps are t
 `crews[].weeklyHoursCap`; there is no hours constant in the code. When `assign_crew` is refused for the
 cap, the refusal states the overtime hours and names `request_overtime`; `request_overtime` refuses any
 other figure, so the person approving sees exactly what the job needs.
+
+Whether overtime asks a person is the company's call: the role's gate asks while
+`staffPolicies.overtimeNeedsApproval` is `true` and lets `request_overtime` through when a company sets
+it to `false`. That condition is code, because it reads the company facts the host passed. The office's
+gate reads only `officehum.json`, where the approval has no condition, so in the office overtime still
+asks a person on every call: it fails safe.
 
 A visit on a recurring contract keeps its crew: `assign_crew` refuses a different one, and the refusal
 says to hand it to the person the handbook names for scheduling. Approved overtime belongs to its crew and job: if the job
