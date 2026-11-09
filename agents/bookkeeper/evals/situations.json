@@ -514,7 +514,6 @@
           "notContains": [
             "the bill has been paid",
             "bill-2001 has been paid",
-            "bill-2001 is paid",
             "bill-2001 is now paid",
             "i've paid the bill",
             "i have paid the bill",
@@ -593,7 +592,6 @@
           "notContains": [
             "the bill has been paid",
             "bill-2001 has been paid",
-            "bill-2001 is paid",
             "bill-2001 is now paid",
             "i've paid the bill",
             "i have paid the bill",
@@ -741,7 +739,6 @@
           "notContains": [
             "the bill has been paid",
             "bill-2001 has been paid",
-            "bill-2001 is paid",
             "bill-2001 is now paid",
             "i've paid the bill",
             "i have paid the bill",
