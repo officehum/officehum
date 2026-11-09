@@ -222,6 +222,11 @@ function emailText(subject: string, body: string, footer: string): string {
   return `Subject: ${subject}\n\n${body}\n\n${footer}`;
 }
 
+/** What the model wrote, which the desk checks: a post's text, or an email's subject and body. */
+function written(draft: Pick<Draft, "subject" | "text">): string {
+  return draft.subject === null ? draft.text : `${draft.subject}\n${draft.text}`;
+}
+
 /**
  * The demonstration drafts on Monday 9 November 2026, built from the company's own record: a
  * published post that states an approved claim, a ready post about the day porter at the price book's
@@ -399,14 +404,20 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
     return draft;
   };
 
-  /** Quoted, attributed passages in `text` that are not a testimonial on the company's record. */
-  const unrecordedQuotes = (text: string): string[] =>
-    findUnrecordedTestimonials(text, company.marketing.testimonials ?? []);
+  /**
+   * Quoted, attributed passages that are not a testimonial on the company's record, in what the model
+   * wrote: a post's text, or an email's subject and body. The desk's own footer is never checked, and
+   * saving, approving and publishing check the same text, so a draft that saved cleanly is not
+   * refused later for words the desk added.
+   */
+  const unrecordedQuotes = (draft: Pick<DraftState, "subject" | "text">): string[] =>
+    findUnrecordedTestimonials(written(draft), company.marketing.testimonials ?? []);
 
-  const quoteRefusal = (passages: readonly string[]): MarketingDeskError =>
+  /** `outcome` says what did not happen at this step: "Nothing was approved." */
+  const quoteRefusal = (passages: readonly string[], outcome: string): MarketingDeskError =>
     new MarketingDeskError(
       "unrecorded_testimonial",
-      `Refused: ${passages.map((passage) => `"${passage}"`).join("; ")} ${passages.length === 1 ? "is a quote" : "are quotes"} attributed to someone, and ${passages.length === 1 ? "it is" : "they are"} not a testimonial on the company's record. Nothing was saved and nothing was published. A customer is quoted only word for word from the record, and no one can approve a quote that is not on it.`,
+      `Refused: ${passages.map((passage) => `"${passage}"`).join("; ")} ${passages.length === 1 ? "is a quote" : "are quotes"} attributed to someone, and ${passages.length === 1 ? "it is" : "they are"} not a testimonial on the company's record. ${outcome} A customer is quoted only word for word from the record, and no one can approve a quote that is not on it.`,
     );
 
   /** Saves a new draft, held when it states a claim not approved. Throws for a held one. */
@@ -422,13 +433,13 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
       | "publishedOn"
       | "publicationId"
     >,
-    checked: string,
   ): Draft => {
+    const checked = written(draft);
     // An invented customer quote is refused outright: no draft is saved, so there is no held claim
     // a person could be asked to approve.
-    const invented = unrecordedQuotes(checked);
+    const invented = unrecordedQuotes(draft);
     if (invented.length > 0) {
-      const error = quoteRefusal(invented);
+      const error = quoteRefusal(invented, "Nothing was saved and nothing was published.");
       created.set(requestId, error);
       throw error;
     }
@@ -486,18 +497,14 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
       }
       const text = input.text.trim();
       if (text === "") throw new MarketingDeskError("invalid", "A post needs text.");
-      return save(
-        requestId,
-        {
-          kind: "post",
-          channel: input.channel,
-          audienceId: null,
-          subject: null,
-          text,
-          finalText: text,
-        },
+      return save(requestId, {
+        kind: "post",
+        channel: input.channel,
+        audienceId: null,
+        subject: null,
         text,
-      );
+        finalText: text,
+      });
     },
 
     async draftCampaignEmail(input, { requestId }): Promise<Draft> {
@@ -518,18 +525,14 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
       }
       // The footer is the desk's: whatever the body says, the email carries it.
       const finalText = emailText(subject, body, campaignFooter(company, audience));
-      return save(
-        requestId,
-        {
-          kind: "email",
-          channel: "email",
-          audienceId: audience.id,
-          subject,
-          text: body,
-          finalText,
-        },
-        `${subject}\n${body}`,
-      );
+      return save(requestId, {
+        kind: "email",
+        channel: "email",
+        audienceId: audience.id,
+        subject,
+        text: body,
+        finalText,
+      });
     },
 
     async approveClaim(input, { requestId }): Promise<Draft> {
@@ -543,8 +546,8 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
         );
       }
       // A quote that is not on record is not a claim: no approval makes it publishable.
-      const invented = unrecordedQuotes(draft.finalText);
-      if (invented.length > 0) throw quoteRefusal(invented);
+      const invented = unrecordedQuotes(draft);
+      if (invented.length > 0) throw quoteRefusal(invented, "Nothing was approved.");
       // The person approved these claims in this text; anything else is not what they were shown.
       if (!sameFacts(input.approved, heldDraftFacts(snapshot(draft)))) {
         throw new MarketingDeskError(
@@ -581,8 +584,8 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
           { draftId: draft.id, claims: draft.heldClaims },
         );
       }
-      const invented = unrecordedQuotes(draft.finalText);
-      if (invented.length > 0) throw quoteRefusal(invented);
+      const invented = unrecordedQuotes(draft);
+      if (invented.length > 0) throw quoteRefusal(invented, "Nothing was published.");
       // The person approved the draft as the gate read it. Publish only if it still is that draft.
       if (!sameFacts(input.approved, readyDraftFacts(snapshot(draft)))) {
         throw new MarketingDeskError(

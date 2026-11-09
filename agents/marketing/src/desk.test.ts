@@ -140,7 +140,7 @@ describe("fakeMarketingDesk: drafting a post", () => {
 
   describe("testimonials", () => {
     const invented =
-      '"Northwind cut our sick days and the lobby has never looked this good." — Dana Reyes';
+      '"Northwind cut our sick days and the lobby has never looked this good." — Morgan Ellis';
     const recorded = company.marketing.testimonials?.[0];
 
     it("holds a testimonial on record for the tests below", () => {
@@ -219,6 +219,77 @@ describe("fakeMarketingDesk: drafting a post", () => {
       );
       const [after] = await marketing.listDrafts({ id: "D-300" });
       expect(after?.status).toBe("held");
+    });
+
+    it("says what was refused at each step: nothing approved, nothing published, not 'nothing saved'", async () => {
+      const [seed] = demoDrafts(company);
+      if (seed === undefined) throw new Error("no demonstration draft");
+      const held = `${invented} Our floors are 2x cleaner.`;
+      const marketing = fakeMarketingDesk({
+        now: () => new Date(DEMO_NOW),
+        drafts: [
+          {
+            ...seed,
+            id: "D-300",
+            status: "held",
+            text: held,
+            finalText: held,
+            heldClaims: [{ claim: "Our floors are 2x cleaner.", phrase: "2x cleaner" }],
+          },
+          { ...seed, id: "D-301", status: "draft", text: invented, finalText: invented },
+        ],
+      });
+      const grant = await refusal(
+        marketing.approveClaim(await approvedClaims(marketing, "D-300"), { requestId: "g" }),
+      );
+      expect(grant.message).toContain("Nothing was approved");
+      expect(grant.message).not.toContain("Nothing was saved");
+      const out = await refusal(
+        marketing.publish(await approvedPublication(marketing, "D-301"), { requestId: "p" }),
+      );
+      expect(out.code).toBe("unrecorded_testimonial");
+      expect(out.message).toContain("Nothing was published");
+      expect(out.message).not.toContain("Nothing was saved");
+    });
+
+    it("saves and publishes an email whose body ends with a quoted slogan: the footer is not an attribution", async () => {
+      const marketing = desk();
+      const body =
+        'Winter floor care is booked now. Our promise is simple: "clean offices make for happy teams every day"';
+      const draft = await marketing.draftCampaignEmail(
+        { subject: "Winter floor care", body, audienceId: "current-clients" },
+        { requestId: "e1" },
+      );
+      expect(draft.status).toBe("draft");
+      const published = await marketing.publish(await approvedPublication(marketing, draft.id), {
+        requestId: "p1",
+      });
+      expect(published.draftId).toBe(draft.id);
+    });
+
+    it("leaves a quoted slogan followed by a dash and ordinary words alone", async () => {
+      const draft = await desk().draftPost(
+        {
+          channel: "linkedin",
+          text: 'Our motto is "clean offices make for happy teams every day" — and we mean it.',
+        },
+        { requestId: "s1" },
+      );
+      expect(draft.status).toBe("draft");
+    });
+
+    it("checks the same text for quotes when saving, approving and publishing", async () => {
+      // An email's subject and body are what the model wrote; the desk's footer is not checked for
+      // quotes at any step, so a draft that saved cleanly cannot be refused later for its footer.
+      const marketing = desk();
+      const body = 'Ask about "the seven-day fresh start for your whole office"';
+      const draft = await marketing.draftCampaignEmail(
+        { subject: "A fresh start", body, audienceId: "prospects" },
+        { requestId: "e2" },
+      );
+      await expect(
+        marketing.publish(await approvedPublication(marketing, draft.id), { requestId: "p2" }),
+      ).resolves.toMatchObject({ draftId: draft.id });
     });
 
     it("accepts a testimonial on record, word for word, and still holds a result claim in it", async () => {
