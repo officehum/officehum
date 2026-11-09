@@ -33,6 +33,7 @@ import {
   scriptedProvider,
 } from "../../../packages/office/src/testing/scripted-model.js";
 import manifest from "../officehum.json" with { type: "json" };
+import { type CompanyFacts, loadCompanyFacts } from "./company.js";
 import { fakeOperationsDesk, type OperationsDesk } from "./desk.js";
 import operations from "./index.js";
 
@@ -100,9 +101,11 @@ async function attempt(options: {
   readonly turns: readonly ScriptedTurn[];
   readonly desk: OperationsDesk;
   readonly approver?: Approver;
+  readonly company?: CompanyFacts;
 }): Promise<{ readonly messages: readonly Message[] }> {
   const role = operations({
     desk: options.desk,
+    ...(options.company === undefined ? {} : { company: options.company }),
     ...(options.approver === undefined ? {} : { approve: options.approver }),
   });
   const scripted = scriptedProvider(options.turns);
@@ -231,6 +234,39 @@ describe("operations approval gates", () => {
     expect(decisions).toEqual(["overtime"]);
     expect(lastToolText(run.messages)).toContain("A person declined this action");
     expect(await crewOf(desk, "J-2101")).toBeNull();
+  });
+
+  it("overtime waits for a person when the company requires it", async () => {
+    const company = loadCompanyFacts();
+    expect(company.staffPolicies.overtimeNeedsApproval).toBe(true);
+    const desk = fakeOperationsDesk();
+    const refused = await attempt({ turns: one("request_overtime", OVERTIME), desk, company });
+    expect(lastToolText(refused.messages)).toContain("no approver is configured");
+    expect(await crewOf(desk, "J-2101")).toBeNull();
+  });
+
+  it("overtime needs no approval when the company turns it off", async () => {
+    const base = loadCompanyFacts();
+    const company: CompanyFacts = {
+      ...base,
+      staffPolicies: { ...base.staffPolicies, overtimeNeedsApproval: false },
+    };
+    const desk = fakeOperationsDesk();
+    const decisions: string[] = [];
+    const run = await attempt({
+      turns: one("request_overtime", OVERTIME),
+      desk,
+      company,
+      approver: recording(decisions, false),
+    });
+    // No person is asked, so the declining approver never runs and the overtime is recorded.
+    expect(decisions).toEqual([]);
+    // Nobody approved it, so the result never says so: it says the company does not require it.
+    expect(lastToolText(run.messages)).toContain(
+      "Overtime OT-1 recorded; the company does not require approval for overtime:",
+    );
+    expect(lastToolText(run.messages)).not.toContain("approved");
+    expect(await crewOf(desk, "J-2101")).toBe("cleaning-central");
   });
 
   it("moves a contract visit only once a person approves it", async () => {

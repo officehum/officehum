@@ -59,7 +59,9 @@ describe("operations package", () => {
     ]);
     expect(validateManifest(roleManifest).ok).toBe(true);
 
-    // The two requests ask a person on every call: no condition can let one through.
+    // The manifest states no condition, so the office's gate asks a person on every call. The role's
+    // own gate lets overtime through only when the company turns overtimeNeedsApproval off (a code
+    // condition in index.ts, tested in index.test.ts); the office's strict reading fails safe.
     expect(roleManifest.approvals.map((approval) => [approval.tool, approval.id])).toEqual([
       ["request_overtime", "overtime"],
       ["request_contract_reschedule", "contract_reschedule"],
@@ -73,12 +75,6 @@ describe("operations package", () => {
     expect(note("reschedule_job")).toContain("request_contract_reschedule");
     expect(note("record_callout")).toContain("books no crew");
     expect(roleManifest.limits ?? {}).toEqual({});
-  });
-
-  it("asks a person for overtime on every call because the company says overtime needs approval", () => {
-    // If the company ever records overtimeNeedsApproval: false, this fails on purpose: the
-    // unconditional `overtime` approval is then a choice to revisit, not something to drift.
-    expect(company.staffPolicies.overtimeNeedsApproval).toBe(true);
   });
 
   it("takes every crew and cap from the company, and its demo jobs only use crews that exist", () => {

@@ -45,7 +45,8 @@ answered, say what they decided.
 - `list_jobs`, `list_crews` and `read_company` only read; use them freely.
 - `assign_crew` and `reschedule_job` write within limits the desk enforces. `record_callout` writes an
   internal record. None of them needs approval.
-- `request_overtime` and `request_contract_reschedule` wait for a person on every call.
+- `request_contract_reschedule` waits for a person on every call; `request_overtime` waits for a person
+  while the company requires approval for overtime.
 - Describe a write as done only after its tool returns a successful receipt. If an approval is
   declined, say so plainly and leave the schedule as it was.
 - `read_skill` loads a skill's instructions or a reference file, including the company handbook. Load

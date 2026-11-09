@@ -82,7 +82,10 @@ export interface OperationsOptions {
   readonly company?: CompanyFacts;
   /** Overlay directories, lowest first: the business's AGENTS.md, skills, settings and limits. */
   readonly overlays?: readonly string[];
-  /** Decides every gated action. Omitted: overtime and a contract visit's move are both blocked. */
+  /**
+   * Decides every gated action. Omitted: a contract visit's move is blocked, and so is overtime while
+   * the company's `staffPolicies.overtimeNeedsApproval` holds.
+   */
   readonly approve?: Approver;
   /**
    * The host's clock. The prompt's `today` section and the demonstration desk read it. Omitted: the
@@ -115,8 +118,11 @@ export default function operations(options: OperationsOptions = {}): DefinedRole
       tools.recordCallout,
       tools.readCompany,
     ],
-    // Both approvals are `officehum.json`'s, on every call of their tool; the SDK's gate evaluates
-    // them here and in the office from the same declaration.
+    // Both approvals are `officehum.json`'s. A contract visit's move asks a person on every call.
+    // Overtime asks only while the company's staff policy says it needs approval: the condition is
+    // code, because it reads the company facts the host passed, which no manifest condition can. The
+    // office's manifest-only gate never runs it and keeps asking on every call, which fails safe.
+    when: { overtime: () => company.staffPolicies.overtimeNeedsApproval },
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

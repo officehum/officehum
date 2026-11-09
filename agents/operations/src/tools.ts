@@ -6,7 +6,8 @@
  * crew's weekly hours cap or on approved time off, and a move of a contract visit, and each refusal
  * names the approval-gated tool that asks a person. `request_overtime` and
  * `request_contract_reschedule` are those tools; their approvals are `officehum.json`'s, evaluated by
- * the SDK's gate before the tool runs, so this file holds no hours limit and no approval rule.
+ * the SDK's gate before the tool runs (overtime's only while the company's staff policy requires it,
+ * a condition `index.ts` passes), so this file holds no hours limit and no approval rule.
  *
  * Every hours figure a tool speaks comes back from the desk, and every name from the company record.
  */
@@ -88,9 +89,19 @@ function jobLine(job: Job): string {
   return `${job.id} — ${job.date} ${job.start} — ${job.client} — ${job.service} — ${job.site} — ${hours(job.crewHours)} crew-hours — ${crew} — ${kind} — ${job.notes}`;
 }
 
-function crewLine(crew: CrewWeek): string {
+/**
+ * How recorded overtime is described: "approved" only while the company requires a person to approve
+ * it. With approval off nobody approved it, and the text must not say anyone did.
+ */
+function overtimeLabel(approvalRequired: boolean): string {
+  return approvalRequired ? "approved overtime hours" : "overtime hours";
+}
+
+function crewLine(crew: CrewWeek, approvalRequired: boolean): string {
   const overtime =
-    crew.overtimeHours === 0 ? "" : ` (with ${hours(crew.overtimeHours)} approved overtime hours)`;
+    crew.overtimeHours === 0
+      ? ""
+      : ` (with ${hours(crew.overtimeHours)} ${overtimeLabel(approvalRequired)})`;
   const off =
     crew.timeOff.length === 0
       ? ""
@@ -98,11 +109,11 @@ function crewLine(crew: CrewWeek): string {
   return `${crew.crewId} — ${crew.name} (${crew.members} people) — ${hours(crew.bookedHours)} of ${hours(crew.weeklyHoursCap)} hours booked, ${hours(crew.hoursLeft)} left${overtime}${off}`;
 }
 
-function weekText(assignment: Assignment): string {
+function weekText(assignment: Assignment, approvalRequired: boolean): string {
   const overtime =
     assignment.overtimeHours === 0
       ? ""
-      : ` plus ${hours(assignment.overtimeHours)} approved overtime hours`;
+      : ` plus ${hours(assignment.overtimeHours)} ${overtimeLabel(approvalRequired)}`;
   return `For ${assignment.crewName}, the week of ${assignment.weekStart} now has ${hours(assignment.bookedHours)} hours booked against a weekly cap of ${hours(assignment.weeklyHoursCap)}${overtime}.`;
 }
 
@@ -197,6 +208,9 @@ function companySection(company: CompanyFacts, section: CompanySection): string 
 export function operationsTools(dependencies: OperationsToolDependencies): OperationsToolset {
   const { company } = dependencies;
   const owner = personLabel(scheduleOwner(company));
+  // The same policy the role's gate reads (index.ts), so a result never claims an approval the gate
+  // did not ask for.
+  const approvalRequired = company.staffPolicies.overtimeNeedsApproval;
 
   /** A desk refusal as the model reads it, with the next step that a person can take. */
   const refused = (error: unknown, extra: JsonObject) => {
@@ -289,7 +303,9 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
             ? "No crews are set up."
             : `Crews for the week of ${first.weekStart} to ${first.weekEnd}:`;
         return {
-          ...textResult([heading, ...crews.map(crewLine)].join("\n")),
+          ...textResult(
+            [heading, ...crews.map((crew) => crewLine(crew, approvalRequired))].join("\n"),
+          ),
           details: {
             found: crews.length > 0,
             crews: crews.map((crew) => ({
@@ -325,7 +341,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
         );
         return {
           ...textResult(
-            `Assigned ${assignment.crewName} to ${assignment.jobId} (${assignment.client}, ${assignment.date}, ${hours(assignment.crewHours)} crew-hours). ${weekText(assignment)}`,
+            `Assigned ${assignment.crewName} to ${assignment.jobId} (${assignment.client}, ${assignment.date}, ${hours(assignment.crewHours)} crew-hours). ${weekText(assignment, approvalRequired)}`,
           ),
           details: { ...assignment },
         };
@@ -338,7 +354,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
   const requestOvertime = defineTool({
     name: "request_overtime",
     description:
-      "Ask a person to approve overtime so a crew can take a job its weekly hours cap cannot hold. Use the hours assign_crew's refusal stated. Every call waits for a person; once approved, the desk records the overtime and assigns the crew.",
+      "Ask for overtime so a crew can take a job its weekly hours cap cannot hold. Use the hours assign_crew's refusal stated. It waits for a person while the company requires approval for overtime; once approved, or when the company does not require approval, the desk records the overtime and assigns the crew.",
     parameters: Type.Object(
       {
         crewId: Type.String({ description: "The crew's id, e.g. cleaning-central" }),
@@ -358,9 +374,13 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
           { crewId: args.crewId, jobId: args.jobId, hours: args.hours },
           { requestId: requestId("overtime", api) },
         );
+        // Said from the policy the gate applied: "approved" only when a person had to approve it.
+        const recorded = approvalRequired
+          ? `Overtime ${grant.id} approved and recorded:`
+          : `Overtime ${grant.id} recorded; the company does not require approval for overtime:`;
         return {
           ...textResult(
-            `Overtime ${grant.id} approved and recorded: ${hours(grant.hours)} hours for ${grant.crewName} in the week of ${grant.weekStart}. Assigned ${grant.crewName} to ${grant.jobId} (${grant.client}, ${grant.date}). ${weekText(grant)}`,
+            `${recorded} ${hours(grant.hours)} hours for ${grant.crewName} in the week of ${grant.weekStart}. Assigned ${grant.crewName} to ${grant.jobId} (${grant.client}, ${grant.date}). ${weekText(grant, approvalRequired)}`,
           ),
           details: { ...grant },
         };
