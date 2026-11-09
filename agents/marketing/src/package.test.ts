@@ -87,10 +87,12 @@ describe("marketing package", () => {
   it("takes its claims, prices and approver from the company, and its demo data agrees with them", () => {
     expect(company.marketing.approvedClaims.length).toBeGreaterThan(0);
     expect(marketingApprover(company)).toBeDefined();
+    // Only the held demonstration draft states a claim, and it is held for exactly that claim.
     for (const draft of demoDrafts(company)) {
       expect(findResultClaims(draft.finalText, company.marketing.approvedClaims), draft.id).toEqual(
-        [],
+        draft.heldClaims,
       );
+      expect(draft.status === "held", draft.id).toBe(draft.heldClaims.length > 0);
     }
 
     // The scripted runs name only channels and audiences the desk has.

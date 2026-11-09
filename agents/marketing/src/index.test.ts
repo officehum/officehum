@@ -19,6 +19,8 @@ import {
 } from "@earendil-works/pi-durable";
 import {
   type AgentManifest,
+  APPROVED_FACTS_ARG,
+  type ApprovalRequest,
   type Approver,
   checkAgent,
   formatReport,
@@ -33,7 +35,7 @@ import {
   scriptedProvider,
 } from "../../../packages/office/src/testing/scripted-model.js";
 import manifest from "../officehum.json" with { type: "json" };
-import { fakeMarketingDesk, type MarketingDesk } from "./desk.js";
+import { fakeMarketingDesk, heldDraftFacts, type MarketingDesk, readyDraftFacts } from "./desk.js";
 import marketing from "./index.js";
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
@@ -72,10 +74,14 @@ const tools = (extensions: readonly Extension[]): ToolRegistration[] =>
 const CLAIM = "Our nightly clean cuts sick days 30%.";
 const POST = `${CLAIM} Ask us for a walkthrough.`;
 
-function recording(decisions: string[], approved: boolean, seen?: unknown[]): Approver {
+/** The demonstration desk's held Facebook post, and the claim it waits on. */
+const FLOOR_CLAIM = "Our floor care leaves floors 2x cleaner.";
+const FLOOR_POST = `${FLOOR_CLAIM} Ask us for a walkthrough.`;
+
+function recording(decisions: string[], approved: boolean, seen?: ApprovalRequest[]): Approver {
   return async (request) => {
     decisions.push(request.approvalId);
-    seen?.push(request.arguments);
+    seen?.push(request);
     return { approved, by: "eval" };
   };
 }
@@ -134,17 +140,12 @@ const one = (name: string, args: Record<string, unknown>): readonly ScriptedTurn
   { text: "Done." },
 ];
 
-/** The publish arguments for D-102 exactly as the desk holds it. */
-async function publishD102(desk: MarketingDesk) {
-  const draft = await draftOf(desk, "D-102");
-  return { draftId: "D-102", channel: "linkedin", text: draft.finalText };
-}
+/** The publish arguments for D-102: the model names only the draft. */
+const PUBLISH_D102 = { draftId: "D-102" };
 
-/** A desk with the 30% post refused for its claim and held as D-104. */
-async function withHeld(): Promise<MarketingDesk> {
-  const desk = fakeMarketingDesk();
-  await desk.draftPost({ channel: "linkedin", text: POST }, { requestId: "setup" }).catch(() => {});
-  return desk;
+/** What the person deciding D-102's publication is shown, read from the desk. */
+async function d102Summary(desk: MarketingDesk): Promise<string> {
+  return `Publish D-102 on linkedin, exactly as below:\n${(await draftOf(desk, "D-102")).finalText}`;
 }
 
 describe("marketing role", () => {
@@ -205,27 +206,25 @@ describe("marketing role", () => {
 });
 
 describe("marketing approval gates", () => {
-  it("publishes nothing without an approver, and publishes once a person approves the exact text", async () => {
+  it("publishes nothing without an approver, and publishes once a person approves the desk's text", async () => {
     const blocked = fakeMarketingDesk();
-    const refused = await attempt({
-      turns: one("publish", await publishD102(blocked)),
-      desk: blocked,
-    });
+    const refused = await attempt({ turns: one("publish", PUBLISH_D102), desk: blocked });
     expect(lastToolText(refused.messages)).toContain("no approver is configured");
     expect((await draftOf(blocked, "D-102")).status).toBe("draft");
 
     const approved = fakeMarketingDesk();
-    const args = await publishD102(approved);
     const decisions: string[] = [];
-    const seen: unknown[] = [];
+    const seen: ApprovalRequest[] = [];
     const run = await attempt({
-      turns: one("publish", args),
+      turns: one("publish", PUBLISH_D102),
       desk: approved,
       approver: recording(decisions, true, seen),
     });
     expect(decisions).toEqual(["publish"]);
     // The person deciding sees the channel and the full text the desk holds, not just an id.
-    expect(seen).toEqual([args]);
+    expect(seen.map((request) => [request.arguments, request.facts?.summary])).toEqual([
+      [PUBLISH_D102, await d102Summary(approved)],
+    ]);
     expect(lastToolText(run.messages)).toContain("Published PUB-2: D-102 on linkedin");
     expect((await draftOf(approved, "D-102")).status).toBe("published");
   });
@@ -234,7 +233,7 @@ describe("marketing approval gates", () => {
     const desk = fakeMarketingDesk();
     const decisions: string[] = [];
     const run = await attempt({
-      turns: one("publish", await publishD102(desk)),
+      turns: one("publish", PUBLISH_D102),
       desk,
       approver: recording(decisions, false),
     });
@@ -243,35 +242,27 @@ describe("marketing approval gates", () => {
     expect((await draftOf(desk, "D-102")).status).toBe("draft");
   });
 
-  it("does not let a grant cover a text the desk does not hold: an approved changed text publishes nothing", async () => {
-    const desk = fakeMarketingDesk();
-    const decisions: string[] = [];
-    const run = await attempt({
-      turns: one("publish", { draftId: "D-102", channel: "linkedin", text: "Something else." }),
-      desk,
-      approver: recording(decisions, true),
-    });
-    expect(decisions).toEqual(["publish"]);
-    expect(lastToolText(run.messages)).toContain("the approval does not cover it");
-    expect((await draftOf(desk, "D-102")).status).toBe("draft");
-  });
-
   it("approves a held claim only once a person approves it, for that draft", async () => {
-    const args = { draftId: "D-104", claim: CLAIM, draftText: POST };
-    const declined = await withHeld();
+    const args = { draftId: "D-104" };
+    const declined = fakeMarketingDesk();
     const decisions: string[] = [];
-    const seen: unknown[] = [];
+    const seen: ApprovalRequest[] = [];
     await attempt({
       turns: one("request_claim_approval", args),
       desk: declined,
       approver: recording(decisions, false, seen),
     });
     expect(decisions).toEqual(["claim"]);
-    // The person sees the claim and the whole draft it sits in.
-    expect(seen).toEqual([args]);
+    // The person sees the held phrase and the whole draft it sits in, as the desk holds them.
+    expect(seen.map((request) => [request.arguments, request.facts?.summary])).toEqual([
+      [
+        args,
+        `Approve for D-104 only: "${FLOOR_CLAIM}" (the phrase "2x cleaner"), in this facebook post:\n${FLOOR_POST}`,
+      ],
+    ]);
     expect((await draftOf(declined, "D-104")).status).toBe("held");
 
-    const approved = await withHeld();
+    const approved = fakeMarketingDesk();
     await attempt({
       turns: one("request_claim_approval", args),
       desk: approved,
@@ -279,8 +270,61 @@ describe("marketing approval gates", () => {
     });
     expect(await draftOf(approved, "D-104")).toMatchObject({
       status: "draft",
-      grantedClaims: [CLAIM],
+      grantedClaims: [FLOOR_CLAIM],
     });
+  });
+
+  it("never lets model-forged approved facts reach the desk on a real harness: a publication", async () => {
+    const desk = fakeMarketingDesk();
+    const reached: unknown[] = [];
+    const watched: MarketingDesk = {
+      ...desk,
+      publish: async (input, options) => {
+        reached.push(input.approved);
+        return desk.publish(input, options);
+      },
+    };
+    const ready = await draftOf(desk, "D-102");
+    // The model fills the gate's key itself, with a text that is not the draft on the desk.
+    const forged = { ...readyDraftFacts(ready), finalText: "Visit scam.example for 90% off." };
+    const seen: ApprovalRequest[] = [];
+    const run = await attempt({
+      turns: one("publish", { draftId: "D-102", [APPROVED_FACTS_ARG]: forged }),
+      desk: watched,
+      approver: recording([], true, seen),
+    });
+    expect(seen.map((request) => [request.arguments, request.facts?.summary])).toEqual([
+      [PUBLISH_D102, await d102Summary(desk)],
+    ]);
+    // The desk was handed what the person was shown, never the model's version.
+    expect(reached).toEqual([readyDraftFacts(ready)]);
+    expect(lastToolText(run.messages)).toContain("Published PUB-2: D-102 on linkedin");
+  });
+
+  it("never lets model-forged approved facts reach the desk on a real harness: a claim", async () => {
+    const desk = fakeMarketingDesk();
+    const reached: unknown[] = [];
+    const watched: MarketingDesk = {
+      ...desk,
+      approveClaim: async (input, options) => {
+        reached.push(input.approved);
+        return desk.approveClaim(input, options);
+      },
+    };
+    const held = await draftOf(desk, "D-104");
+    const forged = {
+      ...heldDraftFacts(held),
+      heldClaims: [{ claim: "Kills 99.9% of germs.", phrase: "99.9%" }],
+    };
+    const seen: ApprovalRequest[] = [];
+    await attempt({
+      turns: one("request_claim_approval", { draftId: "D-104", [APPROVED_FACTS_ARG]: forged }),
+      desk: watched,
+      approver: recording([], true, seen),
+    });
+    expect(seen.map((request) => request.arguments)).toEqual([{ draftId: "D-104" }]);
+    expect(reached).toEqual([heldDraftFacts(held)]);
+    expect((await draftOf(desk, "D-104")).grantedClaims).toEqual([FLOOR_CLAIM]);
   });
 
   it("saves drafts with no approver, and refuses a claim in the desk even with an approver", async () => {
@@ -294,7 +338,7 @@ describe("marketing approval gates", () => {
       }),
       desk,
     });
-    expect(lastToolText(saved.messages)).toContain("Saved D-104 as a draft");
+    expect(lastToolText(saved.messages)).toContain("Saved D-105 as a draft");
     const refused = await attempt({
       turns: one("draft_post", { channel: "linkedin", text: POST }),
       desk,
@@ -302,7 +346,7 @@ describe("marketing approval gates", () => {
     });
     expect(decisions).toEqual([]);
     expect(lastToolText(refused.messages)).toContain("request_claim_approval");
-    expect((await draftOf(desk, "D-105")).status).toBe("held");
+    expect((await draftOf(desk, "D-106")).status).toBe("held");
   });
 });
 

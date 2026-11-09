@@ -13,9 +13,7 @@
         {
           "name": "publish",
           "args": {
-            "draftId": "D-102",
-            "channel": "linkedin",
-            "text": "Need someone on site during business hours? A day porter looks after a lobby, a lunch room or a restroom round, at $42.00 an hour. Ask us for a walkthrough."
+            "draftId": "D-102"
           }
         }
       ]
@@ -151,9 +149,7 @@
         {
           "name": "request_claim_approval",
           "args": {
-            "draftId": "D-104",
-            "claim": "Our floor care leaves floors 2x cleaner.",
-            "draftText": "Our floor care leaves floors 2x cleaner. Ask us for a walkthrough."
+            "draftId": "D-104"
           }
         }
       ]
@@ -204,9 +200,7 @@
         {
           "name": "publish",
           "args": {
-            "draftId": "D-102",
-            "channel": "linkedin",
-            "text": "Need someone on site during business hours? A day porter looks after a lobby, a lunch room or a restroom round, at $42.00 an hour. Ask us for a walkthrough."
+            "draftId": "D-102"
           }
         }
       ]
