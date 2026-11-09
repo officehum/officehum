@@ -293,6 +293,44 @@ describe("the payment approval", () => {
     };
     const payCall = call("pay_vendor_bill", { billId: "BILL-2001" });
 
+    // The person approves, then the process dies before the tool runs.
+    const before = bookkeeper({ desk, approve, now: () => new Date(DEMO_NOW) });
+    const granted = await roleGate(before)(payCall, hookApi(memos), CONTEXT);
+    expect((await desk.listVendorBills({ billId: "BILL-2001" }))[0]?.status).toBe("overdue");
+
+    // A fresh role over the same desk; the tool task is recovered with its memos and runs once.
+    const after = bookkeeper({ desk, approve, now: () => new Date(DEMO_NOW) });
+    const regranted = await roleGate(after)(payCall, hookApi(memos), CONTEXT);
+    expect(regranted).toEqual(granted);
+    const paid = await roleTool(after, "pay_vendor_bill").execute(
+      regranted?.arguments ?? {},
+      identity,
+      BACKGROUND_CONTEXT,
+    );
+
+    expect(asks).toBe(1);
+    expect(toolText(paid)).toContain("Paid BILL-2001");
+    const paymentId = (paid as { details?: { id?: string } }).details?.id;
+    expect((await desk.listVendorBills({ billId: "BILL-2001" }))[0]?.paymentId).toBe(paymentId);
+    // Only one payment exists: another call for the bill is refused as already paid.
+    const other = await roleTool(after, "pay_vendor_bill").execute(
+      regranted?.arguments ?? {},
+      { conversationId: CONVERSATION, taskId: "task-2", callId: "call-2" } as never,
+      BACKGROUND_CONTEXT,
+    );
+    expect((other as { details?: { code?: string } }).details?.code).toBe("already_paid");
+  });
+
+  it("a pay call replayed after a restart answers with the first payment", async () => {
+    const desk = accounts();
+    const memos = new Map<string, unknown>();
+    let asks = 0;
+    const approve: Approver = async () => {
+      asks += 1;
+      return { approved: true };
+    };
+    const payCall = call("pay_vendor_bill", { billId: "BILL-2001" });
+
     const before = bookkeeper({ desk, approve, now: () => new Date(DEMO_NOW) });
     const granted = await roleGate(before)(payCall, hookApi(memos), CONTEXT);
     const first = await roleTool(before, "pay_vendor_bill").execute(
@@ -301,7 +339,7 @@ describe("the payment approval", () => {
       BACKGROUND_CONTEXT,
     );
 
-    // The process restarts: a fresh role over the same desk, the tool task recovered with its memos.
+    // The process restarts after the payment: the same call runs again against a fresh role.
     const after = bookkeeper({ desk, approve, now: () => new Date(DEMO_NOW) });
     const regranted = await roleGate(after)(payCall, hookApi(memos), CONTEXT);
     expect(regranted).toEqual(granted);
@@ -314,7 +352,6 @@ describe("the payment approval", () => {
     expect(asks).toBe(1);
     expect(toolText(again)).toBe(toolText(first));
     expect(toolText(first)).toContain("Paid BILL-2001");
-    // A second payment would have been refused as already paid; the replay answered with the first.
     const paymentId = (first as { details?: { id?: string } }).details?.id;
     expect((await desk.listVendorBills({ billId: "BILL-2001" }))[0]?.paymentId).toBe(paymentId);
   });

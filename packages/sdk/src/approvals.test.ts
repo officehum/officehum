@@ -8,6 +8,7 @@ import {
   APPROVED_FACTS_ARG,
   type ApprovalFactsReader,
   type ApprovalGateOptions,
+  type ApprovalRequest,
   type Approver,
   approvalGate,
   approvedFacts,
@@ -423,6 +424,36 @@ describe("approval facts read before the gate asks", () => {
     expect(again).toEqual(first);
     expect(read).toHaveBeenCalledOnce();
     expect(approve).toHaveBeenCalledOnce();
+  });
+
+  it("a crash mid-ask asks again with the first facts and never rereads them", async () => {
+    const memos = new Map<string, unknown>();
+    const read = reader();
+    const asked: ApprovalRequest[] = [];
+    let crash = true;
+    const approve = vi.fn<Approver>(async (request) => {
+      asked.push(request);
+      // The process dies while the person is deciding: the facts are memoised, no decision is.
+      if (crash) throw new Error("process crashed mid-ask");
+      return { approved: true };
+    });
+    const gate = beforeTool({ approvals, approve, facts: { book_after_hours: read } });
+    await expect(
+      gate(call("book_appointment", { bookingId: "B-1" }), hookApi(memos), context),
+    ).rejects.toThrow("process crashed mid-ask");
+    expect(memos.has("officehum.approval-facts.call-1.book_after_hours")).toBe(true);
+    expect(memos.has("officehum.approval.call-1.book_after_hours")).toBe(false);
+
+    crash = false;
+    read.mockResolvedValue({ summary: "changed", facts: { room: 9 } });
+    const again = await gate(
+      call("book_appointment", { bookingId: "B-1" }),
+      hookApi(memos),
+      context,
+    );
+    expect(read).toHaveBeenCalledOnce();
+    expect(asked.map((request) => request.facts)).toEqual([BOOKING, BOOKING]);
+    expect(approvedFacts(again?.arguments ?? {})).toEqual(BOOKING.facts);
   });
 
   it("does not read facts for a call the approval does not apply to", async () => {
