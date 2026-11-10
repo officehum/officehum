@@ -1,7 +1,8 @@
 /** The invented-testimonial check, on examples both ways. */
 
 import { describe, expect, it } from "vitest";
-import { findUnrecordedTestimonials } from "./testimonials.js";
+import { loadCompanyFacts } from "./company.js";
+import { findUnrecordedTestimonials, ownNames } from "./testimonials.js";
 
 const RECORD = [{ quote: "The crew is always on time and our lobby looks great every morning." }];
 
@@ -95,12 +96,10 @@ describe("findUnrecordedTestimonials", () => {
   });
 
   describe("the company's own names, greetings, places and headings are not speakers", () => {
-    const OWN = [
-      "Northwind Facilities",
-      "Northwind Facilities Ltd.",
-      "Day porter",
-      "Window cleaning",
-    ];
+    const OWN = {
+      company: ["Northwind Facilities", "Northwind Facilities Ltd."],
+      offerings: ["Day porter", "Window cleaning"],
+    };
     const SLOGAN = '"Clean offices make for happy teams every single day"';
 
     it.each([
@@ -162,7 +161,9 @@ describe("findUnrecordedTestimonials", () => {
       [`${said} Morgan Ellis, Harbor Dental`],
       [`${said} Morgan Ellis`],
     ])("refuses %j", (text) => {
-      expect(findUnrecordedTestimonials(text, RECORD, ["Northwind Facilities"])).toHaveLength(1);
+      expect(
+        findUnrecordedTestimonials(text, RECORD, { company: ["Northwind Facilities"] }),
+      ).toHaveLength(1);
     });
 
     it.each([
@@ -176,7 +177,126 @@ describe("findUnrecordedTestimonials", () => {
       ],
       ['"We leave every room better than we found it, every night."\n**Book A Walkthrough**'],
     ])("leaves %j alone", (text) => {
-      expect(findUnrecordedTestimonials(text, RECORD, ["Northwind Facilities"])).toEqual([]);
+      expect(
+        findUnrecordedTestimonials(text, RECORD, { company: ["Northwind Facilities"] }),
+      ).toEqual([]);
+    });
+  });
+
+  describe("probe tables from the re-reviews, with the company's own names as the desk passes them", () => {
+    const OWN = ownNames(loadCompanyFacts());
+    const S = '"Clean offices make for happy teams every single day"';
+    const I = '"We switched to Northwind last spring and have not looked back since."';
+    const refused = (text: string) => findUnrecordedTestimonials(text, RECORD, OWN);
+
+    it.each([
+      // Re-review 1: the company, greetings, lists, places, headings.
+      `${S}\nNorthwind Facilities`,
+      `${S}\nNorthwind Facility Services`,
+      `${S} — Northwind Facility Services`,
+      `${S} — Northwind`,
+      `${S}\nDear Office Managers,`,
+      `${S}\nHello Team,`,
+      `${S}\nHi Dana,\nWinter is here.`,
+      `${S}\nDay Porter. Window Cleaning. Floor Care.`,
+      `${S}\nSeattle, WA`,
+      `${S}\nWinter Specials, now on.`,
+      `New Year Promise: ${S}`,
+      'Try our "Recurring janitorial" and "Day porter" plans.',
+      'Our motto: "Clean offices, happy teams."',
+      `Our motto is ${S} — and we mean it.`,
+      `We call it ${S} - ask us.`,
+      'Book our "Floor care and carpet refresh" service today.',
+      `${S}. That is our promise.`,
+      'Our new 12" mats trap grit. Try "our free walkthrough for any office this month" today.',
+      "Our clients' offices get the 'same crew, same time, every single night' treatment, and we don't cut corners.",
+      // Re-review 2: signatures, sign-offs, lists, calls to action, headings, salutations.
+      `${S}\n\nNorthwind Facilities\n1420 SE Water Avenue, Suite 210\n+1 503 555 0142`,
+      `${S}\nDana Whitfield | Northwind Facilities | +1 503 555 0142`,
+      `${S}\n\nDana Whitfield\nNorthwind Facilities\n+1 503 555 0142`,
+      `${S}\n\nDana Whitfield, Marketing Lead\n+1 503 555 0142`,
+      `${S}\n--\nDana Whitfield\n+1 503 555 0142`,
+      `${S}\nPhone: +1 503 555 0142`,
+      `${S}\nCall +1 503 555 0142`,
+      `${S}\nThanks,\nThe team`,
+      `${S}\nThanks,\nThe Northwind team`,
+      `${S}\n\nThanks, The team`,
+      `${S}\nThe Northwind Team`,
+      `${S} — The Northwind Team`,
+      `${S}\nYour Northwind Crew`,
+      `${S}\nTeam Northwind`,
+      `${S}\n- Free walkthrough\n- Fixed monthly price`,
+      `${S}\n- Day porter\n- Window cleaning`,
+      `${S}\n* Fixed Monthly Pricing\n* Insured Crews`,
+      `${S}\n• Fixed Monthly Pricing\n• Insured Crews`,
+      `${S}\n- Fixed Monthly Pricing\n- Insured Crews`,
+      `${S}\n- Same Crew\n- Every Visit`,
+      `${S}\nLearn More`,
+      `${S}\nFree Walkthrough`,
+      `${S}\n\nWhat We Do\nNightly cleaning for offices.`,
+      `${S} Learn More.`,
+      `${S} Spring Special`,
+      `${S}\nProperty Managers,\nwe have news.`,
+      `${S}\n**Book A Walkthrough**`,
+      `${S} Book Today`,
+      `${S}\n#Portland #CleanOffices`,
+      `${S}\nPortland`,
+      `${S}\n\nTestimonials`,
+    ])("leaves %j alone", (text) => {
+      expect(refused(text)).toEqual([]);
+    });
+
+    it.each([
+      // Re-review 1.
+      `${I} — Morgan Ellis, Harbor Dental`,
+      `${I}\nMorgan Ellis, Harbor Dental`,
+      `${I}\n\n— Morgan Ellis, Harbor Dental`,
+      `${I} (Morgan Ellis, Harbor Dental)`,
+      `Morgan Ellis, Harbor Dental: ${I}`,
+      `Morgan Ellis: ${I}`,
+      `${I.replace('."', ',"')} she said.`,
+      `${I.replace('."', ',"')} the practice manager told us.`,
+      "'We switched to Northwind last spring and have not looked back since,' says Morgan Ellis.",
+      "‘We switched to Northwind last spring and have not looked back since,’ says Morgan Ellis.",
+      `${I} - a client`,
+      `${I} — M. Ellis`,
+      `${I} ~Morgan E.`,
+      "«We switched to Northwind last spring and have not looked back since.» — Morgan Ellis",
+      `Our 12" mats are new. Morgan Ellis says ${I}`,
+      `${I}\n**Morgan Ellis**, Harbor Dental`,
+      `From a client: ${I}`,
+      `${I} Morgan Ellis, Harbor Dental`,
+      // Re-review 2.
+      `${I} — Morgan`,
+      `${I} — _Morgan Ellis_`,
+      `One of our clients: ${I}`,
+      `A practice manager: ${I}`,
+      `Dr. Ellis wrote: ${I}`,
+      `${I} — Morgan Ellis, a customer since 2019`,
+      `${I}\nMorgan Ellis\n+1 503 555 0199`,
+      // N5: client titles that share a first word with a service or price book line.
+      `${I} — Office Manager, Harbor Dental`,
+      `${I}\nOffice Manager, Harbor Dental`,
+      `${I} (Office Manager, Harbor Dental)`,
+      `Office Manager, Harbor Dental: ${I}`,
+      `${I} — Building Manager, Lloyd Tower`,
+      `${I} — Maintenance Director, Lloyd Tower`,
+      // N6: a name line ending in a full stop, and a longer tail ending in a name.
+      `${I}\nMorgan Ellis, office manager, Harbor Dental.`,
+      `${I}\nMorgan Ellis, office manager at Harbor Dental in Portland`,
+      // N8.
+      `Here's what Morgan Ellis had to say: ${I}`,
+      `Morgan from Harbor Dental: ${I}`,
+      `Client Morgan Ellis: ${I}`,
+      `${I} — a Pearl District client`,
+    ])("refuses %j", (text) => {
+      expect(refused(text)).toHaveLength(1);
+    });
+
+    it("accepts the recorded quote with its attribution", () => {
+      expect(
+        refused(`"${RECORD[0]?.quote}" — Leah Brandt, office manager, Cascade Dental Group`),
+      ).toEqual([]);
     });
   });
 

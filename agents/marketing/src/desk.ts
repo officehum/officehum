@@ -17,7 +17,7 @@
 import { sameFacts } from "@officehum/sdk";
 import { findResultClaims, type ResultClaim } from "./claims.js";
 import { type CompanyFacts, loadCompanyFacts, money, postalAddress } from "./company.js";
-import { findUnrecordedTestimonials } from "./testimonials.js";
+import { findUnrecordedTestimonials, ownNames } from "./testimonials.js";
 
 /** Where a post goes. A campaign email's channel is `email`. */
 export type PostChannel = "linkedin" | "facebook" | "instagram" | "website";
@@ -363,6 +363,7 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
   const clock = options.now ?? (() => new Date(DEMO_NOW));
   const audiences = options.audiences ?? demoAudiences();
   const terms = offerTerms(company);
+  const own = ownNames(company);
   const drafts: DraftState[] = (options.drafts ?? demoDrafts(company)).map((draft) => ({
     ...draft,
     heldClaims: [...draft.heldClaims],
@@ -411,11 +412,7 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
    * refused later for words the desk added.
    */
   const unrecordedQuotes = (draft: Pick<DraftState, "subject" | "text">): string[] =>
-    findUnrecordedTestimonials(written(draft), company.marketing.testimonials ?? [], [
-      company.profile.tradingName,
-      company.profile.legalName,
-      ...terms,
-    ]);
+    findUnrecordedTestimonials(written(draft), company.marketing.testimonials ?? [], own);
 
   /** `outcome` says what did not happen at this step: "Nothing was approved." */
   const quoteRefusal = (passages: readonly string[], outcome: string): MarketingDeskError =>
