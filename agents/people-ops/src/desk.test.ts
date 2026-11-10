@@ -789,11 +789,19 @@ describe("company data and the verified sender", () => {
       employee: "Ana Lopez",
       startDate: "2026-11-20",
       endDate: "2026-11-20",
-      days: 1,
+      businessDays: 1,
       reasonCategory: "vacation",
       daysNotice: 11,
       noticeDays: staff.timeOffNoticeDays,
     });
+    // A Friday-to-Monday exception is two business days, as the balance counts it.
+    const weekend = await people.timeOffExceptionFacts({
+      ...input,
+      startDate: "2026-11-13",
+      endDate: "2026-11-16",
+      daysNotice: 4,
+    });
+    expect(weekend.businessDays).toBe(2);
     const changed = await refusal(
       people.requestTimeOffException(
         { ...input, approved: { ...facts, employee: "Ben Carter", employeeId: "E-02" } },
@@ -829,8 +837,8 @@ describe("company data and the verified sender", () => {
     expect(balance.approved[0]).toMatchObject({ id: "TO-1", days: 2 });
   });
 
-  it("checks a self-named sender before refusing a shared first name", async () => {
-    // Two staff called Ana: Ana Lopez naming herself "Ana" is still herself, never ambiguous.
+  it("checks a self-named sender first, but a shared first name stays ambiguous", async () => {
+    // Two staff called Ana. Ana Lopez naming herself in full, or by her surname, is herself.
     const people = fakePeopleOpsDesk({
       company,
       now: () => NOW,
@@ -839,17 +847,36 @@ describe("company data and the verified sender", () => {
         { id: "E-2", name: "Ana Reyes", title: "Cleaner", crewId: "cleaning-north" },
       ],
     });
-    const own = await people.recordTimeOffRequest(
-      {
-        employee: "Ana",
-        startDate: "2026-12-21",
-        endDate: "2026-12-21",
-        reasonCategory: "vacation",
-        from: ANA,
-      },
-      { requestId: "self-ana" },
+    const request = {
+      startDate: "2026-12-21",
+      endDate: "2026-12-21",
+      reasonCategory: "vacation" as const,
+      from: ANA,
+    };
+    const full = await people.recordTimeOffRequest(
+      { ...request, employee: "Ana Lopez" },
+      { requestId: "self-full" },
     );
-    expect(own.employeeName).toBe("Ana Lopez");
+    expect(full.employeeName).toBe("Ana Lopez");
+    const surname = await people.recordTimeOffRequest(
+      { ...request, startDate: "2026-12-22", endDate: "2026-12-22", employee: "Lopez" },
+      { requestId: "self-surname" },
+    );
+    expect(surname.employeeName).toBe("Ana Lopez");
+    // "Ana" names a colleague as well, so it is ambiguous, never quietly the sender.
+    const shared = await refusal(
+      people.recordTimeOffRequest(
+        { ...request, startDate: "2026-12-23", endDate: "2026-12-23", employee: "Ana" },
+        { requestId: "self-shared" },
+      ),
+    );
+    expect(shared.code).toBe("ambiguous");
+    // With nobody else called Ana, her first name alone is herself.
+    const unique = await desk().recordTimeOffRequest(
+      { ...request, employee: "Ana" },
+      { requestId: "self-unique" },
+    );
+    expect(unique.employeeName).toBe("Ana Lopez");
   });
 
   it("get_leave_balance refuses an unknown sender", async () => {

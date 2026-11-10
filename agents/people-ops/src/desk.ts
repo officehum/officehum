@@ -210,7 +210,8 @@ export interface TimeOffExceptionFacts {
   readonly employee: string;
   readonly startDate: string;
   readonly endDate: string;
-  readonly days: number;
+  /** Monday-to-Friday days off, counted as the leave balance counts them. */
+  readonly businessDays: number;
   readonly reasonCategory: ReasonCategory;
   readonly daysNotice: number;
   readonly noticeDays: number;
@@ -781,12 +782,17 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     const sender = senderStaff(input.from, "no time off is recorded for them");
     const named = input.employee?.trim() ?? "";
     if (named === "") return sender;
-    // The sender naming themselves is themselves, before any shared first name can be ambiguous.
+    // The sender naming themselves is themselves: by id or full name always, and by one part of
+    // their name only when no colleague shares it. A shared first name stays ambiguous, so a filer
+    // naming "Ana" for another Ana is never quietly recorded as themselves.
     const wanted = named.toLowerCase();
+    const sharesPart = (employee: Employee) =>
+      employee.name.toLowerCase().split(" ").includes(wanted);
     if (
       sender.id.toLowerCase() === wanted ||
       sender.name.toLowerCase() === wanted ||
-      sender.name.toLowerCase().split(" ").includes(wanted)
+      (sharesPart(sender) &&
+        !employees.some((other) => other.id !== sender.id && sharesPart(other)))
     ) {
       return sender;
     }
@@ -832,7 +838,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
       employee: employee.name,
       startDate: dates.start,
       endDate: dates.end,
-      days: daysBetween(dates.start, dates.end) + 1,
+      businessDays: businessDays(dates.start, dates.end),
       reasonCategory: input.reasonCategory,
       daysNotice: dates.daysNotice,
       noticeDays: staff.timeOffNoticeDays,

@@ -502,7 +502,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
       throw new Error(`${error.message}${hints[error.code]} Nothing was put to a person.`);
     }
     return {
-      summary: `Approve time off for ${facts.employee}, ${facts.startDate} to ${facts.endDate} (${facts.days} ${facts.days === 1 ? "day" : "days"}), ${reasonWords(facts.reasonCategory)}, with ${facts.daysNotice} days' notice where the company asks for ${facts.noticeDays}`,
+      summary: `Approve time off for ${facts.employee}, ${facts.startDate} to ${facts.endDate} (${facts.businessDays} business ${facts.businessDays === 1 ? "day" : "days"}, Monday to Friday), ${reasonWords(facts.reasonCategory)}, with ${facts.daysNotice} days' notice where the company asks for ${facts.noticeDays}`,
       facts: { ...facts },
     };
   };

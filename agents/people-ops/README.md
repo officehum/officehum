@@ -82,8 +82,8 @@ only a person on the company record (the People Ops owner, say) may name another
 (`someone_else` otherwise). A sender nobody verified is refused with `unknown_sender`, and one who is
 not on staff with `not_staff`. `get_leave_balance` takes no arguments at all: it gives the sender
 their allowance (each demonstration staff record carries one) less the approved business days
-(Monday to Friday) that fall this year, worked out by the desk. A crew member naming themselves, even
-by a first name others share, is themselves.
+(Monday to Friday) that fall this year, worked out by the desk. A crew member naming themselves in full,
+or by a part of their name no colleague shares, is themselves; a shared first name stays ambiguous.
 
 **Time off.** The model gives the dates and the kind of reason the employee gave; the
 desk works out the notice against `staffPolicies.timeOffNoticeDays`. Enough notice: recorded as

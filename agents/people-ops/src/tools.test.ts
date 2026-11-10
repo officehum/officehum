@@ -259,7 +259,7 @@ describe("request_time_off_exception", () => {
     // What the approval gate hands the tool after a yes: the arguments and the desk-read facts.
     const read = await toolset.exceptionFacts(args, BACKGROUND_CONTEXT as never, call("x0"));
     expect(read.summary).toBe(
-      "Approve time off for Ana Lopez, 2026-11-20 to 2026-11-20 (1 day), vacation, with 11 days' notice where the company asks for 14",
+      "Approve time off for Ana Lopez, 2026-11-20 to 2026-11-20 (1 business day, Monday to Friday), vacation, with 11 days' notice where the company asks for 14",
     );
     const approved = { ...args, [APPROVED_FACTS_ARG]: read.facts };
     const first = await toolset.requestTimeOffException.execute(

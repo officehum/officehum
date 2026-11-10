@@ -101,7 +101,7 @@ function recording(decisions: string[], approved: boolean, seen?: unknown[]): Ap
 
 /** What the person deciding Ana's late request is shown, read from the desk. */
 const ANA_SUMMARY =
-  "Approve time off for Ana Lopez, 2026-11-20 to 2026-11-20 (1 day), vacation, with 11 days' notice where the company asks for 14";
+  "Approve time off for Ana Lopez, 2026-11-20 to 2026-11-20 (1 business day, Monday to Friday), vacation, with 11 days' notice where the company asks for 14";
 
 /** Ana herself, writing from the address her staff record holds. */
 const ANA: SenderResolver = async () => ({
