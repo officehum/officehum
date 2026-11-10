@@ -63,6 +63,42 @@ describe("findPeople", () => {
   it("is empty for an empty string", () => {
     expect(findPeople(company, "   ")).toEqual([]);
   });
+
+  it("matches an alias as a whole word, ignoring case", () => {
+    const aliased = {
+      people: company.people.map((p) => (p.id === "dana" ? { ...p, aliases: ["DR"] } : p)),
+    };
+    expect(findPeople(aliased, "complaint about DR").map((p) => p.id)).toEqual(["dana"]);
+    expect(findPeople(aliased, "it was dr on the phone").map((p) => p.id)).toEqual(["dana"]);
+    expect(findPeople(aliased, "the DRY cleaning")).toEqual([]);
+  });
+
+  it('matches a first initial and surname ("D. Reyes")', () => {
+    expect(findPeople(company, "D. Reyes said so").map((p) => p.id)).toEqual(["dana"]);
+    expect(findPeople(company, "D Reyes").map((p) => p.id)).toEqual(["dana"]);
+  });
+
+  it("leaves every existing title, name and HR-word match unchanged when aliases exist", () => {
+    const aliased = {
+      people: company.people.map((p) => ({ ...p, aliases: [`${p.id.toUpperCase()}X`] })),
+    };
+    for (const words of [
+      "my complaint is about HR",
+      "the people manager",
+      "human resources",
+      "ask dana",
+      "Mr Park",
+      "the crew lead",
+      "the managing director",
+      "Danacorp",
+      "nobody here",
+    ]) {
+      expect(
+        findPeople(aliased, words).map((p) => p.id),
+        words,
+      ).toEqual(findPeople(company, words).map((p) => p.id));
+    }
+  });
 });
 
 describe("personLabel", () => {

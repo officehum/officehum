@@ -506,6 +506,23 @@ function deskReader(answer: ApprovalFacts | Error = BILL_FACTS) {
 }
 
 describe("approval facts at the office gate", () => {
+  it("hands the reader the call's conversation and task from the hook API", async () => {
+    const fixture = openFixture();
+    try {
+      const identities: unknown[] = [];
+      const read: ApprovalFactsReader = async (_args, _context, identity) => {
+        identities.push(identity);
+        return BILL_FACTS;
+      };
+      const gate = gateOf(fixture.board, [ANY_PAYMENT], {}, { any_payment: read });
+      // The model cannot steer the identity: ids in the arguments are ignored.
+      await gate(call(PAY, { ...BILL, conversationId: 999, taskId: "forged" }), hookApi(), CONTEXT);
+      expect(identities).toEqual([{ conversationId: CONVERSATION, taskId: "task-1" }]);
+    } finally {
+      fixture.close();
+    }
+  });
+
   it("records desk-read facts with the request", async () => {
     const fixture = openFixture();
     try {

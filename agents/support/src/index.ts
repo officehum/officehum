@@ -19,7 +19,7 @@
  */
 
 import { fileURLToPath } from "node:url";
-import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
+import { type Approver, type DefinedRole, defineRole, type SenderResolver } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
 import { DEMO_NOW, fakeSupportDesk, type SupportDesk } from "./desk.js";
@@ -55,13 +55,14 @@ export {
   type Client,
   type ClientRecord,
   type Credit,
-  type CreditInput,
+  type CreditFilter,
   type CreditNote,
-  type CreditQuote,
+  creditApprovalFacts,
   DEMO_NOW,
   type DeskRefusal,
   demoCases,
   demoClients,
+  demoCredits,
   demoInvoices,
   ESCALATION_REASONS,
   type EscalateInput,
@@ -74,8 +75,10 @@ export {
   type InvoiceLine,
   type InvoiceLineInput,
   type InvoiceRecord,
+  type IssueCreditInput,
   type LogCaseInput,
   type Priority,
+  type ProposeCreditInput,
   type Reclean,
   type SupportCase,
   type SupportDesk,
@@ -108,6 +111,12 @@ export interface SupportOptions {
    * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock with a host's desk.
    */
   readonly now?: () => Date;
+  /**
+   * Who each call's work came from, as the host verified it. A colleague on the company record may
+   * read any client's cases, a client's contact on the desk only their own. Omitted: every sender is
+   * unknown, so no case data is given out and a case can only be logged and handed to a person.
+   */
+  readonly sender?: SenderResolver;
 }
 
 export default function support(options: SupportOptions = {}): DefinedRole {
@@ -119,7 +128,11 @@ export default function support(options: SupportOptions = {}): DefinedRole {
   // The demonstration desk prices invoices and works out credits from the company's own price book
   // and policies, so a first run and a real one refuse the same things.
   const desk = options.desk ?? fakeSupportDesk({ company, now });
-  const tools = supportTools({ desk, company });
+  const tools = supportTools({
+    desk,
+    company,
+    ...(options.sender === undefined ? {} : { sender: options.sender }),
+  });
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
@@ -129,13 +142,17 @@ export default function support(options: SupportOptions = {}): DefinedRole {
       tools.listCases,
       tools.logCase,
       tools.bookReclean,
+      tools.proposeCredit,
       tools.offerCredit,
+      tools.withdrawCredit,
       tools.escalateCase,
       tools.resolveCase,
       tools.readCompany,
     ],
-    // The credit approval is `officehum.json`'s, on every call of offer_credit; the SDK's gate
-    // evaluates it here and in the office from the same declaration.
+    // The credit approval is `officehum.json`'s, on every call of offer_credit. A credit names only
+    // its proposal: the gate reads the proposal's facts from the desk, shows them to the person and
+    // hands them to offer_credit on a yes, so the desk issues only the credit the person saw.
+    approvalFacts: { any_credit: tools.creditFacts },
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

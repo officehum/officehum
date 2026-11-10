@@ -216,7 +216,10 @@ export function approvalHooks(options: ApprovalHookOptions): readonly HookRegist
           let facts: ApprovalFacts | undefined;
           if (reader !== undefined) {
             try {
-              facts = await reader(args, context);
+              facts = await reader(args, context, {
+                conversationId: api.conversationId,
+                taskId: api.taskId,
+              });
             } catch (error) {
               // An abort is not a refusal: rethrown, the call stays unsettled and runs again on
               // resume, as the SDK gate does, instead of settling as a block nobody earned.

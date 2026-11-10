@@ -289,6 +289,55 @@ describe("the company package's own consistency", () => {
       expect(companyIssues(readSource(directory))).toEqual([]);
     });
 
+    it("refuses a duplicate alias", () => {
+      const issues = issuesAfter((c) => {
+        c.people[1].aliases = ["dw"];
+        c.people[2].aliases = ["", 7];
+      });
+      expect(issues).toContain('people[1] (marcus-oyelaran) repeats the alias "dw"');
+      expect(issues).toContain("people[2] (priya-raman) aliases[0] must be a non-empty string");
+      expect(issues).toContain("people[2] (priya-raman) aliases[1] must be a non-empty string");
+    });
+
+    it("refuses an alias that is another person's name, first name, surname or id", () => {
+      const issues = issuesAfter((c) => {
+        c.people[0].aliases = ["DW", "Tom", "becker", "eileen-hart", "Priya Raman"];
+      });
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "Tom" is already another person\'s name (tom-becker)',
+      );
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "becker" is already another person\'s name (tom-becker)',
+      );
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "eileen-hart" is already another person\'s name (eileen-hart)',
+      );
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "Priya Raman" is already another person\'s name (priya-raman)',
+      );
+      expect(issues).not.toContain('alias "DW"');
+    });
+
+    it("refuses an alias that is another person's title or a word of it", () => {
+      const issues = issuesAfter((c) => {
+        c.people[0].aliases = ["DW", "Operations Manager", "lead"];
+      });
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "Operations Manager" is already another person\'s title (priya-raman)',
+      );
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "lead" is already another person\'s title (tom-becker)',
+      );
+      expect(issues).not.toContain('alias "DW"');
+    });
+
+    it("refuses aliases that are not a list", () => {
+      const issues = issuesAfter((c) => {
+        c.people[3].aliases = "TB";
+      });
+      expect(issues).toContain("people[3] (tom-becker) aliases must be a list of names");
+    });
+
     it("refuses a staff-policy contact who is not a person", () => {
       const issues = issuesAfter((c) => {
         c.staffPolicies.payQuestionsTo = "nobody";

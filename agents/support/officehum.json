@@ -4,7 +4,7 @@
   "id": "support",
   "name": "Customer Support",
   "department": "front-office",
-  "role": "Logs client complaints as cases, books re-cleans, asks a person for every credit, and escalates safety and refunds",
+  "role": "Logs client complaints as cases, books re-cleans, proposes credits a person decides, and escalates safety and refunds",
   "defaultModel": {
     "provider": "paper",
     "modelId": "ultramarine-1-flash",
@@ -19,7 +19,7 @@
     {
       "name": "list_cases",
       "replay": "safe",
-      "description": "List a client's cases, or one case: what it is about, its status, re-clean, credit and escalation, and the credit the desk works out for each of the client's invoice lines."
+      "description": "List the asking client's cases (a colleague may name any client), or one case: what it is about, its status, re-clean, credit and escalation, and the credit the desk works out for each of the client's invoice lines. An unknown sender gets no case data."
     },
     {
       "name": "log_case",
@@ -34,9 +34,21 @@
       "description": "Book a re-clean for a complaint that a visit fell short, on a date. The desk refuses any other kind of case, a date outside the re-clean window, and a second re-clean."
     },
     {
+      "name": "propose_credit",
+      "replay": "unsafe",
+      "noApproval": "Records a proposed credit for a person to decide; issues nothing. The desk works out the client and the amount, records it as pending, and refuses a second credit on the case; only offer_credit, after a person's approval, issues it.",
+      "description": "Record a proposed credit note on one invoice line for one complaint, with the amount the desk works out, for a person to decide. Issues nothing."
+    },
+    {
       "name": "offer_credit",
       "replay": "unsafe",
-      "description": "Ask a person to approve a credit note on one invoice line for one complaint, with the client and credit exactly as list_cases gave them. The desk works the credit out; once approved it issues exactly that."
+      "description": "Ask a person to approve one proposed credit, named by its id. The desk reads the proposal's client, case, invoice line and amount and shows them; once approved it issues exactly that, and refuses if the proposal changed since."
+    },
+    {
+      "name": "withdraw_credit",
+      "replay": "unsafe",
+      "noApproval": "Records that a proposed credit will not be issued, and why (a person declined it). It issues nothing, moves no money and sends nothing to the client; an issued credit cannot be withdrawn.",
+      "description": "Record that a proposed credit will not be issued, with the reason. Only for a credit still waiting for a decision."
     },
     {
       "name": "escalate_case",
@@ -47,8 +59,8 @@
     {
       "name": "resolve_case",
       "replay": "unsafe",
-      "noApproval": "An internal record that a case is closed, with its outcome. The desk refuses a case with a credit waiting for a person, a re-clean not yet done, a safety case not escalated, or a case handed to a person.",
-      "description": "Close a case with the outcome recorded. The desk refuses it while a credit waits for a person, a re-clean is not done, or the case is someone else's."
+      "noApproval": "An internal record that a case is closed, with its outcome. The desk refuses a case with a credit proposal pending, a re-clean not yet done, a safety case not escalated, or a case handed to a person.",
+      "description": "Close a case with the outcome recorded. The desk refuses it while a credit proposal is pending, a re-clean is not done, or the case is someone else's."
     },
     {
       "name": "read_company",
@@ -61,7 +73,7 @@
     {
       "id": "any_credit",
       "tool": "offer_credit",
-      "description": "Approve this credit note for this client, on this invoice line, for this amount in cents, all worked out by the desk"
+      "description": "Approve this proposed credit note as the desk holds it: the client, the case, the invoice line and the amount it worked out"
     }
   ],
   "channels": ["email", "chat"],
@@ -93,10 +105,10 @@
     },
     {
       "action": "Give or promise a credit without a person's approval, or name a credit amount the desk did not work out",
-      "instead": "call offer_credit with the case, invoice line, client and credit exactly as list_cases gave them; say it waits for a person"
+      "instead": "record it with propose_credit for the case and invoice line list_cases gave, then call offer_credit with the creditId it returns; say it waits for a person"
     },
     {
-      "action": "Close a case with no outcome, or while a credit waits, a re-clean is not done, or it is someone else's",
+      "action": "Close a case with no outcome, or while a credit proposal is pending, a re-clean is not done, or it is someone else's",
       "instead": "say what the case still waits for and who has it, and close it with resolve_case once the desk allows it"
     },
     {
@@ -112,8 +124,8 @@
       "instead": "apologise for the experience, log it, and hand it with escalate_case (reason legal) to the person the company names"
     },
     {
-      "action": "Give one client another client's details, or anyone a key, code or card number",
-      "instead": "say it cannot be shared, and hand a data request with escalate_case (reason data)"
+      "action": "Give one client another client's details or cases, give case data to a sender the desk does not know, or anyone a key, code or card number",
+      "instead": "say it cannot be shared, log what they raised, and hand a data request with escalate_case (reason data)"
     },
     {
       "action": "Answer for another team: schedules and crews, new work and prices, pay and time off, suppliers",

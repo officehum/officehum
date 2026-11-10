@@ -860,7 +860,7 @@ function decisionHook(
   // trying after a refusal, and that is the behaviour worth watching the gate against.
   const stopUnscripted = options.office?.stopOnUnscriptedApproval !== false;
   return hook(ToolTask, {
-    beforeTool: async (call, _api, context) => {
+    beforeTool: async (call, api, context) => {
       // The row is written about the call as the gate will see it: without the approved-facts key.
       const args = withoutApprovedFacts(call.arguments);
       const declared = role.manifest.approvals.filter((entry) => entry.tool === call.name);
@@ -912,7 +912,10 @@ function decisionHook(
       let facts: ApprovalFacts | undefined;
       if (reader !== undefined) {
         try {
-          facts = await reader(args, context);
+          facts = await reader(args, context, {
+            conversationId: api.conversationId,
+            taskId: api.taskId,
+          });
         } catch {
           return undefined;
         }

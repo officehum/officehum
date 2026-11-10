@@ -114,6 +114,8 @@ export function companyIssues(source: CompanySource): readonly string[] {
   const people = asArray(company.people);
   if (people === undefined) add("company.json", "people is missing");
   const personIds = new Set<string>();
+  // An alias names one person: roles route a complaint away from whoever it names.
+  const aliases = new Map<string, string>();
   for (const [index, entry] of (people ?? []).entries()) {
     const person = asRecord(entry);
     const id = person === undefined ? undefined : text(person.id);
@@ -126,12 +128,73 @@ export function companyIssues(source: CompanySource): readonly string[] {
     if (text(asRecord(person)?.email) === undefined) {
       add("company.json", `people[${index}] (${id}) has no email`);
     }
+    const named = asRecord(person)?.aliases;
+    if (named !== undefined) {
+      const list = asArray(named);
+      if (list === undefined) {
+        add("company.json", `people[${index}] (${id}) aliases must be a list of names`);
+      }
+      for (const [at, alias] of (list ?? []).entries()) {
+        if (typeof alias !== "string" || alias.trim() === "") {
+          add("company.json", `people[${index}] (${id}) aliases[${at}] must be a non-empty string`);
+          continue;
+        }
+        const key = alias.trim().toLowerCase();
+        const holder = aliases.get(key);
+        if (holder !== undefined) {
+          add(
+            "company.json",
+            `people[${index}] (${id}) repeats the alias ${JSON.stringify(alias)}, already ${holder}'s`,
+          );
+        }
+        aliases.set(key, holder ?? id);
+      }
+    }
     const department = asRecord(person)?.department;
     if (typeof department !== "string" || !DEPARTMENTS.includes(department)) {
       add(
         "company.json",
         `people[${index}] (${id}) has the department ${JSON.stringify(department)}; use one of ${DEPARTMENTS.join(", ")}`,
       );
+    }
+  }
+
+  // An alias that is another person's id, full name or a part of it would make one word name two
+  // people, so a complaint about one would silently be kept from both.
+  for (const [index, entry] of (people ?? []).entries()) {
+    const person = asRecord(entry);
+    const id = person === undefined ? undefined : text(person.id);
+    if (id === undefined) continue;
+    for (const alias of asArray(person?.aliases) ?? []) {
+      if (typeof alias !== "string" || alias.trim() === "") continue;
+      const key = alias.trim().toLowerCase();
+      const holder = (people ?? []).map(asRecord).find((other) => {
+        const otherId = text(other?.id);
+        if (otherId === undefined || otherId === id) return false;
+        const name = text(other?.name)?.toLowerCase() ?? "";
+        return otherId.toLowerCase() === key || name === key || name.split(" ").includes(key);
+      });
+      if (holder !== undefined) {
+        add(
+          "company.json",
+          `people[${index}] (${id}) alias ${JSON.stringify(alias)} is already another person's name (${String(holder.id)})`,
+        );
+        continue;
+      }
+      // findPeople matches a title too, so an alias that is a title or a word of one names that
+      // title's holder as well.
+      const titled = (people ?? []).map(asRecord).find((other) => {
+        const otherId = text(other?.id);
+        if (otherId === undefined || otherId === id) return false;
+        const title = text(other?.title)?.toLowerCase() ?? "";
+        return title === key || title.split(" ").includes(key);
+      });
+      if (titled !== undefined) {
+        add(
+          "company.json",
+          `people[${index}] (${id}) alias ${JSON.stringify(alias)} is already another person's title (${String(titled.id)})`,
+        );
+      }
     }
   }
 

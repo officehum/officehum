@@ -19,7 +19,8 @@ company record by the reason.
 
 1. **Log the case first** with `log_case` if it is not one already.
 2. **Escalate** with the case, the reason and a note: what happened, what the client wants, and
-   anything already done. For a complaint about someone, `about` names them; the desk never hands it
+   anything already done. Never address the note to anyone: the desk keeps a case away from everyone
+   its note, its summary or `about` names. For a complaint about someone, `about` names them; the desk never hands it
    to that person, and says who has it instead.
 3. **Tell the client** who has it, by name and title, as the receipt gives it; do not say when they
    will reply. Never say a person has it before the receipt says so, and never say what they will

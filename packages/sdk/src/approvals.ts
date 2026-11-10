@@ -61,13 +61,22 @@ export interface ApprovalFacts {
 
 /**
  * Reads an approval's facts for one call, from the role's records. It sees the call's arguments
- * without `APPROVED_FACTS_ARG`. Throwing blocks the call with the error's message and asks nobody, so
- * a reader that cannot find the thing to approve says why in words the model can act on.
+ * without `APPROVED_FACTS_ARG`, and the call's conversation and task, the same pair a
+ * `SenderResolver` takes, so a role can read only what the call's sender may see. Throwing blocks
+ * the call with the error's message and asks nobody, so a reader that cannot find the thing to
+ * approve says why in words the model can act on.
  */
 export type ApprovalFactsReader = (
   args: ToolArguments,
   context: HookContext,
+  call: ApprovalCallIdentity,
 ) => Promise<ApprovalFacts>;
+
+/** The conversation and task a gated call belongs to, from the hook's API, never from arguments. */
+export interface ApprovalCallIdentity {
+  readonly conversationId: unknown;
+  readonly taskId: unknown;
+}
 
 /**
  * The argument the gate sets to the approved facts. The gate overwrites or removes it on every call,
@@ -285,7 +294,10 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
           if (reader !== undefined && facts === undefined) {
             let read: ApprovalFacts;
             try {
-              read = await reader(args, context);
+              read = await reader(args, context, {
+                conversationId: api.conversationId,
+                taskId: api.taskId,
+              });
             } catch (error) {
               context.abortSignal?.throwIfAborted();
               return { block: error instanceof Error ? error.message : String(error) };
