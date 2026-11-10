@@ -147,6 +147,21 @@ describe("loadRole", () => {
     ).rejects.toThrow(/The client named "sender" is reserved/);
   });
 
+  it("loadRole passes demo to the factory only when the host sets it", async () => {
+    const recording = await recordingRole(sampleDesk);
+    temps.push(recording.dir);
+    await loadRole(recording.dir, { clients: { calendar }, demo: true });
+    expect(recording.options()?.demo).toBe(true);
+    await loadRole(recording.dir, { clients: { calendar } });
+    expect(recording.options()).not.toHaveProperty("demo");
+  });
+
+  it("a client named demo is refused", async () => {
+    await expect(loadRole(sampleDesk, { clients: { calendar, demo: true } })).rejects.toThrow(
+      /The client named "demo" is reserved/,
+    );
+  });
+
   it("refuses a client named after a factory option loadRole sets itself", async () => {
     await expect(loadRole(sampleDesk, { clients: { calendar, overlays: [] } })).rejects.toThrow(
       /The client named "overlays" is reserved/,

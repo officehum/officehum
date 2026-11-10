@@ -8,10 +8,10 @@
  * checked against the manifest (`checkAgent`).
  *
  * The factory is a role package's default export. It is called with the caller's overlays, approver,
- * clock (`now`), verified sender (`sender`), an engine built from the manifest when the package
- * declares one, and the named app clients the caller passes (`calendar`, `quickbooks`, …). A role
- * package keeps its own app clients; the host decides which concrete client each name resolves to.
- * See docs/design/agent-package.md.
+ * clock (`now`), verified sender (`sender`), whether to run on demonstration data (`demo`), an
+ * engine built from the manifest when the package declares one, and the named app clients the caller
+ * passes (`calendar`, `quickbooks`, …). A role package keeps its own app clients; the host decides
+ * which concrete client each name resolves to. See docs/design/agent-package.md.
  */
 
 import { readFile } from "node:fs/promises";
@@ -36,7 +36,14 @@ import {
 import { PI_DURABLE_VERSION } from "../version.js";
 
 /** The names `loadRole` passes to a role factory itself; a client may not reuse them. */
-export const RESERVED_ROLE_OPTIONS = ["overlays", "approve", "engine", "now", "sender"] as const;
+export const RESERVED_ROLE_OPTIONS = [
+  "overlays",
+  "approve",
+  "engine",
+  "now",
+  "sender",
+  "demo",
+] as const;
 
 /** Options a host gives `loadRole`; everything here reaches the role's factory. */
 export interface LoadRoleOptions {
@@ -59,6 +66,13 @@ export interface LoadRoleOptions {
    * sender of its own. Omitted: the role treats every sender as unknown.
    */
   readonly sender?: SenderResolver;
+  /**
+   * Run on the role's demonstration data, passed to the factory as `demo`: a role that keeps its
+   * records behind a desk builds its demonstration desk only when this is set and the host binds no
+   * desk of its own. Reserved, so a client file or a user's config can never switch a production
+   * role onto made-up records. Omitted: a role with no desk bound refuses its desk tools.
+   */
+  readonly demo?: boolean;
   /** Named app clients the factory receives, e.g. `{ calendar, quickbooks }`. */
   readonly clients?: Readonly<Record<string, unknown>>;
 }
@@ -190,6 +204,7 @@ export async function loadRole(dir: string, options: LoadRoleOptions = {}): Prom
   if (engine !== undefined) factoryOptions.engine = engine;
   if (options.now !== undefined) factoryOptions.now = options.now;
   if (options.sender !== undefined) factoryOptions.sender = options.sender;
+  if (options.demo !== undefined) factoryOptions.demo = options.demo;
 
   const entry = await entryPoint(dir);
   const module = (await loadEntry(entry, rolePackage.name)) as { default?: unknown };

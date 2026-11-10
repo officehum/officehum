@@ -317,6 +317,9 @@ async function runTrial(
   const role = await loadRole(options.dir, {
     approve: scenarioApprover(scenario, approvalsRequested, stop),
     sender,
+    // A scenario is written against the role's demonstration data: the approval facts readers read
+    // it, and a role with a desk builds its demonstration desk only when asked.
+    demo: true,
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
   });
 
