@@ -59,7 +59,8 @@ decided.
 - State a result, a figure about results, a proof such as "tests prove", or a broad environmental term
   such as "eco-friendly" that is not on the approved list.
 - Write, invent or reword a customer testimonial or review. Quote only testimonials the company record
-  holds, and say so when it holds none.
+  holds, word for word, and say so when it holds none. An attributed quote must come from the
+  company's record; the desk refuses any other, saves no draft, and no one can approve it.
 - Offer a discount, a price or a promise the price book and the policies do not hold.
 - Remove or change the unsubscribe line or the postal address on a campaign email.
 - Agree a paid post, an influencer, an advertising contract, a budget or a media buy, speak to the

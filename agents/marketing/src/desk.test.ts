@@ -138,6 +138,202 @@ describe("fakeMarketingDesk: drafting a post", () => {
     expect(dressed.claims?.[0]?.phrase).toBe("30%");
   });
 
+  describe("testimonials", () => {
+    const invented =
+      '"Northwind cut our sick days and the lobby has never looked this good." — Morgan Ellis';
+    const recorded = company.marketing.testimonials?.[0];
+
+    it("holds a testimonial on record for the tests below", () => {
+      expect(recorded?.quote.split(/\s+/).length).toBeGreaterThanOrEqual(6);
+    });
+
+    it("refuses an invented testimonial, saves no draft, and gives no claim a person could approve", async () => {
+      const marketing = desk();
+      const error = await refusal(
+        marketing.draftPost(
+          { channel: "linkedin", text: `Hear it from a client. ${invented}` },
+          { requestId: "t1" },
+        ),
+      );
+      expect(error.code).toBe("unrecorded_testimonial");
+      expect(error.draftId).toBeUndefined();
+      expect(error.claims).toBeUndefined();
+      expect(error.message).toContain("Northwind cut our sick days");
+      expect(error.message).toContain("nothing was published");
+      // The same call replayed is the same refusal, and no draft was saved.
+      expect(
+        (
+          await refusal(
+            marketing.draftPost({ channel: "linkedin", text: invented }, { requestId: "t1" }),
+          )
+        ).code,
+      ).toBe("unrecorded_testimonial");
+      expect(await marketing.listDrafts({ id: "D-106" })).toEqual([]);
+      // With nothing held, a person is never asked to approve it.
+      expect(
+        (
+          await refusal(
+            marketing.approveClaim({ draftId: "D-106", approved: {} }, { requestId: "g" }),
+          )
+        ).code,
+      ).toBe("not_found");
+      // The refusal is for the quote even when the same text states a result claim.
+      const both = await refusal(
+        marketing.draftPost(
+          { channel: "facebook", text: `${invented} Our floors are 2x cleaner.` },
+          { requestId: "t2" },
+        ),
+      );
+      expect(both.code).toBe("unrecorded_testimonial");
+      expect(await marketing.listDrafts({ id: "D-106" })).toEqual([]);
+      // An invented quote in a campaign email is refused the same way.
+      const email = await refusal(
+        marketing.draftCampaignEmail(
+          { subject: "Kind words", body: invented, audienceId: "prospects" },
+          { requestId: "t3" },
+        ),
+      );
+      expect(email.code).toBe("unrecorded_testimonial");
+    });
+
+    it("never lets a held draft carrying an invented testimonial be approved or published", async () => {
+      const [seed] = demoDrafts(company);
+      if (seed === undefined) throw new Error("no demonstration draft");
+      const text = `${invented} Our floors are 2x cleaner.`;
+      const marketing = fakeMarketingDesk({
+        now: () => new Date(DEMO_NOW),
+        drafts: [
+          {
+            ...seed,
+            id: "D-300",
+            status: "held",
+            text,
+            finalText: text,
+            heldClaims: [{ claim: "Our floors are 2x cleaner.", phrase: "2x cleaner" }],
+          },
+        ],
+      });
+      const grant = await approvedClaims(marketing, "D-300");
+      expect((await refusal(marketing.approveClaim(grant, { requestId: "g" }))).code).toBe(
+        "unrecorded_testimonial",
+      );
+      const [after] = await marketing.listDrafts({ id: "D-300" });
+      expect(after?.status).toBe("held");
+    });
+
+    it("says what was refused at each step: nothing approved, nothing published, not 'nothing saved'", async () => {
+      const [seed] = demoDrafts(company);
+      if (seed === undefined) throw new Error("no demonstration draft");
+      const held = `${invented} Our floors are 2x cleaner.`;
+      const marketing = fakeMarketingDesk({
+        now: () => new Date(DEMO_NOW),
+        drafts: [
+          {
+            ...seed,
+            id: "D-300",
+            status: "held",
+            text: held,
+            finalText: held,
+            heldClaims: [{ claim: "Our floors are 2x cleaner.", phrase: "2x cleaner" }],
+          },
+          { ...seed, id: "D-301", status: "draft", text: invented, finalText: invented },
+        ],
+      });
+      const grant = await refusal(
+        marketing.approveClaim(await approvedClaims(marketing, "D-300"), { requestId: "g" }),
+      );
+      expect(grant.message).toContain("Nothing was approved");
+      expect(grant.message).not.toContain("Nothing was saved");
+      const out = await refusal(
+        marketing.publish(await approvedPublication(marketing, "D-301"), { requestId: "p" }),
+      );
+      expect(out.code).toBe("unrecorded_testimonial");
+      expect(out.message).toContain("Nothing was published");
+      expect(out.message).not.toContain("Nothing was saved");
+    });
+
+    it("saves and publishes an email whose body ends with a quoted slogan: the footer is not an attribution", async () => {
+      const marketing = desk();
+      const body =
+        'Winter floor care is booked now. Our promise is simple: "clean offices make for happy teams every day"';
+      const draft = await marketing.draftCampaignEmail(
+        { subject: "Winter floor care", body, audienceId: "current-clients" },
+        { requestId: "e1" },
+      );
+      expect(draft.status).toBe("draft");
+      const published = await marketing.publish(await approvedPublication(marketing, draft.id), {
+        requestId: "p1",
+      });
+      expect(published.draftId).toBe(draft.id);
+    });
+
+    it("saves an email whose quoted subject is followed by a greeting, and a post signed by the company", async () => {
+      const marketing = desk();
+      const email = await marketing.draftCampaignEmail(
+        {
+          subject: '"Clean offices make for happy teams every single day"',
+          body: "Hi Dana,\nWinter floor care is booked now. Reply to book a time.",
+          audienceId: "current-clients",
+        },
+        { requestId: "e3" },
+      );
+      expect(email.status).toBe("draft");
+      const post = await marketing.draftPost(
+        {
+          channel: "linkedin",
+          text: `"Clean offices make for happy teams every single day" — ${company.profile.tradingName}`,
+        },
+        { requestId: "s2" },
+      );
+      expect(post.status).toBe("draft");
+    });
+
+    it("leaves a quoted slogan followed by a dash and ordinary words alone", async () => {
+      const draft = await desk().draftPost(
+        {
+          channel: "linkedin",
+          text: 'Our motto is "clean offices make for happy teams every day" — and we mean it.',
+        },
+        { requestId: "s1" },
+      );
+      expect(draft.status).toBe("draft");
+    });
+
+    it("checks the same text for quotes when saving, approving and publishing", async () => {
+      // An email's subject and body are what the model wrote; the desk's footer is not checked for
+      // quotes at any step, so a draft that saved cleanly cannot be refused later for its footer.
+      const marketing = desk();
+      const body = 'Ask about "the seven-day fresh start for your whole office"';
+      const draft = await marketing.draftCampaignEmail(
+        { subject: "A fresh start", body, audienceId: "prospects" },
+        { requestId: "e2" },
+      );
+      await expect(
+        marketing.publish(await approvedPublication(marketing, draft.id), { requestId: "p2" }),
+      ).resolves.toMatchObject({ draftId: draft.id });
+    });
+
+    it("accepts a testimonial on record, word for word, and still holds a result claim in it", async () => {
+      if (recorded === undefined) throw new Error("the company records no testimonial");
+      const marketing = desk();
+      const draft = await marketing.draftPost(
+        { channel: "linkedin", text: `"${recorded.quote}" — ${recorded.attribution}` },
+        { requestId: "r1" },
+      );
+      expect(draft.status).toBe("draft");
+      const mixed = await refusal(
+        marketing.draftPost(
+          {
+            channel: "linkedin",
+            text: `"${recorded.quote} Our floors are 2x cleaner." — ${recorded.attribution}`,
+          },
+          { requestId: "r2" },
+        ),
+      );
+      expect(mixed.code).toBe("unrecorded_testimonial");
+    });
+  });
+
   it("allows an approved claim as written in the company data", async () => {
     const text = `${company.marketing.approvedClaims[0]} Ask us for a walkthrough.`;
     const draft = await desk().draftPost({ channel: "linkedin", text }, { requestId: "r1" });

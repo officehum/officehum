@@ -41,7 +41,7 @@ describe("marketing package", () => {
     expect(validated.value.piDurableRange).toBe("1.3.x");
     expect(Object.keys(validated.value.suites)).toEqual(["evals/situations.json"]);
     const scenarios = Object.values(validated.value.suites).flatMap((suite) => suite.scenarios);
-    expect(scenarios).toHaveLength(12);
+    expect(scenarios).toHaveLength(13);
     for (const scenario of scenarios) {
       expect(Object.keys(scenario.stubs).sort()).toEqual([...TOOLS].sort());
     }

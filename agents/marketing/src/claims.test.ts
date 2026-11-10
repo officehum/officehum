@@ -149,6 +149,61 @@ describe("findResultClaims", () => {
     ).toHaveLength(1);
   });
 
+  it("catches a result phrased as an offer", () => {
+    const claims = findResultClaims("30% off your hours of lost work", []);
+    expect(claims).toHaveLength(1);
+    expect(claims[0]?.phrase).toBe("30%");
+  });
+
+  it("still masks a real offer", () => {
+    expect(findResultClaims("20% off your first clean", [])).toEqual([]);
+    expect(findResultClaims("20% off your first clean, and no contract to sign", [])).toEqual([]);
+  });
+
+  it.each([
+    "25% off your hours of overtime",
+    "30% off staff sickness hours",
+    "40% off your hours of absenteeism",
+    "30% off hours of cleanup",
+    "20% off the hours lost to injury",
+    "20% off workplace injuries",
+    "15% off slip accidents in the lobby",
+    "15% off the accident count",
+    "50% off the germs on every desk",
+    "50% off every germ in the lunch room",
+    "Sick days, 30% off.",
+    "30% off the months you lose to flu season",
+    "20% off the days you are losing to sickness",
+    "25% off the weeks your team loses to colds",
+    "Complaints: 30% off.",
+  ])("catches a result read by its stem, or named before the offer: %j", (text) => {
+    expect(findResultClaims(text, [])).toHaveLength(1);
+  });
+
+  it.each([
+    "20% off your first clean",
+    "10% off your first month",
+    "$50 off a deep clean",
+    "20% off your first 10 hours",
+    "10% off day porter hours.",
+    "10% off the hours of a day porter",
+    "No more complaints, 20% off your first clean.",
+    "Sick of your cleaner? Lost the contract? 20% off your first clean.",
+  ])("still masks a real offer: %j", (text) => {
+    expect(findResultClaims(text, [], ["Day porter", "Deep clean and floor care"])).toEqual([]);
+  });
+
+  it("catches a claim split from its number by a line break", () => {
+    expect(findResultClaims("Cuts sick days by\n30%.", [])).toEqual([
+      { claim: "Cuts sick days by 30%.", phrase: "30%" },
+    ]);
+    expect(findResultClaims("Cuts sick days\nby\r\n 30%.\nAsk us.", [])).toHaveLength(1);
+  });
+
+  it("ends a sentence at a blank line, not at a single line break", () => {
+    expect(findResultClaims("Cuts complaints by\n\n30 visits a month.", [])).toEqual([]);
+  });
+
   it("finds nothing in an empty text", () => {
     expect(findResultClaims("", [])).toEqual([]);
     expect(findResultClaims("   \n  ", [])).toEqual([]);

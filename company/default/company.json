@@ -749,6 +749,12 @@
       "Northwind serves the Portland metro within about 30 miles of downtown, including Clark County in Washington.",
       "The office is open Monday to Friday, 07:00 to 17:00, and contracted clients reach an on-call supervisor 24 hours a day.",
       "Northwind looks after about 90 buildings on recurring contracts."
+    ],
+    "testimonials": [
+      {
+        "quote": "The crew is always on time and our lobby looks great every morning.",
+        "attribution": "Leah Brandt, office manager, Cascade Dental Group"
+      }
     ]
   }
 }

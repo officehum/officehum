@@ -79,6 +79,34 @@ describe("validateSuite stubs", () => {
     ]);
   });
 
+  it("accepts an includes matcher in a byArgs entry and in an expected call", () => {
+    const suite = suiteWith({
+      get_invoice: { byArgs: [{ args: { id: { includes: "104" } }, text: "{}" }] },
+      run_report: { byArgs: [{ args: { period: { includes: "2026" } }, text: "{}" }] },
+    });
+    (suite.scenarios[0] as { expect: unknown }).expect = {
+      calls: [{ tool: "run_report", args: { period: { includes: "2026" } } }],
+    };
+    expect(validateSuite(suite, manifest, "x").issues).toEqual([]);
+  });
+
+  it("reports a malformed includes matcher with its path", () => {
+    const suite = suiteWith({
+      get_invoice: { byArgs: [{ args: { id: { includes: 104 } }, text: "{}" }] },
+      run_report: { byArgs: [{ args: { period: { includes: "" } }, text: "{}" }] },
+    });
+    (suite.scenarios[0] as { expect: unknown }).expect = {
+      calls: [{ tool: "run_report", args: { period: { includes: "2026", also: "x" } } }],
+    };
+    const issues = validateSuite(suite, manifest, "x").issues;
+    expect(issues.map((issue) => issue.path)).toEqual([
+      "scenarios[0].stubs.get_invoice.byArgs[0].args.id.includes",
+      "scenarios[0].stubs.run_report.byArgs[0].args.period.includes",
+      "scenarios[0].expect.calls[0].args.period",
+    ]);
+    for (const issue of issues) expect(issue.message).toMatch(/includes/);
+  });
+
   it("skips the argument-name check for a tool whose manifest names no parameters", () => {
     const result = validateSuite(
       suiteWith({ get_invoice: { byArgs: [{ args: { anything: "x" }, text: "{}" }] }, ...plain }),

@@ -163,7 +163,7 @@ function companySection(company: CompanyFacts, section: CompanySection): string 
         testimonials.length === 0
           ? "Testimonials on file: none. There is no customer quote to use, and none is written or invented."
           : "Testimonials on file, quoted only word for word:",
-        ...testimonials.map((entry) => `- "${entry.quote}" — ${entry.by}`),
+        ...testimonials.map((entry) => `- "${entry.quote}" — ${entry.attribution}`),
         `Who approves every publication and any claim not on the list: ${personLabel(marketingApprover(company))}.`,
       ].join("\n");
     }
@@ -227,6 +227,9 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     const text = error.finalText === undefined ? "" : `\n${block(error.finalText)}`;
     const next: Record<DeskRefusal, string> = {
       unapproved_claim: ` Next: tell the person who asked which claim was refused and why. Take the claim out and draft again, or, if they have said they want to keep it (ask them first if they have not), call request_claim_approval${draftId}, which asks ${approver} and shows them the draft as the desk holds it. Never publish it as it is.${text}`,
+      // Not a claim: there is no draft to approve. Quote only the record, or leave the quote out.
+      unrecorded_testimonial:
+        " Next: tell the person who asked that the quote is not on the company's record and was not saved. Draft again without it, or quote a testimonial from read_company (marketing) word for word. Do not call request_claim_approval: no one can approve an invented quote.",
       not_ready: NOT_READY,
       draft_changed: ` Next: tell the person ${error.draftId ?? "the draft"} changed after it was put to a person, so nothing was approved or published; read it again with list_drafts before anything else.${text}`,
       // The desk's own message already says what to do for these.

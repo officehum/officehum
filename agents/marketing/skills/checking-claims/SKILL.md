@@ -31,7 +31,10 @@ it word for word, and those are the only results and facts you state without a p
    needs its own approval. A held draft is never published until its claims are approved.
 6. **Testimonials.** Quote a customer only word for word from the testimonials `read_company`
    (marketing) lists. If it lists none, say the company has none on file; never write one, and never
-   paraphrase praise into a quote. A testimonial that states a result is a result claim like any other.
+   paraphrase praise into a quote. An attributed quote must come from the company's record: if the
+   desk refuses one (`unrecorded_testimonial`), nothing was saved and no one can approve it, so do
+   not call `request_claim_approval`; draft again without it. A testimonial that states a result is
+   a result claim like any other.
 7. **Endorsers and staff.** A paid or gifted endorser's post says so at its start ("Ad:"), in the post
    itself; an employee who shares a company post says they work there. Paid posts and influencers are
    the approver's decision, not yours.

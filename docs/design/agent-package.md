@@ -749,7 +749,10 @@ Each file in the `evals` directory holds scenarios:
   `payload`, optional `provenance: "external"`). Ticket inputs need the office extension.
 - Every declared tool is stubbed in every scenario, so evals never touch a real system. Stubs keep the
   tool's real name, description and parameters, using `wrapTool`. `read_skill` runs for real: it only
-  reads the role's own files.
+  reads the role's own files. A stub is `{ "text", "isError"? }`, or `{ "byArgs": [{ "args", "text",
+  "isError"? }], "otherwise"? }`, which answers by the call's arguments: the first entry whose `args`
+  match answers, else `otherwise`, else the trial stops. In `byArgs` and in `expect.calls[].args`, an
+  argument given as `{ "includes": "…" }` matches a string argument that contains that text.
 - `approvals` scripts the person's decision for each approval id.
 - `expect.calls` must appear in that order, with other calls allowed in between; `args` matches only
   the fields listed. `notCalled`, `approvalsRequested` (exact set), `delegated` (office extension only)

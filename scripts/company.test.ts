@@ -307,6 +307,55 @@ describe("the company package's own consistency", () => {
       expect(issues).toContain("staffPolicies.employeeRelationsTo is missing");
     });
 
+    it("records at least one testimonial, with a quote and an attribution", () => {
+      const facts = JSON.parse(renderFacts(readSource(root))) as Loose;
+      expect(facts.marketing.testimonials.length).toBeGreaterThanOrEqual(1);
+      for (const entry of facts.marketing.testimonials) {
+        expect(entry.quote).toBeTruthy();
+        expect(entry.attribution).toBeTruthy();
+      }
+    });
+
+    it("refuses a testimonial with an empty quote", () => {
+      const issues = issuesAfter((c) => {
+        c.marketing.testimonials = [{ quote: "  ", attribution: "A client" }];
+      });
+      expect(issues).toContain("marketing.testimonials[0].quote is empty");
+    });
+
+    it("refuses a testimonial with no attribution, and one that is not a list", () => {
+      expect(
+        issuesAfter((c) => {
+          c.marketing.testimonials = [{ quote: "Always on time, every single night." }];
+        }),
+      ).toContain("marketing.testimonials[0].attribution is empty");
+      expect(
+        issuesAfter((c) => {
+          c.marketing.testimonials = "none";
+        }),
+      ).toContain("marketing.testimonials must be a list");
+    });
+
+    it("says what is wrong with a testimonial that is not text, and how to fix it", () => {
+      const issues = issuesAfter((c) => {
+        c.marketing.testimonials = [{ quote: 42, attribution: "A client" }, "a quote"];
+      });
+      expect(issues).toContain(
+        "marketing.testimonials[0].quote must be a non-empty string: write the customer's words exactly as recorded",
+      );
+      expect(issues).toContain(
+        'marketing.testimonials[1] must be an object { "quote": "…", "attribution": "…" }',
+      );
+    });
+
+    it("allows a company with no testimonials", () => {
+      expect(
+        issuesAfter((c) => {
+          c.marketing.testimonials = [];
+        }),
+      ).toBe("");
+    });
+
     it("refuses a marketing approver who is not a person", () => {
       expect(
         issuesAfter((c) => {
