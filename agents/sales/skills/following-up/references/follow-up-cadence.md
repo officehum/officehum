@@ -1,6 +1,8 @@
 # The follow-up cadence
 
-Three weeks, four touches, then a decision. The dates are counted from the day the quote was sent.
+Three weeks, four touches, then a decision. The dates are counted from the day the quote was sent:
+the sent day `get_quote` shows, or the day it was issued when no sent day is recorded. Each touch is
+put on the lead with `schedule_follow_up` when the one before it is done.
 
 | When | What goes out | What it adds |
 | --- | --- | --- |
@@ -8,7 +10,7 @@ Three weeks, four touches, then a decision. The dates are counted from the day t
 | Day 3 | A short email | One thing they asked about, answered; who has the quote if it is gated |
 | Day 10 | A phone call, then a note | A question they can answer in one line: what is still open? |
 | Day 18 | One last email | The quote's validity date, and what happens if it lapses |
-| Day 21 | Close the lead as lost | The reason, in the note, in their words |
+| Day 21 | Close the lead as lost with `update_lead_stage` | The reason, in their words |
 
 ## What each touch is for
 

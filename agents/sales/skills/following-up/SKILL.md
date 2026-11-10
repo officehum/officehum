@@ -6,20 +6,28 @@ description: Keep a lead moving after a quote or a conversation, with a cadence 
 A follow-up is a reason to answer, not a reminder that you exist. Every message carries something the
 client did not have before: an answer to their question, a measured figure, a date, a name.
 
-1. **Write the cadence down when the quote goes out.** The day the quote is sent, the day of the first
-   follow-up and the day the lead is closed are decided then, in the note, not when someone remembers.
+1. **Record the quote as sent, and schedule the next touch, when it goes out.** Mark it with
+   `record_quote_outcome` (`sent`, on the day it went), then put the first follow-up on the lead with
+   `schedule_follow_up`. Each time a touch is done, schedule the next one; `list_leads` shows every
+   lead's next follow-up. A quote awaiting a person's approval is not ready to send: it is never marked
+   sent, and the client is not told it was.
 2. **Follow the company's cadence**: a first follow-up within the week, a second before the quote's
    validity runs out, and a close after three weeks of silence. The dates and what goes in each message
    are in [the follow-up cadence](references/follow-up-cadence.md).
 3. **Log every touch** with `log_activity`, including the ones that got no answer. A cadence nobody can
    see is a cadence that gets repeated by the next person.
+   When the client answers the quote, record it on the quote with `record_quote_outcome` (`accepted`
+   or `declined`); that does not move the lead, so move it with `update_lead_stage` once the deal is
+   closed.
 4. **Change the channel once.** A quote answered by silence on email may get an answer by phone. One
    call, not a series of them.
-5. **Count from the quote, not from the touches.** A lead at stage `quoted` has the quote; the desk
-   keeps every quote as a draft, so its status says nothing about whether it went out. Once the close
-   day has passed, close the lead even if earlier touches were never logged, and say so in the note.
-6. **Close it properly.** When the period runs out, log the lead as lost with the reason — the price,
-   the timing, a competitor, a contract they renewed. A pipeline full of leads that are neither alive
+5. **Count from the day the quote was sent, not from the touches.** `get_quote` shows the day it was
+   sent when one is recorded; count from that. A quote with no sent day recorded is counted from the
+   day it was issued. Once the close day has passed, close the lead even if earlier touches were never
+   logged, and say so in the reason.
+6. **Close it properly.** When the period runs out, move the lead to `lost` with `update_lead_stage`,
+   and give the reason — the price, the timing, a competitor, a contract they renewed. A won deal is
+   closed the same way, as `won`. A closed deal is reopened by a person, not by this role. A pipeline full of leads that are neither alive
    nor dead is a pipeline nobody can plan from.
 
 ## When the answer is not a follow-up

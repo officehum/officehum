@@ -24,6 +24,10 @@ enquiry, and quoting it is guessing.
    them.
 6. **Log it** with `log_activity`: who you spoke to, what the building needs, what is missing and what
    happens next. A lead with no note is a lead the next person has to qualify again.
+7. **Move the stage** with `update_lead_stage` once it is decided: `qualified` when you have the six
+   facts, or `lost` when it cannot qualify — outside the service area, work the company does not do —
+   with the reason. A lead is moved to `quoted` only once a quote of it is ready to send; one awaiting
+   a person's approval does not count.
 
 ## What qualification is for
 
