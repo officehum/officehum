@@ -22,10 +22,22 @@ const NOW = new Date("2026-11-01T09:00:00.000Z");
 const call = (callId: string) =>
   ({ conversationId: "conversation-1", taskId: "task-1", callId }) as never;
 
-const tools = (desk: SalesDesk | undefined): SalesToolset => salesTools({ desk, company });
+/** The manifest's default quote limit, as the role's resolved limits hand it to the tools. */
+const LIMITS = { quote_limit_cents: 500000 };
+
+const tools = (
+  desk: SalesDesk | undefined,
+  limits: Readonly<Record<string, number>> = LIMITS,
+): SalesToolset => salesTools({ desk, company, limits: () => limits });
 
 /** A desk on the demo pipeline with a fixed clock. */
 const desk = (): SalesDesk => fakeSalesDesk({ now: () => NOW });
+
+/** Six lobbies, each with a strip-and-wax and a carpet line that the book's minimum raises. */
+const SIX_LOBBIES = Array.from({ length: 6 }, () => [
+  { priceBookItemId: "floor-strip-wax-sqft", quantity: 300 },
+  { priceBookItemId: "floor-carpet-sqft", quantity: 400 },
+]).flat();
 
 /** The one text block a result carries, as the model reads it. */
 function text(result: { output?: readonly unknown[] }): string {
@@ -176,8 +188,8 @@ describe("create_quote", () => {
       {
         leadId: "L-204",
         lines: [
-          { priceBookItemId: "clean-deep-sqft", quantity: 3200, unitPriceCents: 12 },
-          { priceBookItemId: "restroom-sanitise", quantity: 4, unitPriceCents: 6500 },
+          { priceBookItemId: "clean-deep-sqft", quantity: 3200 },
+          { priceBookItemId: "restroom-sanitise", quantity: 4 },
         ],
         notes: "First deep clean before the chairs go in.",
       },
@@ -210,7 +222,7 @@ describe("create_quote", () => {
     const result = await tools(desk()).createQuote.execute(
       {
         leadId: "L-204",
-        lines: [{ priceBookItemId: "clean-deep-sqft", quantity: 3200, unitPriceCents: 12 }],
+        lines: [{ priceBookItemId: "clean-deep-sqft", quantity: 3200 }],
         discountPercent: 10,
       },
       call("quote-2"),
@@ -225,6 +237,13 @@ describe("create_quote", () => {
     expect(quote.discountCents).toBe(4500);
     expect(quote.totalCents).toBe(40500);
     expect(text(result)).toContain("discount 10% ($45.00)");
+    // A discount is a person's decision: the quote is saved, but it is not ready to send.
+    expect(details(result).status).toBe("awaiting_approval");
+    expect(text(result)).toContain("not ready to send");
+    expect(text(result)).toContain("it carries a 10% discount");
+    expect(text(result)).toContain(
+      "Next: call request_quote_approval with quoteId Q-3051, which asks Marcus Oyelaran.",
+    );
   });
 
   it("quotes a recurring month at 21.65 visits and leaves the minimums alone", async () => {
@@ -232,8 +251,8 @@ describe("create_quote", () => {
       {
         leadId: "L-207",
         lines: [
-          { priceBookItemId: "clean-office-visit", quantity: 21.65, unitPriceCents: 18500 },
-          { priceBookItemId: "porter-hour", quantity: 40, unitPriceCents: 4200 },
+          { priceBookItemId: "clean-office-visit", quantity: 21.65 },
+          { priceBookItemId: "porter-hour", quantity: 40 },
         ],
       },
       call("quote-3"),
@@ -246,29 +265,68 @@ describe("create_quote", () => {
     expect(quote.subtotalCents).toBe(568525);
     expect(quote.lines.every((line) => !line.minimumApplied)).toBe(true);
     expect(text(result)).toContain("$5,685.25");
+    expect(details(result).status).toBe("awaiting_approval");
+    expect(text(result)).toContain("it is above the $5,000.00 quote limit");
   });
 
-  it("refuses a price that is not the book's, and says what the book says", async () => {
+  it("holds a quote that only the book's minimums take over the limit", async () => {
     const result = await tools(desk()).createQuote.execute(
-      {
-        leadId: "L-204",
-        lines: [{ priceBookItemId: "clean-deep-sqft", quantity: 3200, unitPriceCents: 15 }],
-      },
-      call("quote-4"),
+      { leadId: "L-219", lines: SIX_LOBBIES },
+      call("lobbies"),
       BACKGROUND_CONTEXT,
     );
-    expect((result as { isError?: boolean }).isError).toBe(true);
-    expect(text(result)).toContain(
-      "The price book prices Deep clean, first visit at $0.12 per sq ft",
+    expect(details(result).status).toBe("awaiting_approval");
+    expect(details(result).totalCents).toBe(525000);
+    expect(text(result)).toContain("Saved quote Q-3051");
+    expect(text(result)).toContain("it is above the $5,000.00 quote limit");
+    expect(text(result)).not.toContain("Created draft quote");
+  });
+
+  it("reads the quote limit live, so an overlay moves the line without a rebuild", async () => {
+    const limits: Record<string, number> = { quote_limit_cents: 500000 };
+    const live = salesTools({ desk: desk(), company, limits: () => limits });
+    const lines = [{ priceBookItemId: "porter-hour", quantity: 40 }];
+    const under = await live.createQuote.execute(
+      { leadId: "L-204", lines },
+      call("l1"),
+      BACKGROUND_CONTEXT,
     );
-    expect(text(result)).toContain("Quote the book's price");
+    expect(details(under).status).toBe("draft");
+    limits.quote_limit_cents = 100000;
+    const over = await live.createQuote.execute(
+      { leadId: "L-204", lines },
+      call("l2"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(over).status).toBe("awaiting_approval");
+    expect(text(over)).toContain("it is above the $1,000.00 quote limit");
+  });
+
+  it("holds every quote when the role resolves no quote limit", async () => {
+    const result = await tools(desk(), {}).createQuote.execute(
+      { leadId: "L-204", lines: [{ priceBookItemId: "porter-hour", quantity: 1 }] },
+      call("no-limit"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(result).status).toBe("awaiting_approval");
+    expect(text(result)).toContain("no quote limit is set");
+  });
+
+  it("takes no price from the model: a line is an item and a quantity, and nothing else", () => {
+    const schema = tools(desk()).createQuote.parameters as unknown as {
+      properties: {
+        lines: { items: { properties: Record<string, unknown>; additionalProperties?: boolean } };
+      };
+    };
+    expect(Object.keys(schema.properties.lines.items.properties)).not.toContain("unitPriceCents");
+    expect(schema.properties.lines.items.additionalProperties).toBe(false);
   });
 
   it("refuses a lead that does not exist, naming what the pipeline holds", async () => {
     const result = await tools(desk()).createQuote.execute(
       {
         leadId: "L-999",
-        lines: [{ priceBookItemId: "clean-office-visit", quantity: 1, unitPriceCents: 18500 }],
+        lines: [{ priceBookItemId: "clean-office-visit", quantity: 1 }],
       },
       call("quote-5"),
       BACKGROUND_CONTEXT,
@@ -289,7 +347,7 @@ describe("create_quote", () => {
     const one = desk();
     const offBook = {
       leadId: "L-204",
-      lines: [{ description: "Window cleaning, our rate", quantity: 1, unitPriceCents: 99 }],
+      lines: [{ description: "Window cleaning, our rate", quantity: 1 }],
     };
     // The desk refuses it whoever calls, so a host that skips the schema cannot price off the book.
     await expect(one.createQuote(offBook as never, { requestId: "direct-1" })).rejects.toThrow(
@@ -320,7 +378,7 @@ describe("create_quote", () => {
     const next = await tools(one).createQuote.execute(
       {
         leadId: "L-204",
-        lines: [{ priceBookItemId: "porter-hour", quantity: 4, unitPriceCents: 4200 }],
+        lines: [{ priceBookItemId: "porter-hour", quantity: 4 }],
       },
       call("after-off-book"),
       BACKGROUND_CONTEXT,
@@ -333,7 +391,7 @@ describe("create_quote", () => {
     const first = await tools(one).createQuote.execute(
       {
         leadId: "L-204",
-        lines: [{ priceBookItemId: "porter-hour", quantity: 4, unitPriceCents: 4200 }],
+        lines: [{ priceBookItemId: "porter-hour", quantity: 4 }],
       },
       call("quote-6"),
       BACKGROUND_CONTEXT,
@@ -341,12 +399,93 @@ describe("create_quote", () => {
     const again = await tools(one).createQuote.execute(
       {
         leadId: "L-204",
-        lines: [{ priceBookItemId: "porter-hour", quantity: 4, unitPriceCents: 4200 }],
+        lines: [{ priceBookItemId: "porter-hour", quantity: 4 }],
       },
       call("quote-6"),
       BACKGROUND_CONTEXT,
     );
     expect(details(again).id).toBe(details(first).id);
+  });
+});
+
+describe("request_quote_approval", () => {
+  /** A desk holding the six-lobby quote, saved awaiting approval as Q-3051. */
+  async function waiting() {
+    const one = desk();
+    await tools(one).createQuote.execute(
+      { leadId: "L-219", lines: SIX_LOBBIES },
+      call("lobbies"),
+      BACKGROUND_CONTEXT,
+    );
+    return one;
+  }
+
+  it("refuses without facts a person approved, and changes nothing", async () => {
+    const one = await waiting();
+    const result = await tools(one).requestQuoteApproval.execute(
+      { quoteId: "Q-3051" },
+      call("ask"),
+      BACKGROUND_CONTEXT,
+    );
+    expect((result as { isError?: boolean }).isError).toBe(true);
+    expect(details(result).code).toBe("not_approved");
+    expect((await one.getQuote("Q-3051")).status).toBe("awaiting_approval");
+  });
+
+  it("makes the quote a draft ready to send with the facts the gate read", async () => {
+    const one = await waiting();
+    const set = tools(one);
+    const facts = await set.quoteApprovalFacts({ quoteId: "Q-3051" }, BACKGROUND_CONTEXT, {
+      conversationId: "conversation-1",
+      taskId: "task-1",
+    });
+    expect(facts.summary).toContain("Harborview Property Management (L-219)");
+    expect(facts.summary).toContain(
+      "300 × Strip and re-wax resilient flooring at $0.95 = $600.00 (minimum applied)",
+    );
+    expect(facts.summary).toContain("(minimum applied)");
+    expect(facts.summary).toContain("Total $5,250.00");
+    expect(facts.summary).toContain("above the $5,000.00 quote limit");
+    const result = await set.requestQuoteApproval.execute(
+      { quoteId: "Q-3051", officehumApprovedFacts: facts.facts },
+      call("ask"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain("Approved quote Q-3051");
+    expect(text(result)).toContain("ready to send");
+    expect(details(result).status).toBe("draft");
+  });
+
+  it("refuses when the quote changed after the person saw it", async () => {
+    const one = await waiting();
+    const result = await tools(one).requestQuoteApproval.execute(
+      { quoteId: "Q-3051", officehumApprovedFacts: { id: "Q-3051", totalCents: 1 } },
+      call("ask"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(result).code).toBe("quote_changed");
+    expect(text(result)).toContain("get_quote");
+    expect((await one.getQuote("Q-3051")).status).toBe("awaiting_approval");
+  });
+
+  it("asks nobody about a quote that does not wait for approval", async () => {
+    const set = tools(desk());
+    const identity = { conversationId: "c", taskId: "t" };
+    await expect(
+      set.quoteApprovalFacts({ quoteId: "Q-3047" }, BACKGROUND_CONTEXT, identity),
+    ).rejects.toThrow("not waiting for a person's approval");
+    await expect(
+      set.quoteApprovalFacts({ quoteId: "Q-9999" }, BACKGROUND_CONTEXT, identity),
+    ).rejects.toThrow('No quote has the id "Q-9999"');
+  });
+
+  it("says plainly in get_quote that a quote is waiting for a person", async () => {
+    const result = await tools(desk()).getQuote.execute(
+      { quoteId: "Q-3052" },
+      call("g"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain("awaiting a person's approval, not ready to send");
   });
 });
 
@@ -437,8 +576,8 @@ describe("read_company", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(result)).toContain("clean-deep-sqft — Deep clean, first visit — $0.12 per sq ft");
-    // The threshold is the gate's (the manifest limit, which an overlay may change), and a client is
-    // never told it, so the model is never shown one to repeat.
+    // The threshold is the desk's to apply (the manifest limit, which an overlay may change), and a
+    // client is never told it, so the company record shows the model none to repeat.
     expect(text(result)).not.toContain("waits for a person");
     expect(text(result)).not.toContain("$5,000.00");
   });

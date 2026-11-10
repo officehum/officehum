@@ -1,10 +1,13 @@
 /**
- * The Sales / Account Manager's six tools.
+ * The Sales / Account Manager's seven tools.
  *
- * `list_leads`, `get_quote`, `search_price_book` and `read_company` only read; `create_quote` and `log_activity`
- * write through the desk. No tool decides an approval: the discount and the quote limit are
- * `officehum.json`'s, evaluated by the SDK's gate before the tool runs, which is why this file has no
- * threshold in it at all.
+ * `list_leads`, `get_quote`, `search_price_book` and `read_company` only read; `create_quote`,
+ * `request_quote_approval` and `log_activity` write through the desk. The model names price book items
+ * and quantities only: the desk prices every line and works out the total, and decides on that total
+ * whether a quote waits for a person. The quote limit is the role's resolved `quote_limit_cents`,
+ * read at every call so an overlay applies without a rebuild. A quote that waits is approved through
+ * `request_quote_approval`, whose `quote_approval` gate reads what the person approves from the desk
+ * (`quoteApprovalFacts`), not from the model's arguments.
  *
  * The desk is whoever the host binds — `fakeSalesDesk` in a test, an eval or a first run — and every
  * figure a tool speaks comes back from it or from the company record. A tool that cannot reach its
@@ -14,7 +17,16 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
-import { refusal, requestId, textResult } from "@officehum/sdk";
+import {
+  APPROVED_FACTS_ARG,
+  type ApprovalFactsReader,
+  approvedFacts,
+  approvedFactsParameter,
+  deskRefusal,
+  refusal,
+  requestId,
+  textResult,
+} from "@officehum/sdk";
 import {
   type CompanyFacts,
   escalationRule,
@@ -30,24 +42,37 @@ import {
   type Lead,
   type LeadStage,
   type Quote,
+  type QuoteApprovalReason,
+  quoteFacts,
   type SalesDesk,
   SalesDeskError,
 } from "./desk.js";
 
-/** What the tools need: the desk, and the company they quote for. */
+/** The limit, in the role's manifest, above which a quote waits for a person. */
+const QUOTE_LIMIT = "quote_limit_cents";
+
+/** What the tools need: the desk, the company they quote for, and the role's resolved limits. */
 export interface SalesToolDependencies {
   readonly desk: SalesDesk | undefined;
   readonly company: CompanyFacts;
+  /**
+   * The role's resolved limits, read at every call: the manifest's defaults with the business's
+   * overlay applied. With no `quote_limit_cents` in them, every quote waits for a person.
+   */
+  readonly limits: () => Readonly<Record<string, number>>;
 }
 
-/** The six tools, named, so the factory places each one where the manifest declares it. */
+/** The seven tools, named, so the factory places each one where the manifest declares it. */
 export interface SalesToolset {
   readonly listLeads: ToolRegistration;
   readonly getQuote: ToolRegistration;
   readonly searchPriceBook: ToolRegistration;
   readonly createQuote: ToolRegistration;
+  readonly requestQuoteApproval: ToolRegistration;
   readonly logActivity: ToolRegistration;
   readonly readCompany: ToolRegistration;
+  /** The `quote_approval` approval's facts: the quote as the desk holds it. */
+  readonly quoteApprovalFacts: ApprovalFactsReader;
 }
 
 /** The company section `read_company` can answer for. */
@@ -133,6 +158,28 @@ function quoteDetails(quote: Quote) {
   };
 }
 
+/** Where a quote stands, in words the model can repeat to a person without overstating it. */
+function statusText(quote: Quote): string {
+  return quote.status === "awaiting_approval"
+    ? "awaiting a person's approval, not ready to send"
+    : "draft, ready to send";
+}
+
+/** One line as a person reads it: quantity, item, unit price and amount, and any minimum. */
+function lineText(line: Quote["lines"][number]): string {
+  return `${line.quantity} × ${line.description} at ${money(line.unitPriceCents)} = ${money(line.amountCents)}${line.minimumApplied ? " (minimum applied)" : ""}`;
+}
+
+/** Why a quote waits, as one clause: "it carries a 10% discount and it is above the $5,000.00 quote limit". */
+function reasonsText(quote: Quote): string {
+  const said: Record<QuoteApprovalReason, string> = {
+    discount: `it carries a ${quote.discountPercent}% discount`,
+    over_limit: `it is above the ${money(quote.quoteLimitCents ?? 0)} quote limit`,
+    no_limit: "no quote limit is set for this role, so every quote waits",
+  };
+  return quote.approvalReasons.map((reason) => said[reason]).join(" and ");
+}
+
 /** A quote read back, line by line, so a re-quote can start from its quantities. */
 function quoteDetail(quote: Quote): string {
   const discount =
@@ -140,7 +187,7 @@ function quoteDetail(quote: Quote): string {
       ? "no discount"
       : `discount ${quote.discountPercent}% (${money(quote.discountCents)})`;
   return [
-    `Quote ${quote.id} for ${quote.leadName} (${quote.leadId}), ${quote.status}, issued ${quote.issuedOn}, valid until ${quote.validUntil}:`,
+    `Quote ${quote.id} for ${quote.leadName} (${quote.leadId}), ${statusText(quote)}, issued ${quote.issuedOn}, valid until ${quote.validUntil}:`,
     ...quote.lines.map(
       (line) =>
         `- ${line.priceBookItemId ?? "no price book item"} — ${line.description} — ${line.quantity} × ${money(line.unitPriceCents)} = ${money(line.amountCents)}${line.minimumApplied ? " (minimum applied)" : ""}`,
@@ -150,23 +197,25 @@ function quoteDetail(quote: Quote): string {
   ].join("\n");
 }
 
-/** The receipt for a quote: what it says, and every minimum that changed a line's price. */
-function quoteReceipt(quote: Quote): string {
+/** A quote's totals in one sentence: its lines, subtotal, discount, total and validity. */
+function totalsText(quote: Quote): string {
   const count = quote.lines.length === 1 ? "1 line" : `${quote.lines.length} lines`;
   const discount =
     quote.discountPercent === 0
       ? "no discount"
       : `discount ${quote.discountPercent}% (${money(quote.discountCents)})`;
+  return `${quote.id} for ${quote.leadName} (${quote.leadId}): ${count}, subtotal ${money(quote.subtotalCents)}, ${discount}, total ${money(quote.totalCents)}, valid until ${quote.validUntil}.`;
+}
+
+/** The receipt for a quote ready to send: what it says, and every minimum that changed a line. */
+function quoteReceipt(quote: Quote, verb: string): string {
   const minimums = quote.lines
     .filter((line) => line.minimumApplied)
     .map(
       (line) =>
         `The price book's minimum set the ${line.description} line to ${money(line.amountCents)}.`,
     );
-  return [
-    `Created draft quote ${quote.id} for ${quote.leadName} (${quote.leadId}): ${count}, subtotal ${money(quote.subtotalCents)}, ${discount}, total ${money(quote.totalCents)}, valid until ${quote.validUntil}.`,
-    ...minimums,
-  ].join(" ");
+  return [`${verb} ${totalsText(quote)}`, "It is ready to send.", ...minimums].join(" ");
 }
 
 /** The company record as one section reads: prose the model can answer a client with. */
@@ -265,6 +314,30 @@ function companySection(company: CompanyFacts, section: CompanySection): string 
  */
 export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
   const { company } = dependencies;
+
+  /**
+   * Who a waiting quote's approval asks, from the company record: the discount approver for a
+   * discount, and whoever the escalation path names for a quote over the limit. Never a fixed name.
+   */
+  const approversOf = (reasons: readonly QuoteApprovalReason[]): string => {
+    const ids = reasons.map((reason) =>
+      reason === "discount"
+        ? company.policies.discounts.approver
+        : (escalationRule(company, "quote-over-limit")?.toPersonId ?? ""),
+    );
+    const names = [...new Set(ids)].map((id) => person(company, id)?.name).filter(Boolean);
+    return names.length === 0 ? "the person who approves quotes" : names.join(" and ");
+  };
+
+  /** What create_quote says about a quote that waits: saved, not ready, why, and the next call. */
+  const awaitingReceipt = (quote: Quote): string =>
+    [
+      `Saved quote ${quote.id} for ${quote.leadName} (${quote.leadId}), awaiting a person's approval: it is not ready to send, and the client must not be told it is.`,
+      ...quote.lines.map((line) => `- ${lineText(line)}`),
+      `Quote ${totalsText(quote)}`,
+      `It waits because ${reasonsText(quote)}.`,
+      `Next: call request_quote_approval with quoteId ${quote.id}, which asks ${approversOf(quote.approvalReasons)}.`,
+    ].join("\n");
 
   const listLeads = defineTool({
     name: "list_leads",
@@ -383,7 +456,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
   const createQuote = defineTool({
     name: "create_quote",
     description:
-      "Create a draft quote for a lead from price book lines. The desk works out each line amount, any minimum and the total, and a quote with a discount, or one whose lines come to more than the business's quote limit, raises an approval for a person before it is created.",
+      "Create a quote for a lead from price book items and quantities. You give no prices: the desk prices each line from the price book, applies any minimum and works out the total. A quote under the business's quote limit with no discount is a draft ready to send. A quote with a discount, or whose total is above the limit, is saved awaiting a person's approval and is not ready to send: then call request_quote_approval with its quoteId.",
     parameters: Type.Object(
       {
         leadId: Type.String({ description: "The lead's id from list_leads, e.g. L-204" }),
@@ -401,23 +474,22 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
               ),
               quantity: Type.Number({
                 description:
-                  "How many units: a measured square footage, a count of restrooms, panes, units or visits, or a number of hours",
-              }),
-              unitPriceCents: Type.Integer({
-                description:
-                  "The unit price in whole cents, exactly as the price book states it for that item",
+                  "How many units: a measured square footage, a count of restrooms, panes, units or visits, or a number of hours. The price comes from the book",
               }),
             },
             { additionalProperties: false },
           ),
-          { minItems: 1, description: "One line per service, each priced from the price book" },
+          {
+            minItems: 1,
+            description: "One line per service: an item and a quantity, priced by the desk",
+          },
         ),
         discountPercent: Type.Optional(
           Type.Number({
             minimum: 0,
             maximum: 100,
             description:
-              "A discount as a percentage of the subtotal. Every discount waits for a person; leave it out when none was agreed",
+              "A discount as a percentage of the subtotal. Every discount waits for a person's approval; leave it out when none was asked for",
           }),
         ),
         validForDays: Type.Optional(
@@ -444,13 +516,84 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
             ...(args.notes === undefined ? {} : { notes: args.notes }),
           },
           // The durable call identity, so a retried call is answered with the quote it already made
-          // rather than a second draft of the same quote.
-          { requestId: requestId("quote", api) },
+          // rather than a second draft of the same quote. The limit is read now, so an overlay's
+          // value is the one the desk judges against.
+          {
+            requestId: requestId("quote", api),
+            quoteLimitCents: dependencies.limits()[QUOTE_LIMIT],
+          },
         );
-        return { ...textResult(quoteReceipt(quote)), details: quoteDetails(quote) };
+        const receipt =
+          quote.status === "awaiting_approval"
+            ? awaitingReceipt(quote)
+            : quoteReceipt(quote, "Created draft quote");
+        return { ...textResult(receipt), details: quoteDetails(quote) };
       } catch (error) {
         if (!(error instanceof SalesDeskError)) throw error;
         return refusal(error.message, { id: null, leadId: args.leadId });
+      }
+    },
+  });
+
+  /**
+   * The `quote_approval` approval's facts: the quote as the desk holds it, read before anyone is
+   * asked. A quote that is not on the desk, or does not wait for approval, has nothing to approve, so
+   * it throws and the gate asks nobody.
+   */
+  const quoteApprovalFacts: ApprovalFactsReader = async (args) => {
+    const desk = requireDesk(dependencies);
+    const quoteId = String(args.quoteId);
+    const quote = await desk.getQuote(quoteId);
+    if (quote.status !== "awaiting_approval") {
+      throw new Error(
+        `${quote.id} is not waiting for a person's approval: it is a draft ready to send. Nothing was put to a person. Next: a new or changed quote is made with create_quote.`,
+      );
+    }
+    const discount = quote.discountPercent === 0 ? "" : `, less ${quote.discountPercent}% discount`;
+    return {
+      summary: `Approve quote ${quote.id} for ${quote.leadName} (${quote.leadId}): ${quote.lines.map(lineText).join("; ")}. Subtotal ${money(quote.subtotalCents)}${discount}. Total ${money(quote.totalCents)}. It needs a person because ${reasonsText(quote)}`,
+      facts: quoteFacts(quote),
+    };
+  };
+
+  const requestQuoteApproval = defineTool({
+    name: "request_quote_approval",
+    description:
+      "Ask a person to approve one quote that create_quote saved awaiting approval, named by its quoteId. The desk reads the quote's lead, lines, discount and total and shows them to the person; every call waits for a person. Once approved, the quote is a draft ready to send; the desk refuses if it changed since the person saw it.",
+    parameters: Type.Object(
+      {
+        quoteId: Type.String({ description: "The quote's id from create_quote, e.g. Q-3052" }),
+        // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared.
+        [APPROVED_FACTS_ARG]: approvedFactsParameter(),
+      },
+      { additionalProperties: false },
+    ),
+    replay: "unsafe",
+    execute: async (args, api) => {
+      const desk = requireDesk(dependencies);
+      const approved = approvedFacts(args);
+      if (approved === undefined) {
+        return refusal(
+          `Nothing was approved: this call for ${args.quoteId} carries no facts a person approved. A quote is approved only after the approval gate has put it to a person and they said yes. Next: tell the person the quote waits for a person's approval and is not ready to send.`,
+          { code: "not_approved", quoteId: args.quoteId },
+        );
+      }
+      try {
+        const quote = await desk.approveQuote(
+          { quoteId: args.quoteId, approved },
+          { requestId: requestId("quote-approval", api) },
+        );
+        return {
+          ...textResult(quoteReceipt(quote, "Approved quote")),
+          details: quoteDetails(quote),
+        };
+      } catch (error) {
+        if (!(error instanceof SalesDeskError)) throw error;
+        const next =
+          error.code === "quote_changed"
+            ? " Next: tell the person the quote changed after it was put to a person, so it was not approved; read it again with get_quote before anything else."
+            : "";
+        return deskRefusal(`${error.message}${next}`, error.code, { quoteId: args.quoteId });
       }
     },
   });
@@ -524,7 +667,9 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     getQuote: getQuoteTool,
     searchPriceBook: searchPriceBookTool,
     createQuote,
+    requestQuoteApproval,
     logActivity,
     readCompany,
+    quoteApprovalFacts,
   };
 }

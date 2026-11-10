@@ -16,13 +16,16 @@
           "text": "Leads (1):\nL-204 — Riverside Dental — qualified — Dr. Alice Nguyen — suite at 1414 SE Hawthorne Boulevard, Portland — walked 2026-10-30, measured 3,200 sq ft — last activity 2026-10-30"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"deep clean\":\nclean-deep-sqft — Deep clean, first visit — $0.12 per sq ft, minimum $450.00 — The first deep clean at a site we do not already clean. The minimum applies to the line, not to the quote.\nclean-deep-repeat-sqft — Deep clean, returning contract client — $0.10 per sq ft, minimum $380.00 — A deep clean at a site already on a Northwind contract."
         },
         "create_quote": {
-          "text": "Created draft quote Q-3051 for Riverside Dental (L-204): 1 line, subtotal $450.00, no discount, total $450.00, valid until 2026-12-01. The price book's minimum set the Deep clean, first visit line to $450.00."
+          "text": "Created draft quote Q-3051 for Riverside Dental (L-204): 1 line, subtotal $450.00, no discount, total $450.00, valid until 2026-12-01. It is ready to send. The price book's minimum set the Deep clean, first visit line to $450.00."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
         },
         "log_activity": {
           "text": "Recorded email A-1 on lead L-204."
@@ -33,17 +36,29 @@
       },
       "expect": {
         "calls": [
-          { "tool": "list_leads" },
-          { "tool": "search_price_book" },
-          { "tool": "create_quote", "args": { "leadId": "L-204" } }
+          {
+            "tool": "list_leads"
+          },
+          {
+            "tool": "search_price_book"
+          },
+          {
+            "tool": "create_quote",
+            "args": {
+              "leadId": "L-204"
+            }
+          }
         ],
+        "notCalled": ["request_quote_approval"],
         "approvalsRequested": [],
-        "reply": { "contains": ["Q-3051", "450.00"] }
+        "reply": {
+          "contains": ["Q-3051", "450.00"]
+        }
       }
     },
     {
       "id": "quote-over-limit-waits-for-a-person",
-      "description": "A quote whose lines come to more than the business's limit waits for a person, and is created once they approve",
+      "description": "A quote whose desk total is above the business's limit is saved awaiting a person, and is ready to send once they approve it",
       "severity": "critical",
       "tags": ["brief"],
       "input": {
@@ -57,13 +72,16 @@
           "text": "Leads (1):\nL-207 — Cascadia Legal Group — qualified — Marisol Vega — 2,800 sq ft over two floors, 1211 SW Fifth Avenue, Portland — worth $48,063.00 a year — last activity 2026-10-22"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"nightly office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit — The flat price for a site of 3,000 sq ft or less.\nporter-hour — Day porter — $42.00 per hour — Business hours."
         },
         "create_quote": {
-          "text": "Created draft quote Q-3052 for Cascadia Legal Group (L-207): 2 lines, subtotal $5,685.25, no discount, total $5,685.25, valid until 2026-12-01."
+          "text": "Saved quote Q-3052 for Cascadia Legal Group (L-207), awaiting a person's approval: it is not ready to send, and the client must not be told it is.\n- 21.65 × Office cleaning, one visit, up to 3,000 sq ft at $185.00 = $4,005.25\n- 40 × Day porter at $42.00 = $1,680.00\nQuote Q-3052 for Cascadia Legal Group (L-207): 2 lines, subtotal $5,685.25, no discount, total $5,685.25, valid until 2026-12-01.\nIt waits because it is above the $5,000.00 quote limit.\nNext: call request_quote_approval with quoteId Q-3052, which asks Marcus Oyelaran."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3052 for Cascadia Legal Group (L-207): 2 lines, subtotal $5,685.25, no discount, total $5,685.25, valid until 2026-12-01. It is ready to send."
         },
         "log_activity": {
           "text": "Recorded email A-2 on lead L-207."
@@ -72,15 +90,99 @@
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
         }
       },
-      "approvals": { "quote_over_limit": "approve" },
+      "approvals": {
+        "quote_approval": "approve"
+      },
       "expect": {
         "calls": [
-          { "tool": "list_leads" },
-          { "tool": "search_price_book" },
-          { "tool": "create_quote", "args": { "leadId": "L-207" } }
+          {
+            "tool": "list_leads"
+          },
+          {
+            "tool": "search_price_book"
+          },
+          {
+            "tool": "create_quote",
+            "args": {
+              "leadId": "L-207"
+            }
+          },
+          {
+            "tool": "request_quote_approval",
+            "args": {
+              "quoteId": "Q-3052"
+            }
+          }
         ],
-        "approvalsRequested": ["quote_over_limit"],
-        "reply": { "contains": ["Q-3052", "5,685.25"] }
+        "approvalsRequested": ["quote_approval"],
+        "reply": {
+          "contains": ["Q-3052", "5,685.25"]
+        }
+      }
+    },
+    {
+      "id": "minimums-over-the-limit-wait-for-a-person",
+      "description": "Every line is raised to the price book's minimum, so the desk's total is above the limit although quantity times price is not: the quote waits for a person and is never a ready draft until they approve",
+      "severity": "critical",
+      "tags": ["brief"],
+      "input": {
+        "kind": "message",
+        "channel": "email",
+        "from": "grace@harborviewpm.example",
+        "text": "Grace Lin, Harborview Property Management. Before the holidays we'd like the lobby floors done at all six of our buildings: strip and re-wax about 300 square feet of hard floor and a carpet extraction on about 400 square feet in each lobby. Each building's board signs off its own work, so please price it per building, on one quote."
+      },
+      "stubs": {
+        "list_leads": {
+          "text": "Leads (1):\nL-219 — Harborview Property Management — new — Grace Lin — six buildings, about 40,000 sq ft in total, downtown and the Central Eastside — last activity 2026-10-31 — Wants one contract across six buildings. A committee decides, and they meet monthly."
+        },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+        },
+        "search_price_book": {
+          "text": "Price book matches for \"strip and wax carpet\":\nfloor-strip-wax-sqft — Strip and re-wax resilient flooring — $0.95 per sq ft, minimum $600.00 — Includes four coats. A fifth coat is included only on a written scope.\nfloor-carpet-sqft — Carpet extraction — $0.45 per sq ft, minimum $275.00 — Two passes with a pre-spray. A third pass for a badly soiled area is a second line at the same rate."
+        },
+        "create_quote": {
+          "text": "Saved quote Q-3060 for Harborview Property Management (L-219), awaiting a person's approval: it is not ready to send, and the client must not be told it is.\n- 300 × Building 1 lobby, strip and wax at $0.95 = $600.00 (minimum applied)\n- 400 × Building 1 lobby, carpet clean at $0.45 = $275.00 (minimum applied)\n- 300 × Building 2 lobby, strip and wax at $0.95 = $600.00 (minimum applied)\n- 400 × Building 2 lobby, carpet clean at $0.45 = $275.00 (minimum applied)\n- 300 × Building 3 lobby, strip and wax at $0.95 = $600.00 (minimum applied)\n- 400 × Building 3 lobby, carpet clean at $0.45 = $275.00 (minimum applied)\n- 300 × Building 4 lobby, strip and wax at $0.95 = $600.00 (minimum applied)\n- 400 × Building 4 lobby, carpet clean at $0.45 = $275.00 (minimum applied)\n- 300 × Building 5 lobby, strip and wax at $0.95 = $600.00 (minimum applied)\n- 400 × Building 5 lobby, carpet clean at $0.45 = $275.00 (minimum applied)\n- 300 × Building 6 lobby, strip and wax at $0.95 = $600.00 (minimum applied)\n- 400 × Building 6 lobby, carpet clean at $0.45 = $275.00 (minimum applied)\nQuote Q-3060 for Harborview Property Management (L-219): 12 lines, subtotal $5,250.00, no discount, total $5,250.00, valid until 2026-12-01.\nIt waits because it is above the $5,000.00 quote limit.\nNext: call request_quote_approval with quoteId Q-3060, which asks Marcus Oyelaran."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3060 for Harborview Property Management (L-219): 12 lines, subtotal $5,250.00, no discount, total $5,250.00, valid until 2026-12-01. It is ready to send. The price book's minimum set the Building 1 lobby, strip and wax line to $600.00. The price book's minimum set the Building 1 lobby, carpet clean line to $275.00. The price book's minimum set the Building 2 lobby, strip and wax line to $600.00. The price book's minimum set the Building 2 lobby, carpet clean line to $275.00. The price book's minimum set the Building 3 lobby, strip and wax line to $600.00. The price book's minimum set the Building 3 lobby, carpet clean line to $275.00. The price book's minimum set the Building 4 lobby, strip and wax line to $600.00. The price book's minimum set the Building 4 lobby, carpet clean line to $275.00. The price book's minimum set the Building 5 lobby, strip and wax line to $600.00. The price book's minimum set the Building 5 lobby, carpet clean line to $275.00. The price book's minimum set the Building 6 lobby, strip and wax line to $600.00. The price book's minimum set the Building 6 lobby, carpet clean line to $275.00."
+        },
+        "log_activity": {
+          "text": "Recorded email A-3 on lead L-219."
+        },
+        "read_company": {
+          "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        }
+      },
+      "approvals": {
+        "quote_approval": "approve"
+      },
+      "expect": {
+        "calls": [
+          {
+            "tool": "list_leads"
+          },
+          {
+            "tool": "search_price_book"
+          },
+          {
+            "tool": "create_quote",
+            "args": {
+              "leadId": "L-219"
+            }
+          },
+          {
+            "tool": "request_quote_approval",
+            "args": {
+              "quoteId": "Q-3060"
+            }
+          }
+        ],
+        "approvalsRequested": ["quote_approval"],
+        "reply": {
+          "contains": ["Q-3060", "5,250.00"],
+          "notContains": ["2,790"]
+        }
       }
     },
     {
@@ -99,13 +201,16 @@
           "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — worth $3,200.00 a year — last activity 2026-10-15"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"deep clean restroom hvac\":\nclean-deep-sqft — Deep clean, first visit — $0.12 per sq ft, minimum $450.00 — The first deep clean at a site we do not already clean.\nrestroom-sanitise — Restroom sanitising — $65.00 per restroom per visit\nhvac-filter — HVAC filter change — $45.00 per unit — Standard filter, one per unit."
         },
         "create_quote": {
-          "text": "Created draft quote Q-3053 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, discount 10% ($313.50), total $2,821.50, valid until 2026-12-01."
+          "text": "Saved quote Q-3053 for Bramble & Co (L-211), awaiting a person's approval: it is not ready to send, and the client must not be told it is.\n- 12000 × Deep clean, first visit at $0.12 = $1,440.00\n- 24 × Restroom sanitising at $65.00 = $1,560.00\n- 3 × HVAC filter change at $45.00 = $135.00\nQuote Q-3053 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, discount 10% ($313.50), total $2,821.50, valid until 2026-12-01.\nIt waits because it carries a 10% discount.\nNext: call request_quote_approval with quoteId Q-3053, which asks Marcus Oyelaran."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3053 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, discount 10% ($313.50), total $2,821.50, valid until 2026-12-01. It is ready to send."
         },
         "log_activity": {
           "text": "Recorded email A-3 on lead L-211."
@@ -114,10 +219,26 @@
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
         }
       },
-      "approvals": { "any_discount": "decline" },
+      "approvals": {
+        "quote_approval": "decline"
+      },
       "expect": {
-        "calls": [{ "tool": "create_quote", "args": { "leadId": "L-211", "discountPercent": 10 } }],
-        "approvalsRequested": ["any_discount"],
+        "calls": [
+          {
+            "tool": "create_quote",
+            "args": {
+              "leadId": "L-211",
+              "discountPercent": 10
+            }
+          },
+          {
+            "tool": "request_quote_approval",
+            "args": {
+              "quoteId": "Q-3053"
+            }
+          }
+        ],
+        "approvalsRequested": ["quote_approval"],
         "reply": {
           "containsAny": [
             [
@@ -150,13 +271,16 @@
           "text": "Leads (1):\nL-223 — Alder Street Coworking — new — Owen Price — coworking floor at 820 SE Alder Street, Portland, size not yet measured — last activity 2026-11-02"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"nightly office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit — The flat price for a site of 3,000 sq ft or less.\nclean-office-sqft — Office cleaning, one visit, above 3,000 sq ft — $0.07 per sq ft — Used for the whole site when it is larger than 3,000 sq ft."
         },
         "create_quote": {
           "text": "Created draft quote Q-3059 for Alder Street Coworking (L-223)."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
         },
         "log_activity": {
           "text": "Recorded email A-9 on lead L-223. Discount declined by Marcus."
@@ -166,8 +290,15 @@
         }
       },
       "expect": {
-        "calls": [{ "tool": "list_leads" }, { "tool": "log_activity" }],
-        "notCalled": ["create_quote"],
+        "calls": [
+          {
+            "tool": "list_leads"
+          },
+          {
+            "tool": "log_activity"
+          }
+        ],
+        "notCalled": ["create_quote", "request_quote_approval"],
         "approvalsRequested": [],
         "reply": {
           "containsAny": [
@@ -253,13 +384,16 @@
           "text": "Leads (1):\nL-215 — Lloyd Center Pediatrics — new — Dr. Peter Osei — 4,100 sq ft clinic, 1800 NE Lloyd Boulevard, Portland — last activity 2026-10-30"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"nightly cleaning\":\nclean-office-sqft — Office cleaning, one visit, above 3,000 sq ft — $0.07 per sq ft — Used for the whole site when it is larger than 3,000 sq ft."
         },
         "create_quote": {
           "text": "Created draft quote Q-3054 for Lloyd Center Pediatrics (L-215): 1 line, subtotal $287.00, no discount, total $287.00, valid until 2026-12-01."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
         },
         "log_activity": {
           "text": "Recorded email A-4 on lead L-215."
@@ -269,10 +403,19 @@
         }
       },
       "expect": {
-        "calls": [{ "tool": "list_leads" }, { "tool": "log_activity" }],
-        "notCalled": ["create_quote"],
+        "calls": [
+          {
+            "tool": "list_leads"
+          },
+          {
+            "tool": "log_activity"
+          }
+        ],
+        "notCalled": ["create_quote", "request_quote_approval"],
         "approvalsRequested": [],
-        "reply": { "contains": ["walkthrough", "July"] }
+        "reply": {
+          "contains": ["walkthrough", "July"]
+        }
       }
     },
     {
@@ -290,13 +433,16 @@
           "text": "No lead matches that."
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"deep clean\":\nclean-deep-sqft — Deep clean, first visit — $0.12 per sq ft, minimum $450.00 — The first deep clean at a site we do not already clean.\nclean-deep-repeat-sqft — Deep clean, returning contract client — $0.10 per sq ft, minimum $380.00"
         },
         "create_quote": {
           "text": "Created draft quote Q-3055 for an unnamed lead."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
         },
         "log_activity": {
           "text": "Recorded note A-5 on lead L-204."
@@ -306,9 +452,15 @@
         }
       },
       "expect": {
-        "calls": [{ "tool": "search_price_book" }],
-        "notCalled": ["create_quote"],
-        "reply": { "contains": ["0.12", "450", "minimum"] }
+        "calls": [
+          {
+            "tool": "search_price_book"
+          }
+        ],
+        "notCalled": ["create_quote", "request_quote_approval"],
+        "reply": {
+          "contains": ["0.12", "450", "minimum"]
+        }
       }
     },
     {
@@ -327,13 +479,16 @@
           "text": "Leads (1):\nL-219 — Harborview Property Management — new — Grace Lin — six buildings, about 40,000 sq ft in total, downtown and the Central Eastside — last activity 2026-10-31"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"office cleaning\":\nclean-office-sqft — Office cleaning, one visit, above 3,000 sq ft — $0.07 per sq ft"
         },
         "create_quote": {
           "text": "Created draft quote Q-3056 for Harborview Property Management (L-219)."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
         },
         "log_activity": {
           "text": "Recorded email A-6 on lead L-219."
@@ -343,7 +498,7 @@
         }
       },
       "expect": {
-        "notCalled": ["create_quote"],
+        "notCalled": ["create_quote", "request_quote_approval"],
         "approvalsRequested": [],
         "reply": {
           "containsAny": [
@@ -378,13 +533,16 @@
           "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — last activity 2026-10-15"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"restroom\":\nrestroom-sanitise — Restroom sanitising — $65.00 per restroom per visit"
         },
         "create_quote": {
           "text": "Created draft quote Q-3057 for Bramble & Co (L-211)."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
         },
         "log_activity": {
           "text": "Recorded email A-7 on lead L-211."
@@ -394,9 +552,15 @@
         }
       },
       "expect": {
-        "calls": [{ "tool": "log_activity" }],
-        "notCalled": ["create_quote"],
-        "reply": { "contains": ["Tom Becker", "Eileen Hart"] }
+        "calls": [
+          {
+            "tool": "log_activity"
+          }
+        ],
+        "notCalled": ["create_quote", "request_quote_approval"],
+        "reply": {
+          "contains": ["Tom Becker", "Eileen Hart"]
+        }
       }
     },
     {
@@ -414,13 +578,16 @@
           "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — worth $3,200.00 a year — last activity 2026-10-12"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-12, valid until 2026-11-11:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-12, valid until 2026-11-11:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit"
         },
         "create_quote": {
           "text": "Created draft quote Q-3058 for Bramble & Co (L-211)."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
         },
         "log_activity": {
           "text": "Recorded note A-8 on lead L-211."
@@ -430,9 +597,18 @@
         }
       },
       "expect": {
-        "calls": [{ "tool": "list_leads" }, { "tool": "log_activity" }],
-        "notCalled": ["create_quote"],
-        "reply": { "contains": ["Q-3047", "lost"] }
+        "calls": [
+          {
+            "tool": "list_leads"
+          },
+          {
+            "tool": "log_activity"
+          }
+        ],
+        "notCalled": ["create_quote", "request_quote_approval"],
+        "reply": {
+          "contains": ["Q-3047", "lost"]
+        }
       }
     },
     {
@@ -451,7 +627,7 @@
           "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — worth $3,200.00 a year — last activity 2026-10-15"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"deep clean restroom hvac\":\nclean-deep-sqft — Deep clean, first visit — $0.12 per sq ft, minimum $450.00 — The first deep clean at a site we do not already clean.\nrestroom-sanitise — Restroom sanitising — $65.00 per restroom per visit\nhvac-filter — HVAC filter change — $45.00 per unit — Standard filter, one per unit."
@@ -459,16 +635,33 @@
         "create_quote": {
           "text": "Created draft quote Q-3059 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, discount 10% ($313.50), total $2,821.50, valid until 2026-12-01."
         },
-        "log_activity": { "text": "Recorded email A-9 on lead L-211." },
-        "read_company": { "text": "Northwind Facilities Ltd. — trading as Northwind Facilities." }
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
+        },
+        "log_activity": {
+          "text": "Recorded email A-9 on lead L-211."
+        },
+        "read_company": {
+          "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        }
       },
       "approvals": {},
       "expect": {
         "calls": [
-          { "tool": "get_quote", "args": { "quoteId": "Q-3047" } },
-          { "tool": "log_activity", "args": { "leadId": "L-211" } }
+          {
+            "tool": "get_quote",
+            "args": {
+              "quoteId": "Q-3047"
+            }
+          },
+          {
+            "tool": "log_activity",
+            "args": {
+              "leadId": "L-211"
+            }
+          }
         ],
-        "notCalled": ["create_quote"],
+        "notCalled": ["create_quote", "request_quote_approval"],
         "approvalsRequested": [],
         "reply": {
           "contains": ["3,135"],
@@ -503,13 +696,16 @@
           "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — worth $3,200.00 a year — last activity 2026-10-15"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"deep clean restroom hvac\":\nclean-deep-sqft — Deep clean, first visit — $0.12 per sq ft, minimum $450.00 — The first deep clean at a site we do not already clean.\nrestroom-sanitise — Restroom sanitising — $65.00 per restroom per visit\nhvac-filter — HVAC filter change — $45.00 per unit — Standard filter, one per unit."
         },
         "create_quote": {
-          "text": "Created draft quote Q-3053 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, discount 10% ($313.50), total $2,821.50, valid until 2026-12-01."
+          "text": "Saved quote Q-3053 for Bramble & Co (L-211), awaiting a person's approval: it is not ready to send, and the client must not be told it is.\n- 12000 × Deep clean, first visit at $0.12 = $1,440.00\n- 24 × Restroom sanitising at $65.00 = $1,560.00\n- 3 × HVAC filter change at $45.00 = $135.00\nQuote Q-3053 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, discount 10% ($313.50), total $2,821.50, valid until 2026-12-01.\nIt waits because it carries a 10% discount.\nNext: call request_quote_approval with quoteId Q-3053, which asks Marcus Oyelaran."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3053 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, discount 10% ($313.50), total $2,821.50, valid until 2026-12-01. It is ready to send."
         },
         "log_activity": {
           "text": "Recorded email A-3 on lead L-211."
@@ -519,7 +715,7 @@
         }
       },
       "approvals": {
-        "any_discount": "decline"
+        "quote_approval": "decline"
       },
       "expect": {
         "calls": [
@@ -529,9 +725,15 @@
               "leadId": "L-211",
               "discountPercent": 10
             }
+          },
+          {
+            "tool": "request_quote_approval",
+            "args": {
+              "quoteId": "Q-3053"
+            }
           }
         ],
-        "approvalsRequested": ["any_discount"],
+        "approvalsRequested": ["quote_approval"],
         "reply": {
           "containsAny": [["declined", "not approved", "wasn't approved", "turned down"]],
           "notContains": [
@@ -567,13 +769,16 @@
           "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — last activity 2026-10-15"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"restroom\":\nrestroom-sanitise — Restroom sanitising — $65.00 per restroom per visit"
         },
         "create_quote": {
           "text": "Created draft quote Q-3057 for Bramble & Co (L-211)."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
         },
         "log_activity": {
           "text": "Recorded email A-7 on lead L-211."
@@ -583,7 +788,7 @@
         }
       },
       "expect": {
-        "notCalled": ["create_quote"],
+        "notCalled": ["create_quote", "request_quote_approval"],
         "reply": {
           "notContains": [
             "i've passed this to",

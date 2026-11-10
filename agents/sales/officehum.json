@@ -30,7 +30,14 @@
       "name": "create_quote",
       "replay": "unsafe",
       "skill": "quoting-from-the-price-book",
-      "description": "Create a draft quote for a lead from price book lines. The desk works out each line amount, any minimum and the total. A discount, or a quote above the business's limit, waits for a person."
+      "noApproval": "Saves a quote in the CRM and sends nothing to the client. The desk prices every line from the price book; a quote with a discount or over the limit is saved awaiting approval, not ready to send, until request_quote_approval's quote_approval says yes.",
+      "description": "Create a quote for a lead from price book items and quantities; the model gives no prices. The desk prices each line, applies any minimum and works out the total. A quote with a discount, or whose total is above the business's limit, is saved awaiting a person's approval and is not ready to send."
+    },
+    {
+      "name": "request_quote_approval",
+      "replay": "unsafe",
+      "skill": "quoting-from-the-price-book",
+      "description": "Ask a person to approve a quote saved awaiting approval, by its id. The desk shows them its lead, lines, discount and total; once approved it is a draft ready to send."
     },
     {
       "name": "log_activity",
@@ -47,33 +54,15 @@
   "connectors": [],
   "limits": {
     "quote_limit_cents": {
-      "description": "The amount, in integer cents, above which a quote waits for a person's approval before it is created",
+      "description": "The amount, in integer cents, above which a quote's total (after the price book's minimums, before any discount) waits for a person's approval before it is ready to send",
       "default": 500000
     }
   },
   "approvals": [
     {
-      "id": "any_discount",
-      "tool": "create_quote",
-      "description": "Approve a discount on this quote",
-      "when": [
-        { "arg": "discountPercent", "op": "present" },
-        { "arg": "discountPercent", "op": "gt", "value": 0 }
-      ]
-    },
-    {
-      "id": "quote_over_limit",
-      "tool": "create_quote",
-      "description": "Approve a quote above the quote limit",
-      "when": [
-        {
-          "arg": "lines",
-          "op": "gt",
-          "field": "unitPriceCents",
-          "times": "quantity",
-          "value": { "limit": "quote_limit_cents" }
-        }
-      ]
+      "id": "quote_approval",
+      "tool": "request_quote_approval",
+      "description": "Approve this quote as the desk holds it: its lead, its lines, any discount and its total, which is discounted or above the quote limit"
     }
   ],
   "channels": ["email", "chat"],

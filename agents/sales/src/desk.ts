@@ -6,11 +6,18 @@
  * leads, the company's own price book, and quote arithmetic that rounds in integer cents, so a test,
  * an eval or a first run needs no network and no credential.
  *
- * The desk owns the arithmetic. A quote's line amount, a minimum, a discount and a total are worked
- * out here and returned in the receipt, never by the model and never by the tool: the same rule as
- * the Bookkeeper's invoices, for the same reason.
+ * The desk owns the arithmetic. A quote's unit prices, line amounts, minimums, discount and total are
+ * worked out here and returned in the receipt, never by the model and never by the tool: the same
+ * rule as the Bookkeeper's invoices, for the same reason. The caller names price book items and
+ * quantities only.
+ *
+ * The desk also decides whether a person must approve a quote, on the total it worked out itself, so
+ * a minimum that raises a line counts towards the limit. A quote with a discount, or over the limit,
+ * is saved awaiting approval and becomes a draft ready to send only through `approveQuote`, with the
+ * facts a person was shown (`quoteFacts`): the same two steps as Purchasing's draft orders.
  */
 
+import { sameFacts } from "@officehum/sdk";
 import type { PriceBookItem } from "./company.js";
 import { loadCompanyFacts, money } from "./company.js";
 import { demoLeads, demoQuotes } from "./demo.js";
@@ -57,10 +64,8 @@ export interface QuoteLineDraft {
   readonly priceBookItemId: string;
   /** What the line says; the item's name when it is omitted. */
   readonly description?: string;
-  /** How many units, which may be fractional for hours and months. */
+  /** How many units, which may be fractional for hours and months. The book sets the price. */
   readonly quantity: number;
-  /** The unit price in integer cents, which must be the book's own for a priced item. */
-  readonly unitPriceCents: number;
 }
 
 /** A quote as the caller asks for it. */
@@ -84,12 +89,28 @@ export interface QuoteLine {
   readonly minimumApplied: boolean;
 }
 
+/**
+ * Where a quote stands: `awaiting_approval` is saved but not ready to send until a person approves
+ * it; `draft` is ready to send, because it needed no approval or a person gave it.
+ */
+export type QuoteStatus = "draft" | "awaiting_approval";
+
+/**
+ * Why a quote needed a person: a discount, a total over the limit, or no limit the desk could read
+ * (so it holds the quote rather than guessing one).
+ */
+export type QuoteApprovalReason = "discount" | "over_limit" | "no_limit";
+
 /** A quote once the desk has priced it. */
 export interface Quote {
   readonly id: string;
   readonly leadId: string;
   readonly leadName: string;
-  readonly status: "draft";
+  readonly status: QuoteStatus;
+  /** Why a person had to approve it, in the order discount, limit; empty when nobody had to. */
+  readonly approvalReasons: readonly QuoteApprovalReason[];
+  /** The quote limit the desk judged it against when it was made, or `null` when none resolved. */
+  readonly quoteLimitCents: number | null;
   readonly currency: "USD";
   readonly lines: readonly QuoteLine[];
   readonly subtotalCents: number;
@@ -128,16 +149,58 @@ export interface SalesDesk {
   listLeads(filter?: LeadFilter): Promise<readonly Lead[]>;
   /** One quote by its id, or a `SalesDeskError` naming the id when there is none. */
   getQuote(id: string): Promise<Quote>;
-  createQuote(draft: QuoteDraft, options: { readonly requestId: string }): Promise<Quote>;
+  /**
+   * Prices a quote from the book and saves it: a `draft` ready to send, or `awaiting_approval` when it
+   * carries a discount or its subtotal is above `quoteLimitCents`. A host desk must hold every quote
+   * for approval when `quoteLimitCents` is `undefined`, never treat a missing limit as no limit.
+   */
+  createQuote(
+    draft: QuoteDraft,
+    options: { readonly requestId: string; readonly quoteLimitCents: number | undefined },
+  ): Promise<Quote>;
+  /**
+   * Makes a quote that awaits approval a draft ready to send. Called only once a person approved it,
+   * with the facts the approval gate read from this desk and showed them (`quoteFacts`). A host desk
+   * must refuse with `quote_changed` when the quote no longer equals `approved`, and with
+   * `not_awaiting_approval` when it is not waiting for one.
+   */
+  approveQuote(
+    input: { readonly quoteId: string; readonly approved: Readonly<Record<string, unknown>> },
+    options: { readonly requestId: string },
+  ): Promise<Quote>;
   logActivity(entry: ActivityDraft, options: { readonly requestId: string }): Promise<Activity>;
 }
 
-/** A refusal the model reads: a lead that does not exist, a price that is not the book's. */
+/** Why the desk refused, so a tool can say what to do next without parsing the message. */
+export type SalesDeskRefusal = "invalid" | "not_found" | "not_awaiting_approval" | "quote_changed";
+
+/** A refusal the model reads: a lead that does not exist, an item that is not in the book. */
 export class SalesDeskError extends Error {
-  constructor(message: string) {
+  readonly code: SalesDeskRefusal;
+
+  constructor(message: string, code: SalesDeskRefusal = "invalid") {
     super(message);
     this.name = "SalesDeskError";
+    this.code = code;
   }
+}
+
+/**
+ * The facts a person approves on a quote: its lead, each line's item, quantity and amount, the
+ * discount and the total. Its status is left out on purpose: approving is what changes it.
+ */
+export function quoteFacts(quote: Quote): Record<string, unknown> {
+  return {
+    id: quote.id,
+    leadId: quote.leadId,
+    lines: quote.lines.map((line) => ({
+      priceBookItemId: line.priceBookItemId,
+      quantity: line.quantity,
+      amountCents: line.amountCents,
+    })),
+    discountPercent: quote.discountPercent,
+    totalCents: quote.totalCents,
+  };
 }
 
 export interface FakeSalesDeskOptions {
@@ -177,8 +240,15 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
   const leads: Lead[] = (options.leads ?? demoLeads()).map((lead) => ({ ...lead }));
   const quoteByRequest = new Map<string, Quote>();
   const quotesById = new Map<string, Quote>((options.quotes ?? demoQuotes()).map((q) => [q.id, q]));
+  const approvalByRequest = new Map<string, Quote>();
   const activityByRequest = new Map<string, Activity>();
   let quoteNumber = 3050;
+  /** The next quote number the desk does not already hold. */
+  const nextQuoteId = (): string => {
+    do quoteNumber += 1;
+    while (quotesById.has(`Q-${quoteNumber}`));
+    return `Q-${quoteNumber}`;
+  };
   let activityNumber = 0;
 
   const findLead = (id: string): Lead => {
@@ -187,17 +257,33 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
       const known = leads.map((candidate) => `${candidate.id} (${candidate.company})`).join(", ");
       throw new SalesDeskError(
         `No lead has the id ${JSON.stringify(id)}. The pipeline holds: ${known}.`,
+        "not_found",
       );
     }
     return lead;
   };
 
+  const findQuote = (id: string): Quote => {
+    const quote = quotesById.get(id.trim());
+    if (quote === undefined) {
+      const known = [...quotesById.keys()].join(", ");
+      throw new SalesDeskError(
+        `No quote has the id ${JSON.stringify(id)}. The desk holds: ${known === "" ? "no quotes" : known}.`,
+        "not_found",
+      );
+    }
+    return quote;
+  };
+
+  /** A lead is quoted once a quote is ready to send, not while one waits for a person. */
+  const markQuoted = (lead: Lead, quote: Quote): void => {
+    lead.stage = "quoted";
+    lead.estimatedValueCents ??= quote.totalCents;
+  };
+
   const priceLine = (line: QuoteLineDraft, where: string): QuoteLine => {
     if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
       throw new SalesDeskError(`${where} needs a quantity greater than zero.`);
-    }
-    if (!Number.isSafeInteger(line.unitPriceCents) || line.unitPriceCents < 0) {
-      throw new SalesDeskError(`${where} needs a unit price in whole cents.`);
     }
     // Checked here as well as in the tool's schema, so no caller can price a line off the book.
     if (typeof line.priceBookItemId !== "string" || line.priceBookItemId.trim() === "") {
@@ -211,19 +297,14 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
         `${where} names ${JSON.stringify(line.priceBookItemId)}, which is not in the price book. A person prices work the book does not cover.`,
       );
     }
-    if (item.unitPriceCents !== line.unitPriceCents) {
-      throw new SalesDeskError(
-        `The price book prices ${item.name} at ${money(item.unitPriceCents)} per ${item.unit}; ${where} says ${money(line.unitPriceCents)}. Quote the book's price.`,
-      );
-    }
-    const priced = Math.round(line.quantity * line.unitPriceCents);
+    const priced = Math.round(line.quantity * item.unitPriceCents);
     const minimum = item.minimumCents;
     const applies = minimum !== null && priced < minimum;
     return {
       priceBookItemId: item.id,
       description: line.description ?? item.name,
       quantity: line.quantity,
-      unitPriceCents: line.unitPriceCents,
+      unitPriceCents: item.unitPriceCents,
       amountCents: applies ? minimum : priced,
       minimumApplied: applies,
     };
@@ -239,19 +320,15 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
     },
 
     async getQuote(id: string): Promise<Quote> {
-      const quote = quotesById.get(id.trim());
-      if (quote === undefined) {
-        const known = [...quotesById.keys()].join(", ");
-        throw new SalesDeskError(
-          `No quote has the id ${JSON.stringify(id)}. The desk holds: ${known === "" ? "no quotes" : known}.`,
-        );
-      }
-      return quote;
+      return findQuote(id);
     },
 
     async createQuote(
       draft: QuoteDraft,
-      { requestId }: { readonly requestId: string },
+      {
+        requestId,
+        quoteLimitCents,
+      }: { readonly requestId: string; readonly quoteLimitCents: number | undefined },
     ): Promise<Quote> {
       // A retried call is answered with the quote it already made: a quote is one event, however many
       // times a task is replayed.
@@ -277,12 +354,25 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
       if (!Number.isSafeInteger(validForDays) || validForDays <= 0) {
         throw new SalesDeskError("validForDays must be a whole number of days greater than zero.");
       }
-      quoteNumber += 1;
+      // The limit is judged on the subtotal, after minimums and before any discount: a discount is a
+      // decision of its own, and a quote must not slip under the limit by carrying one.
+      const limit =
+        quoteLimitCents !== undefined && Number.isFinite(quoteLimitCents) ? quoteLimitCents : null;
+      const approvalReasons: QuoteApprovalReason[] = [
+        ...(discountPercent > 0 ? (["discount"] as const) : []),
+        ...(limit === null
+          ? (["no_limit"] as const)
+          : subtotalCents > limit
+            ? (["over_limit"] as const)
+            : []),
+      ];
       const quote: Quote = {
-        id: `Q-${quoteNumber}`,
+        id: nextQuoteId(),
         leadId: lead.id,
         leadName: lead.company,
-        status: "draft",
+        status: approvalReasons.length === 0 ? "draft" : "awaiting_approval",
+        approvalReasons,
+        quoteLimitCents: limit,
         currency: "USD",
         lines,
         subtotalCents,
@@ -295,10 +385,34 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
       };
       quoteByRequest.set(requestId, quote);
       quotesById.set(quote.id, quote);
-      lead.stage = "quoted";
       lead.lastActivityAt = quote.issuedOn;
-      lead.estimatedValueCents ??= quote.totalCents;
+      if (quote.status === "draft") markQuoted(lead, quote);
       return quote;
+    },
+
+    async approveQuote(input, { requestId }): Promise<Quote> {
+      const prior = approvalByRequest.get(requestId);
+      if (prior !== undefined) return prior;
+
+      const quote = findQuote(input.quoteId);
+      if (quote.status !== "awaiting_approval") {
+        throw new SalesDeskError(
+          `${quote.id} is not waiting for approval: it is a draft ready to send. An approval applies once; a new or changed quote is made with create_quote.`,
+          "not_awaiting_approval",
+        );
+      }
+      // The person approved the quote as the gate read it; anything else is not what they approved.
+      if (!sameFacts(input.approved, quoteFacts(quote))) {
+        throw new SalesDeskError(
+          `${quote.id} is not what the person approved: it changed after its facts were read. It now stands at ${quote.lines.length} lines, total ${money(quote.totalCents)}. Nothing was approved.`,
+          "quote_changed",
+        );
+      }
+      const approved: Quote = { ...quote, status: "draft" };
+      quotesById.set(approved.id, approved);
+      approvalByRequest.set(requestId, approved);
+      markQuoted(findLead(approved.leadId), approved);
+      return approved;
     },
 
     async logActivity(

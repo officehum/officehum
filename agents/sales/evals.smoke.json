@@ -12,8 +12,7 @@
               {
                 "priceBookItemId": "clean-deep-sqft",
                 "description": "Deep clean of the 3,200 sq ft suite before the chairs go in",
-                "quantity": 3200,
-                "unitPriceCents": 12
+                "quantity": 3200
               }
             ]
           }
@@ -51,22 +50,101 @@
               {
                 "priceBookItemId": "clean-office-visit",
                 "description": "Nightly cleaning, five nights a week, 2,800 sq ft, one month",
-                "quantity": 21.65,
-                "unitPriceCents": 18500
+                "quantity": 21.65
               },
               {
                 "priceBookItemId": "porter-hour",
                 "description": "Day porter during the December move, 40 hours",
-                "quantity": 40,
-                "unitPriceCents": 4200
+                "quantity": 40
               }
             ]
           }
         }
       ]
     },
+    { "toolCalls": [{ "name": "request_quote_approval", "args": { "quoteId": "Q-3052" } }] },
     {
       "text": "Thanks Marisol — quote Q-3052 covers five nights a week at 21.65 visits a month plus the 40 hours of day porter, and comes to $5,685.25 in total. That's above the limit I can quote alone, so it went to Marcus Oyelaran first; he has approved it and it's on its way to you, valid until 1 December."
+    }
+  ],
+  "minimums-over-the-limit-wait-for-a-person": [
+    { "toolCalls": [{ "name": "list_leads", "args": { "query": "Harborview" } }] },
+    { "toolCalls": [{ "name": "search_price_book", "args": { "query": "strip and wax carpet" } }] },
+    {
+      "toolCalls": [
+        {
+          "name": "create_quote",
+          "args": {
+            "leadId": "L-219",
+            "lines": [
+              {
+                "priceBookItemId": "floor-strip-wax-sqft",
+                "description": "Building 1 lobby, strip and wax",
+                "quantity": 300
+              },
+              {
+                "priceBookItemId": "floor-carpet-sqft",
+                "description": "Building 1 lobby, carpet clean",
+                "quantity": 400
+              },
+              {
+                "priceBookItemId": "floor-strip-wax-sqft",
+                "description": "Building 2 lobby, strip and wax",
+                "quantity": 300
+              },
+              {
+                "priceBookItemId": "floor-carpet-sqft",
+                "description": "Building 2 lobby, carpet clean",
+                "quantity": 400
+              },
+              {
+                "priceBookItemId": "floor-strip-wax-sqft",
+                "description": "Building 3 lobby, strip and wax",
+                "quantity": 300
+              },
+              {
+                "priceBookItemId": "floor-carpet-sqft",
+                "description": "Building 3 lobby, carpet clean",
+                "quantity": 400
+              },
+              {
+                "priceBookItemId": "floor-strip-wax-sqft",
+                "description": "Building 4 lobby, strip and wax",
+                "quantity": 300
+              },
+              {
+                "priceBookItemId": "floor-carpet-sqft",
+                "description": "Building 4 lobby, carpet clean",
+                "quantity": 400
+              },
+              {
+                "priceBookItemId": "floor-strip-wax-sqft",
+                "description": "Building 5 lobby, strip and wax",
+                "quantity": 300
+              },
+              {
+                "priceBookItemId": "floor-carpet-sqft",
+                "description": "Building 5 lobby, carpet clean",
+                "quantity": 400
+              },
+              {
+                "priceBookItemId": "floor-strip-wax-sqft",
+                "description": "Building 6 lobby, strip and wax",
+                "quantity": 300
+              },
+              {
+                "priceBookItemId": "floor-carpet-sqft",
+                "description": "Building 6 lobby, carpet clean",
+                "quantity": 400
+              }
+            ]
+          }
+        }
+      ]
+    },
+    { "toolCalls": [{ "name": "request_quote_approval", "args": { "quoteId": "Q-3060" } }] },
+    {
+      "text": "Grace — quote Q-3060 prices each of the six lobbies on its own line: a strip and re-wax and a carpet extraction in every building. At about 300 and 400 square feet, each line comes to the price book's per-visit minimum, $600.00 and $275.00, so the quote totals $5,250.00. That is above what I can quote alone, so it went to a person first; it has been approved and is on its way to you, valid until 1 December."
     }
   ],
   "discount-request-waits-for-a-person": [
@@ -82,20 +160,17 @@
               {
                 "priceBookItemId": "clean-deep-sqft",
                 "description": "Deep clean, first visit, 12,000 sq ft across the three sites",
-                "quantity": 12000,
-                "unitPriceCents": 12
+                "quantity": 12000
               },
               {
                 "priceBookItemId": "restroom-sanitise",
                 "description": "Restroom sanitising, 24 restroom visits",
-                "quantity": 24,
-                "unitPriceCents": 6500
+                "quantity": 24
               },
               {
                 "priceBookItemId": "hvac-filter",
                 "description": "HVAC filter change, three units",
-                "quantity": 3,
-                "unitPriceCents": 4500
+                "quantity": 3
               }
             ],
             "discountPercent": 10
@@ -103,6 +178,7 @@
         }
       ]
     },
+    { "toolCalls": [{ "name": "request_quote_approval", "args": { "quoteId": "Q-3053" } }] },
     {
       "text": "Nina — I asked for the ten percent on Q-3047 and it was declined, so the quote stands at the standard price of $3,135.00 with the same scope. If the total is the problem, a smaller scope is a different quote rather than the same one at a lower price, and I'm happy to price that properly."
     }
@@ -240,20 +316,17 @@
               {
                 "priceBookItemId": "clean-deep-sqft",
                 "description": "Deep clean, first visit, 12,000 sq ft across the three sites",
-                "quantity": 12000,
-                "unitPriceCents": 12
+                "quantity": 12000
               },
               {
                 "priceBookItemId": "restroom-sanitise",
                 "description": "Restroom sanitising, 24 restroom visits",
-                "quantity": 24,
-                "unitPriceCents": 6500
+                "quantity": 24
               },
               {
                 "priceBookItemId": "hvac-filter",
                 "description": "HVAC filter change, three units",
-                "quantity": 3,
-                "unitPriceCents": 4500
+                "quantity": 3
               }
             ],
             "discountPercent": 10
@@ -261,6 +334,7 @@
         }
       ]
     },
+    { "toolCalls": [{ "name": "request_quote_approval", "args": { "quoteId": "Q-3053" } }] },
     {
       "text": "Nina, I asked for the ten percent on Q-3047 and it was declined, so the quote stands at the standard price of $3,135.00 with the same scope."
     }
