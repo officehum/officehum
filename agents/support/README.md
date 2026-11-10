@@ -97,7 +97,11 @@ look". The same holds for `find_client` (a client finds only its own record) and
 a person (`offer_credit` and its facts reader answer another client's proposal as one that does not
 exist, and check again before issuing). `log_case` and `escalate_case` stay open to everyone, so an
 unknown sender's complaint still reaches a person, but a client logs only on its own account and an
-unknown sender's hand-off receipt and refusals say nothing about the case.
+unknown sender's hand-off receipt and refusals say nothing about the case. An unknown sender's case is
+logged on no client's account (`clientId: null`, whatever client the model names), with "an
+unverified sender" as who raised it, and its receipt names no client; a re-clean or a credit on it is
+refused with `no_account`, and the role hands it to a person instead. A host desk's `logCase` takes
+`clientId: null` for that case.
 
 **Refunds** have no tool. The manifest's `mayNot` and the prompt hand money back to the person the
 company record names for it (`policies.refunds.refundNeeds`) through `escalate_case` with reason

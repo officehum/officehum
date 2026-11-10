@@ -192,9 +192,14 @@ export interface Escalation {
   readonly on: string;
 }
 
+/** The name a case logged from an unverified sender carries: it is on no client's account. */
+export const NO_ACCOUNT = "an unverified sender (no client account)";
+
 export interface SupportCase {
   readonly id: string;
-  readonly clientId: string;
+  /** `null` for a case logged from an unverified sender: it is on no client's account. */
+  readonly clientId: string | null;
+  /** The client's name, or `NO_ACCOUNT` for a case on no client's account. */
   readonly clientName: string;
   readonly kind: CaseKind;
   readonly category: CaseCategory;
@@ -247,7 +252,11 @@ export interface CaseFilter {
 }
 
 export interface LogCaseInput {
-  readonly clientId: string;
+  /**
+   * The client's account, or `null` when nobody verified who sent it: the case is then logged on no
+   * client's account, so an unverified complaint is never attached to a real client.
+   */
+  readonly clientId: string | null;
   readonly kind: CaseKind;
   readonly category: CaseCategory;
   readonly summary: string;
@@ -344,7 +353,8 @@ export type DeskRefusal =
   | "no_one"
   | "reclean_pending"
   | "not_escalated"
-  | "escalated";
+  | "escalated"
+  | "no_account";
 
 /** A refusal the model reads: an unknown case, a date outside the window, a case not ready to close. */
 export class SupportDeskError extends Error {
@@ -797,6 +807,18 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
     };
   };
 
+  /** A case from an unverified sender is on no client's account: no visit or credit can go on it. */
+  const onAccount = (entry: CaseState, remedy: string): string => {
+    if (entry.clientId === null) {
+      throw new SupportDeskError(
+        "no_account",
+        `${entry.id} was logged from an unverified sender and is on no client's account, so there is no site or invoice for ${remedy}. Nothing was written.`,
+        { caseId: entry.id },
+      );
+    }
+    return entry.clientId;
+  };
+
   const complaint = (entry: CaseState, remedy: string): void => {
     if (entry.kind !== "complaint") {
       throw new SupportDeskError(
@@ -848,7 +870,7 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
         .filter(
           (entry) =>
             filter.clientId === undefined ||
-            entry.clientId.toLowerCase() === filter.clientId.trim().toLowerCase(),
+            entry.clientId?.toLowerCase() === filter.clientId.trim().toLowerCase(),
         )
         .filter(
           (entry) =>
@@ -868,7 +890,7 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
       const prior = logged.get(requestId);
       if (prior !== undefined) return prior;
 
-      const client = findClientById(input.clientId);
+      const client = input.clientId === null ? undefined : findClientById(input.clientId);
       const summary = required(input.summary, "a summary of what the client raised");
       const reportedBy = required(input.reportedBy, "who raised it (reportedBy)");
       const source = required(input.source, "the message it came from (source)");
@@ -876,8 +898,8 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
       const opened = today();
       const entry: CaseState = {
         id: `C-${highest + 1}`,
-        clientId: client.id,
-        clientName: client.name,
+        clientId: client?.id ?? null,
+        clientName: client?.name ?? NO_ACCOUNT,
         kind: input.kind,
         category: input.category,
         status: "open",
@@ -905,6 +927,7 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
       const entry = findCase(input.caseId);
       notClosed(entry);
       complaint(entry, "a re-clean");
+      onAccount(entry, "a re-clean");
       if (!RECLEAN_CATEGORIES.has(entry.category)) {
         throw new SupportDeskError(
           "not_reclean",
@@ -959,6 +982,7 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
       const entry = findCase(input.caseId);
       notClosed(entry);
       complaint(entry, "a credit");
+      onAccount(entry, "a credit");
       const record = invoices.find(
         (candidate) => candidate.id.toLowerCase() === input.invoiceId.trim().toLowerCase(),
       );

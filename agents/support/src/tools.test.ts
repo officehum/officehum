@@ -21,6 +21,7 @@ import {
   creditApprovalFacts,
   DEMO_NOW,
   fakeSupportDesk,
+  NO_ACCOUNT,
   type SupportDesk,
   SupportDeskError,
 } from "./desk.js";
@@ -433,6 +434,44 @@ describe("log_case", () => {
     );
     expect(text(result)).toContain("Logged C-306");
     expect(text(result)).not.toContain("escalate_case");
+  });
+
+  it("logs an unknown sender's case on no client's account, with a receipt that names no client", async () => {
+    const support = desk();
+    const result = await tools(support, null).logCase.execute(
+      { ...SAFETY, reportedBy: "Megan Shaw, Little Acorns" },
+      call("u-log"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(false);
+    expect(text(result)).toContain("Logged C-306: complaint, safety, priority urgent");
+    expect(text(result)).not.toContain("Little Acorns");
+    expect(text(result)).not.toContain("Megan");
+    // The case is on no client's account: the client the model named has no new case.
+    expect(await support.listCases({ clientId: "CL-102" })).toHaveLength(1);
+    const [logged] = await support.listCases({ caseId: "C-306" });
+    expect(logged).toMatchObject({
+      clientId: null,
+      clientName: NO_ACCOUNT,
+      reportedBy: "an unverified sender",
+    });
+    // A safety complaint still goes to a person.
+    expect(text(result)).toContain("call escalate_case with caseId C-306 and reason safety");
+    // A colleague sees it in the case list, marked as from an unverified sender.
+    const listed = await tools(support).listCases.execute(
+      { caseId: "C-306" },
+      call("c-list"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(listed)).toContain("C-306 — an unverified sender (no client account)");
+    // No visit or credit can go on a case with no client's account; it goes to a person instead.
+    const reclean = await tools(support).bookReclean.execute(
+      { caseId: "C-306", date: "2026-11-11" },
+      call("c-reclean"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(reclean).code).toBe("no_account");
+    expect(text(reclean)).toContain("call escalate_case with caseId C-306 and reason unresolved");
   });
 
   it("logs an external client's case on its own account, whatever client the call names", async () => {
