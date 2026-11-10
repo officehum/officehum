@@ -502,6 +502,26 @@ describe("the company package's own consistency", () => {
       expect(issues).toContain('ticketRoutes[0] has the type "Finance Review"');
     });
 
+    it("carries the weeks in a month the desk counts recurring visits with", () => {
+      const facts = JSON.parse(renderFacts(readSource(root))) as Loose;
+      expect(facts.quoting.weeksPerMonth).toBe(4.33);
+    });
+
+    it("refuses a weeks-per-month that is missing, zero or not a number, naming the path", () => {
+      for (const value of [undefined, 0, -1, "4.33"]) {
+        const issues = issuesAfter((c) => {
+          c.quoting = value === undefined ? {} : { weeksPerMonth: value };
+        });
+        expect(issues).toContain("quoting.weeksPerMonth");
+        expect(issues).toContain("positive number of weeks");
+      }
+      expect(
+        issuesAfter((c) => {
+          delete c.quoting;
+        }),
+      ).toContain("quoting.weeksPerMonth");
+    });
+
     it("refuses a purchase-order limit the policies do not state", () => {
       const issues = issuesAfter((c) => {
         c.approvalLimits.purchaseOrderOverCents = 175000;

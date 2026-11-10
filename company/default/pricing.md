@@ -51,10 +51,11 @@ invoice, and the quote says parts are extra.
 
 ## Counting a month
 
-A recurring line is priced per visit. A month is four and a third weeks, so five visits a week is
-21.65 visits in a month and two visits a week is 8.65. The number of visits is written on the quote
-so a client can check it; it is not rounded, because rounding it every month is how a contract ends
-up arguing about a few hundred dollars a year.
+A recurring line is priced per visit. The quote desk counts the visits in a month from the visits a
+week and the weeks in a month, which the company record sets at 4.33: five visits a week is 21.65
+visits in a month and two visits a week is 8.66. Nobody works the count out by hand. The number of
+visits is written on the quote so a client can check it; it is not rounded to whole visits, because
+rounding it every month is how a contract ends up arguing about a few hundred dollars a year.
 
 ## What may be quoted without a person
 
