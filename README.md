@@ -321,6 +321,29 @@ credential. Only `module` and an optional `export` are allowed per entry, and an
 }
 ```
 
+## Run an office behind the Gateway Protocol
+
+`officehum runtime` hosts one office (every role in its office file, one SQLite file) and speaks the
+[Gateway Protocol](docs/design/gateway-protocol.md) on stdin/stdout: one JSON message per line in,
+one per line out, and logs on stderr. The gateway supervises it; you can also run it directly and type
+frames at it.
+
+```sh
+echo '{"version":1,"id":"my-office","roles":[{"dir":"agents/sales"}]}' > office.json
+officehum runtime --db .officehum/office.sqlite --office office.json --demo
+{"type":"submit","id":"c1","agent":"sales","requestId":"r1","input":{"kind":"message","text":"Hello"},"principal":{"id":"me","roles":["staff"]}}
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--db FILE` | The office SQLite file |
+| `--office FILE` | The office file: its id and its roles, each with optional overlays |
+| `--model provider/model` | Overrides every role's model for conversations it starts |
+| `--demo` | Run roles that keep records on their demonstration data |
+
+Every command carries a `principal`, which the gateway adds from the signed-in session; typed by hand,
+you add it yourself. A command without one is refused as `unauthorized`.
+
 ## Eval a role package
 
 `officehum eval ROLE_DIR` runs a role's eval suites and prints the SDK's report, exiting non-zero

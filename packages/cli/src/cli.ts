@@ -74,6 +74,7 @@ import {
   terminalApprover,
   terminalUser,
 } from "./run.js";
+import { RUNTIME_USAGE, type RuntimeStdio, runRuntimeCommand } from "./runtime-command.js";
 import { UsageError } from "./usage-error.js";
 import { runVerifyRoleCommand } from "./verify-role.js";
 
@@ -129,10 +130,13 @@ export interface CliDependencies {
   readonly now?: () => Date;
   /** Fetches a page's text for `verify-role --online`; tests inject it so none touch the network. */
   readonly fetchText?: (url: string) => Promise<string>;
+  /** The streams `runtime` speaks the Gateway Protocol on; tests inject their own. */
+  readonly stdio?: RuntimeStdio;
 }
 
 const USAGE = `Usage:
   officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE] [--as PERSON] [--demo]
+  ${RUNTIME_USAGE}
   officehum eval ROLE_DIR [--model provider/model] [--tag TAG] [--trials N] [--script FILE] [--mode bare|office]
   officehum verify-role ROLE_DIR [--online]
   officehum demo [--state DIR] [--approval allow|deny] [--calendar local] [--messenger console]
@@ -1417,6 +1421,14 @@ export async function runCli(
       return 0;
     }
     if (args[0] === "run") return await runRun(args.slice(1), io, dependencies);
+    if (args[0] === "runtime") {
+      return await runRuntimeCommand(args.slice(1), io, dependencies, (session) => {
+        activeSession = session;
+        return () => {
+          if (activeSession === session) activeSession = undefined;
+        };
+      });
+    }
     if (args[0] === "board") return await runBoardCommand(args.slice(1), io, dependencies);
     if (args[0] === "review") return await runReview(args.slice(1), io);
     if (args[0] === "eval") return await runEvalCommand(args.slice(1), io, dependencies);

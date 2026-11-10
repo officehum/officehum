@@ -96,24 +96,25 @@ server sends every event from the start. A client that reconnects uses this to c
 
 ### `get_state`
 
-Asks for the state of the office, or of one agent with `agent`.
+Asks for the state of the office, or of one agent with `agent`. `data.agents` lists each agent as
+`list_agents` does, plus `status` (`busy` while any of its requests is unsettled, else `idle`) and
+`openRequests`.
 
 ```json
 {"type":"get_state","id":"c4","agent":"front-desk"}
-{"type":"result","id":"c4","ok":true,"data":{}}
+{"type":"result","id":"c4","ok":true,"data":{"agents":[{"name":"front-desk","role":"Answers the front desk","model":"paper/ultramarine-1-flash","tools":[{"name":"check_schedule","replay":"safe"}],"status":"idle","openRequests":0}]}}
 ```
 
 ### `list_agents`
 
-Lists the office's agents.
+Lists the office's agents: each one's `name` (the role's id, which `submit` names as `agent`), what its
+`role` is, the `model` its new conversations use (`provider/model`), and its `tools` with their replay
+policy.
 
 ```json
 {"type":"list_agents","id":"c5"}
-{"type":"result","id":"c5","ok":true,"data":{}}
+{"type":"result","id":"c5","ok":true,"data":{"agents":[{"name":"front-desk","role":"Answers the front desk","model":"paper/ultramarine-1-flash","tools":[{"name":"check_schedule","replay":"safe"}]}]}}
 ```
-
-The shape of `data` for `get_state` and `list_agents` is defined by the runtime (RASF-3104) and will
-be added here then.
 
 ### `abort`
 
@@ -226,6 +227,40 @@ authenticated session:
 **A client may never send `principal`.** The gateway refuses a client message that carries one with
 `invalid_message`, and the runtime refuses a forwarded command without one. Approver identity always
 comes from the session, never from a message the caller wrote.
+
+## The runtime process
+
+`officehum runtime --db FILE --office FILE` is the runtime: one office's Pi Durable harness, every role
+in one SQLite file, speaking this protocol on stdin/stdout. The gateway starts and supervises it; a
+developer can also run it directly and type frames at it. stdout carries frames only; logs go to
+stderr. `docs/superpowers/plans/2026-11-10-runtime-process.md` records how it is built.
+
+- **Start-up.** It opens the office, loads the roles the office file lists, attaches to the work a
+  previous run left unsettled, resumes it, and sends `welcome` unprompted once it is ready. It also
+  answers each `hello` with `welcome` or `unsupported_version`.
+- **Commands** must carry a `principal`; one without gets `error unauthorized`.
+- **Request ids are scoped by principal.** The runtime keys a submission by
+  `<principal id, URI-encoded>/<request id>`, and `accepted` and every `event` carry that scoped id.
+  Two principals can use the same request id without meeting; the gateway rewrites the scoped id back
+  to the client's own. `subscribe` and `abort` take the client's request id and find only that
+  principal's request.
+- **Exactly once.** The scoped id is kept in a durable index beside the office, so the same request id
+  again, even after a restart, gets `accepted` with `existing` and no new work.
+- **Conversations.** An agent's default conversation is shared by its requests; `conversation` names
+  another one. A request submitted while its conversation is busy is `queued`.
+- **Events.** `submit` subscribes the connection to its request. Events are kept in memory: after a
+  restart, a request that finished before it replays only its `settled` event, and a resumed request's
+  events start again from `seq` 1. `text_delta` is sent when the harness commits partial output (every
+  100 ms by default, so a short answer may arrive with none).
+- **`abort`** stops the request's whole conversation, and so every request queued in it.
+- **`approve`** answers `not_found` until remote approvals (RASF-3108); until then gated actions are
+  refused.
+
+The office file lists the roles, with paths relative to the file:
+
+```json
+{ "version": 1, "id": "office-7f3a", "roles": [{ "dir": "agents/sales", "overlays": ["overlays/sales"] }] }
+```
 
 ## Using the TypeScript package
 
