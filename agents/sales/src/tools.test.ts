@@ -312,14 +312,79 @@ describe("create_quote", () => {
     expect(text(result)).toContain("no quote limit is set");
   });
 
-  it("takes no price from the model: a line is an item and a quantity, and nothing else", () => {
+  it("takes no price from the model: a line is an item, a quantity and a frequency, and nothing else", () => {
     const schema = tools(desk()).createQuote.parameters as unknown as {
       properties: {
-        lines: { items: { properties: Record<string, unknown>; additionalProperties?: boolean } };
+        lines: {
+          items: {
+            properties: Record<string, Record<string, unknown>>;
+            additionalProperties?: boolean;
+            required?: string[];
+          };
+        };
       };
     };
-    expect(Object.keys(schema.properties.lines.items.properties)).not.toContain("unitPriceCents");
-    expect(schema.properties.lines.items.additionalProperties).toBe(false);
+    const line = schema.properties.lines.items;
+    expect(Object.keys(line.properties).sort()).toEqual([
+      "description",
+      "priceBookItemId",
+      "quantity",
+      "visitsPerWeek",
+    ]);
+    expect(line.properties.visitsPerWeek).toMatchObject({ exclusiveMinimum: 0, maximum: 7 });
+    expect(line.required).not.toContain("visitsPerWeek");
+    expect(line.additionalProperties).toBe(false);
+  });
+
+  it("counts a recurring line from visitsPerWeek and shows the count on the receipt", async () => {
+    const result = await tools(desk()).createQuote.execute(
+      {
+        leadId: "L-204",
+        lines: [{ priceBookItemId: "clean-office-visit", quantity: 1, visitsPerWeek: 5 }],
+      },
+      call("recurring-1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(result).status).toBe("draft");
+    expect(details(result).lines).toEqual([
+      expect.objectContaining({ quantity: 21.65, visitsPerWeek: 5, weeksPerMonth: 4.33 }),
+    ]);
+    expect(text(result)).toContain("5 visits a week × 4.33 weeks = 21.65 visits");
+    expect(text(result)).toContain("$4,005.25");
+  });
+
+  it("shows the units on each visit when a recurring line has more than one", async () => {
+    const one = desk();
+    const made = await tools(one).createQuote.execute(
+      {
+        leadId: "L-207",
+        lines: [{ priceBookItemId: "restroom-sanitise", quantity: 3, visitsPerWeek: 5 }],
+      },
+      call("restrooms"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(made)).toContain("3 per visit × 5 visits a week × 4.33 weeks = 64.95");
+    const read = await tools(one).getQuote.execute(
+      { quoteId: String(details(made).id) },
+      call("read-restrooms"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(read)).toContain("3 per visit × 5 visits a week × 4.33 weeks = 64.95");
+    expect(text(read)).toContain("64.95 × $65.00 = $4,221.75");
+  });
+
+  it("refuses visitsPerWeek on an item that is not priced per visit, saying what to do", async () => {
+    const result = await tools(desk()).createQuote.execute(
+      {
+        leadId: "L-204",
+        lines: [{ priceBookItemId: "clean-deep-sqft", quantity: 3000, visitsPerWeek: 1 }],
+      },
+      call("not-per-visit"),
+      BACKGROUND_CONTEXT,
+    );
+    expect((result as { isError?: boolean }).isError).toBe(true);
+    expect(text(result)).toContain("not per visit");
+    expect(text(result)).toContain("Leave visitsPerWeek out");
   });
 
   it("refuses a lead that does not exist, naming what the pipeline holds", async () => {
