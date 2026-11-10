@@ -81,16 +81,19 @@ phone), crew members by the contact their staff record holds. A time-off request
 only a person on the company record (the People Ops owner, say) may name another employee
 (`someone_else` otherwise). A sender nobody verified is refused with `unknown_sender`, and one who is
 not on staff with `not_staff`. `get_leave_balance` takes no arguments at all: it gives the sender
-their allowance (each demonstration staff record carries one) less the approved days that fall this
-year, worked out by the desk.
+their allowance (each demonstration staff record carries one) less the approved business days
+(Monday to Friday) that fall this year, worked out by the desk. A crew member naming themselves, even
+by a first name others share, is themselves.
 
 **Time off.** The model gives the dates and the kind of reason the employee gave; the
 desk works out the notice against `staffPolicies.timeOffNoticeDays`. Enough notice: recorded as
 pending for the person who decides time off (the escalation path's `hiring-and-onboarding` owner).
 Short notice for an ordinary reason: refused with `late_notice` and the notice figure, and the role
-asks with `request_time_off_exception`. The approver sees the employee, the dates, the reason and the
-desk's notice figure, and the desk records exactly that request (`notice_changed` for any other
-figure). The role never approves anything: a recorded request is pending until a person decides, and
+asks with `request_time_off_exception`. The gate's facts reader works the request out on the desk
+before anyone is asked (whose time off, from the verified sender, the dates, the reason and the
+notice figure) and shows exactly that to the person; on a yes those facts reach the tool under the
+gate's own key, and the desk records only that request (`exception_changed` if it no longer works
+out the same, `notice_changed` for any other notice figure). The role never approves anything: a recorded request is pending until a person decides, and
 only an approved exception is recorded as approved.
 
 **Leave the law may protect.** A reason category of medical, disability, pregnancy or parental,

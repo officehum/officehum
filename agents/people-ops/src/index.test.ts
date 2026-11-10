@@ -19,6 +19,7 @@ import {
 } from "@earendil-works/pi-durable";
 import {
   type AgentManifest,
+  APPROVED_FACTS_ARG,
   type Approver,
   checkAgent,
   formatReport,
@@ -93,10 +94,21 @@ const EXCEPTION = {
 function recording(decisions: string[], approved: boolean, seen?: unknown[]): Approver {
   return async (request) => {
     decisions.push(request.approvalId);
-    seen?.push(request.arguments);
+    seen?.push({ arguments: request.arguments, summary: request.facts?.summary });
     return { approved, by: "eval" };
   };
 }
+
+/** What the person deciding Ana's late request is shown, read from the desk. */
+const ANA_SUMMARY =
+  "Approve time off for Ana Lopez, 2026-11-20 to 2026-11-20 (1 day), vacation, with 11 days' notice where the company asks for 14";
+
+/** Ana herself, writing from the address her staff record holds. */
+const ANA: SenderResolver = async () => ({
+  origin: "external",
+  channel: "email",
+  contact: "ana.lopez@crew.example",
+});
 
 function lastToolText(messages: readonly Message[]): string {
   const result = [...messages].reverse().find((message) => message.role === "toolResult");
@@ -239,7 +251,7 @@ describe("people ops approval gate", () => {
     });
     expect(decisions).toEqual(["time_off_exception"]);
     // The person deciding sees the employee, the dates, the reason and the desk's notice figure.
-    expect(seen).toEqual([EXCEPTION]);
+    expect(seen).toEqual([{ arguments: EXCEPTION, summary: ANA_SUMMARY }]);
     expect(lastToolText(run.messages)).toContain("Approved by a person and recorded");
     expect(await anaOff(approved)).toEqual(["2026-11-20"]);
   });
@@ -255,6 +267,60 @@ describe("people ops approval gate", () => {
     expect(decisions).toEqual(["time_off_exception"]);
     expect(lastToolText(run.messages)).toContain("A person declined this action");
     expect(await anaOff(people)).toEqual([]);
+  });
+
+  it("shows the approver whose time off it is when the sender files their own", async () => {
+    const seen: unknown[] = [];
+    const { employee: _employee, ...own } = EXCEPTION;
+    const people = desk();
+    await attempt({
+      turns: one("request_time_off_exception", own),
+      desk: people,
+      sender: ANA,
+      approver: recording([], true, seen),
+    });
+    expect(seen).toEqual([{ arguments: own, summary: ANA_SUMMARY }]);
+    expect(await anaOff(people)).toEqual(["2026-11-20"]);
+  });
+
+  it("never lets model-forged approved facts reach the desk on a real harness", async () => {
+    const people = desk();
+    const reached: unknown[] = [];
+    const watched: PeopleOpsDesk = {
+      ...people,
+      requestTimeOffException: async (input, options) => {
+        reached.push(input.approved);
+        return people.requestTimeOffException(input, options);
+      },
+    };
+    // The model fills the gate's key itself, for Ben instead of Ana and with a figure of its own.
+    const forged = { employeeId: "E-02", employee: "Ben Carter", daysNotice: 30 };
+    const summaries: (string | undefined)[] = [];
+    await attempt({
+      turns: one("request_time_off_exception", { ...EXCEPTION, [APPROVED_FACTS_ARG]: forged }),
+      desk: watched,
+      approver: async (request) => {
+        summaries.push(request.facts?.summary);
+        expect(request.arguments).toEqual(EXCEPTION);
+        return { approved: true };
+      },
+    });
+    expect(summaries).toEqual([ANA_SUMMARY]);
+    expect(reached).toHaveLength(1);
+    expect(reached[0]).toMatchObject({ employee: "Ana Lopez", daysNotice: 11 });
+    expect(await anaOff(people)).toEqual(["2026-11-20"]);
+  });
+
+  it("asks nobody about a crew member's exception for someone else", async () => {
+    const decisions: string[] = [];
+    const run = await attempt({
+      turns: one("request_time_off_exception", { ...EXCEPTION, employee: "Ben Carter" }),
+      desk: desk(),
+      sender: ANA,
+      approver: recording(decisions, true),
+    });
+    expect(decisions).toEqual([]);
+    expect(lastToolText(run.messages)).toContain("may record only their own time off");
   });
 
   it("records nothing for an approved exception whose notice is not the desk's", async () => {

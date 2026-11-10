@@ -5,7 +5,7 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { VerifiedSender } from "@officehum/sdk";
+import { APPROVED_FACTS_ARG, type VerifiedSender } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { companyHead, loadCompanyFacts, peopleOwner, person, personLabel } from "./company.js";
 import { type DeskRefusal, demoEmployees, fakePeopleOpsDesk, type PeopleOpsDesk } from "./desk.js";
@@ -72,6 +72,7 @@ describe("refusal hints", () => {
       "unknown_sender",
       "not_staff",
       "someone_else",
+      "exception_changed",
     ];
     const hints = HINTS(company);
     for (const code of codes) expect(hints[code].trim().length, code).toBeGreaterThan(10);
@@ -255,37 +256,62 @@ describe("request_time_off_exception", () => {
       daysNotice: 11,
       why: "Concert tickets out of town",
     };
+    // What the approval gate hands the tool after a yes: the arguments and the desk-read facts.
+    const read = await toolset.exceptionFacts(args, BACKGROUND_CONTEXT as never, call("x0"));
+    expect(read.summary).toBe(
+      "Approve time off for Ana Lopez, 2026-11-20 to 2026-11-20 (1 day), vacation, with 11 days' notice where the company asks for 14",
+    );
+    const approved = { ...args, [APPROVED_FACTS_ARG]: read.facts };
     const first = await toolset.requestTimeOffException.execute(
-      args,
+      approved,
       call("x1"),
       BACKGROUND_CONTEXT,
     );
     expect(text(first)).toContain("Approved by a person");
     expect(details(first)).toMatchObject({ status: "approved", approvedVia: "time_off_exception" });
+    // Replayed, and replayed again from freshly built tools over the same desk (a restart).
     const again = await toolset.requestTimeOffException.execute(
-      args,
+      approved,
       call("x1"),
       BACKGROUND_CONTEXT,
     );
     expect(text(again)).toBe(text(first));
+    const restarted = await tools(people).requestTimeOffException.execute(
+      approved,
+      call("x1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(restarted)).toBe(text(first));
     const twice = await toolset.requestTimeOffException.execute(
-      args,
+      approved,
       call("x2"),
       BACKGROUND_CONTEXT,
     );
     expect(details(twice)).toMatchObject({ code: "duplicate" });
+    // Without facts a person approved, nothing is recorded.
+    const unapproved = await tools(desk()).requestTimeOffException.execute(
+      args,
+      call("x9"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(unapproved).code).toBe("not_approved");
   });
 
   it("refuses a notice figure that is not the desk's, giving the right one", async () => {
+    const args = {
+      employee: "Ana Lopez",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      reasonCategory: "vacation",
+      daysNotice: 14,
+      why: "Concert",
+    };
+    // Nobody is asked about a figure the desk would refuse.
+    await expect(
+      tools(desk()).exceptionFacts(args, BACKGROUND_CONTEXT as never, call("x4")),
+    ).rejects.toThrow("gives 11 days' notice, not 14");
     const result = await tools(desk()).requestTimeOffException.execute(
-      {
-        employee: "Ana Lopez",
-        startDate: "2026-11-20",
-        endDate: "2026-11-20",
-        reasonCategory: "vacation",
-        daysNotice: 14,
-        why: "Concert",
-      },
+      { ...args, [APPROVED_FACTS_ARG]: {} },
       call("x3"),
       BACKGROUND_CONTEXT,
     );
@@ -401,7 +427,7 @@ describe("get_leave_balance", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(result)).toBe(
-      "Leave for Jamal Brooks (the sender) in 2026: allowance 15 days; approved and taken or booked 1; 14 days left. Approved: TO-101, 2026-11-12 to 2026-11-12 (1 day this year). Worked out by the desk; this is the sender's own balance only.",
+      "Leave for Jamal Brooks (the sender) in 2026, in business days (Monday to Friday): allowance 15; approved and taken or booked 1; 14 left. Approved: TO-101, 2026-11-12 to 2026-11-12 (1 business day this year). Worked out by the desk; this is the sender's own balance only.",
     );
     expect(details(result)).toMatchObject({ remainingDays: 14, takenDays: 1 });
     expect(JSON.stringify(details(result))).not.toContain("@");

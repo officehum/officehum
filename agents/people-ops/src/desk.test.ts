@@ -52,8 +52,14 @@ const desk = (facts: CompanyFacts = company): PeopleOpsDesk => {
     ...people,
     recordTimeOffRequest: (input, options) =>
       people.recordTimeOffRequest({ from: OWNER, ...input }, options),
-    requestTimeOffException: (input, options) =>
-      people.requestTimeOffException({ from: OWNER, ...input }, options),
+    // An exception is recorded only with the facts a person approved: here, the desk's own.
+    requestTimeOffException: async (input, options) => {
+      const full = { from: OWNER, ...input };
+      const approved =
+        (input as { approved?: Record<string, unknown> }).approved ??
+        (await people.timeOffExceptionFacts(full).catch(() => ({})));
+      return people.requestTimeOffException({ ...full, approved }, options);
+    },
   };
 };
 
@@ -764,6 +770,86 @@ describe("company data and the verified sender", () => {
     // An office colleague on the company record is matched by their verified id.
     const own = await desk().leaveBalance({ from: OWNER });
     expect(own).toMatchObject({ name: peopleOwner(company)?.name, takenDays: 0 });
+  });
+
+  it("records an exception only for the facts a person approved", async () => {
+    const people = desk();
+    const input = {
+      employee: "Ana Lopez",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      reasonCategory: "vacation" as const,
+      daysNotice: 11,
+      why: "A wedding.",
+      from: OWNER,
+    };
+    const facts = await people.timeOffExceptionFacts(input);
+    expect(facts).toEqual({
+      employeeId: "E-01",
+      employee: "Ana Lopez",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      days: 1,
+      reasonCategory: "vacation",
+      daysNotice: 11,
+      noticeDays: staff.timeOffNoticeDays,
+    });
+    const changed = await refusal(
+      people.requestTimeOffException(
+        { ...input, approved: { ...facts, employee: "Ben Carter", employeeId: "E-02" } },
+        { requestId: "ex-changed" },
+      ),
+    );
+    expect(changed.code).toBe("exception_changed");
+    const recorded = await people.requestTimeOffException(
+      { ...input, approved: facts },
+      { requestId: "ex-ok" },
+    );
+    expect(recorded).toMatchObject({ employeeName: "Ana Lopez", status: "approved" });
+  });
+
+  it("counts leave in business days, Monday to Friday", async () => {
+    // Ana's approved Friday-to-Monday absence is two working days, not four calendar days.
+    const people = fakePeopleOpsDesk({
+      company,
+      now: () => NOW,
+      timeOff: [
+        {
+          id: "TO-1",
+          employeeId: "E-01",
+          startDate: "2026-11-13",
+          endDate: "2026-11-16",
+          reasonCategory: "vacation",
+          status: "approved",
+        },
+      ],
+    });
+    const balance = await people.leaveBalance({ from: ANA });
+    expect(balance).toMatchObject({ takenDays: 2, remainingDays: 13 });
+    expect(balance.approved[0]).toMatchObject({ id: "TO-1", days: 2 });
+  });
+
+  it("checks a self-named sender before refusing a shared first name", async () => {
+    // Two staff called Ana: Ana Lopez naming herself "Ana" is still herself, never ambiguous.
+    const people = fakePeopleOpsDesk({
+      company,
+      now: () => NOW,
+      employees: [
+        { ...demoEmployees()[0], id: "E-01" } as never,
+        { id: "E-2", name: "Ana Reyes", title: "Cleaner", crewId: "cleaning-north" },
+      ],
+    });
+    const own = await people.recordTimeOffRequest(
+      {
+        employee: "Ana",
+        startDate: "2026-12-21",
+        endDate: "2026-12-21",
+        reasonCategory: "vacation",
+        from: ANA,
+      },
+      { requestId: "self-ana" },
+    );
+    expect(own.employeeName).toBe("Ana Lopez");
   });
 
   it("get_leave_balance refuses an unknown sender", async () => {

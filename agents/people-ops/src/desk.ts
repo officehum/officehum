@@ -16,7 +16,7 @@
  * code, and the tools turn the code into the next step.
  */
 
-import { senderPerson, type VerifiedSender } from "@officehum/sdk";
+import { sameFacts, senderPerson, type VerifiedSender } from "@officehum/sdk";
 import {
   type CompanyFacts,
   companyHead,
@@ -115,7 +115,7 @@ export interface LeaveBalance {
   readonly name: string;
   readonly year: number;
   readonly allowanceDays: number;
-  /** Approved calendar days off that fall in `year`. */
+  /** Approved business days off (Monday to Friday) that fall in `year`. */
   readonly takenDays: number;
   readonly remainingDays: number;
   readonly approved: readonly {
@@ -199,6 +199,23 @@ export interface TimeOffInput {
   readonly from: VerifiedSender | undefined;
 }
 
+export interface TimeOffExceptionInput extends TimeOffInput {
+  readonly daysNotice: number;
+  readonly why: string;
+}
+
+/** What a person approves for a short-notice exception, as the desk works it out. */
+export interface TimeOffExceptionFacts {
+  readonly employeeId: string;
+  readonly employee: string;
+  readonly startDate: string;
+  readonly endDate: string;
+  readonly days: number;
+  readonly reasonCategory: ReasonCategory;
+  readonly daysNotice: number;
+  readonly noticeDays: number;
+}
+
 export interface MemberAvailability {
   readonly employeeId: string;
   readonly name: string;
@@ -260,8 +277,20 @@ export interface PeopleOpsDesk {
     input: TimeOffInput,
     options: { readonly requestId: string },
   ): Promise<TimeOffRequest>;
+  /**
+   * What a person approves for a short-notice exception, worked out here before anyone is asked:
+   * whose time off (from the verified sender), the dates, the reason and the notice. Refuses exactly
+   * what `requestTimeOffException` refuses, so a person is never asked about something it would not
+   * record.
+   */
+  timeOffExceptionFacts(input: TimeOffExceptionInput): Promise<TimeOffExceptionFacts>;
+  /**
+   * Records an approved exception. Called only once a person approved it, with the facts they were
+   * shown; a host desk must refuse with `exception_changed` when the request no longer works out to
+   * them, so a grant never records time off nobody saw.
+   */
   requestTimeOffException(
-    input: TimeOffInput & { readonly daysNotice: number; readonly why: string },
+    input: TimeOffExceptionInput & { readonly approved: Readonly<Record<string, unknown>> },
     options: { readonly requestId: string },
   ): Promise<TimeOffRequest>;
   /** The verified sender's own leave this year; refuses anyone not on staff. */
@@ -294,7 +323,8 @@ export type DeskRefusal =
   | "no_one_left"
   | "unknown_sender"
   | "not_staff"
-  | "someone_else";
+  | "someone_else"
+  | "exception_changed";
 
 export class PeopleOpsDeskError extends Error {
   readonly code: DeskRefusal;
@@ -469,6 +499,16 @@ function daysBetween(from: string, to: string): number {
   const end = parseDate(to);
   if (start === undefined || end === undefined) return Number.NaN;
   return Math.round((end.getTime() - start.getTime()) / DAY_MS);
+}
+
+/** Monday-to-Friday days from `from` to `to`, both included. */
+function businessDays(from: string, to: string): number {
+  let count = 0;
+  for (let day = from; day <= to; day = addDays(day, 1)) {
+    const weekday = parseDate(day)?.getUTCDay();
+    if (weekday !== undefined && weekday !== 0 && weekday !== 6) count += 1;
+  }
+  return count;
 }
 
 function addDays(value: string, days: number): string {
@@ -741,6 +781,15 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     const sender = senderStaff(input.from, "no time off is recorded for them");
     const named = input.employee?.trim() ?? "";
     if (named === "") return sender;
+    // The sender naming themselves is themselves, before any shared first name can be ambiguous.
+    const wanted = named.toLowerCase();
+    if (
+      sender.id.toLowerCase() === wanted ||
+      sender.name.toLowerCase() === wanted ||
+      sender.name.toLowerCase().split(" ").includes(wanted)
+    ) {
+      return sender;
+    }
     const employee = employeeNamed(named);
     if (employee.id === sender.id) return employee;
     if (input.from !== undefined && senderPerson(company, input.from) !== undefined)
@@ -749,6 +798,46 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
       "someone_else",
       `${sender.name} may record only their own time off: ${employee.name}'s is theirs to ask for, or for a person on the company record to file. Nothing was recorded.`,
     );
+  };
+
+  /** Whose short-notice exception this is and what it works out to, or the refusal. */
+  const checkException = (input: TimeOffExceptionInput) => {
+    const employee = timeOffFor(input);
+    const dates = checkDates(input);
+    if (PROTECTED_REASONS.includes(input.reasonCategory)) {
+      throw new PeopleOpsDeskError(
+        "protected",
+        `A ${input.reasonCategory.replaceAll("_", " ")} reason needs no exception: record it with record_time_off_request, which never refuses it for notice and sends it to ${personLabel(protectedOwner)}. Nothing was recorded.`,
+      );
+    }
+    if (dates.daysNotice >= staff.timeOffNoticeDays) {
+      throw new PeopleOpsDeskError(
+        "not_late",
+        `${dates.start} is ${dates.daysNotice} days away, which is enough notice: record it with record_time_off_request. Nothing was recorded.`,
+        { daysNotice: dates.daysNotice },
+      );
+    }
+    // The person approves exactly the notice the desk worked out, never a figure of the caller's.
+    if (!Number.isFinite(input.daysNotice) || input.daysNotice !== dates.daysNotice) {
+      throw new PeopleOpsDeskError(
+        "notice_changed",
+        `Time off from ${dates.start} gives ${dates.daysNotice} days' notice, not ${String(input.daysNotice)}. Nothing was recorded.`,
+        { daysNotice: dates.daysNotice },
+      );
+    }
+    required(input.why, "why the employee needs the time off at short notice (why)");
+    refuseOverlap(employee, dates.start, dates.end);
+    const facts: TimeOffExceptionFacts = {
+      employeeId: employee.id,
+      employee: employee.name,
+      startDate: dates.start,
+      endDate: dates.end,
+      days: daysBetween(dates.start, dates.end) + 1,
+      reasonCategory: input.reasonCategory,
+      daysNotice: dates.daysNotice,
+      noticeDays: staff.timeOffNoticeDays,
+    };
+    return { employee, dates, facts };
   };
 
   return {
@@ -895,35 +984,24 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
       return entry;
     },
 
+    async timeOffExceptionFacts(input): Promise<TimeOffExceptionFacts> {
+      return checkException(input).facts;
+    },
+
     async requestTimeOffException(input, { requestId }): Promise<TimeOffRequest> {
       const prior = requests.get(requestId);
       if (prior !== undefined) return prior;
 
-      const employee = timeOffFor(input);
-      const dates = checkDates(input);
-      if (PROTECTED_REASONS.includes(input.reasonCategory)) {
+      const { employee, dates, facts } = checkException(input);
+      // The person approved this employee, these dates, this reason and this notice; anything else
+      // is not what they approved.
+      if (!sameFacts(input.approved, facts)) {
         throw new PeopleOpsDeskError(
-          "protected",
-          `A ${input.reasonCategory.replaceAll("_", " ")} reason needs no exception: record it with record_time_off_request, which never refuses it for notice and sends it to ${personLabel(protectedOwner)}. Nothing was recorded.`,
+          "exception_changed",
+          `This is not the time off the person approved: it now works out to ${facts.employee}, ${facts.startDate} to ${facts.endDate}, ${facts.reasonCategory.replaceAll("_", " ")}, ${facts.daysNotice} days' notice. Nothing was recorded.`,
+          { daysNotice: facts.daysNotice },
         );
       }
-      if (dates.daysNotice >= staff.timeOffNoticeDays) {
-        throw new PeopleOpsDeskError(
-          "not_late",
-          `${dates.start} is ${dates.daysNotice} days away, which is enough notice: record it with record_time_off_request. Nothing was recorded.`,
-          { daysNotice: dates.daysNotice },
-        );
-      }
-      // The person approves exactly the notice the desk worked out, never a figure of the caller's.
-      if (!Number.isFinite(input.daysNotice) || input.daysNotice !== dates.daysNotice) {
-        throw new PeopleOpsDeskError(
-          "notice_changed",
-          `Time off from ${dates.start} gives ${dates.daysNotice} days' notice, not ${String(input.daysNotice)}. Nothing was recorded.`,
-          { daysNotice: dates.daysNotice },
-        );
-      }
-      required(input.why, "why the employee needs the time off at short notice (why)");
-      refuseOverlap(employee, dates.start, dates.end);
       const entry = record(employee, dates, input.reasonCategory, "approved");
       requests.set(requestId, entry);
       return entry;
@@ -934,7 +1012,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
       const year = Number(today().slice(0, 4));
       const first = `${year}-01-01`;
       const last = `${year}-12-31`;
-      // Approved days that fall in this year, counted by the desk, never by the model.
+      // Approved business days (Monday to Friday) that fall in this year, counted by the desk.
       const approved = timeOff
         .filter(
           (entry) =>
@@ -950,7 +1028,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
             id: entry.id,
             startDate: entry.startDate,
             endDate: entry.endDate,
-            days: daysBetween(from, to) + 1,
+            days: businessDays(from, to),
           };
         });
       const allowanceDays = employee.leaveAllowanceDays ?? DEMO_LEAVE_ALLOWANCE_DAYS;

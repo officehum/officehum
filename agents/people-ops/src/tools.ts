@@ -17,7 +17,17 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
-import { deskRefusal, refusal, requestId, type SenderResolver, textResult } from "@officehum/sdk";
+import {
+  APPROVED_FACTS_ARG,
+  type ApprovalFactsReader,
+  approvedFacts,
+  approvedFactsParameter,
+  deskRefusal,
+  refusal,
+  requestId,
+  type SenderResolver,
+  textResult,
+} from "@officehum/sdk";
 import { type CompanyFacts, type Person, peopleOwner, person, personLabel } from "./company.js";
 import {
   type Candidate,
@@ -51,6 +61,11 @@ export interface PeopleOpsToolset {
   readonly getLeaveBalance: ToolRegistration;
   readonly referToPerson: ToolRegistration;
   readonly readCompany: ToolRegistration;
+  /**
+   * The `time_off_exception` approval's facts: whose time off (from the verified sender), the dates,
+   * the reason and the desk's notice, read before anyone is asked.
+   */
+  readonly exceptionFacts: ApprovalFactsReader;
 }
 
 export type CompanySection =
@@ -128,6 +143,8 @@ export function HINTS(company: CompanyFacts): Record<DeskRefusal, string> {
       " Next: hand it to nobody it names. Tell the person plainly that you could not pass it to anyone on record who is not named in it, and that they can raise it directly with a manager they trust.",
     unknown_sender: ` Next: tell them nothing was recorded or shared, and that they can ask from the address or number the company has for them, or ask the person who decides time off directly: ${hiring}.`,
     not_staff: ` Next: say time off and leave balances are for staff only, and that ${hiring} decides time off; share nothing about anyone.`,
+    exception_changed:
+      " Next: tell the employee nothing was recorded, because the request changed after it was put to a person; record it again with record_time_off_request before anything else.",
     someone_else:
       " Next: tell the sender each employee asks for their own time off, or a person on the company record files it for them; record nothing under the sender's name instead.",
   };
@@ -175,14 +192,14 @@ function balanceText(balance: LeaveBalance): string {
       : balance.approved
           .map(
             (entry) =>
-              `${entry.id}, ${entry.startDate} to ${entry.endDate} (${entry.days} ${entry.days === 1 ? "day" : "days"} this year)`,
+              `${entry.id}, ${entry.startDate} to ${entry.endDate} (${entry.days} business ${entry.days === 1 ? "day" : "days"} this year)`,
           )
           .join("; ");
   const pending =
     balance.pending === 0
       ? ""
       : ` ${balance.pending} ${balance.pending === 1 ? "request is" : "requests are"} still waiting for a person and not counted.`;
-  return `Leave for ${balance.name} (the sender) in ${balance.year}: allowance ${balance.allowanceDays} days; approved and taken or booked ${balance.takenDays}; ${balance.remainingDays} days left. Approved: ${approved}.${pending} Worked out by the desk; this is the sender's own balance only.`;
+  return `Leave for ${balance.name} (the sender) in ${balance.year}, in business days (Monday to Friday): allowance ${balance.allowanceDays}; approved and taken or booked ${balance.takenDays}; ${balance.remainingDays} left. Approved: ${approved}.${pending} Worked out by the desk; this is the sender's own balance only.`;
 }
 
 function companySection(company: CompanyFacts, section: CompanySection): string {
@@ -255,6 +272,16 @@ function companySection(company: CompanyFacts, section: CompanySection): string 
 export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleOpsToolset {
   const { company } = dependencies;
   const hints = HINTS(company);
+
+  /** A short-notice exception's request from the call's arguments, without who sent it. */
+  const exceptionInput = (args: Readonly<Record<string, unknown>>) => ({
+    ...(typeof args.employee === "string" ? { employee: args.employee } : {}),
+    startDate: String(args.startDate),
+    endDate: String(args.endDate),
+    reasonCategory: args.reasonCategory as ReasonCategory,
+    daysNotice: Number(args.daysNotice),
+    why: String(args.why ?? ""),
+  });
 
   /** Who this call's work came from, as the host verified it; `undefined` when nobody is known. */
   const from = (api: { readonly conversationId: unknown; readonly taskId: unknown }) =>
@@ -437,23 +464,24 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
         why: Type.String({
           description: "Why the employee needs it at short notice, in their words",
         }),
+        // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared.
+        [APPROVED_FACTS_ARG]: approvedFactsParameter(),
       },
       { additionalProperties: false },
     ),
     replay: "unsafe",
     execute: async (args, api) => {
       const desk = requireDesk(dependencies);
+      const approved = approvedFacts(args);
+      if (approved === undefined) {
+        return refusal(
+          "Nothing was recorded: this call carries no facts a person approved. A short-notice exception is recorded only after the approval gate has put it to a person and they said yes. Next: tell the employee it needs a person's approval and nothing was recorded.",
+          { code: "not_approved" },
+        );
+      }
       try {
         const entry = await desk.requestTimeOffException(
-          {
-            ...(args.employee === undefined ? {} : { employee: args.employee }),
-            startDate: args.startDate,
-            endDate: args.endDate,
-            reasonCategory: args.reasonCategory as ReasonCategory,
-            daysNotice: args.daysNotice,
-            why: args.why,
-            from: await from(api),
-          },
+          { ...exceptionInput(args), from: await from(api), approved },
           { requestId: requestId("time-off-exception", api) },
         );
         return { ...textResult(timeOffText(entry)), details: { ...entry } };
@@ -462,6 +490,22 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
       }
     },
   });
+
+  const exceptionFacts: ApprovalFactsReader = async (args, _context, call) => {
+    const desk = requireDesk(dependencies);
+    let facts: Awaited<ReturnType<PeopleOpsDesk["timeOffExceptionFacts"]>>;
+    try {
+      facts = await desk.timeOffExceptionFacts({ ...exceptionInput(args), from: await from(call) });
+    } catch (error) {
+      // Nobody is asked about a request the desk would refuse; the model reads why, with its step.
+      if (!(error instanceof PeopleOpsDeskError)) throw error;
+      throw new Error(`${error.message}${hints[error.code]} Nothing was put to a person.`);
+    }
+    return {
+      summary: `Approve time off for ${facts.employee}, ${facts.startDate} to ${facts.endDate} (${facts.days} ${facts.days === 1 ? "day" : "days"}), ${reasonWords(facts.reasonCategory)}, with ${facts.daysNotice} days' notice where the company asks for ${facts.noticeDays}`,
+      facts: { ...facts },
+    };
+  };
 
   const listAvailability = defineTool({
     name: "list_availability",
@@ -597,5 +641,6 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     getLeaveBalance,
     referToPerson,
     readCompany,
+    exceptionFacts,
   };
 }

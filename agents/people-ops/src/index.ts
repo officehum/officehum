@@ -74,6 +74,8 @@ export {
   STAGES,
   type Stage,
   type StageChange,
+  type TimeOffExceptionFacts,
+  type TimeOffExceptionInput,
   type TimeOffInput,
   type TimeOffRequest,
 } from "./desk.js";
@@ -140,7 +142,9 @@ export default function peopleOps(options: PeopleOpsOptions = {}): DefinedRole {
       tools.readCompany,
     ],
     // The one approval is `officehum.json`'s, on every call of its tool; the SDK's gate evaluates it
-    // here and in the office from the same declaration.
+    // here and in the office from the same declaration. Its facts are read from the desk (whose time
+    // off, from the verified sender), shown to the person, and handed to the tool on a yes.
+    approvalFacts: { time_off_exception: tools.exceptionFacts },
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });
