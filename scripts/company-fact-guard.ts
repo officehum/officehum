@@ -36,7 +36,8 @@ interface Facts {
  * `allow` lists what is this package's own words rather than the company's. An entry is either a
  * fact, allowed anywhere in the package (a role named "People Ops" may say "People Ops" although one
  * person's title is the same words), or one finding exactly as this function reports it,
- * `"<file>: <fact>"`, allowed in that file only (demonstration data, a generic title pattern).
+ * `"<file>: <fact>"`, allowed in that file only (demonstration data, a generic title pattern). An
+ * entry that matches nothing is reported as `"allow entry matches nothing: <entry>"`.
  */
 export function companyFactLeaks(
   packageDirectory: string,
@@ -77,8 +78,10 @@ export function companyFactLeaks(
       worker.title,
     ]),
     ...(company.crews ?? []).map((crew) => crew.name),
-  ].filter((fact) => fact !== "" && !allowed.has(fact.toLowerCase()));
+  ].filter((fact) => fact !== "");
   const found: string[] = [];
+  // An allow entry that matches nothing is stale, and would hide a future leak: report it too.
+  const used = new Set<string>();
   for (const file of files) {
     const text = readFileSync(file, "utf8");
     for (const fact of new Set(facts)) {
@@ -89,9 +92,15 @@ export function companyFactLeaks(
           .join("\\s+")}(?![\\w])`,
         "i",
       );
+      if (!pattern.test(text)) continue;
       const finding = `${relative(packageDirectory, file)}: ${fact}`;
-      if (pattern.test(text) && !allowed.has(finding.toLowerCase())) found.push(finding);
+      if (allowed.has(fact.toLowerCase())) used.add(fact.toLowerCase());
+      else if (allowed.has(finding.toLowerCase())) used.add(finding.toLowerCase());
+      else found.push(finding);
     }
+  }
+  for (const entry of options.allow ?? []) {
+    if (!used.has(entry.toLowerCase())) found.push(`allow entry matches nothing: ${entry}`);
   }
   return found;
 }

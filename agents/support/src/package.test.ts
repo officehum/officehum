@@ -179,12 +179,7 @@ describe("support package", () => {
 
   it("names no company fact outside the generated handbook, so another company can run it", () => {
     // The shared guard: company names, people, first names, titles and crew names.
-    // The head-of-company lookup matches generic titles ("managing director", "owner") in code.
-    expect(
-      companyFactLeaks(packageDirectory, {
-        allow: ["src/company.ts: Managing Director"],
-      }),
-    ).toEqual([]);
+    expect(companyFactLeaks(packageDirectory)).toEqual([]);
   });
 });
 
