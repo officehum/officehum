@@ -1,0 +1,259 @@
+# Office Hum Gateway Protocol, version 1
+
+The Gateway Protocol is how anything outside an office's runtime talks to its agents: the web UI, an
+ERP, a scheduler, a staff member's client, and the gateway itself when it forwards a command to the
+runtime. This document is the reference for clients in any language. `@officehum/protocol` is the
+TypeScript implementation of these schemas and the framing codec; when the two disagree, fix one so
+they agree again.
+
+## Where it runs
+
+One **gateway** process is an office's network edge (TLS, sign-in, sockets). It supervises one
+**runtime** child process per office, which hosts every role in one Pi Durable harness. Clients speak
+this protocol to the gateway; the gateway speaks the same protocol to the runtime over stdio, adding a
+`principal` to every command it forwards. Transports are not part of this protocol.
+
+```
+client ──(Gateway Protocol)──▶ gateway ──(Gateway Protocol + principal)──▶ runtime
+```
+
+## Framing
+
+- Each message is one JSON object, UTF-8, followed by LF (`0x0A`).
+- **Only LF ends a message.** U+2028 and U+2029 may appear raw inside JSON strings, and a reader must
+  not split on them. A lone CR does not end a message; a CR just before the LF is ignored.
+- Blank lines are ignored.
+- A line longer than **8 MiB** (8,388,608 bytes, not counting the LF) is refused with
+  `error frame_too_large`, then skipped up to its LF. The connection stays open.
+- A line that is not valid UTF-8 or JSON is refused with `error bad_frame`. The connection stays open.
+- A stream that ends partway through a line gets `bad_frame` for that line.
+- A reader fed text rather than bytes must not split a character between chunks; the TypeScript
+  `LineDecoder` holds back half a character until the rest arrives.
+
+## Handshake
+
+The first message on a connection is the client's `hello`. The server answers `welcome` when it speaks
+the requested version, or `error unsupported_version` for any other `version` value (and then closes
+the connection).
+
+```json
+{"type":"hello","version":1,"client":"studio-web"}
+{"type":"welcome","version":1,"serverId":"office-7f3a"}
+```
+
+```json
+{"type":"hello","version":2,"client":"studio-web"}
+{"type":"error","code":"unsupported_version","message":"This server speaks Gateway Protocol version 1; the client asked for version 2."}
+```
+
+`client` names the client software. It is a label, not an identity: identity comes from the
+authenticated session.
+
+## Commands
+
+Every command carries an `id`, which must be unique on its connection. The server's reply carries the
+same `id`. Identifiers (`id`, `requestId`, `agent`, `approvalId`, `conversation`) are non-empty
+strings of at most 256 characters. A field not listed for a message is refused.
+
+### `submit`
+
+Gives an agent work. `requestId` makes the submission **exactly-once**: it is scoped to the
+authenticated caller, and submitting the same `requestId` again returns the stored request
+(`disposition: "existing"`) with no new model calls or tool runs.
+
+`input` is either a message:
+
+```json
+{"type":"submit","id":"c1","agent":"front-desk","requestId":"r-001","input":{"kind":"message","text":"Hello"}}
+```
+
+or a ticket, whose `payload` is any JSON value the ticket type defines:
+
+```json
+{"type":"submit","id":"c2","agent":"front-desk","requestId":"r-002","input":{"kind":"ticket","type":"example.task","payload":{"note":"anything"}},"conversation":"conv-1"}
+```
+
+`conversation` continues an existing conversation; without it, the agent starts a new one.
+
+Reply: `accepted`, where `disposition` is `started` (work began), `queued` (the agent is busy and
+will start it later), or `existing` (this `requestId` was already submitted):
+
+```json
+{"type":"accepted","id":"c1","requestId":"r-001","disposition":"started"}
+```
+
+Progress then arrives as `event` messages for `r-001`.
+
+### `subscribe`
+
+Streams a request's events. `afterSeq` resumes after the last event the client saw; without it the
+server sends every event from the start. A client that reconnects uses this to catch up without gaps.
+
+```json
+{"type":"subscribe","id":"c3","requestId":"r-001","afterSeq":4}
+{"type":"result","id":"c3","ok":true}
+```
+
+### `get_state`
+
+Asks for the state of the office, or of one agent with `agent`.
+
+```json
+{"type":"get_state","id":"c4","agent":"front-desk"}
+{"type":"result","id":"c4","ok":true,"data":{}}
+```
+
+### `list_agents`
+
+Lists the office's agents.
+
+```json
+{"type":"list_agents","id":"c5"}
+{"type":"result","id":"c5","ok":true,"data":{}}
+```
+
+The shape of `data` for `get_state` and `list_agents` is defined by the runtime (RASF-3104) and will
+be added here then.
+
+### `abort`
+
+Stops a request. Its stream ends with `settled` and `status: "aborted"`.
+
+```json
+{"type":"abort","id":"c6","requestId":"r-001"}
+{"type":"result","id":"c6","ok":true}
+```
+
+### `approve`
+
+Decides an action waiting on a person's approval (see `approval_requested`). `decision` is `approve`
+or `decline`; `note` is optional. The approver is the authenticated caller, never a field in the
+message, and the gateway enforces the caller's approval limit.
+
+```json
+{"type":"approve","id":"c7","approvalId":"a-9","decision":"decline","note":"Not this week"}
+{"type":"result","id":"c7","ok":true}
+```
+
+### `ping`
+
+Checks the connection.
+
+```json
+{"type":"ping","id":"c8"}
+{"type":"result","id":"c8","ok":true}
+```
+
+## Replies
+
+| Message | Fields | When |
+| --- | --- | --- |
+| `accepted` | `id`, `requestId`, `disposition` | A `submit` was taken. |
+| `result` | `id`, `ok: true`, optional `data` | Any other command succeeded. |
+| `error` | optional `id`, `code`, `message`, optional `problems` | A command failed, or a frame or message was refused. |
+
+An `error` answering a command carries its `id`. An error about a frame that could not be read has
+no `id`.
+
+```json
+{"type":"error","code":"bad_frame","message":"A line is not valid JSON."}
+```
+
+A message that fails validation gets `invalid_message`, with every problem listed, each with its
+path. A path joins field names with `.` and array positions with `[n]` (`principal.roles[0]`); it is
+for people reading the error, so a field name that itself contains `.` is not escaped. A value the
+sender wrote is quoted back only up to 60 characters.
+
+```json
+{"type":"error","id":"c9","code":"invalid_message","message":"The message has 2 problems: agent: is required; input.text: is required","problems":[{"path":"agent","message":"is required"},{"path":"input.text","message":"is required"}]}
+```
+
+### Error codes
+
+| Code | Meaning |
+| --- | --- |
+| `bad_frame` | A line is not valid UTF-8 or JSON, or the stream ended partway through a line. |
+| `frame_too_large` | A line is longer than 8 MiB. |
+| `unsupported_version` | The `hello` asked for a version this server does not speak. |
+| `invalid_message` | The message does not match its schema; `problems` lists why. |
+| `unknown_agent` | No agent by that name in this office. |
+| `unauthorized` | The connection is not signed in. |
+| `forbidden` | The caller may not do this (for example, an approval above their limit). |
+| `not_found` | No such request, conversation or approval. |
+| `conflict` | The command clashes with the current state (for example, an approval already decided). |
+| `busy` | The server cannot take the command now; try again later. |
+| `internal` | Something went wrong on the server. |
+
+## Events
+
+Events report a request's progress. `seq` starts at 1 and goes up by one for each event of a request,
+so a client can resume with `subscribe` and `afterSeq`. Every request's stream ends with exactly one
+`settled` event.
+
+```json
+{"type":"event","requestId":"r-001","seq":1,"event":{"kind":"text_delta","text":"Let me "}}
+{"type":"event","requestId":"r-001","seq":2,"event":{"kind":"tool_start","toolCallId":"t-1","tool":"lookup"}}
+{"type":"event","requestId":"r-001","seq":3,"event":{"kind":"tool_end","toolCallId":"t-1","tool":"lookup","ok":true}}
+{"type":"event","requestId":"r-001","seq":4,"event":{"kind":"approval_requested","approvalId":"a-9","tool":"send_note","summary":"Send the note to the team"}}
+{"type":"event","requestId":"r-001","seq":5,"event":{"kind":"approval_decided","approvalId":"a-9","decision":"approve","by":"user-7"}}
+{"type":"event","requestId":"r-001","seq":6,"event":{"kind":"settled","status":"done","answer":"The note is sent."}}
+```
+
+| `kind` | Fields | Meaning |
+| --- | --- | --- |
+| `text_delta` | `text` | The next piece of the agent's reply. |
+| `tool_start` | `toolCallId`, `tool` | The agent started a tool call. |
+| `tool_end` | `toolCallId`, `tool`, `ok` | The tool call finished. |
+| `approval_requested` | `approvalId`, `tool`, `summary` | An action waits on a person's approval. |
+| `approval_decided` | `approvalId`, `decision`, optional `by` | The approval was decided. `by` is the approver's principal id; it is absent when the gate decided on its own, and a timeout always counts as `decline`. |
+| `settled` | `status` (`done`, `failed` or `aborted`), optional `answer` | The request finished. |
+
+## Principal (gateway to runtime only)
+
+The gateway adds a `principal` to every command it forwards to the runtime, built from the
+authenticated session:
+
+```json
+{"type":"approve","id":"g-41","approvalId":"a-9","decision":"approve","principal":{"id":"user-7","roles":["approver"],"approvalLimit":500}}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `id` | The caller's identity. |
+| `roles` | The caller's roles in this office. |
+| `approvalLimit` | Optional: the most this caller may approve. |
+
+**A client may never send `principal`.** The gateway refuses a client message that carries one with
+`invalid_message`, and the runtime refuses a forwarded command without one. Approver identity always
+comes from the session, never from a message the caller wrote.
+
+## Using the TypeScript package
+
+```ts
+import {
+  LineDecoder,
+  encode,
+  handshake,
+  invalidMessage,
+  replyId,
+  validateMessage,
+} from "@officehum/protocol";
+
+const decoder = new LineDecoder();
+for (const frame of decoder.push(chunk)) {
+  if (!frame.ok) {
+    send(encode({ type: "error", code: frame.code, message: frame.message }));
+    continue;
+  }
+  const checked = validateMessage(frame.value, "client");
+  if (!checked.ok) {
+    // replyId gives the message's id only when it is a valid one, so the error always validates.
+    send(encode(invalidMessage(checked.problems, replyId(frame.value))));
+    continue;
+  }
+  // checked.message is a typed ClientMessage
+}
+```
+
+`validateMessage(json, from)` takes who sent the message: `"client"`, `"gateway"` (a command forwarded
+to the runtime, which must carry `principal`), or `"server"` (`welcome`, replies and events).

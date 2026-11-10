@@ -1,0 +1,33 @@
+{
+  "name": "@officehum/protocol",
+  "version": "0.0.0",
+  "description": "The Office Hum Gateway Protocol v1: message schemas, validators and the JSONL codec.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officehum/officehum.git",
+    "directory": "packages/protocol"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "typebox": "1.3.27"
+  }
+}
