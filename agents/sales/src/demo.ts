@@ -88,54 +88,108 @@ export function demoLeads(): readonly Lead[] {
   ];
 }
 
+/** The limit the demonstration quotes were judged against: the manifest's default. */
+const DEMO_QUOTE_LIMIT_CENTS = 500000;
+
+/** One demonstration line, priced the way `createQuote` prices it, minimum included. */
+function demoLine(
+  priceBookItemId: string,
+  description: string,
+  quantity: number,
+  unitPriceCents: number,
+  minimumCents: number | null = null,
+): QuoteLine {
+  const priced = Math.round(quantity * unitPriceCents);
+  const minimumApplied = minimumCents !== null && priced < minimumCents;
+  return {
+    priceBookItemId,
+    description,
+    quantity,
+    unitPriceCents,
+    amountCents: minimumApplied ? minimumCents : priced,
+    minimumApplied,
+  };
+}
+
+/** A demonstration quote with its totals worked out from its lines. */
+function demoQuote(
+  fields: Pick<Quote, "id" | "leadId" | "leadName" | "issuedOn" | "validUntil">,
+  lines: readonly QuoteLine[],
+  discountPercent: number,
+  approvalReasons: Quote["approvalReasons"],
+): Quote {
+  const subtotalCents = lines.reduce((total, line) => total + line.amountCents, 0);
+  const discountCents = Math.round((subtotalCents * discountPercent) / 100);
+  return {
+    ...fields,
+    status: approvalReasons.length === 0 ? "draft" : "awaiting_approval",
+    approvalReasons,
+    quoteLimitCents: DEMO_QUOTE_LIMIT_CENTS,
+    currency: "USD",
+    lines,
+    subtotalCents,
+    discountPercent,
+    discountCents,
+    totalCents: subtotalCents - discountCents,
+    notes: null,
+  };
+}
+
 /**
- * The one quote the demo pipeline already holds: Q-3047, sent to Bramble & Co three weeks before the
- * demo date. Each line is a real price book item, so the amounts are what `createQuote` would make:
- * 12,000 sq ft of first-visit deep clean, 24 restroom sanitises, and three HVAC filters.
+ * The quotes the demo pipeline already holds. Q-3047 went to Bramble & Co three weeks before the demo
+ * date: 12,000 sq ft of first-visit deep clean, 24 restroom sanitises and three HVAC filters. The
+ * other three were made on the demo date and wait for a person, so an approval has a real quote to
+ * read: Q-3052, Cascadia Legal's month of nightly cleaning and a move porter, above the quote limit;
+ * Q-3053, Q-3047 again with the ten percent Bramble & Co asked for; and Q-3060, a strip-and-wax and a
+ * carpet clean in each of Harborview's six lobbies, which only the book's minimums take over the
+ * limit. Each line is a real price book item, so the amounts are what `createQuote` would make.
  */
 export function demoQuotes(): readonly Quote[] {
-  const lines: QuoteLine[] = [
-    {
-      priceBookItemId: "clean-deep-sqft",
-      description: "Deep clean, first visit",
-      quantity: 12000,
-      unitPriceCents: 12,
-      amountCents: 144000,
-      minimumApplied: false,
-    },
-    {
-      priceBookItemId: "restroom-sanitise",
-      description: "Restroom sanitising",
-      quantity: 24,
-      unitPriceCents: 6500,
-      amountCents: 156000,
-      minimumApplied: false,
-    },
-    {
-      priceBookItemId: "hvac-filter",
-      description: "HVAC filter change",
-      quantity: 3,
-      unitPriceCents: 4500,
-      amountCents: 13500,
-      minimumApplied: false,
-    },
+  const bramble: QuoteLine[] = [
+    demoLine("clean-deep-sqft", "Deep clean, first visit", 12000, 12),
+    demoLine("restroom-sanitise", "Restroom sanitising", 24, 6500),
+    demoLine("hvac-filter", "HVAC filter change", 3, 4500),
   ];
-  const subtotalCents = lines.reduce((total, line) => total + line.amountCents, 0);
+  const today = { issuedOn: "2026-11-01", validUntil: "2026-12-01" };
+  const lobbies = Array.from({ length: 6 }, (_, index) => [
+    demoLine("floor-strip-wax-sqft", `Building ${index + 1} lobby, strip and wax`, 300, 95, 60000),
+    demoLine("floor-carpet-sqft", `Building ${index + 1} lobby, carpet clean`, 400, 45, 27500),
+  ]).flat();
   return [
-    {
-      id: "Q-3047",
-      leadId: "L-211",
-      leadName: "Bramble & Co",
-      status: "draft",
-      currency: "USD",
-      lines,
-      subtotalCents,
-      discountPercent: 0,
-      discountCents: 0,
-      totalCents: subtotalCents,
-      issuedOn: "2026-10-15",
-      validUntil: "2026-11-14",
-      notes: null,
-    },
+    demoQuote(
+      {
+        id: "Q-3047",
+        leadId: "L-211",
+        leadName: "Bramble & Co",
+        issuedOn: "2026-10-15",
+        validUntil: "2026-11-14",
+      },
+      bramble,
+      0,
+      [],
+    ),
+    demoQuote(
+      { id: "Q-3052", leadId: "L-207", leadName: "Cascadia Legal Group", ...today },
+      [
+        demoLine(
+          "clean-office-visit",
+          "Office cleaning, one visit, up to 3,000 sq ft",
+          21.65,
+          18500,
+        ),
+        demoLine("porter-hour", "Day porter", 40, 4200),
+      ],
+      0,
+      ["over_limit"],
+    ),
+    demoQuote({ id: "Q-3053", leadId: "L-211", leadName: "Bramble & Co", ...today }, bramble, 10, [
+      "discount",
+    ]),
+    demoQuote(
+      { id: "Q-3060", leadId: "L-219", leadName: "Harborview Property Management", ...today },
+      lobbies,
+      0,
+      ["over_limit"],
+    ),
   ];
 }

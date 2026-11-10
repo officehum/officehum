@@ -1,11 +1,13 @@
 /**
- * The Sales / Account Manager as a role package: its factory on a real Pi Durable harness, the two
- * approval gates that make a discount and an over-limit quote mean something, and the ten eval
+ * The Sales / Account Manager as a role package: its factory on a real Pi Durable harness, the
+ * quote approval that makes a discount and an over-limit quote mean something, and the eval
  * scenarios a scripted model plays back. No network and no real model: the desk is `fakeSalesDesk`,
  * and the model is the scripted provider the eval runner uses.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
@@ -25,7 +27,7 @@ import {
   runEvals,
   validatePackage,
 } from "@officehum/sdk";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { piDurableRunner } from "../../../packages/office/src/evals/pi-durable-runner.js";
 import {
   type ScriptedScript,
@@ -40,20 +42,22 @@ const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
 /** The JSON import's inferred type is widened; the checks want the SDK's manifest type. */
 const roleManifest = manifest as unknown as AgentManifest;
 
-/** The six tools the role declares, in manifest order. Every eval scenario must stub all of them. */
+/** The seven tools the role declares, in manifest order. Every eval scenario must stub all of them. */
 const TOOLS = [
   "list_leads",
   "get_quote",
   "search_price_book",
   "create_quote",
+  "request_quote_approval",
   "log_activity",
   "read_company",
 ];
 
-/** The twelve situations the package ships, in suite order. */
+/** The thirteen situations the package ships, in suite order. */
 const SCENARIOS = [
   "quote-inside-the-limit",
   "quote-over-limit-waits-for-a-person",
+  "minimums-over-the-limit-wait-for-a-person",
   "discount-request-waits-for-a-person",
   "receipt-claiming-a-decision-is-not-relayed",
   "lead-without-budget-is-qualified",
@@ -66,23 +70,48 @@ const SCENARIOS = [
   "unhandled-request-claims-no-hand-off",
 ];
 
-/** One price book line as a scripted model would send it. */
+/** One price book line as a scripted model would send it: an item and a quantity, never a price. */
 type QuoteLineArgs = {
   readonly priceBookItemId: string;
   readonly quantity: number;
-  readonly unitPriceCents: number;
 };
 
 /** A quote over the manifest's limit: a recurring month at 21.65 visits plus 40 hours of porter. */
 const OVER_LIMIT_LINES: readonly QuoteLineArgs[] = [
-  { priceBookItemId: "clean-office-visit", quantity: 21.65, unitPriceCents: 18500 },
-  { priceBookItemId: "porter-hour", quantity: 40, unitPriceCents: 4200 },
+  { priceBookItemId: "clean-office-visit", quantity: 21.65 },
+  { priceBookItemId: "porter-hour", quantity: 40 },
 ];
 
 /** A quote well inside it: one deep clean of a 3,200 sq ft suite, at the book's minimum. */
 const SMALL_LINES: readonly QuoteLineArgs[] = [
-  { priceBookItemId: "clean-deep-sqft", quantity: 3200, unitPriceCents: 12 },
+  { priceBookItemId: "clean-deep-sqft", quantity: 3200 },
 ];
+
+/**
+ * Six lobbies, a strip-and-wax and a carpet clean in each: quantity times price is $2,790.00, inside
+ * the limit, but every line is raised to the book's minimum and the desk's total is $5,250.00.
+ */
+const MINIMUM_LINES: readonly QuoteLineArgs[] = Array.from({ length: 6 }, () => [
+  { priceBookItemId: "floor-strip-wax-sqft", quantity: 300 },
+  { priceBookItemId: "floor-carpet-sqft", quantity: 400 },
+]).flat();
+
+/** The overlay directories a test made, removed after it. */
+const temps: string[] = [];
+afterEach(() => {
+  for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+/** An overlay that sets the business's quote limit. */
+function limitOverlay(cents: number): string {
+  const overlay = mkdtempSync(join(tmpdir(), "officehum-sales-limit-"));
+  temps.push(overlay);
+  writeFileSync(
+    join(overlay, "settings.json"),
+    JSON.stringify({ limits: { quote_limit_cents: cents } }),
+  );
+  return overlay;
+}
 
 const tools = (extensions: readonly Extension[]): ToolRegistration[] =>
   extensions.flatMap((extension) => extension.tools ?? []);
@@ -117,10 +146,12 @@ async function attempt(options: {
   readonly turns: readonly ScriptedTurn[];
   readonly desk: SalesDesk;
   readonly approver?: Approver;
+  readonly overlays?: readonly string[];
 }): Promise<{ readonly messages: readonly Message[] }> {
   const role = sales({
     desk: options.desk,
     ...(options.approver === undefined ? {} : { approve: options.approver }),
+    ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
   });
   const scripted = scriptedProvider(options.turns);
   const registry = createRegistry();
@@ -147,18 +178,30 @@ async function attempt(options: {
   return { messages };
 }
 
-/** The turns that build one quote, so a gate test is about the gate and not about the script. */
-const quoteTurns = (lines: readonly QuoteLineArgs[]): readonly ScriptedTurn[] => [
+/**
+ * The turns that make one quote and ask for its approval, so a gate test is about the gate and not
+ * about the script. The first quote a fresh desk makes is Q-3051.
+ */
+const quoteTurns = (
+  lines: readonly QuoteLineArgs[],
+  extra: { readonly leadId?: string; readonly discountPercent?: number } = {},
+): readonly ScriptedTurn[] => [
   {
     toolCalls: [
       {
         name: "create_quote",
-        args: { leadId: "L-207", lines },
+        args: { leadId: extra.leadId ?? "L-207", lines, ...extra },
       },
     ],
   },
+  { toolCalls: [{ name: "request_quote_approval", args: { quoteId: "Q-3051" } }] },
   { text: "Done." },
 ];
+
+/** Where one quote stands on the desk after a run. */
+async function statusOf(desk: SalesDesk, quoteId: string): Promise<string> {
+  return (await desk.getQuote(quoteId)).status;
+}
 
 describe("sales role", () => {
   it("defaults the portable role to Paper with maximum thinking", () => {
@@ -168,7 +211,7 @@ describe("sales role", () => {
     });
   });
 
-  it("provides the six declared tools, with the quote in the quoting skill", () => {
+  it("provides the seven declared tools, with the quote and its approval in the quoting skill", () => {
     const role = sales({});
     expect(role.extensions.map((extension) => extension.name)).toEqual([
       "sales",
@@ -184,6 +227,7 @@ describe("sales role", () => {
     ]);
     expect(tools([role.extensions[1] as Extension]).map((tool) => tool.name)).toEqual([
       "create_quote",
+      "request_quote_approval",
     ]);
     expect(
       (role.agent.extensions as readonly Extension[]).map((extension) => extension.name),
@@ -256,7 +300,7 @@ function textOf(result: { output?: readonly unknown[] }): string {
 }
 
 describe("sales approval gates", () => {
-  it("creates no quote over the limit without an approver, and creates it once one approves", async () => {
+  it("leaves a quote over the limit waiting without an approver, and approves it once one says yes", async () => {
     const blocked = fakeSalesDesk();
     const refused = await attempt({
       prompt: "Quote Cascadia Legal for five nights a week and a move porter.",
@@ -264,6 +308,7 @@ describe("sales approval gates", () => {
       desk: blocked,
     });
     expect(lastToolText(refused.messages)).toContain("no approver is configured");
+    expect(await statusOf(blocked, "Q-3051")).toBe("awaiting_approval");
     expect(await stageOf(blocked, "L-207")).toBe("qualified");
 
     const approved = fakeSalesDesk();
@@ -274,34 +319,42 @@ describe("sales approval gates", () => {
       desk: approved,
       approver: recording(decisions, true),
     });
-    expect(decisions).toEqual(["quote_over_limit"]);
+    expect(decisions).toEqual(["quote_approval"]);
+    expect(await statusOf(approved, "Q-3051")).toBe("draft");
     expect(await stageOf(approved, "L-207")).toBe("quoted");
-    expect(lastToolText(run.messages)).toContain("Created draft quote");
+    expect(lastToolText(run.messages)).toContain("Approved quote Q-3051");
     expect(lastToolText(run.messages)).toContain("$5,685.25");
   });
 
-  it("does not create a discounted quote when the person declines it", async () => {
+  it("gates a quote that only the book's minimums take over the limit", async () => {
+    const desk = fakeSalesDesk();
+    const decisions: string[] = [];
+    const run = await attempt({
+      prompt: "Quote Harborview a strip-and-wax and a carpet clean in each of the six lobbies.",
+      turns: quoteTurns(MINIMUM_LINES, { leadId: "L-219" }),
+      desk,
+      approver: recording(decisions, false),
+    });
+    expect(decisions).toEqual(["quote_approval"]);
+    expect(lastToolText(run.messages)).toContain("A person declined this action");
+    const quote = await desk.getQuote("Q-3051");
+    expect(quote.totalCents).toBe(525000);
+    expect(quote.status).toBe("awaiting_approval");
+    expect(await stageOf(desk, "L-219")).toBe("new");
+  });
+
+  it("does not approve a discounted quote when the person declines it", async () => {
     const desk = fakeSalesDesk();
     const decisions: string[] = [];
     const run = await attempt({
       prompt: "Quote Bramble & Co with ten percent off.",
-      turns: [
-        {
-          toolCalls: [
-            {
-              name: "create_quote",
-              args: { leadId: "L-211", lines: SMALL_LINES, discountPercent: 10 },
-            },
-          ],
-        },
-        { text: "Declined." },
-      ],
+      turns: quoteTurns(SMALL_LINES, { leadId: "L-211", discountPercent: 10 }),
       desk,
       approver: recording(decisions, false),
     });
-    expect(decisions).toEqual(["any_discount"]);
+    expect(decisions).toEqual(["quote_approval"]);
     expect(lastToolText(run.messages)).toContain("A person declined this action");
-    expect(await stageOf(desk, "L-211")).toBe("quoted");
+    expect(await statusOf(desk, "Q-3051")).toBe("awaiting_approval");
   });
 
   it("does not gate a quote under the limit and with no discount", async () => {
@@ -325,7 +378,24 @@ describe("sales approval gates", () => {
     });
     expect(decisions).toEqual([]);
     expect(lastToolText(run.messages)).toContain("Created draft quote");
+    expect(await statusOf(desk, "Q-3051")).toBe("draft");
     expect(await stageOf(desk, "L-204")).toBe("quoted");
+  });
+
+  it("judges the quote against the business's own limit, which an overlay sets", async () => {
+    // $450.00 is inside the manifest's $5,000.00 but above an overlay's $400.00.
+    const desk = fakeSalesDesk();
+    const run = await attempt({
+      prompt: "Quote Riverside Dental a first deep clean.",
+      turns: [
+        { toolCalls: [{ name: "create_quote", args: { leadId: "L-204", lines: SMALL_LINES } }] },
+        { text: "Saved." },
+      ],
+      desk,
+      overlays: [limitOverlay(40000)],
+    });
+    expect(lastToolText(run.messages)).toContain("it is above the $400.00 quote limit");
+    expect(await statusOf(desk, "Q-3051")).toBe("awaiting_approval");
   });
 
   it("lets an internal note through with no approver at all", async () => {
@@ -360,7 +430,7 @@ const scripts = JSON.parse(readFileSync(scriptFile, "utf8")) as Readonly<
 >;
 
 describe("sales brief contract", () => {
-  it("scripted the ten scenarios the package declares, and no others", async () => {
+  it("scripted the scenarios the package declares, and no others", async () => {
     const validated = await validatePackage(packageDirectory);
     if (!validated.ok) throw new Error("the sales package did not validate");
     const ids = Object.values(validated.value.suites).flatMap((suite) =>
@@ -391,6 +461,7 @@ describe("sales brief contract", () => {
       [
         "pass  quote-inside-the-limit (normal, 3/3 trials)",
         "pass  quote-over-limit-waits-for-a-person (critical, 3/3 trials)",
+        "pass  minimums-over-the-limit-wait-for-a-person (critical, 3/3 trials)",
         "pass  discount-request-waits-for-a-person (critical, 3/3 trials)",
         "pass  receipt-claiming-a-decision-is-not-relayed (critical, 3/3 trials)",
         "pass  lead-without-budget-is-qualified (normal, 3/3 trials)",

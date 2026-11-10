@@ -23,12 +23,13 @@ const TOOLS = [
   "get_quote",
   "search_price_book",
   "create_quote",
+  "request_quote_approval",
   "log_activity",
   "read_company",
 ];
 
 describe("sales package", () => {
-  it("validates strictly as a package under agents/, with all six tools stubbed in every scenario", async () => {
+  it("validates strictly as a package under agents/, with all seven tools stubbed in every scenario", async () => {
     const validated = await validatePackage(packageDirectory);
     expect(validated.issues).toEqual([]);
     expect(validated.ok).toBe(true);
@@ -37,47 +38,46 @@ describe("sales package", () => {
     expect(validated.value.piDurableRange).toBe("1.3.x");
     expect(Object.keys(validated.value.suites)).toEqual(["evals/situations.json"]);
     const scenarios = Object.values(validated.value.suites).flatMap((suite) => suite.scenarios);
-    expect(scenarios).toHaveLength(12);
+    expect(scenarios).toHaveLength(13);
     for (const scenario of scenarios) {
       expect(Object.keys(scenario.stubs).sort()).toEqual([...TOOLS].sort());
     }
   });
 
-  it("declares six tools, two approvals and the one limit they read", () => {
+  it("declares seven tools, one approval and the one limit the desk reads", () => {
     expect(roleManifest.tools.map((tool) => tool.name)).toEqual(TOOLS);
     expect(
       roleManifest.tools.filter((tool) => tool.replay === "unsafe").map((tool) => tool.name),
-    ).toEqual(["create_quote", "log_activity"]);
+    ).toEqual(["create_quote", "request_quote_approval", "log_activity"]);
     expect(validateManifest(roleManifest).ok).toBe(true);
 
     // Reading a quote changes nothing, so a replayed call is harmless.
     expect(roleManifest.tools.find((tool) => tool.name === "get_quote")?.replay).toBe("safe");
 
-    // An internal note states why it needs no approval; the quote states two approvals.
+    // An internal note states why it needs no approval, and so does saving a quote: the desk holds a
+    // discounted or over-limit quote until its approval says yes.
     const note = roleManifest.tools.find((tool) => tool.name === "log_activity");
     expect(note?.noApproval).toContain("internal note");
-    expect(roleManifest.approvals.map((approval) => approval.id).sort()).toEqual([
-      "any_discount",
-      "quote_over_limit",
-    ]);
+    const quote = roleManifest.tools.find((tool) => tool.name === "create_quote");
+    expect(quote?.noApproval).toContain("awaiting approval");
 
-    // The discount is `present` (and above zero), so an absent discount cannot gate a quote, and a
-    // zero one cannot either.
-    const discount = roleManifest.approvals.find((approval) => approval.id === "any_discount");
-    expect(discount?.when).toEqual([
-      { arg: "discountPercent", op: "present" },
-      { arg: "discountPercent", op: "gt", value: 0 },
+    // One approval, on every call of request_quote_approval: the desk decides which quotes wait, on
+    // the total it worked out, minimums included, so no condition reads the model's arguments.
+    expect(roleManifest.approvals).toEqual([
+      {
+        id: "quote_approval",
+        tool: "request_quote_approval",
+        description:
+          "Approve this quote as the desk holds it: its lead, its lines, any discount and its total, which is discounted or above the quote limit",
+      },
     ]);
-
-    // The limit is the SDK's summed condition over the quote's own lines.
-    const overLimit = roleManifest.approvals.find((approval) => approval.id === "quote_over_limit");
-    expect(overLimit?.when?.[0]).toEqual({
-      arg: "lines",
-      op: "gt",
-      field: "unitPriceCents",
-      times: "quantity",
-      value: { limit: "quote_limit_cents" },
-    });
+    expect(roleManifest.limits?.quote_limit_cents).toBeDefined();
+    // Both quote tools live in the quoting skill, beside its checklist.
+    expect(
+      roleManifest.tools
+        .filter((tool) => tool.skill === "quoting-from-the-price-book")
+        .map((tool) => tool.name),
+    ).toEqual(["create_quote", "request_quote_approval"]);
   });
 
   it("quotes under the limit the company records, not a number of its own", () => {
@@ -124,17 +124,20 @@ describe("sales package", () => {
     }
   });
 
-  it("refuses a quote tool with no approval decision, in memory", () => {
+  it("refuses a quote approval tool with no approval decision, in memory", () => {
     const stripped: AgentManifest = {
       ...roleManifest,
-      approvals: roleManifest.approvals.filter((approval) => approval.tool !== "create_quote"),
+      approvals: roleManifest.approvals.filter(
+        (approval) => approval.tool !== "request_quote_approval",
+      ),
     };
     const refused = validateManifest(stripped);
     expect(refused.ok).toBe(false);
     expect(
       refused.issues.some(
         (issue) =>
-          issue.message.includes("create_quote") && issue.message.includes("no approval decision"),
+          issue.message.includes("request_quote_approval") &&
+          issue.message.includes("no approval decision"),
       ),
     ).toBe(true);
   });

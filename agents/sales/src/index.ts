@@ -65,11 +65,15 @@ export {
   type LeadFilter,
   type LeadStage,
   type Quote,
+  type QuoteApprovalReason,
   type QuoteDraft,
   type QuoteLine,
   type QuoteLineDraft,
+  type QuoteStatus,
+  quoteFacts,
   type SalesDesk,
   SalesDeskError,
+  type SalesDeskRefusal,
 } from "./desk.js";
 export {
   type CompanySection,
@@ -93,7 +97,10 @@ export interface SalesOptions {
   readonly company?: CompanyFacts;
   /** Overlay directories, lowest first: the business's AGENTS.md, skills, settings and limits. */
   readonly overlays?: readonly string[];
-  /** Decides every gated action. Omitted: a discount and an over-limit quote are both blocked. */
+  /**
+   * Decides every gated action. Omitted: a quote with a discount or over the limit stays saved
+   * awaiting approval, and its approval is refused.
+   */
   readonly approve?: Approver;
 }
 
@@ -102,8 +109,13 @@ export default function sales(options: SalesOptions = {}): DefinedRole {
   // The demonstration desk prices from the same book this role reads, so a first run and a real one
   // quote the same numbers.
   const desk = options.desk ?? fakeSalesDesk({ priceBook: company.priceBook });
-  const tools = salesTools({ desk, company });
-  return defineRole({
+  // The quote limit is read from the role's own resolved limits at every call, so an overlay's value
+  // is what a quote is judged against and a reload needs no rebuild. Before the role exists no limit
+  // resolves, and the desk then holds every quote for a person rather than guessing one.
+  let role: DefinedRole | undefined;
+  const limits = () => role?.current().limits ?? {};
+  const tools = salesTools({ desk, company, limits });
+  role = defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
     tools: [
@@ -115,11 +127,17 @@ export default function sales(options: SalesOptions = {}): DefinedRole {
     ],
     // The quote belongs to the quoting skill, which is where its checklist lives. `officehum.json`
     // declares it the same way, and `checkAgent` holds the two together.
-    skillTools: { "quoting-from-the-price-book": [tools.createQuote] },
-    // Both approvals are `officehum.json`'s own conditions — a discount present, and a sum over the
-    // lines above the business's limit — so there is no second reader of the policy in code. The
-    // SDK's gate evaluates them here and in the office, from the same declaration.
+    skillTools: {
+      "quoting-from-the-price-book": [tools.createQuote, tools.requestQuoteApproval],
+    },
+    // The desk decides whether a quote needs a person, on the total it worked out itself, minimums
+    // included; `officehum.json` declares `quote_approval` with no `when`, so every call of
+    // request_quote_approval is gated. The model names only the quote: the gate reads its facts from
+    // the desk, shows them to the person and hands them to the tool on a yes, so the desk approves
+    // only the quote the person saw.
+    approvalFacts: { quote_approval: tools.quoteApprovalFacts },
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });
+  return role;
 }
