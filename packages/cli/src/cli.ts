@@ -63,6 +63,7 @@ import {
 import { runBoardCommand } from "./board.js";
 import { runEvalCommand } from "./eval.js";
 import {
+  deskBanner,
   operatorSender,
   parseModelRef,
   parseRunArguments,
@@ -131,7 +132,7 @@ export interface CliDependencies {
 }
 
 const USAGE = `Usage:
-  officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE] [--as PERSON]
+  officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE] [--as PERSON] [--demo]
   officehum eval ROLE_DIR [--model provider/model] [--tag TAG] [--trials N] [--script FILE] [--mode bare|office]
   officehum verify-role ROLE_DIR [--online]
   officehum demo [--state DIR] [--approval allow|deny] [--calendar local] [--messenger console]
@@ -1233,6 +1234,8 @@ async function runRun(
     overlays: parsed.overlays,
     approve: terminalApprover(io),
     ...(operator === undefined ? {} : { sender: operator.sender }),
+    // A role with no desk bound refuses its desk tools unless the operator asks for the demo data.
+    ...(parsed.demo === true ? { demo: true } : {}),
     ...(parsed.dataDir === undefined ? {} : { dataDir: parsed.dataDir }),
     ...(parsed.workDir === undefined ? {} : { workDir: parsed.workDir }),
     clients,
@@ -1260,6 +1263,8 @@ async function runRun(
         ? "Sender: unknown (anything a role gives only to a known sender is refused; pass --as PERSON to be a person on the company record)"
         : `Sender: ${operator.person.name} (${operator.person.id}), at this terminal`,
     );
+    const desk = deskBanner(parsed.demo, clients);
+    if (desk !== undefined) io.output(desk);
     for (const command of role.manifest.commands ?? []) {
       io.output(`Command /${command.name}: ${command.description}`);
     }

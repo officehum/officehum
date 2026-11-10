@@ -25,6 +25,7 @@ const sampleStockroom = fileURLToPath(
 );
 const clientsFile = fileURLToPath(new URL("./fixtures/clients.json", import.meta.url));
 const peopleOps = fileURLToPath(new URL("../../../agents/people-ops", import.meta.url));
+const sales = fileURLToPath(new URL("../../../agents/sales", import.meta.url));
 /** The first person on the company record generated into the People Ops package. */
 const colleague = (
   JSON.parse(
@@ -284,6 +285,7 @@ describe("officehum run --as", () => {
         "scripted/scripted-1",
         "--db",
         join(directory, "office.sqlite"),
+        "--demo",
         ...extra,
       ],
       terminal.io,
@@ -342,5 +344,57 @@ describe("officehum run --as", () => {
     expect(parseRunArguments([sampleDesk, "--as", "x"]).as).toBe("x");
     expect(parseRunArguments([sampleDesk]).as).toBeUndefined();
     expect(() => parseRunArguments([sampleDesk, "--as"])).toThrow("--as requires a value");
+  });
+});
+
+describe("officehum run --demo", () => {
+  const runSales = async (extra: readonly string[]) => {
+    const directory = temporary();
+    const terminal = scripted([undefined]);
+    const code = await runCli(
+      [
+        "run",
+        sales,
+        "--model",
+        "scripted/scripted-1",
+        "--db",
+        join(directory, "office.sqlite"),
+        ...extra,
+      ],
+      terminal.io,
+      runDeps(scriptedProvider([])),
+    );
+    return { code, output: terminal.output.join("\n"), errors: terminal.errors.join("\n") };
+  };
+
+  it("says the role runs on its demonstration data with --demo", async () => {
+    const run = await runSales(["--demo"]);
+    expect({ code: run.code, errors: run.errors }).toEqual({ code: 0, errors: "" });
+    expect(run.output).toContain("Desk: demonstration data (--demo)");
+  });
+
+  it("says no desk is bound, and how to bind one, without --demo or a desk client", async () => {
+    const run = await runSales([]);
+    expect({ code: run.code, errors: run.errors }).toEqual({ code: 0, errors: "" });
+    expect(run.output).toContain("Desk: none bound (pass --demo, or a desk in --clients)");
+  });
+
+  it("says nothing new when --clients binds a desk", async () => {
+    const directory = temporary();
+    await writeFile(join(directory, "desk.mjs"), "export default () => ({});\n");
+    const clients = join(directory, "clients.json");
+    await writeFile(clients, JSON.stringify({ desk: { module: "./desk.mjs" } }));
+    const run = await runSales(["--clients", clients, "--demo"]);
+    expect({ code: run.code, errors: run.errors }).toEqual({ code: 0, errors: "" });
+    expect(run.output).not.toContain("Desk:");
+  });
+
+  it("parses --demo as a flag with no value", () => {
+    expect(parseRunArguments([sampleDesk, "--demo"]).demo).toBe(true);
+    expect(parseRunArguments([sampleDesk, "--demo", "--as", "x"])).toMatchObject({
+      demo: true,
+      as: "x",
+    });
+    expect(parseRunArguments([sampleDesk]).demo).toBeUndefined();
   });
 });
