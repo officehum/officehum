@@ -107,6 +107,22 @@ describe("validateSuite stubs", () => {
     for (const issue of issues) expect(issue.message).toMatch(/includes/);
   });
 
+  it("rejects an includes matcher at the top level of args, with its path", () => {
+    const suite = suiteWith({
+      get_invoice: { byArgs: [{ args: { includes: "1043" }, text: "{}" }] },
+      ...plain,
+    });
+    (suite.scenarios[0] as { expect: unknown }).expect = {
+      calls: [{ tool: "get_invoice", args: { includes: "1043" } }],
+    };
+    const issues = validateSuite(suite, manifest, "x").issues;
+    expect(issues.map((issue) => issue.path)).toEqual([
+      "scenarios[0].stubs.get_invoice.byArgs[0].args.includes",
+      "scenarios[0].expect.calls[0].args.includes",
+    ]);
+    for (const issue of issues) expect(issue.message).toMatch(/argument's value/);
+  });
+
   it("skips the argument-name check for a tool whose manifest names no parameters", () => {
     const result = validateSuite(
       suiteWith({ get_invoice: { byArgs: [{ args: { anything: "x" }, text: "{}" }] }, ...plain }),

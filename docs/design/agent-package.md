@@ -788,7 +788,8 @@ Each file in the `evals` directory holds scenarios:
   match answers, else `otherwise`, else the trial stops. In `byArgs` and in `expect.calls[].args`, an
   argument given as `{ "includes": "…" }` matches a string argument that contains that text. So a
   parameter cannot be matched against the literal object `{ "includes": … }`: that object is always
-  the matcher.
+  the matcher. A matcher goes on an argument's value only: `validateSuite` refuses `includes` directly
+  under `args`, with its path.
 - `approvals` scripts the person's decision for each approval id.
 - `expect.calls` must appear in that order, with other calls allowed in between; `args` matches only
   the fields listed. `notCalled`, `approvalsRequested` (exact set), `delegated` (office extension only)

@@ -251,13 +251,24 @@ export function validateSuite(
     : { ok: true, value: suite, issues: [] };
 }
 
-/** Every `{ "includes": … }` in `args` must be exactly one non-empty string, reported with its path. */
+/**
+ * Every `{ "includes": … }` in `args` must be exactly one non-empty string, reported with its path.
+ * A matcher is an argument's value, never `args` itself: at the top level `includes` would read as a
+ * parameter of that name, which no matcher can then express, so it is refused.
+ */
 function matcherIssues(
   args: unknown,
   path: string,
   add: (path: string, message: string) => void,
+  top = true,
 ): void {
   if (args === null || typeof args !== "object" || Array.isArray(args)) return;
+  if (top && "includes" in args) {
+    add(
+      joinPath(path, "includes"),
+      'an includes matcher goes on an argument\'s value, e.g. { "sku": { "includes": "…" } }, never on args itself',
+    );
+  }
   for (const [key, value] of Object.entries(args)) {
     const at = joinPath(path, key);
     if (value === null || typeof value !== "object" || Array.isArray(value)) continue;
@@ -278,6 +289,6 @@ function matcherIssues(
       }
       continue;
     }
-    matcherIssues(value, at, add);
+    matcherIssues(value, at, add, false);
   }
 }
