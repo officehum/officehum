@@ -150,6 +150,36 @@ describe("findUnrecordedTestimonials", () => {
     });
   });
 
+  describe("markdown names, a lead-in from a client, and a name on the same line", () => {
+    const said = '"We could not be happier with the crew and the lobby."';
+    it.each([
+      [`${said}\n**Morgan Ellis**, Harbor Dental`],
+      [`${said}\n— **Morgan Ellis**, Harbor Dental`],
+      [`${said}\n_Morgan Ellis_`],
+      [`From a client: ${said}`],
+      [`From one of our clients:\n\n${said}`],
+      [`A practice manager: ${said}`],
+      [`${said} Morgan Ellis, Harbor Dental`],
+      [`${said} Morgan Ellis`],
+    ])("refuses %j", (text) => {
+      expect(findUnrecordedTestimonials(text, RECORD, ["Northwind Facilities"])).toHaveLength(1);
+    });
+
+    it.each([
+      ['The rule: "we leave every room better than we found it, every night."'],
+      ['The promise:\n"we leave every room better than we found it, every night."'],
+      ['"We leave every room better than we found it, every night." Book Now'],
+      ['"We leave every room better than we found it, every night." Northwind Facilities'],
+      ['"We leave every room better than we found it, every night." Winter Specials, now on.'],
+      [
+        '"We leave every room better than we found it, every night." That Is Our Promise To You And We Keep It',
+      ],
+      ['"We leave every room better than we found it, every night."\n**Book A Walkthrough**'],
+    ])("leaves %j alone", (text) => {
+      expect(findUnrecordedTestimonials(text, RECORD, ["Northwind Facilities"])).toEqual([]);
+    });
+  });
+
   it("refuses every quote when the company records none", () => {
     expect(findUnrecordedTestimonials(`"${RECORD[0]?.quote}" — Leah`, [])).toHaveLength(1);
   });

@@ -14,8 +14,12 @@
  * - after the quote, a dash and a name ("— Name", "- a client"), a name on the next line ("Name,
  *   Company"), a name in brackets ("(Name, Company)"), or a speech verb with its speaker ("says
  *   Name", "Name said", "she said", "the practice manager told us");
- * - before the quote, in the same sentence, a speech verb or "according to" (`Name wrote: "…"`), or
- *   a name leading in with a colon (`Name, Company: "…"`).
+ * - before the quote, in the same sentence, a speech verb or "according to" (`Name wrote: "…"`), a
+ *   name leading in with a colon (`Name, Company: "…"`), or a speaker by role ("From a client:",
+ *   "A practice manager:").
+ *
+ * A name on its own line or after the quote on the same line may be in markdown emphasis
+ * ("**Name**").
  *
  * A name is a capitalised word or words. Not a speaker: the company's own names and its services
  * (a slogan signed with the company's name is the company talking), a greeting ("Hi Name,", "Dear
@@ -56,6 +60,10 @@ const SPEECH = String.raw`(?:said|says|writes|wrote|adds|added|told\s+(?:us|me)|
 /** A lowercase speaker before a speech verb: a pronoun, or a determiner and up to three words. */
 const SPEAKER = String.raw`(?:[Ss]he|[Hh]e|[Tt]hey|(?:[Aa]n?|[Tt]he|[Oo]ur|[Oo]ne\s+of\s+our|[Aa]nother|[Tt]heir)(?:\s+[\w'’-]+){1,3})`;
 const DASH = "(?:[—–~]|-{1,2})";
+/** Markdown emphasis a model may put around a name: "**Morgan Ellis**". */
+const MARK = String.raw`(?:\*{1,2}|_{1,2})?`;
+/** A speaker by role, leading in with a colon: "A practice manager:", "One of our clients:". */
+const ROLE = String.raw`(?:client|customer|manager|director|owner|tenant|administrator|coordinator|partner)s?`;
 /** What may sit between the closing mark and an attribution on the same line. */
 const LEAD = String.raw`^[^\S\n]*[,.!?]?`;
 
@@ -74,7 +82,7 @@ interface Rule {
 /** After the quote. */
 const AFTER: readonly Rule[] = [
   // A dash, then a name or an unnamed speaker.
-  { pattern: new RegExp(String.raw`${LEAD}\s*${DASH}\s*(?<who>${NAME})${NAME_END}`) },
+  { pattern: new RegExp(String.raw`${LEAD}\s*${DASH}\s*${MARK}(?<who>${NAME})${MARK}${NAME_END}`) },
   { pattern: new RegExp(String.raw`${LEAD}\s*${DASH}\s*${SOMEONE}${NAME_END}`) },
   // A name of two capitalised words, or one followed by where they are from, needs nothing after it:
   // "— Morgan Ellis of Harbor Dental".
@@ -86,7 +94,14 @@ const AFTER: readonly Rule[] = [
   // A name alone on the next line: two to four capitalised words, then at most a short ", Company".
   {
     pattern: new RegExp(
-      String.raw`${LEAD}[^\S\n]*\n\s*(?<who>${FULL_NAME})(?:,[^\S\n]*(?<tail>[^\n]*?))?[^\S\n]*(?:\n|$)`,
+      String.raw`${LEAD}[^\S\n]*\n\s*${MARK}(?<who>${FULL_NAME})${MARK}(?:,[^\S\n]*(?<tail>[^\n]*?))?[^\S\n]*(?:\n|$)`,
+    ),
+    nameLine: true,
+  },
+  // The same, on the quote's own line with no dash: "\"…\" Morgan Ellis, Harbor Dental".
+  {
+    pattern: new RegExp(
+      String.raw`${LEAD}[^\S\n]+${MARK}(?<who>${FULL_NAME})${MARK}(?:,[^\S\n]*(?<tail>[^\n]*?))?[^\S\n]*(?:\n|$)`,
     ),
     nameLine: true,
   },
@@ -115,6 +130,12 @@ const BEFORE: readonly Rule[] = [
       String.raw`(?:^|[.!?]\s+|\n\s*)(?<who>${NAME})(?<tail>,(?:(?!\b(?:is|are|was|were)\b)[^:"“\n.]){1,60})?:\s*$`,
     ),
     leadIn: true,
+  },
+  // A speaker by role: "From a client:", "One of our clients:", "A practice manager:".
+  {
+    pattern: new RegExp(
+      String.raw`(?:^|[.!?]\s+|\n\s*)(?:(?:[Ff]rom|[Ii]n\s+the\s+words\s+of)\s+${SOMEONE}|(?:[Aa]n?|[Tt]he|[Oo]ne\s+of\s+our)\s+(?:[a-z][\w-]*\s+){0,2}${ROLE}):\s*$`,
+    ),
   },
 ];
 
