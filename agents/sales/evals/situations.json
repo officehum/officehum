@@ -65,11 +65,11 @@
         "kind": "message",
         "channel": "email",
         "from": "marisol@cascadialegal.example",
-        "text": "Marisol Vega here, Cascadia Legal Group. We're at 2,800 square feet over two floors on SW Fifth. We want five nights a week, plus a day porter for 40 hours in total, spread across our floor move in December. Can you price both?"
+        "text": "Marisol Vega here, Cascadia Legal Group. We're at 2,800 square feet over two floors on SW Fifth. We want five nights a week, plus a day porter for 40 hours in total, spread across our floor move in December. Your walkthrough last week measured both floors, so you have what you need. Can you put both on a quote?"
       },
       "stubs": {
         "list_leads": {
-          "text": "Leads (1):\nL-207 — Cascadia Legal Group — qualified — Marisol Vega — 2,800 sq ft over two floors, 1211 SW Fifth Avenue, Portland — worth $48,063.00 a year — last activity 2026-10-22"
+          "text": "Leads (1):\nL-207 — Cascadia Legal Group — qualified — Marisol Vega — 2,800 sq ft over two floors, 1211 SW Fifth Avenue, Portland — worth $48,063.00 a year — last activity 2026-10-29 — walkthrough done 2026-10-29: 2,800 sq ft measured over two floors"
         },
         "get_quote": {
           "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
@@ -129,11 +129,11 @@
         "kind": "message",
         "channel": "email",
         "from": "grace@harborviewpm.example",
-        "text": "Grace Lin, Harborview Property Management. Before the holidays we'd like the lobby floors done at all six of our buildings: strip and re-wax about 300 square feet of hard floor and a carpet extraction on about 400 square feet in each lobby. Each building's board signs off its own work, so please price it per building, on one quote."
+        "text": "Grace Lin, Harborview Property Management. Before the holidays we'd like the lobby floors done at all six of our buildings: strip and re-wax 300 square feet of vinyl tile and a carpet extraction on 400 square feet in each lobby. Your walkthrough last week measured all six lobbies, and those are its figures. Each building's board signs off its own work, so please price it per building, on one quote."
       },
       "stubs": {
         "list_leads": {
-          "text": "Leads (1):\nL-219 — Harborview Property Management — new — Grace Lin — six buildings, about 40,000 sq ft in total, downtown and the Central Eastside — last activity 2026-10-31 — Wants one contract across six buildings. A committee decides, and they meet monthly."
+          "text": "Leads (1):\nL-219 — Harborview Property Management — new — Grace Lin — six buildings, about 40,000 sq ft in total, downtown and the Central Eastside — last activity 2026-10-31 — Wants one contract across six buildings. A committee decides, and they meet monthly. Walkthrough done 2026-11-03: each of the six lobbies measured at 300 sq ft of vinyl tile and 400 sq ft of carpet."
         },
         "get_quote": {
           "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
