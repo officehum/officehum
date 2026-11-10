@@ -344,6 +344,30 @@ officehum runtime --db .officehum/office.sqlite --office office.json --demo
 Every command carries a `principal`, which the gateway adds from the signed-in session; typed by hand,
 you add it yourself. A command without one is refused as `unauthorized`.
 
+To serve an office over the network, run the gateway in front of it. It starts and supervises the
+runtime, and signs clients in with JWTs verified against `OFFICEHUM_GATEWAY_JWT_PUBLIC_KEY`:
+
+```sh
+officehum-gateway --config gateway.json
+```
+
+```json
+{
+  "version": 1,
+  "listen": { "host": "127.0.0.1", "port": 8443 },
+  "runtime": { "command": "officehum", "args": ["runtime", "--db", "office.sqlite", "--office", "office.json"] },
+  "permissions": {
+    "submit": [{ "roles": ["staff"], "agents": "*" }],
+    "approve": [{ "roles": ["manager"], "limit": 5000 }],
+    "abort": [{ "roles": ["staff"] }]
+  }
+}
+```
+
+Clients connect to `/v1/ws` (WebSocket) or use `POST /v1/submit` and `GET /v1/requests/:id/events`
+(Server-Sent Events); [the protocol spec](docs/design/gateway-protocol.md#the-gateway) lists the
+routes, sign-in, permissions and audit log.
+
 ## Eval a role package
 
 `officehum eval ROLE_DIR` runs a role's eval suites and prints the SDK's report, exiting non-zero
@@ -400,6 +424,7 @@ that must branch on what a tool returned cannot be written as JSON; use `piDurab
 | `@officehum/sdk` | `packages/sdk` | Manifest schema and helpers for building an agent package |
 | `@officehum/provider-paper` | `packages/provider-paper` | Portable Paper Instruments provider for `pi-ai` |
 | `@officehum/tools-paper-office` | `packages/tools-paper-office` | Task-leased Paper Office document worker and its `DocumentService` |
+| `@officehum/gateway` | `packages/gateway` | The office's authenticated WebSocket and HTTP edge, supervising its runtime ([spec](docs/design/gateway-protocol.md#the-gateway)) |
 | `@officehum/protocol` | `packages/protocol` | Gateway Protocol v1: message schemas, validators and the JSONL codec ([spec](docs/design/gateway-protocol.md)) |
 | `@officehum/google-calendar` | `packages/google-calendar` | Portable REST and fake Google Calendar scheduling client |
 | `@officehum/office` | `packages/office` | Runtime: Pi Durable harness, workboard, relay, workflow engine |
