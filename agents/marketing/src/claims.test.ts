@@ -187,6 +187,8 @@ describe("findResultClaims", () => {
     "20% off your first 10 hours",
     "10% off day porter hours.",
     "10% off the hours of a day porter",
+    "No more complaints, 20% off your first clean.",
+    "Sick of your cleaner? Lost the contract? 20% off your first clean.",
   ])("still masks a real offer: %j", (text) => {
     expect(findResultClaims(text, [], ["Day porter", "Deep clean and floor care"])).toEqual([]);
   });

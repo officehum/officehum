@@ -74,8 +74,9 @@ const PRICE_WORDS = [
 /**
  * Stems of the words that make an offer a result, not a price: "30% off your hours of lost work",
  * "20% off sick days", "30% off staff sickness hours". Each is a stem, so a word that starts with it
- * counts: "sick" covers "sickness", "injur" covers "injury" and "injuries", "lose" covers "loses". An offer is masked only
- * when none of them is in its phrase, or just before it ("Sick days, 30% off.").
+ * counts: "sick" covers "sickness", "injur" covers "injury" and "injuries", "lose" covers "loses".
+ * An offer is masked only when none of them is in its phrase, or, for an offer with no object of its
+ * own, just before it ("Sick days, 30% off.").
  */
 export const RESULT_NOUNS: readonly string[] = [
   "sick",
@@ -174,11 +175,14 @@ function claimPhrase(sentence: string, offer: RegExp): string | undefined {
     // The phrase an offer sits in runs from "off" to the next comma, colon or sentence end.
     const offset = rest.find((arg): arg is number => typeof arg === "number") ?? 0;
     const phrase = normal.slice(offset + found.length).split(/[,;:.!?—–]/, 1)[0] ?? "";
-    // An offer that opens its clause takes its object from the clause before: "Sick days, 30% off."
+    if (RESULT_NOUN.test(phrase)) return found;
+    // An offer with no object of its own takes it from the clause before: "Sick days, 30% off." One
+    // with its own object ("No more complaints, 20% off your first clean.") is read by that object.
+    if (phrase.trim() !== "") return " ".repeat(found.length);
     const clauses = normal.slice(0, offset).split(/[,;:—–]/);
     const own = clauses.pop() ?? "";
     const lead = own.trim() === "" ? (clauses.pop() ?? "") : own;
-    return RESULT_NOUN.test(phrase) || RESULT_NOUN.test(lead) ? found : " ".repeat(found.length);
+    return RESULT_NOUN.test(lead) ? found : " ".repeat(found.length);
   });
   for (const rule of RULES) {
     for (const match of masked.matchAll(rule)) {
