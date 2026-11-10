@@ -1,14 +1,17 @@
 /**
- * The Sales / Account Manager's seven tools.
+ * The Sales / Account Manager's eleven tools.
  *
- * `list_leads`, `get_quote`, `search_price_book` and `read_company` only read; `create_quote`,
- * `request_quote_approval` and `log_activity` write through the desk. The model names price book items
+ * `list_leads`, `get_quote`, `search_price_book`, `pipeline_report` and `read_company` only read;
+ * `create_quote`, `request_quote_approval`, `log_activity`, `update_lead_stage`,
+ * `record_quote_outcome` and `schedule_follow_up` write through the desk. The model names price book items
  * and quantities only, and how many visits a week for a recurring line: the desk counts the month,
  * prices every line and works out the total, and decides on that total
  * whether a quote waits for a person. The quote limit is the role's resolved `quote_limit_cents`,
  * read at every call so an overlay applies without a rebuild. A quote that waits is approved through
  * `request_quote_approval`, whose `quote_approval` gate reads what the person approves from the desk
- * (`quoteApprovalFacts`), not from the model's arguments.
+ * (`quoteApprovalFacts`), not from the model's arguments. A stage, a quote's outcome and a follow-up
+ * are moved only by the desk, which refuses a step out of order, and `pipeline_report`'s figures are
+ * the desk's own counts.
  *
  * The desk is whoever the host binds — `fakeSalesDesk` in a test, an eval or a first run — and every
  * figure a tool speaks comes back from it or from the company record. A tool that cannot reach its
@@ -42,8 +45,10 @@ import {
   LEAD_STAGES,
   type Lead,
   type LeadStage,
+  QUOTE_OUTCOMES,
   type Quote,
   type QuoteApprovalReason,
+  type QuoteOutcome,
   quoteFacts,
   type SalesDesk,
   SalesDeskError,
@@ -63,7 +68,7 @@ export interface SalesToolDependencies {
   readonly limits: () => Readonly<Record<string, number>>;
 }
 
-/** The seven tools, named, so the factory places each one where the manifest declares it. */
+/** The eleven tools, named, so the factory places each one where the manifest declares it. */
 export interface SalesToolset {
   readonly listLeads: ToolRegistration;
   readonly getQuote: ToolRegistration;
@@ -71,6 +76,10 @@ export interface SalesToolset {
   readonly createQuote: ToolRegistration;
   readonly requestQuoteApproval: ToolRegistration;
   readonly logActivity: ToolRegistration;
+  readonly updateLeadStage: ToolRegistration;
+  readonly recordQuoteOutcome: ToolRegistration;
+  readonly scheduleFollowUp: ToolRegistration;
+  readonly pipelineReport: ToolRegistration;
   readonly readCompany: ToolRegistration;
   /** The `quote_approval` approval's facts: the quote as the desk holds it. */
   readonly quoteApprovalFacts: ApprovalFactsReader;
@@ -122,6 +131,10 @@ function leadDetails(lead: Lead) {
     owner: lead.owner,
     lastActivityAt: lead.lastActivityAt,
     notes: lead.notes,
+    nextFollowUp:
+      lead.nextFollowUp === null
+        ? null
+        : { on: lead.nextFollowUp.on, what: lead.nextFollowUp.what },
   };
 }
 
@@ -132,7 +145,11 @@ function leadDetails(lead: Lead) {
 function leadLine(lead: Lead): string {
   const worth =
     lead.estimatedValueCents === null ? "" : ` — worth ${money(lead.estimatedValueCents)} a year`;
-  return `${lead.id} — ${lead.company} — ${lead.stage} — ${lead.contactName} — ${lead.site}${worth} — last activity ${lead.lastActivityAt} — ${lead.notes}`;
+  const next =
+    lead.nextFollowUp === null
+      ? ""
+      : ` — next follow-up ${lead.nextFollowUp.on}: ${lead.nextFollowUp.what}`;
+  return `${lead.id} — ${lead.company} — ${lead.stage} — ${lead.contactName} — ${lead.site}${worth} — last activity ${lead.lastActivityAt}${next} — ${lead.notes}`;
 }
 
 /** A quote as a UI reads it. */
@@ -148,6 +165,9 @@ function quoteDetails(quote: Quote) {
     currency: quote.currency,
     issuedOn: quote.issuedOn,
     validUntil: quote.validUntil,
+    sentOn: quote.sentOn,
+    acceptedOn: quote.acceptedOn,
+    declinedOn: quote.declinedOn,
     lines: quote.lines.map((line) => ({
       priceBookItemId: line.priceBookItemId,
       description: line.description,
@@ -168,9 +188,23 @@ function quoteDetails(quote: Quote) {
 
 /** Where a quote stands, in words the model can repeat to a person without overstating it. */
 function statusText(quote: Quote): string {
-  return quote.status === "awaiting_approval"
-    ? "awaiting a person's approval, not ready to send"
-    : "draft, ready to send";
+  switch (quote.status) {
+    case "awaiting_approval":
+      return "awaiting a person's approval, not ready to send";
+    case "draft":
+      return "draft, ready to send";
+    case "sent":
+      return `sent on ${quote.sentOn ?? "an unrecorded day"}, no answer recorded`;
+    case "accepted":
+      return `sent on ${quote.sentOn ?? "an unrecorded day"}, accepted on ${quote.acceptedOn ?? "an unrecorded day"}`;
+    case "declined":
+      return `sent on ${quote.sentOn ?? "an unrecorded day"}, declined on ${quote.declinedOn ?? "an unrecorded day"}`;
+  }
+}
+
+/** A count with its noun: "1 lead", "3 leads". */
+function counted(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 /**
@@ -341,7 +375,7 @@ function companySection(company: CompanyFacts, section: CompanySection): string 
 }
 
 /**
- * Builds the six tools over one desk and one company. Every one is plain Pi Durable: they install
+ * Builds the eleven tools over one desk and one company. Every one is plain Pi Durable: they install
  * into any harness, and a bare harness with no desk builds the same tools and refuses at the point of
  * use rather than reaching for a system it does not have.
  */
@@ -587,7 +621,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     const quote = await desk.getQuote(quoteId);
     if (quote.status !== "awaiting_approval") {
       throw new Error(
-        `${quote.id} is not waiting for a person's approval: it is a draft ready to send. Nothing was put to a person. Next: a new or changed quote is made with create_quote.`,
+        `${quote.id} is not waiting for a person's approval: it is ${statusText(quote)}. Nothing was put to a person. Next: a new or changed quote is made with create_quote.`,
       );
     }
     const discount = quote.discountPercent === 0 ? "" : `, less ${quote.discountPercent}% discount`;
@@ -680,6 +714,218 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     },
   });
 
+  const updateLeadStage = defineTool({
+    name: "update_lead_stage",
+    description:
+      "Move a lead to another pipeline stage — new, qualified, quoted, won or lost — with the reason, which is recorded on the lead. Use it when a lead is qualified, when a quote of it is ready to send, and to close a deal as won or lost once the outcome is known. An internal record: nothing is sent to the client. Won and lost are final here; a person reopens a closed deal.",
+    parameters: Type.Object(
+      {
+        leadId: Type.String({ description: "The lead's id from list_leads, e.g. L-204" }),
+        stage: Type.Union(
+          LEAD_STAGES.map((stage) => Type.Literal(stage)),
+          { description: "The stage the lead moves to" },
+        ),
+        reason: Type.String({
+          description:
+            "Why, in the words the next person needs: what was learned or decided, and for a lost deal why it was lost",
+        }),
+      },
+      { additionalProperties: false },
+    ),
+    replay: "unsafe",
+    execute: async (args, api) => {
+      const desk = requireDesk(dependencies);
+      try {
+        const move = await desk.updateLeadStage(
+          { leadId: args.leadId, stage: args.stage as LeadStage, reason: args.reason },
+          { requestId: requestId("stage", api) },
+        );
+        const closed =
+          move.lead.stage === "won" || move.lead.stage === "lost"
+            ? " The deal is closed; a person reopens it if the client's circumstances change."
+            : "";
+        return {
+          ...textResult(
+            `Moved ${move.lead.id} (${move.lead.company}) from ${move.from} to ${move.lead.stage}. The reason is recorded on the lead as note ${move.activity.id}: ${move.activity.summary}${closed}`,
+          ),
+          details: {
+            leadId: move.lead.id,
+            from: move.from,
+            stage: move.lead.stage,
+            activityId: move.activity.id,
+          },
+        };
+      } catch (error) {
+        if (!(error instanceof SalesDeskError)) throw error;
+        const next: Partial<Record<string, string>> = {
+          no_ready_quote:
+            " Next: a quote is ready to send once create_quote makes a draft, or once a person approves a waiting one through request_quote_approval.",
+          closed: " Next: tell the person the deal is closed, and that a person reopens it.",
+        };
+        return deskRefusal(`${error.message}${next[error.code] ?? ""}`, error.code, {
+          leadId: args.leadId,
+        });
+      }
+    },
+  });
+
+  /** What follows an outcome: the next tool, never a stage moved on the model's behalf. */
+  const outcomeNext: Record<QuoteOutcome, (quote: Quote) => string> = {
+    sent: (quote) =>
+      `Next: the follow-up cadence counts from ${quote.sentOn ?? quote.issuedOn}; schedule the first touch with schedule_follow_up.`,
+    accepted: () =>
+      "Next: update_lead_stage to won if the deal is closed. The lead's stage was not changed.",
+    declined: () =>
+      "Next: update_lead_stage to lost, with the reason, if the deal is over. The lead's stage was not changed.",
+  };
+
+  const recordQuoteOutcome = defineTool({
+    name: "record_quote_outcome",
+    description:
+      "Record what happened to a quote: a draft ready to send was sent to the client, or a sent quote was accepted or declined, with the day it happened (today when left out). Use it once it has happened, so a follow-up counts from the day the quote went out. A quote awaiting a person's approval is not ready to send and is never marked sent. An internal record: this tool sends nothing to the client, and it does not change the lead's stage.",
+    parameters: Type.Object(
+      {
+        quoteId: Type.String({ description: "The quote's id, e.g. Q-3047" }),
+        outcome: Type.Union(
+          QUOTE_OUTCOMES.map((outcome) => Type.Literal(outcome)),
+          { description: "sent, accepted or declined" },
+        ),
+        on: Type.Optional(
+          Type.String({
+            description: "The day it happened, YYYY-MM-DD; today when left out. Never a future day",
+          }),
+        ),
+        note: Type.Optional(
+          Type.String({
+            description:
+              "Anything the next person needs: who accepted, or why they declined, in their words",
+          }),
+        ),
+      },
+      { additionalProperties: false },
+    ),
+    replay: "unsafe",
+    execute: async (args, api) => {
+      const desk = requireDesk(dependencies);
+      const outcome = args.outcome as QuoteOutcome;
+      try {
+        const record = await desk.recordQuoteOutcome(
+          {
+            quoteId: args.quoteId,
+            outcome,
+            ...(args.on === undefined ? {} : { on: args.on }),
+            ...(args.note === undefined ? {} : { note: args.note }),
+          },
+          { requestId: requestId("quote-outcome", api) },
+        );
+        const { quote } = record;
+        const day = { sent: quote.sentOn, accepted: quote.acceptedOn, declined: quote.declinedOn }[
+          outcome
+        ];
+        return {
+          ...textResult(
+            `Recorded ${quote.id} for ${quote.leadName} (${quote.leadId}) as ${outcome} on ${day ?? "an unrecorded day"}, total ${money(quote.totalCents)}. It was ${record.from === "draft" ? "a draft ready to send" : record.from}; it is now ${statusText(quote)}. Noted on the lead as ${record.activity.id}. ${outcomeNext[outcome](quote)}`,
+          ),
+          details: { ...quoteDetails(quote), from: record.from, activityId: record.activity.id },
+        };
+      } catch (error) {
+        if (!(error instanceof SalesDeskError)) throw error;
+        const next: Partial<Record<string, string>> = {
+          awaiting_approval:
+            " Next: tell the person the quote still waits for a person's approval, so it is not ready to send and the client must not be told it was sent. If nobody has been asked yet, ask with request_quote_approval.",
+          invalid_transition: " Next: read the quote with get_quote to see where it stands.",
+        };
+        return deskRefusal(`${error.message}${next[error.code] ?? ""}`, error.code, {
+          quoteId: args.quoteId,
+        });
+      }
+    },
+  });
+
+  const scheduleFollowUp = defineTool({
+    name: "schedule_follow_up",
+    description:
+      "Schedule the next touch on a lead for a day, so the cadence is kept by the desk and not only in notes: what the touch is and when it is due. A lead has one open follow-up; scheduling another replaces it, and the result says which. An internal task: nothing is sent to the client.",
+    parameters: Type.Object(
+      {
+        leadId: Type.String({ description: "The lead's id from list_leads, e.g. L-204" }),
+        on: Type.String({ description: "The day the touch is due, YYYY-MM-DD; today or later" }),
+        what: Type.String({
+          description:
+            "The touch and what it adds, e.g. 'Call Marisol: is anything in the scope still open?'",
+        }),
+      },
+      { additionalProperties: false },
+    ),
+    replay: "unsafe",
+    execute: async (args, api) => {
+      const desk = requireDesk(dependencies);
+      try {
+        const scheduled = await desk.scheduleFollowUp(
+          { leadId: args.leadId, on: args.on, what: args.what },
+          { requestId: requestId("follow-up", api) },
+        );
+        const replaced =
+          scheduled.replaced === null
+            ? ""
+            : ` It replaces the one due ${scheduled.replaced.on}: ${scheduled.replaced.what}`;
+        return {
+          ...textResult(
+            `Scheduled the next touch on lead ${scheduled.leadId} for ${scheduled.followUp.on}: ${scheduled.followUp.what}${replaced}`,
+          ),
+          details: {
+            leadId: scheduled.leadId,
+            on: scheduled.followUp.on,
+            what: scheduled.followUp.what,
+            replaced:
+              scheduled.replaced === null
+                ? null
+                : { on: scheduled.replaced.on, what: scheduled.replaced.what },
+          },
+        };
+      } catch (error) {
+        if (!(error instanceof SalesDeskError)) throw error;
+        return deskRefusal(error.message, error.code, { leadId: args.leadId });
+      }
+    },
+  });
+
+  const pipelineReport = defineTool({
+    name: "pipeline_report",
+    description:
+      "Count the pipeline: how many leads are in each stage and their estimated yearly value, and how many quotes are in each status with their totals, as the desk counts them. Use it for a pipeline review instead of adding up list_leads yourself.",
+    parameters: Type.Object({}, { additionalProperties: false }),
+    replay: "safe",
+    execute: async () => {
+      const desk = requireDesk(dependencies);
+      const report = await desk.pipelineReport();
+      const leads = report.stages.reduce((total, row) => total + row.count, 0);
+      return {
+        ...textResult(
+          [
+            `Pipeline on ${report.asOf}:`,
+            ...report.stages.map((row) =>
+              row.count === 0
+                ? `- ${row.stage} — 0 leads`
+                : `- ${row.stage} — ${counted(row.count, "lead")} — ${money(row.valueCents)} estimated a year${row.unvalued === 0 ? "" : ` (${row.unvalued} with no estimate)`}`,
+            ),
+            "Quotes:",
+            ...report.quotes.map(
+              (row) =>
+                `- ${row.status.replace("_", " ")} — ${counted(row.count, "quote")} — ${money(row.totalCents)}`,
+            ),
+          ].join("\n"),
+        ),
+        details: {
+          found: leads > 0,
+          asOf: report.asOf,
+          stages: report.stages.map((row) => ({ ...row })),
+          quotes: report.quotes.map((row) => ({ ...row })),
+        },
+      };
+    },
+  });
+
   const readCompany = defineTool({
     name: "read_company",
     description:
@@ -710,6 +956,10 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     createQuote,
     requestQuoteApproval,
     logActivity,
+    updateLeadStage,
+    recordQuoteOutcome,
+    scheduleFollowUp,
+    pipelineReport,
     readCompany,
     quoteApprovalFacts,
   };
