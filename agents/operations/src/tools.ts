@@ -73,7 +73,9 @@ const DATE = Type.String({ description: "A date as YYYY-MM-DD, e.g. 2026-11-12" 
 /** The desk, or a refusal: a host with no desk gets no read and no write. */
 function requireDesk(dependencies: OperationsToolDependencies): OperationsDesk {
   if (dependencies.desk === undefined) {
-    throw new Error("No operations desk is configured for this role.");
+    throw new Error(
+      "No operations desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
+    );
   }
   return dependencies.desk;
 }

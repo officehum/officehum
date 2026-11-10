@@ -921,6 +921,6 @@ describe("with no desk", () => {
   it("refuses at the point of use", async () => {
     await expect(
       tools(undefined).listCases.execute({}, call("i1"), BACKGROUND_CONTEXT),
-    ).rejects.toThrow("No support desk is configured");
+    ).rejects.toThrow("No support desk is bound to this role, so nothing was read or written.");
   });
 });

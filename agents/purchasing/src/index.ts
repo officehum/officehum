@@ -14,8 +14,10 @@
  * decides gated actions. Nothing here needs Office Hum, so the same bundle runs in a bare Pi Durable
  * harness.
  *
- * With no desk the role runs on `fakePurchasingDesk`: the company's own suppliers, catalogue and
- * spending limit, a stockroom and three orders in memory, and nothing sent anywhere.
+ * With `demo: true` and no desk the role runs on `fakePurchasingDesk`: the company's own suppliers, catalogue and
+ * spending limit, a stockroom and three orders in memory, and nothing sent anywhere. That is
+ * what `officehum run --demo` and the evals run on. With neither, the role still starts, and every
+ * tool that reads or writes the desk refuses and says how to bind one.
  */
 
 import { fileURLToPath } from "node:url";
@@ -86,9 +88,15 @@ export {
 export interface PurchasingOptions {
   /**
    * The host's purchasing system: an ERP or inventory software in production, `fakePurchasingDesk`
-   * in a test or an eval. Omitted, the role runs on the demonstration stockroom it ships with.
+   * in a test. Omitted, the demonstration stockroom when `demo` is set; otherwise none, and every
+   * desk tool refuses.
    */
   readonly desk?: PurchasingDesk;
+  /**
+   * Run on the demonstration stockroom this package ships with when no `desk` is given. Set by the host
+   * (`officehum run --demo`, the eval runner), never by a client or a user's config.
+   */
+  readonly demo?: boolean;
   /**
    * The company to buy for. Omitted, the generated facts in this package. A host with its own company
    * passes its own, and nothing in `company/default/` is involved.
@@ -100,7 +108,7 @@ export interface PurchasingOptions {
   readonly approve?: Approver;
   /**
    * The host's clock. The prompt's `today` section and the demonstration desk read it. Omitted: the
-   * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock with a host's desk.
+   * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock otherwise.
    */
   readonly now?: () => Date;
   /**
@@ -112,14 +120,16 @@ export interface PurchasingOptions {
 }
 
 export default function purchasing(options: PurchasingOptions = {}): DefinedRole {
+  // The demonstration desk is built only when the host asks for it (`demo`) and binds no desk of
+  // its own; with neither, the tools refuse rather than invent records.
+  const demoDesk = options.desk === undefined && options.demo === true;
   // The demonstration data is dated around DEMO_NOW, so its desk keeps that date unless the host
-  // passes a clock; a host's own desk runs on the system clock. The prompt reads the same clock.
-  const now =
-    options.now ?? (options.desk === undefined ? () => new Date(DEMO_NOW) : () => new Date());
+  // passes a clock; otherwise the role runs on the system clock. The prompt reads the same clock.
+  const now = options.now ?? (demoDesk ? () => new Date(DEMO_NOW) : () => new Date());
   const company = options.company ?? loadCompanyFacts();
   // The demonstration desk prices and limits from the company's own catalogue and limit, so a first
   // run and a real one refuse the same order.
-  const desk = options.desk ?? fakePurchasingDesk({ company, now });
+  const desk = demoDesk ? fakePurchasingDesk({ company, now }) : options.desk;
   const tools = purchasingTools({
     desk,
     company,

@@ -14,8 +14,10 @@
  * who decides gated actions. Nothing here needs Office Hum, so the same bundle runs in a bare Pi
  * Durable harness.
  *
- * With no desk the role runs on `fakePeopleOpsDesk`: the company's own crews and rules, demonstration
- * candidates and crew members in memory, and nothing written anywhere.
+ * With `demo: true` and no desk the role runs on `fakePeopleOpsDesk`: the company's own crews and rules, demonstration
+ * candidates and crew members in memory, and nothing written anywhere. That is
+ * what `officehum run --demo` and the evals run on. With neither, the role still starts, and every
+ * tool that reads or writes the desk refuses and says how to bind one.
  */
 
 import { fileURLToPath } from "node:url";
@@ -89,10 +91,15 @@ export {
 
 export interface PeopleOpsOptions {
   /**
-   * The host's HR system: an HRIS or applicant tracker in production, `fakePeopleOpsDesk` in a test or
-   * an eval. Omitted, the role runs on the demonstration data it ships with.
+   * The host's HR system: an HRIS or applicant tracker in production, `fakePeopleOpsDesk` in a test.
+   * Omitted, the demonstration data when `demo` is set; otherwise none, and every desk tool refuses.
    */
   readonly desk?: PeopleOpsDesk;
+  /**
+   * Run on the demonstration data this package ships with when no `desk` is given. Set by the host
+   * (`officehum run --demo`, the eval runner), never by a client or a user's config.
+   */
+  readonly demo?: boolean;
   /** The company. Omitted, the generated facts in this package. */
   readonly company?: CompanyFacts;
   /** Overlay directories, lowest first: the business's AGENTS.md, skills, settings and limits. */
@@ -101,7 +108,7 @@ export interface PeopleOpsOptions {
   readonly approve?: Approver;
   /**
    * The host's clock. The prompt's `today` section and the demonstration desk read it. Omitted: the
-   * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock with a host's desk.
+   * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock otherwise.
    */
   readonly now?: () => Date;
   /**
@@ -113,14 +120,16 @@ export interface PeopleOpsOptions {
 }
 
 export default function peopleOps(options: PeopleOpsOptions = {}): DefinedRole {
+  // The demonstration desk is built only when the host asks for it (`demo`) and binds no desk of
+  // its own; with neither, the tools refuse rather than invent records.
+  const demoDesk = options.desk === undefined && options.demo === true;
   // The demonstration data is dated around DEMO_NOW, so its desk keeps that date unless the host
-  // passes a clock; a host's own desk runs on the system clock. The prompt reads the same clock.
-  const now =
-    options.now ?? (options.desk === undefined ? () => new Date(DEMO_NOW) : () => new Date());
+  // passes a clock; otherwise the role runs on the system clock. The prompt reads the same clock.
+  const now = options.now ?? (demoDesk ? () => new Date(DEMO_NOW) : () => new Date());
   const company = options.company ?? loadCompanyFacts();
   // The demonstration desk applies the company's own notice period and routes to its own people, so a
   // first run and a real one refuse and route the same way.
-  const desk = options.desk ?? fakePeopleOpsDesk({ company, now });
+  const desk = demoDesk ? fakePeopleOpsDesk({ company, now }) : options.desk;
   const tools = peopleOpsTools({
     desk,
     company,

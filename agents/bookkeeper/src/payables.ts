@@ -78,7 +78,9 @@ const LINES = Type.Array(
 
 function requireDesk(dependencies: PayablesToolDependencies): AccountingDesk {
   if (dependencies.desk === undefined) {
-    throw new Error("No accounts desk is configured for this role.");
+    throw new Error(
+      "No accounts desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
+    );
   }
   return dependencies.desk;
 }

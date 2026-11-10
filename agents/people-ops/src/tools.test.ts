@@ -496,7 +496,7 @@ describe("no desk", () => {
   it("refuses rather than pretending", async () => {
     await expect(
       tools(undefined).listCandidates.execute({}, call("n"), BACKGROUND_CONTEXT),
-    ).rejects.toThrow("No people desk is configured");
+    ).rejects.toThrow("No people desk is bound to this role, so nothing was read or written.");
   });
 });
 

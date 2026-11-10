@@ -393,6 +393,6 @@ describe("with no desk", () => {
   it("refuses at the point of use", async () => {
     await expect(
       tools(undefined).listVendorBills.execute({}, call("n1"), BACKGROUND_CONTEXT),
-    ).rejects.toThrow("No accounts desk is configured");
+    ).rejects.toThrow("No accounts desk is bound to this role, so nothing was read or written.");
   });
 });

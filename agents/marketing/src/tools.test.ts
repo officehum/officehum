@@ -519,6 +519,6 @@ describe("with no desk", () => {
   it("refuses at the point of use", async () => {
     await expect(
       tools(undefined).listDrafts.execute({}, call("n"), BACKGROUND_CONTEXT),
-    ).rejects.toThrow("No marketing desk is configured");
+    ).rejects.toThrow("No marketing desk is bound to this role, so nothing was read or written.");
   });
 });
