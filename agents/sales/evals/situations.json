@@ -104,7 +104,13 @@
           {
             "tool": "create_quote",
             "args": {
-              "leadId": "L-207"
+              "leadId": "L-207",
+              "lines": {
+                "some": {
+                  "priceBookItemId": "clean-office-visit",
+                  "visitsPerWeek": 5
+                }
+              }
             }
           },
           {
