@@ -340,8 +340,10 @@ Flags:
 `--mode office` is for scenarios whose point is that something did not happen. On the bare harness
 there is no board, so there is no gate, so a gated call cannot be refused at all — "the office
 stopped it" and "nothing could have stopped it" look identical. Office mode binds a ticket to the
-trial's conversation and runs the gate production runs, and it fails a trial in which nothing
-executed: an empty ledger must not read as a perfect defence.
+trial's conversation and runs the gate production runs. When the scenario expects calls
+(`expect.calls`), it fails a trial in which nothing executed: an empty ledger must not read as a
+perfect defence. A scenario that expects no calls gets no such control, so for it "nothing ran" is a
+check on the calls the model made, not proof that the gate refused one.
 
 A script file is JSON mapping each scenario id to the turns the scripted model plays back, in order:
 

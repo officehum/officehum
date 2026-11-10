@@ -781,7 +781,9 @@ Each file in the `evals` directory holds scenarios:
   reads the role's own files. A stub is `{ "text", "isError"? }`, or `{ "byArgs": [{ "args", "text",
   "isError"? }], "otherwise"? }`, which answers by the call's arguments: the first entry whose `args`
   match answers, else `otherwise`, else the trial stops. In `byArgs` and in `expect.calls[].args`, an
-  argument given as `{ "includes": "…" }` matches a string argument that contains that text.
+  argument given as `{ "includes": "…" }` matches a string argument that contains that text. So a
+  parameter cannot be matched against the literal object `{ "includes": … }`: that object is always
+  the matcher.
 - `approvals` scripts the person's decision for each approval id.
 - `expect.calls` must appear in that order, with other calls allowed in between; `args` matches only
   the fields listed. `notCalled`, `approvalsRequested` (exact set), `delegated` (office extension only)
