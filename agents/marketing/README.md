@@ -18,10 +18,12 @@ From a checkout of this repository:
 ```sh
 npm install
 npm run build
-node packages/cli/dist/index.js run agents/marketing --model paper/ultramarine-1-flash
+node packages/cli/dist/index.js run agents/marketing --demo --model paper/ultramarine-1-flash
 ```
 
-With no configuration the role runs on a **demonstration backend**: on the morning of Monday
+Without `--demo`, and with no desk bound in `--clients`, the role starts but every tool that reads
+or writes its desk refuses and says how to bind one, so a forgotten connection never shows made-up
+records. With `--demo` the role runs on a **demonstration backend**: on the morning of Monday
 9 November 2026 it holds a LinkedIn post published on 2 November (D-101), a ready LinkedIn post about
 the day porter at the price book's $42.00 an hour (D-102), and a ready winter floor care email to the
 current clients list (D-103). Nothing is posted anywhere. Ask it to publish the day porter post and it
@@ -147,7 +149,11 @@ for (const extension of role.extensions) registry.install(extension);
 const root = await harness.root(context, { agent: role.agent });
 ```
 
-- **`desk`** — the marketing system. Omitted: the demonstration backend, on the company's own data.
+- **`desk`** — the marketing system. Omitted: the demonstration backend, on the company's own
+  data, when `demo` is set; otherwise none, and every desk tool refuses with how to bind one.
+- **`demo`** — run on the demonstration backend when no `desk` is given. Set by the host
+  (`officehum run --demo`, the eval runner); `loadRole` reserves the name, so a client file can never
+  set it.
 - **`company`** — a host's own company facts, in the shape of `references/facts.json`.
 - **`approve`** — decides the gated actions. Omitted: every claim approval and publication is blocked.
 - **`overlays`** — the business's own `AGENTS.md`, skills and `settings.json`, lowest first.

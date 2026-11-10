@@ -994,6 +994,15 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
 <pre class="cmd">officehum run agents/frontdesk \
   --model paper/ultramarine-1-flash</pre>
 
+        <p>A role that keeps its records behind a desk (Bookkeeper's payables, Marketing, Operations,
+          People Ops, Purchasing, Sales, Support) runs on its demonstration records only when asked:
+          <code>--demo</code> does that, and a <code>desk</code> client in <code>--clients</code> binds
+          the business's own system instead. With neither, the role starts, the banner says
+          <code>Desk: none bound</code>, and its desk tools refuse and say how to bind one, so a
+          forgotten connection never shows made-up records.</p>
+<pre class="cmd">officehum run agents/sales --demo \
+  --model paper/ultramarine-1-flash</pre>
+
         <h3>Commands</h3>
         <div class="tablewrap"><table>
           <thead><tr><th>Command</th><th>What it does</th></tr></thead>

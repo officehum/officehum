@@ -21,7 +21,8 @@ import bookkeeper from "@officehum/bookkeeper";
 
 const role = bookkeeper({
   quickbooks,   // optional: where the role reads and writes invoices
-  desk,         // optional: supplier bills and bank records (default: the demonstration desk)
+  desk,         // optional: supplier bills and bank records (none: the payables tools refuse)
+  demo,         // optional: true runs the payables on the demonstration desk when no desk is given
   company,      // optional: suppliers, catalogue and people (default: the generated handbook facts)
   approve,      // optional: decides the gated actions
   overlays,     // optional: overlay directories, lowest first
@@ -33,7 +34,11 @@ const role = bookkeeper({
   default: with no connection the tools and the `new_recipient` condition refuse rather than pretend.
   A role with no client still builds, so it installs on a bare Pi Durable harness.
 - **`desk`** implements `AccountingDesk` (below): supplier bills, payments and bank statements. With
-  none, the role runs on `fakeAccountingDesk`: the company's own suppliers and catalogue, four
+  none, the payables tools refuse and say how to bind one, so a forgotten connection never shows
+  made-up bills.
+- **`demo`**, set by the host (`officehum run --demo`, the eval runner; `loadRole` reserves the name, so
+  a client file can never set it): with no `desk`, the role runs its payables on
+  `fakeAccountingDesk`: the company's own suppliers and catalogue, four
   demonstration bills, October 2026's statement, a clock fixed at Monday 9 November 2026, and a
   payment backend that records a payment in memory and **moves no money**. There is no real payment
   backend in this package.
@@ -117,8 +122,10 @@ officehum run agents/bookkeeper \
   --db .officehum/bookkeeper.sqlite
 ```
 
-`officehum run` needs a live model key in the process environment (`PAPERINSTRUMENTS_API_KEY` for
-Paper, `OPENAI_API_KEY` for OpenAI). At the prompt, gated actions print their description and
+This binds QuickBooks and no accounts desk, so the payables tools refuse and the banner says
+`Desk: none bound`; add `--demo` to try the payables on the demonstration desk, or a `desk` client to
+bind the business's own. `officehum run` needs a live model key in the process environment
+(`PAPERINSTRUMENTS_API_KEY` for Paper, `OPENAI_API_KEY` for OpenAI). At the prompt, gated actions print their description and
 arguments and wait for `y`/`n`. An embedding host that builds the role itself passes `quickbooks`,
 `approve` and `overlays` directly, as in the factory above.
 
