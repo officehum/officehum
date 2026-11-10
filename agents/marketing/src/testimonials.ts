@@ -55,7 +55,7 @@ const NAME_END = String.raw`\s*(?:[,.)\]]|\n|$)`;
 const SPEECH = String.raw`(?:said|says|writes|wrote|adds|added|told\s+(?:us|me)|tells\s+us)`;
 /** A lowercase speaker before a speech verb: a pronoun, or a determiner and up to three words. */
 const SPEAKER = String.raw`(?:[Ss]he|[Hh]e|[Tt]hey|(?:[Aa]n?|[Tt]he|[Oo]ur|[Oo]ne\s+of\s+our|[Aa]nother|[Tt]heir)(?:\s+[\w'’-]+){1,3})`;
-const DASH = String.raw`(?:[—–~]|-{1,2})`;
+const DASH = "(?:[—–~]|-{1,2})";
 /** What may sit between the closing mark and an attribution on the same line. */
 const LEAD = String.raw`^[^\S\n]*[,.!?]?`;
 
