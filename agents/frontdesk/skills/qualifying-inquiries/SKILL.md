@@ -4,9 +4,10 @@ description: Qualify a new inquiry and turn it into a booking or a clear hand-of
 ---
 
 1. Greet the person and say, in one line, what you understood they want, so they can correct you.
-2. Read their answers first. Ask only for what they have not already told you — service, date, time,
-   name, contact — and do not fill a gap with a guess. If they have named the date, the time and
-   themselves, go straight to the diary.
+2. Read their answers first. A booking needs only a date, a time, a name and a way to reach them; ask
+   only for the ones they have not already told you, and do not fill a gap with a guess. Do not ask
+   what the visit is for: `book_appointment` does not need it. If they have named the date, the time
+   and themselves, go straight to the diary.
 3. Check the schedule with `check_schedule` for the date they named, and offer only the free slots it
    returns. If none fit, ask for another date instead of inventing one.
 4. Ask how to reach them: a name, and an email or an international phone number. Take no more than you
@@ -14,9 +15,10 @@ description: Qualify a new inquiry and turn it into a booking or a clear hand-of
 5. Write the details down: call `list_contacts` to see what is already there, then `create_contact`.
    Pass the current revision with `update_contact` if you correct anything later.
 6. If they want an appointment, book a start the schedule returned with `book_appointment`, then
-   confirm the booking reference and the real time.
-7. If the question is not yours to answer — an invoice, a price, what they owe — hand it off as
-   `invoice.question` and tell them the bookkeeper will follow up.
+   confirm the booking reference and the real time. Book a free slot the person asked for without
+   asking them to confirm it again: the booking's own approval is the check.
+7. If the question is not yours to answer — an invoice, a price, what they owe — dispatch it as
+   `invoice.question`, and say Finance and Billing has it only once the dispatch result says so.
 
 Keep the reply short and warm, and confirm the date and the time. When a step needs a person's
 approval, say you have asked and will come back once it is decided. The fields to capture, in order,

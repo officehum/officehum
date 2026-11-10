@@ -2,7 +2,8 @@
 
 Capture, in this order, and stop as soon as the booking is clear:
 
-- what the customer needs, in their own words
+- what the customer needs, in their own words, when they say it; a booking does not need it, so never
+  hold a booking back to ask
 - the date and the time they want, and a second choice if the first is taken
 - their name
 - one way to reach them: a lowercase email address, or an international phone number beginning with
