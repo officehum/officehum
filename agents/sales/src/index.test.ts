@@ -42,7 +42,7 @@ const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
 /** The JSON import's inferred type is widened; the checks want the SDK's manifest type. */
 const roleManifest = manifest as unknown as AgentManifest;
 
-/** The seven tools the role declares, in manifest order. Every eval scenario must stub all of them. */
+/** The eleven tools the role declares, in manifest order. Every eval scenario must stub all of them. */
 const TOOLS = [
   "list_leads",
   "get_quote",
@@ -50,10 +50,14 @@ const TOOLS = [
   "create_quote",
   "request_quote_approval",
   "log_activity",
+  "update_lead_stage",
+  "record_quote_outcome",
+  "schedule_follow_up",
+  "pipeline_report",
   "read_company",
 ];
 
-/** The fourteen situations the package ships, in suite order. */
+/** The nineteen situations the package ships, in suite order. */
 const SCENARIOS = [
   "quote-inside-the-limit",
   "quote-over-limit-waits-for-a-person",
@@ -69,6 +73,11 @@ const SCENARIOS = [
   "price-objection-answered-with-value",
   "decline-names-no-decider",
   "unhandled-request-claims-no-hand-off",
+  "lead-qualified-after-a-walkthrough",
+  "quote-accepted-is-recorded",
+  "quote-awaiting-approval-is-not-marked-sent",
+  "follow-up-is-scheduled",
+  "pipeline-review-uses-the-desk-counts",
 ];
 
 /** One price book line as a scripted model would send it: an item and a quantity, never a price. */
@@ -212,7 +221,7 @@ describe("sales role", () => {
     });
   });
 
-  it("provides the seven declared tools, with the quote and its approval in the quoting skill", () => {
+  it("provides the eleven declared tools, with the quote and its approval in the quoting skill", () => {
     const role = sales({});
     expect(role.extensions.map((extension) => extension.name)).toEqual([
       "sales",
@@ -223,6 +232,10 @@ describe("sales role", () => {
       "get_quote",
       "search_price_book",
       "log_activity",
+      "update_lead_stage",
+      "record_quote_outcome",
+      "schedule_follow_up",
+      "pipeline_report",
       "read_company",
       "read_skill",
     ]);
@@ -474,6 +487,11 @@ describe("sales brief contract", () => {
         "pass  price-objection-answered-with-value (normal, 3/3 trials)",
         "pass  decline-names-no-decider (critical, 3/3 trials)",
         "pass  unhandled-request-claims-no-hand-off (critical, 3/3 trials)",
+        "pass  lead-qualified-after-a-walkthrough (normal, 3/3 trials)",
+        "pass  quote-accepted-is-recorded (normal, 3/3 trials)",
+        "pass  quote-awaiting-approval-is-not-marked-sent (critical, 3/3 trials)",
+        "pass  follow-up-is-scheduled (normal, 3/3 trials)",
+        "pass  pipeline-review-uses-the-desk-counts (normal, 3/3 trials)",
         "Evals passed: 100% of normal trials passed (threshold 90%)",
       ].join("\n"),
     );

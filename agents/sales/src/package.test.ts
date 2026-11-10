@@ -25,11 +25,15 @@ const TOOLS = [
   "create_quote",
   "request_quote_approval",
   "log_activity",
+  "update_lead_stage",
+  "record_quote_outcome",
+  "schedule_follow_up",
+  "pipeline_report",
   "read_company",
 ];
 
 describe("sales package", () => {
-  it("validates strictly as a package under agents/, with all seven tools stubbed in every scenario", async () => {
+  it("validates strictly as a package under agents/, with all eleven tools stubbed in every scenario", async () => {
     const validated = await validatePackage(packageDirectory);
     expect(validated.issues).toEqual([]);
     expect(validated.ok).toBe(true);
@@ -38,21 +42,37 @@ describe("sales package", () => {
     expect(validated.value.piDurableRange).toBe("1.3.x");
     expect(Object.keys(validated.value.suites)).toEqual(["evals/situations.json"]);
     const scenarios = Object.values(validated.value.suites).flatMap((suite) => suite.scenarios);
-    expect(scenarios).toHaveLength(14);
+    expect(scenarios).toHaveLength(19);
     for (const scenario of scenarios) {
       expect(Object.keys(scenario.stubs).sort()).toEqual([...TOOLS].sort());
     }
   });
 
-  it("declares seven tools, one approval and the one limit the desk reads", () => {
+  it("declares eleven tools, one approval and the one limit the desk reads", () => {
     expect(roleManifest.tools.map((tool) => tool.name)).toEqual(TOOLS);
     expect(
       roleManifest.tools.filter((tool) => tool.replay === "unsafe").map((tool) => tool.name),
-    ).toEqual(["create_quote", "request_quote_approval", "log_activity"]);
+    ).toEqual([
+      "create_quote",
+      "request_quote_approval",
+      "log_activity",
+      "update_lead_stage",
+      "record_quote_outcome",
+      "schedule_follow_up",
+    ]);
     expect(validateManifest(roleManifest).ok).toBe(true);
 
-    // Reading a quote changes nothing, so a replayed call is harmless.
+    // Reading a quote or counting the pipeline changes nothing, so a replayed call is harmless.
     expect(roleManifest.tools.find((tool) => tool.name === "get_quote")?.replay).toBe("safe");
+    expect(roleManifest.tools.find((tool) => tool.name === "pipeline_report")?.replay).toBe("safe");
+
+    // A stage, a quote's outcome and a follow-up are internal records the role's manager does not
+    // decide (role.md, "Decisions that go to a manager"), so each states why it needs no approval.
+    for (const name of ["update_lead_stage", "record_quote_outcome", "schedule_follow_up"]) {
+      const tool = roleManifest.tools.find((candidate) => candidate.name === name);
+      expect(tool?.noApproval, name).toContain("nothing is sent to the client");
+      expect(tool?.skill, name).toBeUndefined();
+    }
 
     // An internal note states why it needs no approval, and so does saving a quote: the desk holds a
     // discounted or over-limit quote until its approval says yes.

@@ -583,6 +583,176 @@ describe("log_activity", () => {
   });
 });
 
+describe("update_lead_stage", () => {
+  it("moves a lead with its reason recorded, and says so", async () => {
+    const one = desk();
+    const result = await tools(one).updateLeadStage.execute(
+      { leadId: "L-215", stage: "qualified", reason: "Walkthrough done: 4,100 sq ft, nightly." },
+      call("stage-1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain("Moved L-215 (Lloyd Center Pediatrics) from new to qualified");
+    expect(text(result)).toContain("recorded on the lead as note A-1");
+    expect(details(result)).toMatchObject({ leadId: "L-215", from: "new", stage: "qualified" });
+    expect((await one.listLeads({ query: "L-215" }))[0]?.stage).toBe("qualified");
+  });
+
+  it("answers a retried call with the move it already made, and writes nothing twice", async () => {
+    const one = desk();
+    const args = { leadId: "L-211", stage: "lost", reason: "No answer in three weeks." };
+    const first = await tools(one).updateLeadStage.execute(args, call("s"), BACKGROUND_CONTEXT);
+    const again = await tools(one).updateLeadStage.execute(args, call("s"), BACKGROUND_CONTEXT);
+    expect(text(again)).toBe(text(first));
+    expect((again as { isError?: boolean }).isError).toBeUndefined();
+  });
+
+  it("refuses quoted while the quote waits for a person, and a closed deal, saying what next", async () => {
+    const one = desk();
+    const waiting = await tools(one).updateLeadStage.execute(
+      { leadId: "L-219", stage: "quoted", reason: "Quoted the lobbies." },
+      call("q"),
+      BACKGROUND_CONTEXT,
+    );
+    expect((waiting as { isError?: boolean }).isError).toBe(true);
+    expect(details(waiting).code).toBe("no_ready_quote");
+    expect(text(waiting)).toContain("request_quote_approval");
+
+    await one.updateLeadStage(
+      { leadId: "L-211", stage: "lost", reason: "Quiet." },
+      { requestId: "lost" },
+    );
+    const closed = await tools(one).updateLeadStage.execute(
+      { leadId: "L-211", stage: "qualified", reason: "Back." },
+      call("c"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(closed).code).toBe("closed");
+    expect(text(closed)).toContain("a person reopens a closed deal");
+  });
+});
+
+describe("record_quote_outcome", () => {
+  it("marks a draft sent and says the cadence counts from that day", async () => {
+    const one = desk();
+    await tools(one).createQuote.execute(
+      { leadId: "L-204", lines: [{ priceBookItemId: "clean-deep-sqft", quantity: 3200 }] },
+      call("quote"),
+      BACKGROUND_CONTEXT,
+    );
+    const result = await tools(one).recordQuoteOutcome.execute(
+      { quoteId: "Q-3051", outcome: "sent" },
+      call("sent"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain(
+      "Recorded Q-3051 for Riverside Dental (L-204) as sent on 2026-11-01",
+    );
+    expect(text(result)).toContain("schedule_follow_up");
+    expect(details(result)).toMatchObject({ id: "Q-3051", status: "sent", sentOn: "2026-11-01" });
+    const read = await tools(one).getQuote.execute(
+      { quoteId: "Q-3051" },
+      call("g"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(read)).toContain("sent on 2026-11-01");
+  });
+
+  it("records an acceptance and leaves the stage for update_lead_stage", async () => {
+    const one = desk();
+    const result = await tools(one).recordQuoteOutcome.execute(
+      { quoteId: "Q-3047", outcome: "accepted", note: "Nina signed it." },
+      call("accepted"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain("as accepted on 2026-11-01");
+    expect(text(result)).toContain("Next: update_lead_stage to won");
+    expect((await one.listLeads({ query: "L-211" }))[0]?.stage).toBe("quoted");
+  });
+
+  it("refuses to mark a quote awaiting approval as sent, and says it still waits for a person", async () => {
+    const one = desk();
+    const result = await tools(one).recordQuoteOutcome.execute(
+      { quoteId: "Q-3052", outcome: "sent" },
+      call("x"),
+      BACKGROUND_CONTEXT,
+    );
+    expect((result as { isError?: boolean }).isError).toBe(true);
+    expect(details(result).code).toBe("awaiting_approval");
+    expect(text(result)).toContain("still waits for a person");
+    expect(text(result)).toContain("must not be told it was sent");
+    expect((await one.getQuote("Q-3052")).status).toBe("awaiting_approval");
+  });
+
+  it("answers a retried call with the outcome it already recorded", async () => {
+    const one = desk();
+    const args = { quoteId: "Q-3047", outcome: "declined", on: "2026-10-30" };
+    const first = await tools(one).recordQuoteOutcome.execute(args, call("d"), BACKGROUND_CONTEXT);
+    const again = await tools(one).recordQuoteOutcome.execute(args, call("d"), BACKGROUND_CONTEXT);
+    expect(text(again)).toBe(text(first));
+    expect((again as { isError?: boolean }).isError).toBeUndefined();
+  });
+});
+
+describe("schedule_follow_up", () => {
+  it("schedules the next touch, shows it in list_leads, and names the one it replaced", async () => {
+    const one = desk();
+    const first = await tools(one).scheduleFollowUp.execute(
+      { leadId: "L-207", on: "2026-11-04", what: "Call Marisol about the scope." },
+      call("f1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(first)).toContain(
+      "Scheduled the next touch on lead L-207 for 2026-11-04: Call Marisol about the scope.",
+    );
+    const listed = await tools(one).listLeads.execute(
+      { query: "L-207" },
+      call("l"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(listed)).toContain("next follow-up 2026-11-04: Call Marisol about the scope.");
+    const second = await tools(one).scheduleFollowUp.execute(
+      { leadId: "L-207", on: "2026-11-05", what: "Email the scope." },
+      call("f2"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(second)).toContain(
+      "It replaces the one due 2026-11-04: Call Marisol about the scope.",
+    );
+  });
+
+  it("refuses a day before today", async () => {
+    const result = await tools(desk()).scheduleFollowUp.execute(
+      { leadId: "L-207", on: "2026-10-20", what: "Call." },
+      call("f"),
+      BACKGROUND_CONTEXT,
+    );
+    expect((result as { isError?: boolean }).isError).toBe(true);
+    expect(text(result)).toContain("before today, 2026-11-01");
+  });
+
+  it("answers a retried call with the follow-up it already scheduled", async () => {
+    const one = desk();
+    const args = { leadId: "L-207", on: "2026-11-04", what: "Call." };
+    const first = await tools(one).scheduleFollowUp.execute(args, call("r"), BACKGROUND_CONTEXT);
+    const again = await tools(one).scheduleFollowUp.execute(args, call("r"), BACKGROUND_CONTEXT);
+    expect(text(again)).toBe(text(first));
+    expect(text(again)).not.toContain("replaces");
+  });
+});
+
+describe("pipeline_report", () => {
+  it("reads the desk's counts and values by stage and its quotes by status", async () => {
+    const result = await tools(desk()).pipelineReport.execute({}, call("p"), BACKGROUND_CONTEXT);
+    expect(text(result)).toContain("Pipeline on 2026-11-01:");
+    expect(text(result)).toContain("new — 3 leads — $0.00 estimated a year (3 with no estimate)");
+    expect(text(result)).toContain("qualified — 1 lead — $4,005.25 estimated a year");
+    expect(text(result)).toContain("won — 0 leads");
+    expect(text(result)).toContain("awaiting approval — 3 quotes — $13,756.75");
+    expect(text(result)).toContain("sent — 1 quote — $3,135.00");
+    expect(details(result).found).toBe(true);
+  });
+});
+
 describe("read_company", () => {
   it("answers for the profile, the people and the escalation path", async () => {
     const role = tools(desk());

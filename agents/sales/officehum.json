@@ -46,6 +46,29 @@
       "description": "Record what happened on a lead — a call, an email, a meeting or a note — so the next person knows where it got to."
     },
     {
+      "name": "update_lead_stage",
+      "replay": "unsafe",
+      "noApproval": "An internal record in the CRM; nothing is sent to the client. The desk refuses a lead with no quote ready to send as quoted, and moving a closed deal: a person reopens it.",
+      "description": "Move a lead to another pipeline stage (new, qualified, quoted, won or lost) with the reason, which is recorded on the lead. Won and lost are final; a person reopens a closed deal."
+    },
+    {
+      "name": "record_quote_outcome",
+      "replay": "unsafe",
+      "noApproval": "An internal record in the CRM; nothing is sent to the client. The desk refuses to mark a quote awaiting approval as sent.",
+      "description": "Record that a draft quote ready to send was sent, or that a sent quote was accepted or declined, with the day it happened. It changes no lead's stage."
+    },
+    {
+      "name": "schedule_follow_up",
+      "replay": "unsafe",
+      "noApproval": "An internal task in the CRM; nothing is sent to the client.",
+      "description": "Schedule the next touch on a lead for a day, today or later, replacing the open one if there is one."
+    },
+    {
+      "name": "pipeline_report",
+      "replay": "safe",
+      "description": "Count the pipeline: leads and their estimated value by stage, and quotes and their totals by status, as the desk counts them."
+    },
+    {
       "name": "read_company",
       "replay": "safe",
       "description": "Read one section of the company record: profile, hours, people, services, pricing, policies, tone, escalation or glossary."
@@ -90,7 +113,7 @@
     {
       "type": "pipeline.review",
       "description": "Review the pipeline and say what needs chasing",
-      "done": [{ "person": true }]
+      "done": [{ "tool": "pipeline_report", "args": {}, "expect": "found" }, { "person": true }]
     }
   ],
   "dispatches": [

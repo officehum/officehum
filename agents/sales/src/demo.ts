@@ -27,6 +27,7 @@ export function demoLeads(): readonly Lead[] {
       lastActivityAt: "2026-10-28",
       notes:
         "Moving into the second suite in January and wants the first deep clean done before the chairs go in.",
+      nextFollowUp: null,
     },
     {
       id: "L-207",
@@ -42,6 +43,7 @@ export function demoLeads(): readonly Lead[] {
       lastActivityAt: "2026-10-22",
       notes:
         "Weekday nights, five nights a week. Wants the scope in writing before the quote goes to her partner.",
+      nextFollowUp: null,
     },
     {
       id: "L-211",
@@ -56,6 +58,7 @@ export function demoLeads(): readonly Lead[] {
       owner: "Marcus Oyelaran",
       lastActivityAt: "2026-10-15",
       notes: "Quote Q-3047 went out three weeks ago and nobody has answered it.",
+      nextFollowUp: null,
     },
     {
       id: "L-215",
@@ -70,6 +73,7 @@ export function demoLeads(): readonly Lead[] {
       owner: "Marcus Oyelaran",
       lastActivityAt: "2026-10-30",
       notes: "Asked about nightly cleaning and restroom supplies. No walkthrough booked yet.",
+      nextFollowUp: null,
     },
     {
       id: "L-219",
@@ -84,6 +88,7 @@ export function demoLeads(): readonly Lead[] {
       owner: "Marcus Oyelaran",
       lastActivityAt: "2026-10-31",
       notes: "Wants one contract across six buildings. A committee decides, and they meet monthly.",
+      nextFollowUp: null,
     },
   ];
 }
@@ -111,18 +116,22 @@ function demoLine(
   };
 }
 
-/** A demonstration quote with its totals worked out from its lines. */
+/**
+ * A demonstration quote with its totals worked out from its lines: ready to send, or awaiting approval
+ * when it has reasons to, or sent on `sentOn` when one is given.
+ */
 function demoQuote(
   fields: Pick<Quote, "id" | "leadId" | "leadName" | "issuedOn" | "validUntil">,
   lines: readonly QuoteLine[],
   discountPercent: number,
   approvalReasons: Quote["approvalReasons"],
+  sentOn: string | null = null,
 ): Quote {
   const subtotalCents = lines.reduce((total, line) => total + line.amountCents, 0);
   const discountCents = Math.round((subtotalCents * discountPercent) / 100);
   return {
     ...fields,
-    status: approvalReasons.length === 0 ? "draft" : "awaiting_approval",
+    status: approvalReasons.length > 0 ? "awaiting_approval" : sentOn === null ? "draft" : "sent",
     approvalReasons,
     quoteLimitCents: DEMO_QUOTE_LIMIT_CENTS,
     currency: "USD",
@@ -132,12 +141,15 @@ function demoQuote(
     discountCents,
     totalCents: subtotalCents - discountCents,
     notes: null,
+    sentOn,
+    acceptedOn: null,
+    declinedOn: null,
   };
 }
 
 /**
- * The quotes the demo pipeline already holds. Q-3047 went to Bramble & Co three weeks before the demo
- * date: 12,000 sq ft of first-visit deep clean, 24 restroom sanitises and three HVAC filters. The
+ * The quotes the demo pipeline already holds. Q-3047 was sent to Bramble & Co on the day it was
+ * issued, two and a half weeks before the demo date, and has had no answer: 12,000 sq ft of first-visit deep clean, 24 restroom sanitises and three HVAC filters. The
  * other three were made on the demo date and wait for a person, so an approval has a real quote to
  * read: Q-3052, Cascadia Legal's month of nightly cleaning and a move porter, above the quote limit;
  * Q-3053, Q-3047 again with the ten percent Bramble & Co asked for; and Q-3060, a strip-and-wax and a
@@ -167,6 +179,7 @@ export function demoQuotes(): readonly Quote[] {
       bramble,
       0,
       [],
+      "2026-10-15",
     ),
     demoQuote(
       { id: "Q-3052", leadId: "L-207", leadName: "Cascadia Legal Group", ...today },

@@ -45,13 +45,16 @@ officehum eval agents/sales --model scripted
 officehum eval agents/sales --model scripted --mode office   # the office's real approval gate
 ```
 
-Thirteen scenarios, all deterministic: a quote inside the limit; a quote over it, saved awaiting a
+Seventeen scenarios, all deterministic: a quote inside the limit; a quote over it, saved awaiting a
 person and then approved; a quote whose lines are each raised to the book's minimum, so only the
 desk's total is over the limit, which must still wait for a person; a discount declined cleanly; a log receipt claiming Marcus decided,
 which the reply must not repeat because no approval answered; a lead with no budget that is
 qualified rather than quoted; a price question answered from the book; an instruction injected
 into a lead's message; a complaint handed to the two people who own it; a quiet quote closed as
-lost; and a price objection answered with the value of the quote. Every declared tool is stubbed
+lost with `update_lead_stage`; a price objection answered with the value of the quote; a lead moved to
+qualified after a walkthrough; a quote's acceptance recorded on the quote; a quote awaiting approval
+refused as sent, with the reply saying it still waits for a person (critical); a follow-up scheduled
+for its day; and a pipeline review read from `pipeline_report`. Every declared tool is stubbed
 with the scenario's canned text — the model is offered the real names, descriptions and
 parameters while no real system is touched — and an approval a scenario does not script stops the
 trial. Two more are the honesty scenarios every catalog role carries (RASF-3483): a discount
@@ -72,6 +75,10 @@ office's real gate, so a refused call is refused by the gate production uses.
 | `create_quote` | unsafe | A quote the desk prices from the book, one line per service: items and quantities (and `visitsPerWeek` for a recurring per-visit line), never prices or counts. A discounted or over-limit quote is saved awaiting approval (quoting skill) |
 | `request_quote_approval` | unsafe | Asks a person to approve a quote the desk held, by its id; on a yes it is a draft ready to send (quoting skill) |
 | `log_activity` | unsafe | An internal note on a lead: what was decided and what happens next |
+| `update_lead_stage` | unsafe | Moves a lead between `new`, `qualified`, `quoted`, `won` and `lost`, with the reason recorded on the lead. Refuses a no-op, `quoted` with no quote ready to send, and moving a closed deal |
+| `record_quote_outcome` | unsafe | Marks a draft quote `sent`, or a sent quote `accepted` or `declined`, with its day (today by default). Never marks a quote awaiting approval as sent; moves no stage |
+| `schedule_follow_up` | unsafe | Puts the next touch on a lead for a day, today or later, replacing the open one; `list_leads` shows it |
+| `pipeline_report` | safe | Leads and their estimated value by stage, and quotes and their totals by status, counted by the desk |
 | `read_company` | safe | One section of the company record: profile, hours, people, services, pricing, policies, tone, escalation, glossary |
 
 Every tool speaks in integer cents behind the money a person reads, and every figure comes from the
@@ -104,8 +111,20 @@ Purchasing's draft orders:
    matches what the person saw (`quote_changed` otherwise).
 
 With no approver, the gate refuses `request_quote_approval` and the quote stays awaiting approval.
-`create_quote` and `log_activity` state `noApproval`: saving a quote sends nothing to the client, and
-a note has no effect outside the office.
+`create_quote`, `log_activity`, `update_lead_stage`, `record_quote_outcome` and `schedule_follow_up`
+state `noApproval`: saving a quote sends nothing to the client, and a note, a stage, a quote's outcome
+and a follow-up are records with no effect outside the office. None of them decides what the role's
+manager decides (price schedules, discounts, escalated complaints, goals).
+
+## Moving a deal through the pipeline
+
+A quote moves forward only as somebody records it: `awaiting_approval` → `draft` (ready to send) →
+`sent` → `accepted` or `declined`, each with its day, through `record_quote_outcome`. A quote awaiting
+approval is refused as `sent`. An outcome never moves the lead: the receipt names `update_lead_stage`
+as the next step, and the stage moves only when the model asks, with a reason the desk records on the
+lead. `won` and `lost` are final for the tool; a person reopens a closed deal. The following-up
+cadence counts from the recorded sent day, and each touch is a follow-up scheduled on the lead.
+`pipeline_report` is the desk's own count, so a pipeline review never adds figures up in the model.
 
 ### Changing the limit
 
@@ -181,6 +200,13 @@ export interface SalesDesk {
     options: { requestId: string },
   ): Promise<Quote>;
   logActivity(entry: ActivityDraft, options: { requestId: string }): Promise<Activity>;
+  updateLeadStage(change: StageChange, options: { requestId: string }): Promise<StageMove>;
+  recordQuoteOutcome(
+    outcome: QuoteOutcomeDraft,
+    options: { requestId: string },
+  ): Promise<QuoteOutcomeRecord>;
+  scheduleFollowUp(draft: FollowUpDraft, options: { requestId: string }): Promise<ScheduledFollowUp>;
+  pipelineReport(): Promise<PipelineReport>;
 }
 ```
 
@@ -228,6 +254,9 @@ const root = await harness.root(context, { agent: role.agent });
 - **`approve`** — decides the gated actions. Omitted: a discounted or over-limit quote stays saved
   awaiting approval and its approval is refused, which is the safe direction.
 - **`overlays`** — the business's own `AGENTS.md`, skills, `settings.json` and limits, lowest first.
+- **`now`** — the clock the demonstration desk dates against (today for a quote, an outcome and a
+  follow-up). Omitted: `DEMO_NOW`, 2026-11-01, the day the demo pipeline's newest quotes were made. A
+  host's own desk keeps its own clock.
 
 Office Hum's `officehum run` supplies a terminal approver and prints a gated action's description and
 arguments before it waits for `y`/`n`.
@@ -236,17 +265,17 @@ arguments before it waits for `y`/`n`.
 
 | Path | What it holds |
 | --- | --- |
-| `officehum.json` | The manifest: seven tools, one approval, one limit, dispatches, skills, evals |
+| `officehum.json` | The manifest: eleven tools, one approval, one limit, dispatches, skills, evals |
 | `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
 | `role.md`, `role.sources.json` | The researched description of the job, every item cited; `officehum verify-role agents/sales --online` re-checks the sources |
 | `src/index.ts` | The factory: the tools, the skill placement, the desk and company defaults |
-| `src/tools.ts` | The seven tools, the receipts they return, and the quote approval's facts |
+| `src/tools.ts` | The eleven tools, the receipts they return, and the quote approval's facts |
 | `src/company.ts` | The company facts as the role reads them, and the price book search |
 | `src/desk.ts` | The `SalesDesk` interface, `fakeSalesDesk`, the demo pipeline and the quote arithmetic |
 | `src/tools.test.ts` | One test per tool, on the fake desk and the real facts |
-| `src/index.test.ts` | The factory, the quote approval on a real harness, and fourteen scenarios |
+| `src/index.test.ts` | The factory, the quote approval on a real harness, and nineteen scenarios |
 | `src/package.test.ts` | The package, the manifest, and the company's numbers against the role's |
-| `evals/situations.json` | The fourteen eval scenarios |
+| `evals/situations.json` | The nineteen eval scenarios |
 | `evals.smoke.json` | The turns `--model scripted` plays back for them |
 | `skills/` | `qualifying-a-lead`, `quoting-from-the-price-book`, `following-up`, and the generated `company-handbook` |
 

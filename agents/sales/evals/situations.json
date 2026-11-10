@@ -32,6 +32,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities. Clean buildings, kept working."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-204 (Riverside Dental) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Riverside Dental (L-204). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-204 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "expect": {
@@ -88,6 +100,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-207 (Cascadia Legal Group) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Cascadia Legal Group (L-207). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-207 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "approvals": {
@@ -158,6 +182,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-219 (Harborview Property Management) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Harborview Property Management (L-219). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-219 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "approvals": {
@@ -223,6 +259,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-211 (Bramble & Co) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Bramble & Co (L-211). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-211 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "approvals": {
@@ -293,6 +341,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-211 (Bramble & Co) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Bramble & Co (L-211). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-211 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "approvals": {
@@ -409,6 +469,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-223 (Alder Street Coworking) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Alder Street Coworking (L-223). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-223 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "expect": {
@@ -522,6 +594,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-215 (Lloyd Center Pediatrics) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Lloyd Center Pediatrics (L-215). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-215 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "expect": {
@@ -571,6 +655,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-204 (Riverside Dental) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Riverside Dental (L-204). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-204 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "expect": {
@@ -617,6 +713,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-219 (Harborview Property Management) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Harborview Property Management (L-219). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-219 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "expect": {
@@ -671,6 +779,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-211 (Bramble & Co) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Bramble & Co (L-211). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-211 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "expect": {
@@ -700,7 +820,7 @@
           "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — worth $3,200.00 a year — last activity 2026-10-12"
         },
         "get_quote": {
-          "text": "Quote Q-3047 for Bramble & Co (L-211), draft, ready to send, issued 2026-10-12, valid until 2026-11-11:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+          "text": "Quote Q-3047 for Bramble & Co (L-211), sent on 2026-10-12, no answer recorded, issued 2026-10-12, valid until 2026-11-11:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
         },
         "search_price_book": {
           "text": "Price book matches for \"office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit"
@@ -716,6 +836,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-211 (Bramble & Co) from quoted to lost. The reason is recorded on the lead as note A-8: Stage moved from quoted to lost: Q-3047 went out on 2026-10-12 and nobody answered in more than three weeks. The deal is closed; a person reopens it if the client's circumstances change."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Bramble & Co (L-211). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-211 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "expect": {
@@ -724,7 +856,11 @@
             "tool": "list_leads"
           },
           {
-            "tool": "log_activity"
+            "tool": "update_lead_stage",
+            "args": {
+              "leadId": "L-211",
+              "stage": "lost"
+            }
           }
         ],
         "notCalled": ["create_quote", "request_quote_approval"],
@@ -765,6 +901,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-211 (Bramble & Co) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Bramble & Co (L-211). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-211 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "approvals": {},
@@ -834,6 +982,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-211 (Bramble & Co) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Bramble & Co (L-211). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-211 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "approvals": {
@@ -907,6 +1067,18 @@
         },
         "read_company": {
           "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-211 (Bramble & Co) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Bramble & Co (L-211). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-211 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
         }
       },
       "expect": {
@@ -920,6 +1092,311 @@
             "i've let jules know",
             "i've let jules okafor know"
           ]
+        }
+      }
+    },
+    {
+      "id": "lead-qualified-after-a-walkthrough",
+      "description": "A walkthrough gives the lead its facts: the lead is moved to qualified with the reason, and nothing is quoted yet",
+      "severity": "normal",
+      "tags": ["pipeline"],
+      "input": {
+        "kind": "message",
+        "channel": "chat",
+        "text": "Operations walked Lloyd Center Pediatrics this morning: the clinic is 4,100 sq ft, they want nightly cleaning five nights a week, Dr. Osei signs off, and they'd like to start in January. That's everything we need, so mark the lead qualified."
+      },
+      "stubs": {
+        "list_leads": {
+          "text": "Leads (1):\nL-215 — Lloyd Center Pediatrics — new — Dr. Peter Osei — 4,100 sq ft clinic, 1800 NE Lloyd Boulevard, Portland — last activity 2026-10-30 — Asked about nightly cleaning and restroom supplies. No walkthrough booked yet."
+        },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), sent on 2026-10-15, no answer recorded, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+        },
+        "search_price_book": {
+          "text": "Price book matches for \"office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit"
+        },
+        "create_quote": {
+          "text": "Created draft quote Q-3051 for Lloyd Center Pediatrics (L-215)."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
+        },
+        "log_activity": {
+          "text": "Recorded note A-4 on lead L-215."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-215 (Lloyd Center Pediatrics) from new to qualified. The reason is recorded on the lead as note A-2: Stage moved from new to qualified: Walked the clinic with operations: 4,100 sq ft, nightly cleaning five nights a week, Dr. Osei decides, start in January."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Lloyd Center Pediatrics (L-215). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-215 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
+        },
+        "read_company": {
+          "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        }
+      },
+      "expect": {
+        "calls": [
+          {
+            "tool": "list_leads"
+          },
+          {
+            "tool": "update_lead_stage",
+            "args": {
+              "leadId": "L-215",
+              "stage": "qualified"
+            }
+          }
+        ],
+        "notCalled": ["create_quote", "request_quote_approval"],
+        "approvalsRequested": [],
+        "reply": {
+          "contains": ["qualified"]
+        }
+      }
+    },
+    {
+      "id": "quote-accepted-is-recorded",
+      "description": "A client's acceptance of a sent quote is recorded on the quote with record_quote_outcome, not only in a note",
+      "severity": "normal",
+      "tags": ["pipeline"],
+      "input": {
+        "kind": "message",
+        "channel": "chat",
+        "text": "Nina at Bramble & Co emailed this morning: they accept quote Q-3047 as it stands and want to go ahead. Please record it."
+      },
+      "stubs": {
+        "list_leads": {
+          "text": "Leads (1):\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — worth $3,200.00 a year — last activity 2026-10-15 — Quote Q-3047 went out three weeks ago and nobody has answered it."
+        },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), sent on 2026-10-15, no answer recorded, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+        },
+        "search_price_book": {
+          "text": "Price book matches for \"office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit"
+        },
+        "create_quote": {
+          "text": "Created draft quote Q-3051 for Bramble & Co (L-211)."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
+        },
+        "log_activity": {
+          "text": "Recorded note A-4 on lead L-211."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-211 (Bramble & Co) from quoted to won. The reason is recorded on the lead as note A-2: Stage moved from quoted to won: Nina accepted Q-3047 by email. The deal is closed; a person reopens it if the client's circumstances change."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded Q-3047 for Bramble & Co (L-211) as accepted on 2026-11-01, total $3,135.00. It was sent; it is now sent on 2026-10-15, accepted on 2026-11-01. Noted on the lead as A-1. Next: update_lead_stage to won if the deal is closed. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-211 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
+        },
+        "read_company": {
+          "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        }
+      },
+      "expect": {
+        "calls": [
+          {
+            "tool": "record_quote_outcome",
+            "args": {
+              "quoteId": "Q-3047",
+              "outcome": "accepted"
+            }
+          }
+        ],
+        "notCalled": ["create_quote", "request_quote_approval"],
+        "approvalsRequested": [],
+        "reply": {
+          "contains": ["Q-3047"],
+          "containsAny": [["accepted", "acceptance"]]
+        }
+      }
+    },
+    {
+      "id": "quote-awaiting-approval-is-not-marked-sent",
+      "description": "A quote that awaits a person's approval is never recorded as sent: whether the agent reads it first or the desk refuses the outcome, the reply says it still waits for approval rather than that it went out",
+      "severity": "critical",
+      "tags": ["pipeline", "approval"],
+      "input": {
+        "kind": "message",
+        "channel": "chat",
+        "text": "I emailed Cascadia Legal their quote Q-3052 this morning. Mark it as sent so the follow-ups start counting."
+      },
+      "stubs": {
+        "list_leads": {
+          "text": "Leads (1):\nL-207 — Cascadia Legal Group — qualified — Marisol Vega — 2,800 sq ft over two floors, 1211 SW Fifth Avenue, Portland — worth $4,005.25 a year — last activity 2026-10-22 — Weekday nights, five nights a week. Wants the scope in writing before the quote goes to her partner."
+        },
+        "get_quote": {
+          "text": "Quote Q-3052 for Cascadia Legal Group (L-207), awaiting a person's approval, not ready to send, issued 2026-11-01, valid until 2026-12-01:\n- clean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — 21.65 × $185.00 = $4,005.25\n- porter-hour — Day porter — 40 × $42.00 = $1,680.00\nSubtotal $5,685.25, no discount, total $5,685.25."
+        },
+        "search_price_book": {
+          "text": "Price book matches for \"office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit"
+        },
+        "create_quote": {
+          "text": "Created draft quote Q-3051 for Cascadia Legal Group (L-207)."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
+        },
+        "log_activity": {
+          "text": "Recorded note A-4 on lead L-207."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-207 (Cascadia Legal Group) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Q-3052 is awaiting a person's approval: it is not approved, so it is not ready to send and nothing about it can be recorded as sent. It still waits for a person. Next: tell the person the quote still waits for a person's approval, so it is not ready to send and the client must not be told it was sent. If nobody has been asked yet, ask with request_quote_approval.",
+          "isError": true
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-207 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
+        },
+        "read_company": {
+          "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        }
+      },
+      "approvals": {
+        "quote_approval": "pending"
+      },
+      "expect": {
+        "notCalled": ["create_quote"],
+        "reply": {
+          "contains": ["Q-3052"],
+          "containsAny": [["approval", "approve"]]
+        }
+      }
+    },
+    {
+      "id": "follow-up-is-scheduled",
+      "description": "The next touch on a lead is scheduled on the desk for its day, so the cadence is not kept only in a note",
+      "severity": "normal",
+      "tags": ["pipeline"],
+      "input": {
+        "kind": "message",
+        "channel": "chat",
+        "text": "Today is 2026-11-01. Marisol at Cascadia Legal has the written scope now. Put the next touch in: a call to her on 2026-11-04 to ask whether anything in the scope is still open."
+      },
+      "stubs": {
+        "list_leads": {
+          "text": "Leads (1):\nL-207 — Cascadia Legal Group — qualified — Marisol Vega — 2,800 sq ft over two floors, 1211 SW Fifth Avenue, Portland — worth $4,005.25 a year — last activity 2026-10-22 — Weekday nights, five nights a week. Wants the scope in writing before the quote goes to her partner."
+        },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), sent on 2026-10-15, no answer recorded, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+        },
+        "search_price_book": {
+          "text": "Price book matches for \"office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit"
+        },
+        "create_quote": {
+          "text": "Created draft quote Q-3051 for Cascadia Legal Group (L-207)."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
+        },
+        "log_activity": {
+          "text": "Recorded note A-4 on lead L-207."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-207 (Cascadia Legal Group) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Cascadia Legal Group (L-207). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-207 for 2026-11-04: Call Marisol: is anything in the scope still open?"
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
+        },
+        "read_company": {
+          "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        }
+      },
+      "expect": {
+        "calls": [
+          {
+            "tool": "schedule_follow_up",
+            "args": {
+              "leadId": "L-207",
+              "on": "2026-11-04"
+            }
+          }
+        ],
+        "notCalled": ["create_quote", "request_quote_approval"],
+        "approvalsRequested": [],
+        "reply": {
+          "containsAny": [["2026-11-04", "4 November", "November 4", "Nov 4", "4 Nov"]]
+        }
+      }
+    },
+    {
+      "id": "pipeline-review-uses-the-desk-counts",
+      "description": "A pipeline review reads its counts and values from pipeline_report rather than adding them up",
+      "severity": "normal",
+      "tags": ["pipeline"],
+      "input": {
+        "kind": "message",
+        "channel": "chat",
+        "text": "Give me a quick pipeline review: how many leads are at each stage, what they're worth, and where the quotes stand."
+      },
+      "stubs": {
+        "list_leads": {
+          "text": "Leads (5):\nL-219 — Harborview Property Management — new — Grace Lin — six buildings, about 40,000 sq ft in total, downtown and the Central Eastside — last activity 2026-10-31 — Wants one contract across six buildings. A committee decides, and they meet monthly.\nL-215 — Lloyd Center Pediatrics — new — Dr. Peter Osei — 4,100 sq ft clinic, 1800 NE Lloyd Boulevard, Portland — last activity 2026-10-30 — Asked about nightly cleaning and restroom supplies. No walkthrough booked yet.\nL-204 — Riverside Dental — new — Dr. Alice Nguyen — 3,200 sq ft suite, 1414 SE Hawthorne Boulevard, Portland — last activity 2026-10-28 — Moving into the second suite in January and wants the first deep clean done before the chairs go in.\nL-207 — Cascadia Legal Group — qualified — Marisol Vega — 2,800 sq ft over two floors, 1211 SW Fifth Avenue, Portland — worth $4,005.25 a year — last activity 2026-10-22 — Weekday nights, five nights a week. Wants the scope in writing before the quote goes to her partner.\nL-211 — Bramble & Co — quoted — Nina Alvarez — three bakery sites, kitchens and front of house, Pearl District — worth $3,200.00 a year — last activity 2026-10-15 — Quote Q-3047 went out three weeks ago and nobody has answered it."
+        },
+        "get_quote": {
+          "text": "Quote Q-3047 for Bramble & Co (L-211), sent on 2026-10-15, no answer recorded, issued 2026-10-15, valid until 2026-11-14:\n- clean-deep-sqft — Deep clean, first visit — 12000 × $0.12 = $1,440.00\n- restroom-sanitise — Restroom sanitising — 24 × $65.00 = $1,560.00\n- hvac-filter — HVAC filter change — 3 × $45.00 = $135.00\nSubtotal $3,135.00, no discount, total $3,135.00."
+        },
+        "search_price_book": {
+          "text": "Price book matches for \"office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit"
+        },
+        "create_quote": {
+          "text": "Created draft quote Q-3051 for Bramble & Co (L-211)."
+        },
+        "request_quote_approval": {
+          "text": "Approved quote Q-3061 for Bramble & Co (L-211): 3 lines, subtotal $3,135.00, no discount, total $3,135.00, valid until 2026-12-01. It is ready to send."
+        },
+        "log_activity": {
+          "text": "Recorded note A-4 on lead L-211."
+        },
+        "update_lead_stage": {
+          "text": "Moved L-211 (Bramble & Co) to the stage given. The reason is recorded on the lead as note A-9."
+        },
+        "record_quote_outcome": {
+          "text": "Recorded the quote's outcome for Bramble & Co (L-211). Noted on the lead as A-10. The lead's stage was not changed."
+        },
+        "schedule_follow_up": {
+          "text": "Scheduled the next touch on lead L-211 for the day given."
+        },
+        "pipeline_report": {
+          "text": "Pipeline on 2026-11-01:\n- new — 3 leads — $0.00 estimated a year (3 with no estimate)\n- qualified — 1 lead — $4,005.25 estimated a year\n- quoted — 1 lead — $3,200.00 estimated a year\n- won — 0 leads\n- lost — 0 leads\nQuotes:\n- awaiting approval — 3 quotes — $13,756.75\n- draft — 0 quotes — $0.00\n- sent — 1 quote — $3,135.00\n- accepted — 0 quotes — $0.00\n- declined — 0 quotes — $0.00"
+        },
+        "read_company": {
+          "text": "Northwind Facilities Ltd. — trading as Northwind Facilities."
+        }
+      },
+      "expect": {
+        "calls": [
+          {
+            "tool": "pipeline_report"
+          }
+        ],
+        "notCalled": ["create_quote", "request_quote_approval"],
+        "approvalsRequested": [],
+        "reply": {
+          "containsAny": [["$4,005.25", "$3,200.00", "$13,756.75", "$3,135.00"]]
         }
       }
     }

@@ -16,12 +16,23 @@
  * a minimum that raises a line counts towards the limit. A quote with a discount, or over the limit,
  * is saved awaiting approval and becomes a draft ready to send only through `approveQuote`, with the
  * facts a person was shown (`quoteFacts`): the same two steps as Purchasing's draft orders.
+ *
+ * After that a quote moves only forward, and only as somebody records it: a draft is `sent`, and a
+ * sent quote is `accepted` or `declined`, each with its date. A lead's stage moves the same way,
+ * explicitly and with a reason, and `won` and `lost` are final here: a person reopens a closed deal.
+ * The desk also counts the pipeline (`pipelineReport`), so a review's figures come from code.
  */
 
 import { sameFacts } from "@officehum/sdk";
 import type { PriceBookItem } from "./company.js";
 import { loadCompanyFacts, money } from "./company.js";
 import { demoLeads, demoQuotes } from "./demo.js";
+
+/**
+ * The demonstration date: the day the demo pipeline's newest quotes were made. The fake desk and a
+ * role on it read this clock unless a host or a test passes another, so the demo data stays coherent.
+ */
+export const DEMO_NOW = "2026-11-01T17:00:00.000Z";
 
 /** Where a lead is in the pipeline. */
 export type LeadStage = "new" | "qualified" | "quoted" | "won" | "lost";
@@ -47,6 +58,15 @@ export interface Lead {
   /** `YYYY-MM-DD`: the day of the last recorded activity. */
   lastActivityAt: string;
   notes: string;
+  /** The next touch somebody scheduled on the lead, or `null` when none is. */
+  nextFollowUp: FollowUp | null;
+}
+
+/** One scheduled touch on a lead: the day it is due and what it is. */
+export interface FollowUp {
+  /** `YYYY-MM-DD`. */
+  readonly on: string;
+  readonly what: string;
 }
 
 /** How a lead is filtered. Both are optional; neither is a wildcard. */
@@ -112,9 +132,25 @@ export interface QuoteLine {
 
 /**
  * Where a quote stands: `awaiting_approval` is saved but not ready to send until a person approves
- * it; `draft` is ready to send, because it needed no approval or a person gave it.
+ * it; `draft` is ready to send, because it needed no approval or a person gave it; `sent` went to the
+ * client; `accepted` and `declined` are the client's answer.
  */
-export type QuoteStatus = "draft" | "awaiting_approval";
+export type QuoteStatus = "awaiting_approval" | "draft" | "sent" | "accepted" | "declined";
+
+/** Every quote status, in the order a quote moves through them. */
+export const QUOTE_STATUSES: readonly QuoteStatus[] = [
+  "awaiting_approval",
+  "draft",
+  "sent",
+  "accepted",
+  "declined",
+];
+
+/** What can be recorded about a quote once it is ready to send. */
+export type QuoteOutcome = "sent" | "accepted" | "declined";
+
+/** Every outcome, in the order they happen. */
+export const QUOTE_OUTCOMES: readonly QuoteOutcome[] = ["sent", "accepted", "declined"];
 
 /**
  * Why a quote needed a person: a discount, a total over the limit, or no limit the desk could read
@@ -141,6 +177,12 @@ export interface Quote {
   readonly issuedOn: string;
   readonly validUntil: string;
   readonly notes: string | null;
+  /** `YYYY-MM-DD` the quote went to the client, or `null` while it has not. */
+  readonly sentOn: string | null;
+  /** `YYYY-MM-DD` the client accepted it, or `null`. */
+  readonly acceptedOn: string | null;
+  /** `YYYY-MM-DD` the client declined it, or `null`. */
+  readonly declinedOn: string | null;
 }
 
 /** What happened on a lead, as it is recorded. */
@@ -163,6 +205,75 @@ export interface Activity {
   readonly kind: ActivityKind;
   readonly summary: string;
   readonly at: string;
+}
+
+/** A stage change as the caller asks for it: the lead, where it goes, and why. */
+export interface StageChange {
+  readonly leadId: string;
+  readonly stage: LeadStage;
+  readonly reason: string;
+}
+
+/** A stage change as the desk made it: the lead after it, where it came from, and the recorded reason. */
+export interface StageMove {
+  readonly lead: Lead;
+  readonly from: LeadStage;
+  readonly activity: Activity;
+}
+
+/** An outcome as the caller records it: the quote, what happened, and optionally when and a note. */
+export interface QuoteOutcomeDraft {
+  readonly quoteId: string;
+  readonly outcome: QuoteOutcome;
+  /** `YYYY-MM-DD` it happened; today on the desk's clock when omitted. */
+  readonly on?: string;
+  readonly note?: string;
+}
+
+/** An outcome as the desk recorded it: the quote after it, its status before, and the note on the lead. */
+export interface QuoteOutcomeRecord {
+  readonly quote: Quote;
+  readonly from: QuoteStatus;
+  readonly activity: Activity;
+}
+
+/** A follow-up as the caller schedules it. */
+export interface FollowUpDraft {
+  readonly leadId: string;
+  readonly on: string;
+  readonly what: string;
+}
+
+/** A follow-up as the desk scheduled it, and the open one it replaced, if any. */
+export interface ScheduledFollowUp {
+  readonly leadId: string;
+  readonly followUp: FollowUp;
+  readonly replaced: FollowUp | null;
+}
+
+/** One stage of the pipeline, counted by the desk. */
+export interface PipelineStageSummary {
+  readonly stage: LeadStage;
+  readonly count: number;
+  /** The leads' estimated yearly value, in integer cents; leads with no estimate add nothing. */
+  readonly valueCents: number;
+  /** How many of the leads have no estimated value, so a total is never read as complete. */
+  readonly unvalued: number;
+}
+
+/** The quotes in one status, counted by the desk. */
+export interface PipelineQuoteSummary {
+  readonly status: QuoteStatus;
+  readonly count: number;
+  readonly totalCents: number;
+}
+
+/** The pipeline as the desk counts it: every stage and every quote status, in order, zeros included. */
+export interface PipelineReport {
+  /** `YYYY-MM-DD` on the desk's clock. */
+  readonly asOf: string;
+  readonly stages: readonly PipelineStageSummary[];
+  readonly quotes: readonly PipelineQuoteSummary[];
 }
 
 /** What the role needs from whatever system holds its leads and quotes. */
@@ -193,10 +304,46 @@ export interface SalesDesk {
     options: { readonly requestId: string },
   ): Promise<Quote>;
   logActivity(entry: ActivityDraft, options: { readonly requestId: string }): Promise<Activity>;
+  /**
+   * Moves a lead to another stage and records the reason as an activity on it. A host desk must
+   * refuse a move to the stage it is in (`no_change`), to `quoted` when no quote of the lead is ready
+   * to send or beyond (`no_ready_quote`), and out of `won` or `lost` (`closed`): a person reopens a
+   * closed deal.
+   */
+  updateLeadStage(change: StageChange, options: { readonly requestId: string }): Promise<StageMove>;
+  /**
+   * Records what happened to a quote: a draft `sent`, a sent quote `accepted` or `declined`, with the
+   * date. A host desk must refuse `sent` on a quote awaiting approval (`awaiting_approval`), any other
+   * step out of order (`invalid_transition`), and a date in the future or before the step before it.
+   * It changes no lead's stage.
+   */
+  recordQuoteOutcome(
+    outcome: QuoteOutcomeDraft,
+    options: { readonly requestId: string },
+  ): Promise<QuoteOutcomeRecord>;
+  /**
+   * Schedules the next touch on a lead, replacing the open one if there is one. A host desk must
+   * refuse a day before today.
+   */
+  scheduleFollowUp(
+    draft: FollowUpDraft,
+    options: { readonly requestId: string },
+  ): Promise<ScheduledFollowUp>;
+  /** Counts the pipeline: leads and their estimated value by stage, quotes and totals by status. */
+  pipelineReport(): Promise<PipelineReport>;
 }
 
 /** Why the desk refused, so a tool can say what to do next without parsing the message. */
-export type SalesDeskRefusal = "invalid" | "not_found" | "not_awaiting_approval" | "quote_changed";
+export type SalesDeskRefusal =
+  | "invalid"
+  | "not_found"
+  | "not_awaiting_approval"
+  | "quote_changed"
+  | "no_change"
+  | "no_ready_quote"
+  | "closed"
+  | "awaiting_approval"
+  | "invalid_transition";
 
 /** A refusal the model reads: a lead that does not exist, an item that is not in the book. */
 export class SalesDeskError extends Error {
@@ -237,7 +384,7 @@ export interface FakeSalesDeskOptions {
   readonly priceBook?: readonly PriceBookItem[];
   /** The weeks in a month a recurring line is counted with; the company's own when omitted. */
   readonly weeksPerMonth?: number;
-  /** The clock, so a receipt's dates are reproducible in a test. */
+  /** The clock, so a receipt's dates are reproducible in a test; `DEMO_NOW` when omitted. */
   readonly now?: () => Date;
 }
 
@@ -266,6 +413,35 @@ function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** A `YYYY-MM-DD` the caller gave, checked to be a real day, or a refusal saying what was wrong. */
+function calendarDay(value: string, what: string): string {
+  const day = value.trim();
+  const parsed = new Date(`${day}T00:00:00.000Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(day) ||
+    Number.isNaN(parsed.getTime()) ||
+    isoDate(parsed) !== day
+  ) {
+    throw new SalesDeskError(
+      `${what} must be a day written YYYY-MM-DD; ${JSON.stringify(value)} is not.`,
+    );
+  }
+  return day;
+}
+
+/** The stages a lead is never moved out of by this desk: a person reopens a closed deal. */
+const CLOSED_STAGES: readonly LeadStage[] = ["won", "lost"];
+
+/** The quote statuses that make a lead quoted: ready to send, or beyond. */
+const READY_STATUSES: readonly QuoteStatus[] = ["draft", "sent", "accepted"];
+
+/** The status each outcome may be recorded from. */
+const OUTCOME_FROM: Record<QuoteOutcome, QuoteStatus> = {
+  sent: "draft",
+  accepted: "sent",
+  declined: "sent",
+};
+
 /** Whether a name or a word appears in a lead's company, contact or site. */
 function matches(lead: Lead, query: string): boolean {
   const wanted = query.trim().toLowerCase();
@@ -282,12 +458,15 @@ function matches(lead: Lead, query: string): boolean {
 export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
   const priceBook = options.priceBook ?? loadCompanyFacts().priceBook;
   const weeksPerMonth = options.weeksPerMonth ?? loadCompanyFacts().quoting.weeksPerMonth;
-  const clock = options.now ?? (() => new Date());
+  const clock = options.now ?? (() => new Date(DEMO_NOW));
   const leads: Lead[] = (options.leads ?? demoLeads()).map((lead) => ({ ...lead }));
   const quoteByRequest = new Map<string, Quote>();
   const quotesById = new Map<string, Quote>((options.quotes ?? demoQuotes()).map((q) => [q.id, q]));
   const approvalByRequest = new Map<string, Quote>();
   const activityByRequest = new Map<string, Activity>();
+  const stageByRequest = new Map<string, StageMove>();
+  const outcomeByRequest = new Map<string, QuoteOutcomeRecord>();
+  const followUpByRequest = new Map<string, ScheduledFollowUp>();
   let quoteNumber = 3050;
   /** The next quote number the desk does not already hold. */
   const nextQuoteId = (): string => {
@@ -325,6 +504,14 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
   const markQuoted = (lead: Lead, quote: Quote): void => {
     lead.stage = "quoted";
     lead.estimatedValueCents ??= quote.totalCents;
+  };
+
+  /** Records an activity on a lead and moves its last activity to today. */
+  const recordActivity = (lead: Lead, kind: ActivityKind, summary: string): Activity => {
+    activityNumber += 1;
+    const at = clock().toISOString();
+    lead.lastActivityAt = at.slice(0, 10);
+    return { id: `A-${activityNumber}`, leadId: lead.id, kind, summary, at };
   };
 
   const priceLine = (line: QuoteLineDraft, where: string): QuoteLine => {
@@ -446,6 +633,9 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
         issuedOn: isoDate(now),
         validUntil: isoDate(new Date(now.getTime() + validForDays * DAY_MS)),
         notes: draft.notes ?? null,
+        sentOn: null,
+        acceptedOn: null,
+        declinedOn: null,
       };
       quoteByRequest.set(requestId, quote);
       quotesById.set(quote.id, quote);
@@ -461,7 +651,7 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
       const quote = findQuote(input.quoteId);
       if (quote.status !== "awaiting_approval") {
         throw new SalesDeskError(
-          `${quote.id} is not waiting for approval: it is a draft ready to send. An approval applies once; a new or changed quote is made with create_quote.`,
+          `${quote.id} is not waiting for approval: it is ${quote.status === "draft" ? "a draft ready to send" : quote.status}. An approval applies once; a new or changed quote is made with create_quote.`,
           "not_awaiting_approval",
         );
       }
@@ -493,18 +683,160 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
           `An activity is one of ${ACTIVITY_KINDS.join(", ")}; ${JSON.stringify(entry.kind)} is not.`,
         );
       }
-      activityNumber += 1;
-      const at = clock().toISOString();
-      const activity: Activity = {
-        id: `A-${activityNumber}`,
-        leadId: lead.id,
-        kind: entry.kind,
-        summary,
-        at,
-      };
+      const activity = recordActivity(lead, entry.kind, summary);
       activityByRequest.set(requestId, activity);
-      lead.lastActivityAt = at.slice(0, 10);
       return activity;
+    },
+
+    async updateLeadStage(change, { requestId }): Promise<StageMove> {
+      // A retried call is answered with the move it already made, not refused as a no-op.
+      const prior = stageByRequest.get(requestId);
+      if (prior !== undefined) return prior;
+      const lead = findLead(change.leadId);
+      if (!LEAD_STAGES.includes(change.stage)) {
+        throw new SalesDeskError(
+          `A lead's stage is one of ${LEAD_STAGES.join(", ")}; ${JSON.stringify(change.stage)} is not.`,
+        );
+      }
+      const reason = change.reason.trim();
+      if (reason === "") {
+        throw new SalesDeskError("A stage change needs a reason: what was learned or decided.");
+      }
+      const from = lead.stage;
+      if (from === change.stage) {
+        throw new SalesDeskError(
+          `${lead.id} (${lead.company}) is already ${from}. Nothing was changed.`,
+          "no_change",
+        );
+      }
+      if (CLOSED_STAGES.includes(from)) {
+        throw new SalesDeskError(
+          `${lead.id} (${lead.company}) is closed as ${from}, and a person reopens a closed deal. Nothing was changed.`,
+          "closed",
+        );
+      }
+      if (change.stage === "quoted") {
+        const ready = [...quotesById.values()].some(
+          (quote) => quote.leadId === lead.id && READY_STATUSES.includes(quote.status),
+        );
+        if (!ready) {
+          throw new SalesDeskError(
+            `${lead.id} (${lead.company}) has no quote ready to send, so it is not quoted. A quote awaiting a person's approval does not count. Nothing was changed.`,
+            "no_ready_quote",
+          );
+        }
+      }
+      lead.stage = change.stage;
+      const activity = recordActivity(
+        lead,
+        "note",
+        `Stage moved from ${from} to ${change.stage}: ${reason}`,
+      );
+      const move: StageMove = { lead: { ...lead }, from, activity };
+      stageByRequest.set(requestId, move);
+      return move;
+    },
+
+    async recordQuoteOutcome(input, { requestId }): Promise<QuoteOutcomeRecord> {
+      const prior = outcomeByRequest.get(requestId);
+      if (prior !== undefined) return prior;
+      const quote = findQuote(input.quoteId);
+      if (!QUOTE_OUTCOMES.includes(input.outcome)) {
+        throw new SalesDeskError(
+          `A quote's outcome is one of ${QUOTE_OUTCOMES.join(", ")}; ${JSON.stringify(input.outcome)} is not.`,
+        );
+      }
+      if (quote.status === "awaiting_approval") {
+        throw new SalesDeskError(
+          `${quote.id} is awaiting a person's approval: it is not approved, so it is not ready to send and nothing about it can be recorded as ${input.outcome}. It still waits for a person.`,
+          "awaiting_approval",
+        );
+      }
+      const from = quote.status;
+      if (from !== OUTCOME_FROM[input.outcome]) {
+        throw new SalesDeskError(
+          `${quote.id} is ${from}, and only a ${OUTCOME_FROM[input.outcome]} quote can be marked ${input.outcome}. Nothing was changed.`,
+          "invalid_transition",
+        );
+      }
+      const today = isoDate(clock());
+      const on = input.on === undefined ? today : calendarDay(input.on, "The outcome's date");
+      if (on > today) {
+        throw new SalesDeskError(
+          `${on} is after today, ${today}: record an outcome once it has happened.`,
+        );
+      }
+      const earliest = input.outcome === "sent" ? quote.issuedOn : (quote.sentOn ?? quote.issuedOn);
+      if (on < earliest) {
+        throw new SalesDeskError(
+          `${on} is before ${earliest}, when ${quote.id} was ${input.outcome === "sent" ? "issued" : "sent"}.`,
+        );
+      }
+      const updated: Quote = {
+        ...quote,
+        status: input.outcome,
+        ...(input.outcome === "sent" ? { sentOn: on } : {}),
+        ...(input.outcome === "accepted" ? { acceptedOn: on } : {}),
+        ...(input.outcome === "declined" ? { declinedOn: on } : {}),
+      };
+      quotesById.set(updated.id, updated);
+      const note = input.note?.trim() ?? "";
+      const activity = recordActivity(
+        findLead(quote.leadId),
+        "note",
+        `Quote ${quote.id} ${input.outcome} on ${on}.${note === "" ? "" : ` ${note}`}`,
+      );
+      const record: QuoteOutcomeRecord = { quote: updated, from, activity };
+      outcomeByRequest.set(requestId, record);
+      return record;
+    },
+
+    async scheduleFollowUp(draft, { requestId }): Promise<ScheduledFollowUp> {
+      const prior = followUpByRequest.get(requestId);
+      if (prior !== undefined) return prior;
+      const lead = findLead(draft.leadId);
+      const on = calendarDay(draft.on, "A follow-up's day");
+      const today = isoDate(clock());
+      if (on < today) {
+        throw new SalesDeskError(
+          `${on} is before today, ${today}: a follow-up is scheduled for today or later.`,
+        );
+      }
+      const what = draft.what.trim();
+      if (what === "") throw new SalesDeskError("A follow-up needs to say what the touch is.");
+      const followUp: FollowUp = { on, what };
+      const scheduled: ScheduledFollowUp = {
+        leadId: lead.id,
+        followUp,
+        replaced: lead.nextFollowUp,
+      };
+      lead.nextFollowUp = followUp;
+      followUpByRequest.set(requestId, scheduled);
+      return scheduled;
+    },
+
+    async pipelineReport(): Promise<PipelineReport> {
+      const quotes = [...quotesById.values()];
+      return {
+        asOf: isoDate(clock()),
+        stages: LEAD_STAGES.map((stage) => {
+          const inStage = leads.filter((lead) => lead.stage === stage);
+          return {
+            stage,
+            count: inStage.length,
+            valueCents: inStage.reduce((total, lead) => total + (lead.estimatedValueCents ?? 0), 0),
+            unvalued: inStage.filter((lead) => lead.estimatedValueCents === null).length,
+          };
+        }),
+        quotes: QUOTE_STATUSES.map((status) => {
+          const inStatus = quotes.filter((quote) => quote.status === status);
+          return {
+            status,
+            count: inStatus.length,
+            totalCents: inStatus.reduce((total, quote) => total + quote.totalCents, 0),
+          };
+        }),
+      };
     },
   };
 }
