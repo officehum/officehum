@@ -63,6 +63,7 @@ import {
 import { runBoardCommand } from "./board.js";
 import { runEvalCommand } from "./eval.js";
 import {
+  operatorSender,
   parseModelRef,
   parseRunArguments,
   printRunResult,
@@ -130,7 +131,7 @@ export interface CliDependencies {
 }
 
 const USAGE = `Usage:
-  officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE]
+  officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE] [--as PERSON]
   officehum eval ROLE_DIR [--model provider/model] [--tag TAG] [--trials N] [--script FILE] [--mode bare|office]
   officehum verify-role ROLE_DIR [--online]
   officehum demo [--state DIR] [--approval allow|deny] [--calendar local] [--messenger console]
@@ -1226,9 +1227,12 @@ async function runRun(
   const requested = parsed.model === undefined ? undefined : parseModelRef(parsed.model);
   const early = requested === undefined ? undefined : runModels(requested, dependencies);
   const clients = parsed.clientFile === undefined ? {} : await readClientConfig(parsed.clientFile);
+  // With no --as the role gets no resolver, so every sender is unknown, as for a stranger.
+  const operator = parsed.as === undefined ? undefined : operatorSender(parsed.roleDir, parsed.as);
   const role = await loadRole(parsed.roleDir, {
     overlays: parsed.overlays,
     approve: terminalApprover(io),
+    ...(operator === undefined ? {} : { sender: operator.sender }),
     ...(parsed.dataDir === undefined ? {} : { dataDir: parsed.dataDir }),
     ...(parsed.workDir === undefined ? {} : { workDir: parsed.workDir }),
     clients,
@@ -1251,6 +1255,11 @@ async function runRun(
     io.output(`Model: ${runtime.model.provider}/${runtime.model.modelId}`);
     io.output(`Office: ${database}`);
     io.output(`Approval: this terminal (y/n), as ${terminalUser()}`);
+    io.output(
+      operator === undefined
+        ? "Sender: unknown (anything a role gives only to a known sender is refused; pass --as PERSON to be a person on the company record)"
+        : `Sender: ${operator.person.name} (${operator.person.id}), at this terminal`,
+    );
     for (const command of role.manifest.commands ?? []) {
       io.output(`Command /${command.name}: ${command.description}`);
     }

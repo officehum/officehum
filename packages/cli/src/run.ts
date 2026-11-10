@@ -14,7 +14,15 @@ import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import type { ModelRef } from "@earendil-works/pi-durable";
 import type { RoleRun } from "@officehum/office";
 import { PAPER_MODEL_REF, paperProvider } from "@officehum/provider-paper";
-import { type Approver, formatIssue } from "@officehum/sdk";
+import {
+  type Approver,
+  type CompanyPerson,
+  formatIssue,
+  loadCompanyFacts,
+  type SenderResolver,
+  senderPerson,
+  type VerifiedSender,
+} from "@officehum/sdk";
 import type { CliDependencies, CliIo } from "./cli.js";
 import { UsageError } from "./usage-error.js";
 
@@ -58,10 +66,12 @@ export interface RunArguments {
   readonly workDir?: string;
   readonly model?: string;
   readonly clientFile?: string;
+  /** Who the operator at the terminal is: a person id or email on the role's company record. */
+  readonly as?: string;
 }
 
 const RUN_USAGE =
-  "usage: officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE]";
+  "usage: officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE] [--as PERSON]";
 
 /** Parses the run command's arguments: one positional role directory, then the flags above. */
 export function parseRunArguments(args: readonly string[]): RunArguments {
@@ -72,6 +82,7 @@ export function parseRunArguments(args: readonly string[]): RunArguments {
   let workDir: string | undefined;
   let model: string | undefined;
   let clientFile: string | undefined;
+  let as: string | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
     if (token === undefined) continue;
@@ -92,6 +103,7 @@ export function parseRunArguments(args: readonly string[]): RunArguments {
     else if (token === "--work") workDir = value;
     else if (token === "--model") model = value;
     else if (token === "--clients") clientFile = value;
+    else if (token === "--as") as = value;
     else throw new UsageError(`Unknown option: ${token}\n${RUN_USAGE}`);
   }
   if (roleDir === undefined) throw new UsageError(`run requires a role directory.\n${RUN_USAGE}`);
@@ -103,7 +115,43 @@ export function parseRunArguments(args: readonly string[]): RunArguments {
     ...(workDir === undefined ? {} : { workDir }),
     ...(model === undefined ? {} : { model }),
     ...(clientFile === undefined ? {} : { clientFile }),
+    ...(as === undefined ? {} : { as }),
   };
+}
+
+/** Where a role package keeps the company record generated into it (`npm run sync-company`). */
+const COMPANY_FACTS = "skills/company-handbook/references/facts.json";
+
+/**
+ * The verified sender for the operator at the terminal, from `--as`. The terminal is the operator's
+ * own machine, so they say who they are; it must be a person on the company record the role reads
+ * (by id or email, as `senderPerson` matches an internal sender), and the role is always given that
+ * person's id, from the `terminal` channel, as an internal sender.
+ */
+export function operatorSender(
+  roleDir: string,
+  as: string,
+): { readonly sender: SenderResolver; readonly person: CompanyPerson } {
+  const url = pathToFileURL(resolve(roleDir, COMPANY_FACTS));
+  let people: readonly (CompanyPerson & { email?: string })[];
+  try {
+    const facts = loadCompanyFacts<{ people?: unknown }>(url);
+    if (!Array.isArray(facts.people)) throw new Error("it lists no people");
+    people = facts.people as (CompanyPerson & { email?: string })[];
+  } catch (error) {
+    throw new UsageError(
+      `--as needs the role's company record, and ${roleDir} has no company record at ${COMPANY_FACTS} (${error instanceof Error ? error.message : String(error)}). Run \`npm run sync-company\` for a catalog role, or leave out --as to run with the sender unknown.`,
+    );
+  }
+  const claimed: VerifiedSender = { origin: "internal", channel: "terminal", contact: as.trim() };
+  const person = senderPerson({ people }, claimed);
+  if (person === undefined) {
+    throw new UsageError(
+      `--as ${JSON.stringify(as)} is not anyone on the company record. Pass a person id or email from ${COMPANY_FACTS}: ${people.map((who) => who.id).join(", ")}.`,
+    );
+  }
+  const verified: VerifiedSender = { origin: "internal", channel: "terminal", contact: person.id };
+  return { sender: async () => verified, person };
 }
 
 /** Splits `provider/modelId`, with the split at the first slash so a model id may contain slashes. */

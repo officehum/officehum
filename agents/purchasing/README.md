@@ -169,9 +169,12 @@ const root = await harness.root(context, { agent: role.agent });
 - **`approve`** — decides the gated actions. Omitted: an over-limit order and a new supplier are both
   blocked.
 - **`overlays`** — the business's own `AGENTS.md`, skills and `settings.json`, lowest first.
-- **`sender`** — the host's verified sender of each call's work (Office Hum passes
-  `boardSenderResolver`). An order's requester and a delivery's reporter are the person on the company
-  record it names. Omitted: every sender is unknown, so a requested order and a receipt are refused.
+- **`sender`** — the host's verified sender of each call's work. A sender comes from one of three
+  places: the eval runner (the scenario's `from`), `officehum run --as PERSON` (the
+  operator at the terminal, as an internal sender), or a board-backed host that passes
+  `boardSenderResolver(board)` (today that is only the eval runner's office mode). An order's requester
+  and a delivery's reporter are the person on the company record it names. Omitted: every sender is
+  unknown, so a requested order and a receipt are refused.
 
 ## The files
 

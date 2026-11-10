@@ -143,8 +143,11 @@ const root = await harness.root(context, { agent: role.agent });
 - **`desk`** — the support system. Omitted: the demonstration desk, on the company's own data.
 - **`company`** — a host's own company facts, in the shape of `references/facts.json`.
 - **`approve`** — decides the gated actions. Omitted: every credit is blocked.
-- **`sender`** — who each call's work came from, as the host verified it (Office Hum passes the
-  board's). Omitted: every sender is unknown, so no case data is given out.
+- **`sender`** — who each call's work came from, as the host verified it. A sender comes from one of
+  three places: the eval runner (the scenario's `from`), `officehum run --as PERSON`
+  (the operator at the terminal, as an internal sender), or a board-backed host that passes
+  `boardSenderResolver(board)` (today that is only the eval runner's office mode). Omitted: every
+  sender is unknown, so no case data is given out.
 - **`overlays`** — the business's own `AGENTS.md`, skills and `settings.json`, lowest first.
 
 ## The files

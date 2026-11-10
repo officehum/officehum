@@ -304,7 +304,19 @@ sender, by email for any sender (whole, ignoring case), and by phone for any sen
 for digit on a leading "+" and the digits, so the SMS gateway's E.164 number matches the record's
 formatted one.
 
-Office Hum's resolver is `boardSenderResolver(board)`. It reads the provenance row of the ticket the
+A sender comes from one of three places today, and nowhere else:
+
+- **The eval runner**, from the scenario (below).
+- **`officehum run --as PERSON`**, for the operator at the terminal. The terminal is the operator's
+  own machine, so they say who they are; the CLI checks it against the company record generated into
+  the role package (`skills/company-handbook/references/facts.json`, by id or email, as `senderPerson`
+  matches an internal sender) and refuses anyone it does not name. The role gets
+  `{ origin: "internal", channel: "terminal", contact: <person id> }` for every call. With no `--as`
+  the CLI passes no resolver and the sender is unknown.
+- **A board-backed host**, which passes `boardSenderResolver(board)`. Today the only such host is the
+  eval runner's office mode; no production host opens a board for a role yet.
+
+`boardSenderResolver(board)` reads the provenance row of the ticket the
 conversation is bound to, which the channel gateway resolved before the ticket existed. A child
 ticket, `agent_dispatch` children included, copies its root's row, so delegated work keeps the
 original asker. `loadRole(dir, { sender })` passes the resolver to the factory, so no client or user
