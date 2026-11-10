@@ -86,7 +86,9 @@ refused.
 
 **Only orders someone asked for.** `raise_purchase_order` takes a `reason`. `reorder_point` is
 accepted only for items the desk shows at or below their reorder point (on hand plus on order).
-`request` is accepted only when the host's verified sender is a person on the company record: the tool
+`request` is accepted only when the host's verified sender is a colleague, a person on the company
+record writing from inside the office (the SDK's `colleague`; an outside email or text from a
+colleague's own address or number is not one): the tool
 reads the sender (`sender`, a `SenderResolver`), never a model argument, and the desk records that
 person as `requestedBy` with the message the model names as `requestSource`. Anything else is refused
 as `unrequested`, so a supplier's message or an outside sender can never get an order placed.
@@ -97,7 +99,8 @@ request, and any delivery report, from them is refused, and the refusal names th
 the company record: the role tells them to pass it to that person. A company that wants its crew leads
 to order and report directly puts them on the record: a `people[]` entry each, with department
 `field`, an `email` or `phone`, and `decides: []`, counted once (take them out of their crew's
-`members`). `senderPerson` then matches them by email or phone with no code change.
+`members`). `colleague` then matches them by email or phone with no code change, for messages the host
+delivers from inside the office; an outside text or email is never a colleague.
 
 **Split orders.** The desk refuses an order that is under the limit on its own when the orders already
 placed with the same supplier the same day bring the day's total over it, and saves it as a draft for
@@ -134,7 +137,8 @@ turn when it fires.
 The demonstration desk holds this morning's Cascade restock as draft PO-1004, refused for the limit.
 The eval scenarios' stubbed refusal names that draft, so the gate reads it from the desk.
 
-**Receipts** are recorded only from the report of a person on the company record: `record_receipt`
+**Receipts** are recorded only from the report of a colleague (a person on the company record,
+writing from inside the office): `record_receipt`
 takes the message the report came from, the tool reads who sent it from the host's verified sender, and
 the desk records that person as `reportedBy`, refusing a sender nobody on the record is
 (`unknown_reporter`). A supplier's own delivery notice is never that report, and since its sender is
@@ -170,7 +174,7 @@ const root = await harness.root(context, { agent: role.agent });
   blocked.
 - **`overlays`** — the business's own `AGENTS.md`, skills and `settings.json`, lowest first.
 - **`sender`** — the host's verified sender of each call's work. A sender comes from one of three
-  places: the eval runner (the scenario's `from`), `officehum run --as PERSON` (the
+  places: the eval runner (the scenario's `from`, with its `origin`), `officehum run --as PERSON` (the
   operator at the terminal, as an internal sender), or a board-backed host that passes
   `boardSenderResolver(board)` (today that is only the eval runner's office mode). An order's requester
   and a delivery's reporter are the person on the company record it names. Omitted: every sender is

@@ -304,6 +304,8 @@ describe("raise_purchase_order", () => {
       from("tasha@crews.example", "external"),
       // An id names a colleague only inside the office; from outside it is nobody.
       from("priya-raman", "external"),
+      // An outside email from a colleague's own address is not a colleague either.
+      from("priya@northwindfacilities.com", "external"),
     ]) {
       const purchasing = desk();
       const result = await tools(purchasing, sender).raisePurchaseOrder.execute(
@@ -669,8 +671,9 @@ describe("request_new_supplier", () => {
 
 describe("record_receipt", () => {
   it("record_receipt records the verified sender as reporter", async () => {
-    // Matched by phone, as an SMS gateway hands it over: "+" and digits only.
-    const result = await tools(desk(), from("+15035550149", "external")).recordReceipt.execute(
+    // A colleague inside the office, matched by phone as the gateway hands it over: "+" and digits.
+    // The same number on an outside text is not a colleague (the refusal test below).
+    const result = await tools(desk(), from("+15035550149")).recordReceipt.execute(
       RECEIPT,
       call("f0"),
       BACKGROUND_CONTEXT,
@@ -685,7 +688,13 @@ describe("record_receipt", () => {
   });
 
   it("refuses a receipt with no verified sender", async () => {
-    for (const sender of [undefined, from("orders@pacificjanitorial.example", "external")]) {
+    for (const sender of [
+      undefined,
+      from("orders@pacificjanitorial.example", "external"),
+      // An outside email or text from a colleague's own address or number is not a colleague's report.
+      from("priya@northwindfacilities.com", "external"),
+      from("+15035550149", "external"),
+    ]) {
       const purchasing = desk();
       const result = await tools(purchasing, sender).recordReceipt.execute(
         RECEIPT,

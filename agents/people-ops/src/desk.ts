@@ -16,7 +16,7 @@
  * code, and the tools turn the code into the next step.
  */
 
-import { sameFacts, senderPerson, type VerifiedSender } from "@officehum/sdk";
+import { colleague, sameFacts, senderPerson, type VerifiedSender } from "@officehum/sdk";
 import {
   type CompanyFacts,
   companyHead,
@@ -763,10 +763,13 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     }
   };
 
-  /** The staff record a verified sender is: office staff by the company record, crew by contact. */
+  /**
+   * The staff record a verified sender is: office staff only as a colleague (on the company record,
+   * writing from inside the office), crew by the contact their staff record holds.
+   */
   const staffFor = (from: VerifiedSender): Employee | undefined => {
-    const colleague = senderPerson(company, from);
-    if (colleague !== undefined) return findEmployee(colleague.id);
+    const office = colleague(company, from);
+    if (office !== undefined) return findEmployee(office.id);
     // A crew member's contact is matched as an email or a phone, never as an id.
     const crew = senderPerson(
       {
@@ -823,8 +826,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     }
     const employee = employeeNamed(named);
     if (employee.id === sender.id) return employee;
-    if (input.from !== undefined && senderPerson(company, input.from) !== undefined)
-      return employee;
+    if (colleague(company, input.from) !== undefined) return employee;
     throw new PeopleOpsDeskError(
       "someone_else",
       `${sender.name} may record only their own time off: ${employee.name}'s is theirs to ask for, or for a person on the company record to file. Nothing was recorded.`,

@@ -35,6 +35,8 @@ const OWNER: VerifiedSender = {
   channel: "chat",
   contact: peopleOwner(company)?.id ?? "",
 };
+/** The People Ops owner's own address on the company record, which this role's types leave out. */
+const OWNER_EMAIL = (peopleOwner(company) as unknown as { readonly email: string }).email;
 /** A crew member writing in from the address the desk holds for her. */
 const ANA: VerifiedSender = {
   origin: "external",
@@ -962,6 +964,38 @@ describe("company data and the verified sender", () => {
     // A colleague's id typed by an outside sender is nobody.
     const spoofed = await refusal(people.leaveBalance({ from: { ...OWNER, origin: "external" } }));
     expect(spoofed.code).toBe("not_staff");
+    // An outside email from a colleague's own address is not a colleague.
+    const outsideEmail = await refusal(
+      people.leaveBalance({
+        from: { origin: "external", channel: "email", contact: OWNER_EMAIL },
+      }),
+    );
+    expect(outsideEmail.code).toBe("not_staff");
+  });
+
+  it("files time off for someone else only for an internal colleague, never an outside email from their address", async () => {
+    const people = fakePeopleOpsDesk({ company, now: () => NOW });
+    const request = {
+      employee: "Ana Lopez",
+      startDate: "2026-12-21",
+      endDate: "2026-12-21",
+      reasonCategory: "vacation" as const,
+    };
+    const outside = await refusal(
+      people.recordTimeOffRequest(
+        {
+          ...request,
+          from: { origin: "external", channel: "email", contact: OWNER_EMAIL },
+        },
+        { requestId: "outside-owner" },
+      ),
+    );
+    expect(outside.code).toBe("not_staff");
+    const inside = await people.recordTimeOffRequest(
+      { ...request, from: OWNER },
+      { requestId: "inside-owner" },
+    );
+    expect(inside.employeeName).toBe("Ana Lopez");
   });
 
   it("a staff sender cannot file time off for someone else", async () => {

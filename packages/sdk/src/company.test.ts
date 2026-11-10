@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  colleague,
   findPeople,
   loadCompanyFacts,
   personLabel,
@@ -155,5 +156,17 @@ describe("senderPerson", () => {
     // Exact, not partial: a contact that only contains an address is not that address.
     expect(senderPerson(staff, from("external", "x-dana@example.test"))).toBeUndefined();
     expect(senderPerson(staff, undefined)).toBeUndefined();
+  });
+
+  it("colleague is the person on the record only for an internal sender", () => {
+    // Inside the office, by id, email or phone.
+    expect(colleague(staff, from("internal", "dana"))?.id).toBe("dana");
+    expect(colleague(staff, from("internal", "dana@example.test"))?.id).toBe("dana");
+    expect(colleague(staff, from("internal", "+15035550143"))?.id).toBe("lee");
+    // An outside email or text from a colleague's address or number is not a colleague.
+    expect(colleague(staff, from("external", "dana@example.test"))).toBeUndefined();
+    expect(colleague(staff, from("external", "+15035550143"))).toBeUndefined();
+    expect(colleague(staff, from("internal", "someone@else.test"))).toBeUndefined();
+    expect(colleague(staff, undefined)).toBeUndefined();
   });
 });

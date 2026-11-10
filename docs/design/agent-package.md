@@ -304,12 +304,21 @@ sender, by email for any sender (whole, ignoring case), and by phone for any sen
 for digit on a leading "+" and the digits, so the SMS gateway's E.164 number matches the record's
 formatted one.
 
+**One rule for a colleague.** A sender is a colleague, a person on the company record a role may
+treat as staff, only when `origin` is `internal`. An outside email or text is never a colleague, even
+from a colleague's own address or number: an outside channel does not prove who typed it, so it gets
+what any outside contact gets. The rule lives in one place, the SDK's `colleague(company, sender)`
+beside `senderPerson`, and every role that trusts staff asks it (Support before showing any client's
+cases, Purchasing before placing a requested order or recording a delivery report, People Ops before
+treating a sender as office staff). `senderPerson` on its own is for recognising an outside contact,
+never for trusting one as staff.
+
 A sender comes from one of three places today, and nowhere else:
 
 - **The eval runner**, from the scenario (below).
 - **`officehum run --as PERSON`**, for the operator at the terminal. The terminal is the operator's
   own machine, so they say who they are; the CLI checks it against the company record generated into
-  the role package (`skills/company-handbook/references/facts.json`, by id or email, as `senderPerson`
+  the role package (`skills/company-handbook/references/facts.json`, by id or email, as `colleague`
   matches an internal sender) and refuses anyone it does not name. The role gets
   `{ origin: "internal", channel: "terminal", contact: <person id> }` for every call. With no `--as`
   the CLI passes no resolver and the sender is unknown.
@@ -321,9 +330,11 @@ conversation is bound to, which the channel gateway resolved before the ticket e
 ticket, `agent_dispatch` children included, copies its root's row, so delegated work keeps the
 original asker. `loadRole(dir, { sender })` passes the resolver to the factory, so no client or user
 config may be named `sender`. The eval runner hands a role the same thing: in office mode the
-board's resolver, with the scenario's `from` and `channel` on the ticket's provenance (an
-inbound-email delivery keeps `email` as its channel); in bare mode the scenario's `from` as an
-outside contact, or unknown when the scenario names nobody.
+board's resolver, with the scenario's `from` and `channel` on the ticket's provenance and its
+`origin` as the provenance's origin (internal when the scenario gives none; an inbound-email delivery
+is always external and keeps `email` as its channel); in bare mode the scenario's `from` with its
+`origin` (external when the scenario gives none), or unknown when the scenario names nobody. A
+scenario whose sender is staff says `"origin": "internal"`.
 
 ## Overlays: configuring a role without changing it
 
@@ -761,8 +772,10 @@ Each file in the `evals` directory holds scenarios:
 }
 ```
 
-- `input` is a `message` (text, optional `channel` and `from`) or a `ticket` (`type` from `accepts`,
-  `payload`, optional `provenance: "external"`). Ticket inputs need the office extension.
+- `input` is a `message` (text, optional `channel`, `from` and `origin`) or a `ticket` (`type` from
+  `accepts`, `payload`, optional `provenance: "external"`). Ticket inputs need the office extension.
+  `origin` is `"internal"` or `"external"`: where `from` wrote from. Bare mode defaults it to
+  external; office mode makes it the ticket's provenance origin. It needs a `from`.
 - Every declared tool is stubbed in every scenario, so evals never touch a real system. Stubs keep the
   tool's real name, description and parameters, using `wrapTool`. `read_skill` runs for real: it only
   reads the role's own files. A stub is `{ "text", "isError"? }`, or `{ "byArgs": [{ "args", "text",

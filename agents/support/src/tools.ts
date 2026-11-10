@@ -26,11 +26,11 @@ import {
   type ApprovalFactsReader,
   approvedFacts,
   approvedFactsParameter,
+  colleague,
   deskRefusal,
   refusal,
   requestId,
   type SenderResolver,
-  senderPerson,
   textResult,
 } from "@officehum/sdk";
 import {
@@ -252,10 +252,8 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     });
     if (sender === undefined) return { kind: "unknown" };
     // Only an internal sender is a colleague: an outside contact spelling a colleague's address is not.
-    if (sender.origin === "internal") {
-      const colleague = senderPerson(company, sender);
-      if (colleague !== undefined) return { kind: "colleague", person: colleague };
-    }
+    const person = colleague(company, sender);
+    if (person !== undefined) return { kind: "colleague", person };
     // A client is whoever's contact address on the desk the verified sender is, whole and ignoring
     // case. An internal ticket carrying a client's address (an office trial) is that client too.
     const contact = sender.contact.trim().toLowerCase();

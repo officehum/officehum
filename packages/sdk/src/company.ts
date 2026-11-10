@@ -66,6 +66,20 @@ export function senderPerson<P extends CompanyPerson & { email?: string; phone?:
   );
 }
 
+/**
+ * The colleague a verified sender is: the person on the company record, and only when the work came
+ * from inside the office (`origin: "internal"`). Every role asks this one question before treating a
+ * sender as staff. An outside email or text is never a colleague, even from a colleague's own address
+ * or number: an outside channel does not prove who typed it, so it gets what any outside contact gets.
+ * Use `senderPerson` directly only to recognise an outside contact, never to trust one as staff.
+ */
+export function colleague<P extends CompanyPerson & { email?: string; phone?: string }>(
+  company: { readonly people: readonly P[] },
+  sender: VerifiedSender | undefined,
+): P | undefined {
+  return sender?.origin === "internal" ? senderPerson(company, sender) : undefined;
+}
+
 /** A phone number as a leading "+" and its digits; `undefined` when it holds no digit at all. */
 function phoneDigits(value: string): string | undefined {
   const digits = value.replace(/\D/g, "");

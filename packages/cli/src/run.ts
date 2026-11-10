@@ -17,10 +17,10 @@ import { PAPER_MODEL_REF, paperProvider } from "@officehum/provider-paper";
 import {
   type Approver,
   type CompanyPerson,
+  colleague,
   formatIssue,
   loadCompanyFacts,
   type SenderResolver,
-  senderPerson,
   type VerifiedSender,
 } from "@officehum/sdk";
 import type { CliDependencies, CliIo } from "./cli.js";
@@ -125,7 +125,7 @@ const COMPANY_FACTS = "skills/company-handbook/references/facts.json";
 /**
  * The verified sender for the operator at the terminal, from `--as`. The terminal is the operator's
  * own machine, so they say who they are; it must be a person on the company record the role reads
- * (by id or email, as `senderPerson` matches an internal sender), and the role is always given that
+ * (by id or email, as `colleague` matches an internal sender), and the role is always given that
  * person's id, from the `terminal` channel, as an internal sender.
  */
 export function operatorSender(
@@ -144,7 +144,7 @@ export function operatorSender(
     );
   }
   const claimed: VerifiedSender = { origin: "internal", channel: "terminal", contact: as.trim() };
-  const person = senderPerson({ people }, claimed);
+  const person = colleague({ people }, claimed);
   if (person === undefined) {
     throw new UsageError(
       `--as ${JSON.stringify(as)} is not anyone on the company record. Pass a person id or email from ${COMPANY_FACTS}: ${people.map((who) => who.id).join(", ")}.`,

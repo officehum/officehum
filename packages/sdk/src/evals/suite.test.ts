@@ -116,3 +116,45 @@ describe("validateSuite stubs", () => {
     expect(result.issues).toEqual([]);
   });
 });
+
+describe("validateSuite message origin", () => {
+  const withInput = (input: Record<string, unknown>) => ({
+    scenarios: [
+      {
+        id: "a-scenario",
+        description: "A scenario",
+        input: { kind: "message", text: "Go.", ...input },
+        stubs: { get_invoice: { text: "{}" }, ...plain },
+        expect: {},
+      },
+    ],
+  });
+
+  it("accepts an internal or external origin for a named sender", () => {
+    for (const origin of ["internal", "external"]) {
+      const result = validateSuite(withInput({ from: "dana@example.test", origin }), manifest, "x");
+      expect(result.issues, origin).toEqual([]);
+    }
+  });
+
+  it("reports an origin that is neither, with its path", () => {
+    const result = validateSuite(
+      withInput({ from: "dana@example.test", origin: "staff" }),
+      manifest,
+      "x",
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.path)).toEqual(["scenarios[0].input.origin"]);
+  });
+
+  it("reports an origin with no sender to give it to, with its path", () => {
+    const result = validateSuite(withInput({ origin: "internal" }), manifest, "x");
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        path: "scenarios[0].input.origin",
+        message: expect.stringContaining("from"),
+      }),
+    ]);
+  });
+});

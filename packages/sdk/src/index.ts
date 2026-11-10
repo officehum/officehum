@@ -54,6 +54,7 @@ export {
 } from "./card.js";
 export {
   type CompanyPerson,
+  colleague,
   findPeople,
   loadCompanyFacts,
   personLabel,

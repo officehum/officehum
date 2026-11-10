@@ -274,6 +274,18 @@ describe("the sender a trial's role is handed", () => {
       contact: "+1 503 555 0143",
     });
 
+    // A scenario that says its sender wrote from inside the office is an internal sender.
+    await piDurableRunner({ dir: recording.dir, model: levelsThenAnswer }).run(
+      scenario({ input: { ...fromDana.input, origin: "internal" } as never, stubs: bothStubs }),
+      1,
+    );
+    const inside = recording.options()?.sender as typeof sender;
+    expect(await inside?.({ conversationId: 1, taskId: 1 })).toEqual({
+      origin: "internal",
+      channel: "sms",
+      contact: "+1 503 555 0143",
+    });
+
     // A scenario that names nobody leaves the sender unknown, as a role with no resolver would.
     await piDurableRunner({ dir: recording.dir, model: levelsThenAnswer }).run(
       scenario({ stubs: bothStubs }),
@@ -287,7 +299,10 @@ describe("the sender a trial's role is handed", () => {
    * Runs `fromDana` in office mode on a board file the test keeps, then reopens the board and reads
    * the ticket's provenance and what the office's resolver answers for the trial's conversation.
    */
-  async function officeTrial(delivery: "internal-message" | "inbound-email") {
+  async function officeTrial(
+    delivery: "internal-message" | "inbound-email",
+    trialScenario: Scenario = fromDana,
+  ) {
     const recording = await recordingRole(stockroom);
     temps.push(recording.dir);
     const boardDir = mkdtempSync(join(tmpdir(), "officehum-sender-board-"));
@@ -298,7 +313,7 @@ describe("the sender a trial's role is handed", () => {
       mode: "office",
       office: { boardFile, delivery },
       model: levelsThenAnswer,
-    }).run(fromDana, 1);
+    }).run(trialScenario, 1);
     expect(typeof recording.options()?.sender).toBe("function");
 
     // The board lists no bindings, so the trial's conversation id is read from the file.
@@ -345,6 +360,23 @@ describe("the sender a trial's role is handed", () => {
     expect(inbound.resolved).toEqual({
       origin: "external",
       channel: "email",
+      contact: "+1 503 555 0143",
+    });
+  });
+
+  it("office mode takes the ticket's origin from the scenario's origin", async () => {
+    const outside = await officeTrial(
+      "internal-message",
+      scenario({ input: { ...fromDana.input, origin: "external" } as never, stubs: bothStubs }),
+    );
+    expect(outside.provenance).toEqual({
+      origin: "external",
+      sourceChannel: "sms",
+      sourceContact: "+1 503 555 0143",
+    });
+    expect(outside.resolved).toEqual({
+      origin: "external",
+      channel: "sms",
       contact: "+1 503 555 0143",
     });
   });

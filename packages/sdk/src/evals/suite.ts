@@ -26,6 +26,12 @@ const MessageInput = Type.Object(
     text: Type.String({ minLength: 1 }),
     channel: Type.Optional(Type.Enum(["email", "sms", "chat"])),
     from: Type.Optional(Type.String({ minLength: 1 })),
+    /**
+     * Where `from` wrote from: `internal` (inside the office, so a colleague on the company record
+     * is one) or `external` (an outside channel, the default). In office mode it is the ticket's
+     * provenance origin.
+     */
+    origin: Type.Optional(Type.Enum(["internal", "external"])),
   },
   { additionalProperties: false },
 );
@@ -182,6 +188,14 @@ export function validateSuite(
     if (seen.has(scenario.id)) add(at("id"), `${show(scenario.id)} is used by another scenario`);
     seen.add(scenario.id);
 
+    if (scenario.input.kind === "message" && scenario.input.origin !== undefined) {
+      if (scenario.input.from === undefined) {
+        add(
+          at("input.origin"),
+          "says where the sender wrote from, but the scenario names no sender: add input.from, or remove origin",
+        );
+      }
+    }
     for (const tool of Object.keys(scenario.stubs)) {
       if (!tools.has(tool)) add(at(`stubs.${tool}`), "is not a declared tool");
     }

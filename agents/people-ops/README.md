@@ -76,10 +76,11 @@ anyone.
 | `read_company` | safe | — | One section of the company record; people by name, title and what they decide, never contact details |
 
 **Who is asking** comes from the host's verified sender (`sender`), never from a tool argument or the
-message. Office staff are matched on the company record (by id from inside the office, or by email or
-phone), crew members by the contact their staff record holds. A time-off request is the sender's own;
-only a person on the company record (the People Ops owner, say) may name another employee
-(`someone_else` otherwise). A sender nobody verified is refused with `unknown_sender`, and one who is
+message. Office staff are colleagues: a person on the company record writing from inside the office
+(`origin: "internal"`, by id, email or phone; the SDK's `colleague`). An outside email or text from a
+colleague's own address is not a colleague. Crew members are matched by the contact their staff
+record holds. A time-off request is the sender's own; only a colleague (the People Ops owner, say)
+may name another employee (`someone_else` otherwise). A sender nobody verified is refused with `unknown_sender`, and one who is
 not on staff with `not_staff`. `get_leave_balance` takes no arguments at all: it gives the sender
 their allowance (each demonstration staff record carries one) less the approved business days
 (Monday to Friday) that fall this year, worked out by the desk. A crew member naming themselves in full,
@@ -148,7 +149,7 @@ const root = await harness.root(context, { agent: role.agent });
 - **`company`** — a host's own company facts, in the shape of `references/facts.json`.
 - **`approve`** — decides the gated actions. Omitted: every time-off exception is blocked.
 - **`sender`** — who each call's work came from, as the host verified it. A sender comes from one of
-  three places: the eval runner (the scenario's `from`), `officehum run --as PERSON`
+  three places: the eval runner (the scenario's `from`, with its `origin`), `officehum run --as PERSON`
   (the operator at the terminal, as an internal sender), or a board-backed host that passes
   `boardSenderResolver(board)` (today that is only the eval runner's office mode). Omitted: every
   sender is unknown, so no time off is recorded and no balance is given.

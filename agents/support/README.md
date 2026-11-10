@@ -89,7 +89,8 @@ otherwise; a host desk must refuse the same way). On a decline the role records 
 gets one credit: the same line again is `duplicate_credit`.
 
 **Who is asking** comes from the host's verified sender (`sender`), never from a tool argument or the
-message. A colleague on the company record (an internal sender) may read any client's cases; a sender
+message. A colleague (a person on the company record writing from inside the office, the SDK's
+`colleague`; an outside email from a colleague's address is not one) may read any client's cases; a sender
 whose address is a client's contact on the desk sees only that client's cases, and another client's
 case reads as one that does not exist; anyone else gets no case data, only "log it and a person will
 look". The same holds for `find_client` (a client finds only its own record) and for a credit put to
@@ -144,7 +145,7 @@ const root = await harness.root(context, { agent: role.agent });
 - **`company`** — a host's own company facts, in the shape of `references/facts.json`.
 - **`approve`** — decides the gated actions. Omitted: every credit is blocked.
 - **`sender`** — who each call's work came from, as the host verified it. A sender comes from one of
-  three places: the eval runner (the scenario's `from`), `officehum run --as PERSON`
+  three places: the eval runner (the scenario's `from`, with its `origin`), `officehum run --as PERSON`
   (the operator at the terminal, as an internal sender), or a board-backed host that passes
   `boardSenderResolver(board)` (today that is only the eval runner's office mode). Omitted: every
   sender is unknown, so no case data is given out.
