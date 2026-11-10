@@ -411,7 +411,9 @@
               "aren't shared",
               "are not shared",
               "isn't shared",
-              "is not shared"
+              "is not shared",
+              "can't be shared",
+              "cannot be shared"
             ]
           ],
           "notContains": [
