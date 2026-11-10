@@ -816,6 +816,73 @@ describe("company data and the verified sender", () => {
     expect(recorded).toMatchObject({ employeeName: "Ana Lopez", status: "approved" });
   });
 
+  it("records an exception a person grants on a later day, with the notice given when it was asked", async () => {
+    // Asked on 9 November, decided on 10 November: the approval is bound to the request, not the clock.
+    let now = NOW;
+    const people = fakePeopleOpsDesk({ company, now: () => now });
+    const request = {
+      employee: "Ana Lopez",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      reasonCategory: "vacation" as const,
+      from: OWNER,
+    };
+    const input = { ...request, daysNotice: 11, why: "A wedding." };
+    const late = await refusal(people.recordTimeOffRequest(request, { requestId: "ask" }));
+    expect(late).toMatchObject({ code: "late_notice", daysNotice: 11 });
+    const facts = await people.timeOffExceptionFacts(input);
+    expect(facts.daysNotice).toBe(11);
+
+    now = new Date("2026-11-10T09:00:00.000Z");
+    // The same request on the next day still works out to what the person approved.
+    expect(await people.timeOffExceptionFacts(input)).toEqual(facts);
+    const recorded = await people.requestTimeOffException(
+      { ...input, approved: facts },
+      { requestId: "ex-next-day" },
+    );
+    expect(recorded).toMatchObject({
+      status: "approved",
+      daysNotice: 11,
+      recordedOn: "2026-11-10",
+    });
+    expect(
+      await people.requestTimeOffException(
+        { ...input, approved: facts },
+        { requestId: "ex-next-day" },
+      ),
+    ).toEqual(recorded);
+    const balance = await people.leaveBalance({ from: ANA });
+    expect(balance.approved.filter((entry) => entry.startDate === "2026-11-20")).toHaveLength(1);
+
+    // A first day that has passed by the time the person decides is still refused.
+    now = new Date("2026-11-21T09:00:00.000Z");
+    const passed = await refusal(
+      people.requestTimeOffException({ ...input, approved: facts }, { requestId: "ex-too-late" }),
+    );
+    expect(passed.code).toBe("invalid");
+  });
+
+  it("counts the notice from the day an exception was first put to the desk, even with no refusal first", async () => {
+    let now = NOW;
+    const people = fakePeopleOpsDesk({ company, now: () => now });
+    const input = {
+      employee: "Ana Lopez",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      reasonCategory: "vacation" as const,
+      daysNotice: 11,
+      why: "A wedding.",
+      from: OWNER,
+    };
+    const facts = await people.timeOffExceptionFacts(input);
+    now = new Date("2026-11-12T09:00:00.000Z");
+    const recorded = await people.requestTimeOffException(
+      { ...input, approved: facts },
+      { requestId: "ex-later" },
+    );
+    expect(recorded).toMatchObject({ status: "approved", daysNotice: 11 });
+  });
+
   it("counts leave in business days, Monday to Friday", async () => {
     // Ana's approved Friday-to-Monday absence is two working days, not four calendar days.
     const people = fakePeopleOpsDesk({

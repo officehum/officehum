@@ -144,7 +144,7 @@ export function HINTS(company: CompanyFacts): Record<DeskRefusal, string> {
     unknown_sender: ` Next: tell them nothing was recorded or shared, and that they can ask from the address or number the company has for them, or ask the person who decides time off directly: ${hiring}.`,
     not_staff: ` Next: say time off and leave balances are for staff only, and that ${hiring} decides time off; share nothing about anyone.`,
     exception_changed:
-      " Next: tell the employee nothing was recorded, because the request changed after it was put to a person; record it again with record_time_off_request before anything else.",
+      " Next: nothing was recorded, because the request no longer matches what the person approved. If the employee still wants it, call request_time_off_exception again with the figures above, which puts that request to a person, and tell the employee it waits for them.",
     someone_else:
       " Next: tell the sender each employee asks for their own time off, or a person on the company record files it for them; record nothing under the sender's name instead.",
   };

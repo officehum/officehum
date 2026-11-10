@@ -77,6 +77,9 @@ describe("refusal hints", () => {
     const hints = HINTS(company);
     for (const code of codes) expect(hints[code].trim().length, code).toBeGreaterThan(10);
     expect(Object.keys(hints).sort()).toEqual([...codes].sort());
+    // A changed exception is asked again, never sent back to a recording that refuses it for notice.
+    expect(hints.exception_changed).toContain("request_time_off_exception");
+    expect(hints.exception_changed).not.toContain("record_time_off_request");
   });
 });
 

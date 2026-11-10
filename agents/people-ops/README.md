@@ -93,7 +93,9 @@ asks with `request_time_off_exception`. The gate's facts reader works the reques
 before anyone is asked (whose time off, from the verified sender, the dates, the reason and the
 notice figure) and shows exactly that to the person; on a yes those facts reach the tool under the
 gate's own key, and the desk records only that request (`exception_changed` if it no longer works
-out the same, `notice_changed` for any other notice figure). The role never approves anything: a recorded request is pending until a person decides, and
+out the same, `notice_changed` for any other notice figure). The notice is counted from the day the
+request was first made, which the desk keeps, so a person who decides on a later day approves facts
+that have not gone stale overnight; a first day that has passed by then is still refused. The role never approves anything: a recorded request is pending until a person decides, and
 only an approved exception is recorded as approved.
 
 **Leave the law may protect.** A reason category of medical, disability, pregnancy or parental,
