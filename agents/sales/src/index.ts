@@ -5,6 +5,7 @@
  * import sales from "@officehum/sales";
  *
  * const role = sales({ desk: myCrm, approve, overlays: ["./my-sales"] });
+ * const demo = sales({ demo: true }); // the demonstration pipeline, for a first run or an eval
  * for (const extension of role.extensions) registry.install(extension);
  * const root = await harness.root(context, { agent: role.agent });
  * ```
@@ -13,9 +14,10 @@
  * the host brings the desk that holds its real leads and, optionally, the person who decides gated
  * actions. Nothing here needs Office Hum, so the same bundle runs in a bare Pi Durable harness.
  *
- * With no desk the role runs on `fakeSalesDesk`: five leads in memory, the company's own price book,
- * and nothing written anywhere. That is what makes `officehum run` work on a clean machine with no
- * account and no key — and what a host replaces on its first real day.
+ * With `demo: true` and no desk the role runs on `fakeSalesDesk`: five leads in memory, the company's
+ * own price book, and nothing written anywhere. That is what `officehum run --demo` and the evals run
+ * on. With neither, the role still starts, and every tool that reads or writes the desk refuses and
+ * says how to bind one: a host that forgets its CRM gets no made-up leads.
  */
 
 import { fileURLToPath } from "node:url";
@@ -100,11 +102,15 @@ export {
 
 export interface SalesOptions {
   /**
-   * The host's system of record: a CRM in production, `fakeSalesDesk` in a test or an eval. Omitted,
-   * the role runs on the demonstration pipeline it ships with, so it starts and answers on a machine
-   * that has nothing else installed.
+   * The host's system of record: a CRM in production, `fakeSalesDesk` in a test. Omitted, the
+   * demonstration pipeline when `demo` is set; otherwise none, and every desk tool refuses.
    */
   readonly desk?: SalesDesk;
+  /**
+   * Run on the demonstration pipeline this package ships with when no `desk` is given. Set by the
+   * host (`officehum run --demo`, the eval runner), never by a client or a user's config.
+   */
+  readonly demo?: boolean;
   /**
    * The company to quote for. Omitted, the generated facts in this package — the default company, as
    * `npm run sync-company` wrote them. A host with its own company passes its own, and nothing in
@@ -129,14 +135,17 @@ export interface SalesOptions {
 export default function sales(options: SalesOptions = {}): DefinedRole {
   const company = options.company ?? loadCompanyFacts();
   // The demonstration desk prices from the same book, and counts a month's visits with the same
-  // weeks, as this role reads, so a first run and a real one quote the same numbers.
+  // weeks, as this role reads, so a first run and a real one quote the same numbers. It is built only
+  // when the host asks for it: with no desk the tools refuse rather than invent a pipeline.
   const desk =
     options.desk ??
-    fakeSalesDesk({
-      priceBook: company.priceBook,
-      weeksPerMonth: company.quoting.weeksPerMonth,
-      now: options.now ?? (() => new Date(DEMO_NOW)),
-    });
+    (options.demo === true
+      ? fakeSalesDesk({
+          priceBook: company.priceBook,
+          weeksPerMonth: company.quoting.weeksPerMonth,
+          now: options.now ?? (() => new Date(DEMO_NOW)),
+        })
+      : undefined);
   // The quote limit is read from the role's own resolved limits at every call, so an overlay's value
   // is what a quote is judged against and a reload needs no rebuild. Before the role exists no limit
   // resolves, and the desk then holds every quote for a person rather than guessing one.

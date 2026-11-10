@@ -845,7 +845,7 @@ describe("with no desk", () => {
   it("refuses rather than pretending", async () => {
     const role = tools(undefined);
     await expect(role.listLeads.execute({}, call("c"), BACKGROUND_CONTEXT)).rejects.toThrow(
-      "No sales desk is configured",
+      "No sales desk is bound to this role, so nothing was read or written.",
     );
     // The company record needs no desk, so a role with no system of record can still answer about
     // the business.
