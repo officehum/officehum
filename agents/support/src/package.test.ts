@@ -14,7 +14,7 @@ import { type AgentManifest, validateManifest, validatePackage } from "@officehu
 import { describe, expect, it } from "vitest";
 import manifest from "../officehum.json" with { type: "json" };
 import { companyHead, escalationOwner, loadCompanyFacts, person } from "./company.js";
-import { demoCases, demoClients, demoInvoices } from "./desk.js";
+import { demoCases, demoClients, demoCredits, demoInvoices } from "./desk.js";
 import { supportTools } from "./tools.js";
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
@@ -26,14 +26,16 @@ const TOOLS = [
   "list_cases",
   "log_case",
   "book_reclean",
+  "propose_credit",
   "offer_credit",
+  "withdraw_credit",
   "escalate_case",
   "resolve_case",
   "read_company",
 ];
 
 describe("support package", () => {
-  it("validates strictly as a package under agents/, with all eight tools stubbed in every scenario", async () => {
+  it("validates strictly as a package under agents/, with all ten tools stubbed in every scenario", async () => {
     const validated = await validatePackage(packageDirectory);
     expect(validated.issues).toEqual([]);
     expect(validated.ok).toBe(true);
@@ -48,11 +50,19 @@ describe("support package", () => {
     }
   });
 
-  it("declares eight tools, one credit approval on every call, and a reason for each write without one", () => {
+  it("declares ten tools, one credit approval on every call, and a reason for each write without one", () => {
     expect(roleManifest.tools.map((tool) => tool.name)).toEqual(TOOLS);
     expect(
       roleManifest.tools.filter((tool) => tool.replay === "unsafe").map((tool) => tool.name),
-    ).toEqual(["log_case", "book_reclean", "offer_credit", "escalate_case", "resolve_case"]);
+    ).toEqual([
+      "log_case",
+      "book_reclean",
+      "propose_credit",
+      "offer_credit",
+      "withdraw_credit",
+      "escalate_case",
+      "resolve_case",
+    ]);
     expect(validateManifest(roleManifest).ok).toBe(true);
 
     // Every credit asks a person: no condition can let one through.
@@ -66,7 +76,11 @@ describe("support package", () => {
     expect(note("log_case")).toContain("internal record");
     expect(note("book_reclean")).toContain("standard remedy");
     expect(note("escalate_case")).toContain("never hands a complaint about someone");
-    expect(note("resolve_case")).toContain("credit waiting");
+    expect(note("resolve_case")).toContain("credit proposal pending");
+    expect(note("propose_credit")).toContain(
+      "Records a proposed credit for a person to decide; issues nothing",
+    );
+    expect(note("withdraw_credit")).toContain("issues nothing");
     expect(note("offer_credit")).toBeUndefined();
     // The credit is worked out by the desk: there is no limit on a figure the model supplies.
     expect(roleManifest.limits ?? {}).toEqual({});
@@ -115,14 +129,15 @@ describe("support package", () => {
         expect(prices.has(line.priceBookId), line.priceBookId).toBe(true);
     }
     const invoices = demoInvoices();
-    for (const entry of demoCases()) {
-      expect(clients.has(entry.clientId), entry.id).toBe(true);
-      // A demo credit is on its own client's invoice, for what the desk would work out.
-      if (entry.credit !== null) {
-        const invoice = invoices.find((candidate) => candidate.id === entry.credit?.invoiceId);
-        expect(invoice?.clientId).toBe(entry.clientId);
-        expect(entry.credit.creditCents).toBe(refunds.serviceRecoveryCreditCents);
-      }
+    const cases = demoCases();
+    for (const entry of cases) expect(clients.has(entry.clientId), entry.id).toBe(true);
+    // A demo credit is on its own case's client's invoice, for what the desk would work out.
+    for (const credit of demoCredits()) {
+      const entry = cases.find((candidate) => candidate.id === credit.caseId);
+      const invoice = invoices.find((candidate) => candidate.id === credit.invoiceId);
+      expect(invoice?.clientId).toBe(entry?.clientId);
+      expect(credit.clientId).toBe(entry?.clientId);
+      expect(credit.creditCents).toBe(refunds.serviceRecoveryCreditCents);
     }
   });
 

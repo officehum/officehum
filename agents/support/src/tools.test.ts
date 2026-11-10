@@ -7,6 +7,7 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { APPROVED_FACTS_ARG, type VerifiedSender } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import {
   companyHead,
@@ -16,7 +17,13 @@ import {
   person,
   personLabel,
 } from "./company.js";
-import { DEMO_NOW, fakeSupportDesk, type SupportDesk, SupportDeskError } from "./desk.js";
+import {
+  creditApprovalFacts,
+  DEMO_NOW,
+  fakeSupportDesk,
+  type SupportDesk,
+  SupportDeskError,
+} from "./desk.js";
 import { type SupportToolset, supportTools } from "./tools.js";
 
 const company = loadCompanyFacts();
@@ -32,7 +39,26 @@ const named = (who: ReturnType<typeof person>) => `${who?.name} (${who?.title})`
 const call = (callId: string) =>
   ({ conversationId: "conversation-1", taskId: "task-1", callId }) as never;
 
-const tools = (desk: SupportDesk | undefined): SupportToolset => supportTools({ desk, company });
+/** A colleague on the company record, asking from inside the office: may read any client's cases. */
+const COLLEAGUE: VerifiedSender = { origin: "internal", channel: "chat", contact: "noah-kim" };
+/** Megan Shaw, Little Acorns Childcare's contact on the desk, writing in by email. */
+const MEGAN: VerifiedSender = {
+  origin: "external",
+  channel: "email",
+  contact: "megan@littleacorns.example",
+};
+/** Grace Liu, Hawthorne Family Dental's contact on the desk, writing in by email. */
+const GRACE: VerifiedSender = {
+  origin: "external",
+  channel: "email",
+  contact: "Grace@HawthorneFamilyDental.example",
+};
+
+/** The tools, asked by `sender`; `null` is a host that knows nobody. */
+const tools = (
+  desk: SupportDesk | undefined,
+  sender: VerifiedSender | null = COLLEAGUE,
+): SupportToolset => supportTools({ desk, company, sender: async () => sender ?? undefined });
 
 const desk = (): SupportDesk => fakeSupportDesk({ now: () => new Date(DEMO_NOW) });
 
@@ -50,13 +76,15 @@ function isError(result: unknown): boolean {
   return (result as { isError?: boolean }).isError === true;
 }
 
-const CREDIT = {
-  caseId: "C-301",
-  client: "Hawthorne Family Dental",
-  invoiceId: "INV-2041",
-  line: 1,
-  creditCents: refunds.serviceRecoveryCreditCents,
-};
+/** A fresh credit: C-301 and C-304 already have a demonstration credit pending, so this is C-302's. */
+const CREDIT = { caseId: "C-302", invoiceId: "INV-2042", line: 1 };
+
+/** An `offer_credit` call as the approval gate hands it to the tool after a yes. */
+async function approvedCall(support: SupportDesk, creditId: string) {
+  const [credit] = await support.listCredits({ creditId });
+  if (credit === undefined) throw new Error(`no ${creditId}`);
+  return { creditId, [APPROVED_FACTS_ARG]: creditApprovalFacts(credit) };
+}
 
 const SAFETY = {
   clientId: "CL-102",
@@ -79,7 +107,9 @@ function quiet(
     ...desk(),
     logCase: refuse,
     bookReclean: refuse,
+    proposeCredit: refuse,
     issueCredit: refuse,
+    withdrawCredit: refuse,
     escalateCase: refuse,
     resolveCase: refuse,
   };
@@ -112,21 +142,124 @@ describe("find_client", () => {
 describe("list_cases", () => {
   it("lists a client's cases with re-clean, credit and escalation, and the credit for each invoice line", async () => {
     const result = await tools(desk()).listCases.execute(
-      { clientId: "CL-101" },
+      { clientId: "CL-102" },
       call("b1"),
       BACKGROUND_CONTEXT,
     );
     expect(text(result)).toContain(
-      "C-301 — Hawthorne Family Dental (CL-101) — complaint, quality — open — priority high — opened 2026-11-06 by Grace Liu",
+      "C-302 — Little Acorns Childcare (CL-102) — complaint, quality — open — priority high — opened 2026-11-02 by Megan Shaw",
     );
-    expect(text(result)).toContain("re-clean: none — credit: none — escalated: no");
+    expect(text(result)).toContain("re-clean: done on 2026-11-05 — credit: none — escalated: no");
     expect(text(result)).toContain(
-      "INV-2041 line 1 — Office cleaning, one visit, up to 3,000 sq ft — 22 × visit at $185.00 = $4,070.00 — credit if a person approves: $150.00",
+      "INV-2042 line 1 — Office cleaning, one visit, up to 3,000 sq ft — 22 × visit at $185.00 = $4,070.00 — credit if a person approves: $150.00",
     );
     expect(text(result)).toContain(
-      'Only if the client asks for a credit on C-301: offer_credit with caseId C-301, client "Hawthorne Family Dental", invoiceId INV-2041, line 1, creditCents 15000.',
+      "Only if the client asks for a credit on C-302: propose_credit with caseId C-302, invoiceId INV-2042, line 1.",
     );
     expect(details(result).found).toBe(true);
+  });
+
+  it("list_cases gives an external sender only their own cases", async () => {
+    // Grace names another client: the verified sender decides, not the argument.
+    const result = await tools(desk(), GRACE).listCases.execute(
+      { clientId: "CL-104" },
+      call("b-own"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain("Cases (1):");
+    expect(text(result)).toContain("C-301 — Hawthorne Family Dental");
+    expect(text(result)).not.toContain("Burnside");
+    // Another client's case by number reads as no case at all.
+    const other = await tools(desk(), GRACE).listCases.execute(
+      { caseId: "C-304" },
+      call("b-other"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(other).found).toBe(false);
+    expect(text(other)).not.toContain("Burnside");
+    // The same address from inside the office is still that client, never a colleague.
+    const internal = await tools(desk(), { ...GRACE, origin: "internal" }).listCases.execute(
+      {},
+      call("b-int"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(internal)).toContain("Cases (1):");
+    // A colleague's address from outside is not a colleague.
+    const outside = await tools(desk(), {
+      origin: "external",
+      channel: "email",
+      contact: "noah@northwindfacilities.com",
+    }).listCases.execute({}, call("b-out"), BACKGROUND_CONTEXT);
+    expect(details(outside).code).toBe("unknown_sender");
+  });
+
+  it("an unknown sender gets no case data", async () => {
+    for (const sender of [
+      null,
+      { origin: "external" as const, channel: "email", contact: "someone@example.test" },
+    ]) {
+      const support = tools(desk(), sender);
+      const listed = await support.listCases.execute(
+        { caseId: "C-301" } as never,
+        call("u1"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(isError(listed)).toBe(true);
+      expect(details(listed)).toMatchObject({ code: "unknown_sender", cases: [] });
+      expect(text(listed)).toContain("log what they raised with log_case");
+      expect(text(listed)).not.toContain("Hawthorne");
+      for (const [tool, args] of [
+        ["bookReclean", { caseId: "C-301", date: "2026-11-11" }],
+        ["proposeCredit", CREDIT],
+        ["resolveCase", { caseId: "C-302", outcome: "Done." }],
+        ["withdrawCredit", { creditId: "CR-400", reason: "Not wanted." }],
+      ] as const) {
+        const refused = await support[tool].execute(
+          args as never,
+          call(`u-${tool}`),
+          BACKGROUND_CONTEXT,
+        );
+        expect(details(refused).code, tool).toBe("unknown_sender");
+        expect(text(refused), tool).not.toContain("Hawthorne");
+      }
+      // A complaint still reaches a person, and the receipt names no client.
+      const logged = await support.logCase.execute(SAFETY, call("u-log"), BACKGROUND_CONTEXT);
+      expect(isError(logged)).toBe(false);
+      const handed = await support.escalateCase.execute(
+        { caseId: "C-306", reason: "safety", note: "Bleach left out." },
+        call("u-esc"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(text(handed)).toContain(`Handed C-306 to ${safetyOwner}, for safety.`);
+      expect(text(handed)).not.toContain("Little Acorns");
+    }
+  });
+
+  it("a client may act only on its own cases", async () => {
+    const support = desk();
+    const grace = tools(support, GRACE);
+    for (const [tool, args] of [
+      ["bookReclean", { caseId: "C-305", date: "2026-11-11" }],
+      ["proposeCredit", { caseId: "C-304", invoiceId: "INV-2044", line: 2 }],
+      ["escalateCase", { caseId: "C-304", reason: "unresolved", note: "x" }],
+      ["resolveCase", { caseId: "C-302", outcome: "Done." }],
+      ["withdrawCredit", { creditId: "CR-400", reason: "Not wanted." }],
+    ] as const) {
+      const refused = await grace[tool].execute(
+        args as never,
+        call(`own-${tool}`),
+        BACKGROUND_CONTEXT,
+      );
+      expect(details(refused).code, tool).toBe("not_found");
+      expect(text(refused), tool).toContain("is on Hawthorne Family Dental's account");
+    }
+    expect((await support.listCredits({ creditId: "CR-400" }))[0]?.status).toBe("pending");
+    const own = await tools(support, MEGAN).proposeCredit.execute(
+      CREDIT,
+      call("own-credit"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(own)).toBe(false);
   });
 
   it("shows a credit waiting for a person and a re-clean not yet done, and offers no second credit", async () => {
@@ -136,10 +269,10 @@ describe("list_cases", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(result)).toContain(
-      `credit: $150.00 on INV-2044 line 1, waiting for ${creditOwner}`,
+      `credit: CR-400, $150.00 on INV-2044 line 1, waiting for a decision by ${creditOwner} (already put to them: do not call propose_credit or offer_credit for this case)`,
     );
     expect(text(result)).toContain("re-clean: booked for 2026-11-10, not done yet");
-    expect(text(result)).not.toContain("offer_credit with caseId C-304");
+    expect(text(result)).not.toContain("propose_credit with caseId C-304");
   });
 
   it("lists every case with no filter, and refuses a case that does not exist", async () => {
@@ -247,58 +380,145 @@ describe("book_reclean", () => {
       BACKGROUND_CONTEXT,
     );
     expect(details(result).code).toBe("not_reclean");
-    expect(text(result)).toContain("only if the client asks for a credit, offer_credit");
+    expect(text(result)).toContain("only if the client asks for a credit, propose_credit");
     expect(text(result)).toContain("escalate_case");
   });
 });
 
-describe("offer_credit", () => {
-  it("issues the desk's credit once on replay, saying it was approved", async () => {
+describe("propose_credit", () => {
+  it("a replayed propose_credit records one proposal", async () => {
     const support = desk();
-    const first = await tools(support).offerCredit.execute(
+    const first = await tools(support).proposeCredit.execute(
       CREDIT,
       call("same"),
       BACKGROUND_CONTEXT,
     );
-    const again = await tools(support).offerCredit.execute(
+    const again = await tools(support).proposeCredit.execute(
       CREDIT,
       call("same"),
       BACKGROUND_CONTEXT,
     );
     expect(text(again)).toBe(text(first));
+    expect(text(first)).toContain(
+      "Proposed credit CR-402: $150.00 to Little Acorns Childcare on INV-2042 line 1 (Office cleaning, one visit, up to 3,000 sq ft), case C-302, worked out by the desk. Nothing is issued: a person decides it.",
+    );
+    expect(text(first)).toContain(
+      `Next: call offer_credit with creditId CR-402, which asks ${creditOwner}.`,
+    );
+    expect(details(first)).toMatchObject({ id: "CR-402", status: "pending", creditCents: 15000 });
+    expect(await support.listCredits({ caseId: "C-302" })).toHaveLength(1);
+  });
+
+  it("refuses a second credit for the same line, naming the proposal", async () => {
+    const support = desk();
+    await tools(support).proposeCredit.execute(CREDIT, call("p1"), BACKGROUND_CONTEXT);
+    const second = await tools(support).proposeCredit.execute(
+      CREDIT,
+      call("p2"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(second)).toMatchObject({ code: "duplicate_credit", creditId: "CR-402" });
+    expect(text(second)).toContain("CR-402 is that credit");
+    const waiting = await tools(support).proposeCredit.execute(
+      { caseId: "C-304", invoiceId: "INV-2044", line: 2 },
+      call("p3"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(waiting).code).toBe("credit_pending");
+    expect(text(waiting)).toContain(`CR-400 on C-304 waits for a decision by ${creditOwner}`);
+  });
+});
+
+describe("offer_credit", () => {
+  it("offer_credit takes only creditId and shows desk-read facts", async () => {
+    const support = desk();
+    const toolset = tools(support);
+    const schema = toolset.offerCredit.parameters as unknown as {
+      properties: Record<string, { description?: string }>;
+      required?: string[];
+    };
+    expect(Object.keys(schema.properties).filter((key) => key !== APPROVED_FACTS_ARG)).toEqual([
+      "creditId",
+    ]);
+    expect(schema.required).toEqual(["creditId"]);
+    await toolset.proposeCredit.execute(CREDIT, call("p"), BACKGROUND_CONTEXT);
+    const read = await toolset.creditFacts({ creditId: "CR-402" }, BACKGROUND_CONTEXT as never);
+    expect(read.summary).toBe(
+      "Issue credit CR-402: $150.00 to Little Acorns Childcare on INV-2042 line 1 (Office cleaning, one visit, up to 3,000 sq ft), case C-302, worked out by the desk",
+    );
+    const [credit] = await support.listCredits({ creditId: "CR-402" });
+    expect(read.facts).toEqual(creditApprovalFacts(credit as never));
+    // Nothing to approve: a proposal that does not exist, is issued or was withdrawn.
+    await expect(
+      toolset.creditFacts({ creditId: "CR-9" }, BACKGROUND_CONTEXT as never),
+    ).rejects.toThrow("Nothing was put to a person");
+    await support.withdrawCredit({ creditId: "CR-400", reason: "Declined." }, { requestId: "w" });
+    await expect(
+      toolset.creditFacts({ creditId: "CR-400" }, BACKGROUND_CONTEXT as never),
+    ).rejects.toThrow("was withdrawn");
+  });
+
+  it("issues the approved proposal once on replay, saying it was approved", async () => {
+    const support = desk();
+    await tools(support).proposeCredit.execute(CREDIT, call("p"), BACKGROUND_CONTEXT);
+    const args = await approvedCall(support, "CR-402");
+    const first = await tools(support).offerCredit.execute(args, call("same"), BACKGROUND_CONTEXT);
+    const again = await tools(support).offerCredit.execute(args, call("same"), BACKGROUND_CONTEXT);
+    expect(text(again)).toBe(text(first));
     expect(isError(first)).toBe(false);
     expect(text(first)).toContain(
-      "Approved and issued: credit note CN-501 for $150.00 on INV-2041 line 1 (Office cleaning, one visit, up to 3,000 sq ft), Hawthorne Family Dental, case C-301.",
+      "Approved and issued: credit note CN-501 for $150.00 on INV-2042 line 1 (Office cleaning, one visit, up to 3,000 sq ft), Little Acorns Childcare, case C-302.",
     );
     expect(text(first)).toContain("It is a credit on the invoice, not money back.");
-    expect((await support.listCases({ caseId: "C-301" }))[0]?.credit?.status).toBe("issued");
+    expect((await support.listCases({ caseId: "C-302" }))[0]?.credit?.status).toBe("issued");
   });
 
-  it("issues nothing for an amount that is not the desk's, and gives the desk's figures to ask again", async () => {
+  it("issues nothing without facts a person approved", async () => {
     const support = desk();
     const result = await tools(support).offerCredit.execute(
-      { ...CREDIT, creditCents: 40700 },
-      call("e2"),
+      { creditId: "CR-400" },
+      call("e1"),
       BACKGROUND_CONTEXT,
     );
-    expect(isError(result)).toBe(true);
-    expect(details(result)).toMatchObject({ code: "credit_changed", creditCents: 15000 });
-    expect(text(result)).toContain(
-      'Next: if the client still wants it, call offer_credit with caseId C-301, client "Hawthorne Family Dental", invoiceId INV-2041, line 1, creditCents 15000.',
-    );
-    expect((await support.listCases({ caseId: "C-301" }))[0]?.credit).toBeNull();
+    expect(details(result).code).toBe("not_approved");
+    expect((await support.listCredits({ creditId: "CR-400" }))[0]?.status).toBe("pending");
   });
 
-  it("says a credit already waiting is with the person who approves credits, and not to ask again", async () => {
-    const result = await tools(desk()).offerCredit.execute(
-      { ...CREDIT, caseId: "C-304", client: "Burnside Property Group", invoiceId: "INV-2044" },
-      call("e3"),
+  it("refuses when the proposal changed after the facts were read", async () => {
+    const support = desk();
+    const args = await approvedCall(support, "CR-400");
+    await support.withdrawCredit({ creditId: "CR-400", reason: "Declined." }, { requestId: "w" });
+    const result = await tools(support).offerCredit.execute(args, call("e2"), BACKGROUND_CONTEXT);
+    expect(details(result)).toMatchObject({ code: "credit_changed", creditId: "CR-400" });
+    expect(text(result)).toContain("changed after its facts were read");
+    expect(text(result)).toContain("Next: tell the client the credit was not issued");
+  });
+});
+
+describe("withdraw_credit", () => {
+  it("a withdrawn proposal lets the case resolve", async () => {
+    const support = desk();
+    const toolset = tools(support);
+    const blocked = await toolset.resolveCase.execute(
+      { caseId: "C-304", outcome: "Declined." },
+      call("r1"),
       BACKGROUND_CONTEXT,
     );
-    expect(details(result).code).toBe("credit_waiting");
-    expect(text(result)).toContain(
-      `A credit on C-304 is already with ${creditOwner}: tell the client it waits for them, and do not ask again.`,
+    expect(details(blocked).code).toBe("credit_pending");
+    const args = { creditId: "CR-400", reason: "The person who approves credits declined it." };
+    const first = await toolset.withdrawCredit.execute(args, call("same"), BACKGROUND_CONTEXT);
+    const again = await toolset.withdrawCredit.execute(args, call("same"), BACKGROUND_CONTEXT);
+    expect(text(again)).toBe(text(first));
+    expect(text(first)).toContain(
+      "Withdrew credit CR-400: $150.00 to Burnside Property Group on INV-2044 line 1",
     );
+    expect(text(first)).toContain("nothing has been sent to the client");
+    const closed = await toolset.resolveCase.execute(
+      { caseId: "C-304", outcome: "Credit declined; the client was told." },
+      call("r2"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(closed)).toBe(false);
   });
 });
 
@@ -330,7 +550,7 @@ describe("escalate_case", () => {
     );
     expect(text(result)).toContain(`to ${head}, for staff`);
     expect(text(result)).toContain(
-      `The complaint is about ${owner?.name}, so it went to ${headNamed} instead.`,
+      `The case names the person it would normally go to, so it went to ${headNamed} instead: never say it is with anyone it names.`,
     );
     expect(details(result)).toMatchObject({ redirected: true });
   });
@@ -356,13 +576,13 @@ describe("resolve_case", () => {
     expect((await support.listCases({ caseId: "C-302" }))[0]?.status).toBe("closed");
   });
 
-  it("refuses a case with a credit waiting or a re-clean not done, naming what it waits for", async () => {
+  it("resolve_case refuses while a credit proposal is pending", async () => {
     const waiting = await tools(desk()).resolveCase.execute(
       { caseId: "C-304", outcome: "Done." },
       call("g2"),
       BACKGROUND_CONTEXT,
     );
-    expect(details(waiting).code).toBe("credit_waiting");
+    expect(details(waiting)).toMatchObject({ code: "credit_pending", creditId: "CR-400" });
     expect(text(waiting)).toContain(creditOwner);
     const pending = await tools(desk()).resolveCase.execute(
       { caseId: "C-305", outcome: "Done." },
@@ -405,7 +625,13 @@ describe("next steps come from the refusal's code, not its wording", () => {
         { caseId: "C-9", outcome: "x" },
         "escalate_case with caseId C-9 and reason safety",
       ],
-      ["credit_waiting", "resolveCase", { caseId: "C-9", outcome: "x" }, creditOwner],
+      ["credit_pending", "resolveCase", { caseId: "C-9", outcome: "x" }, creditOwner],
+      [
+        "duplicate_credit",
+        "proposeCredit",
+        { caseId: "C-9", invoiceId: "INV-9", line: 1 },
+        "CR-9 is that credit",
+      ],
       [
         "reclean_pending",
         "resolveCase",
@@ -432,7 +658,7 @@ describe("next steps come from the refusal's code, not its wording", () => {
       ],
     ];
     for (const [code, tool, args, step] of cases) {
-      const result = await tools(quiet(code, { caseId: "C-9" }))[tool].execute(
+      const result = await tools(quiet(code, { caseId: "C-9", creditId: "CR-9" }))[tool].execute(
         args as never,
         call(`q-${code}`),
         BACKGROUND_CONTEXT,
@@ -440,14 +666,12 @@ describe("next steps come from the refusal's code, not its wording", () => {
       expect(text(result), code).toContain(step);
       expect(details(result).code).toBe(code);
     }
-    const changed = await tools(
-      quiet("credit_changed", {
-        quote: { caseId: "C-9", client: "X Co", invoiceId: "INV-9", line: 2, creditCents: 7 },
-      }),
-    ).offerCredit.execute(CREDIT, call("q-changed"), BACKGROUND_CONTEXT);
-    expect(text(changed)).toContain(
-      'offer_credit with caseId C-9, client "X Co", invoiceId INV-9, line 2, creditCents 7',
+    const changed = await tools(quiet("credit_changed", { creditId: "CR-9" })).offerCredit.execute(
+      { creditId: "CR-9", [APPROVED_FACTS_ARG]: { id: "CR-9" } },
+      call("q-changed"),
+      BACKGROUND_CONTEXT,
     );
+    expect(text(changed)).toContain("Read the case again with list_cases");
   });
 });
 

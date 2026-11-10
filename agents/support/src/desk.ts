@@ -8,11 +8,13 @@
  * test, an eval or a first run needs no network and no credential.
  *
  * The desk owns every number and every rule that matters. The model names a case, an invoice line and
- * a date; the desk prices the line from the price book, works out the credit, checks the re-clean
+ * a date; the desk prices the line from the price book, works out the credit and records it as a
+ * proposal a person decides (pending until it is issued or withdrawn), checks the re-clean
  * window, picks the person a case is escalated to, and decides whether a case may close. A refusal
  * carries a code, and the tools turn the code into the next step.
  */
 
+import { sameFacts } from "@officehum/sdk";
 import {
   type CompanyFacts,
   companyHead,
@@ -138,15 +140,45 @@ export interface Reclean {
 }
 
 /**
- * A credit on a case. `waiting`: a person is still deciding a credit raised outside this
- * conversation. `issued`: approved, and a credit note exists.
+ * A credit proposed on a case, with the amount the desk worked out. `pending`: recorded for a person
+ * to decide, and nothing is issued; it stays pending until it is issued or withdrawn, whatever anyone
+ * says elsewhere. `issued`: a person approved it and a credit note exists. `withdrawn`: it will not be
+ * issued (a person declined it), recorded with its reason.
  */
 export interface Credit {
-  readonly status: "waiting" | "issued";
+  readonly id: string;
+  readonly status: "pending" | "issued" | "withdrawn";
+  readonly caseId: string;
+  readonly clientId: string;
+  readonly client: string;
   readonly invoiceId: string;
   readonly line: number;
+  readonly lineName: string;
+  /** The line total or the company's usual service-recovery credit, whichever is less. */
   readonly creditCents: number;
+  readonly proposedOn: string;
   readonly creditNoteId: string | null;
+  readonly withdrawnReason: string | null;
+}
+
+/**
+ * What a person approves when a credit is put to them: the proposal as the desk holds it, pending.
+ * The desk issues only while the proposal still equals these facts, so a grant never covers a
+ * credit that changed, was issued or was withdrawn after the person saw it.
+ */
+export function creditApprovalFacts(credit: Credit): Record<string, unknown> {
+  return {
+    id: credit.id,
+    status: credit.status,
+    caseId: credit.caseId,
+    clientId: credit.clientId,
+    client: credit.client,
+    invoiceId: credit.invoiceId,
+    line: credit.line,
+    lineName: credit.lineName,
+    creditCents: credit.creditCents,
+    proposedOn: credit.proposedOn,
+  };
 }
 
 export interface Escalation {
@@ -176,6 +208,7 @@ export interface SupportCase {
   /** The company answers a complaint the same business day. */
   readonly firstResponseDue: string;
   readonly reclean: Reclean | null;
+  /** The case's credit: pending or issued. A withdrawn proposal leaves none. */
   readonly credit: Credit | null;
   readonly escalations: readonly Escalation[];
   readonly outcome: string | null;
@@ -185,6 +218,8 @@ export interface SupportCase {
 /** A credit note the desk issued once a person approved it. */
 export interface CreditNote {
   readonly id: string;
+  /** The proposal it was issued from. */
+  readonly creditId: string;
   readonly caseId: string;
   readonly clientName: string;
   readonly invoiceId: string;
@@ -220,14 +255,22 @@ export interface LogCaseInput {
   readonly source: string;
 }
 
-export interface CreditInput {
+/** A credit to propose: the case and the invoice line. The desk works out the client and the amount. */
+export interface ProposeCreditInput {
   readonly caseId: string;
-  /** The client's name as list_cases gave it, so the person approving sees who it is for. */
-  readonly client: string;
   readonly invoiceId: string;
   readonly line: number;
-  /** The credit as list_cases gave it; the desk issues only its own figure. */
-  readonly creditCents: number;
+}
+
+/** A proposal to issue, with the facts a person approved (`creditApprovalFacts`). */
+export interface IssueCreditInput {
+  readonly creditId: string;
+  readonly approved: Readonly<Record<string, unknown>>;
+}
+
+export interface CreditFilter {
+  readonly creditId?: string;
+  readonly caseId?: string;
 }
 
 export interface EscalateInput {
@@ -243,17 +286,35 @@ export interface SupportDesk {
   findClient(query: string): Promise<readonly ClientRecord[]>;
   listCases(filter?: CaseFilter): Promise<readonly SupportCase[]>;
   listInvoices(clientId: string): Promise<readonly Invoice[]>;
+  listCredits(filter?: CreditFilter): Promise<readonly Credit[]>;
   logCase(input: LogCaseInput, options: { readonly requestId: string }): Promise<SupportCase>;
   bookReclean(
     input: { readonly caseId: string; readonly date: string },
     options: { readonly requestId: string },
   ): Promise<SupportCase>;
   /**
-   * Issues a credit note. Called only once a person approved it. The approval names the client, the
-   * invoice line and the credit as the desk gave them; a host desk must refuse with `credit_changed`
-   * when any of them is no longer what it would issue, so a grant never issues a credit nobody saw.
+   * Records a proposed credit as `pending`, with the amount worked out here. Issues nothing. Refuses
+   * a second credit on a case: `duplicate_credit` for the same invoice line, `credit_pending` or
+   * `already_credited` for another.
    */
-  issueCredit(input: CreditInput, options: { readonly requestId: string }): Promise<CreditNote>;
+  proposeCredit(
+    input: ProposeCreditInput,
+    options: { readonly requestId: string },
+  ): Promise<Credit>;
+  /**
+   * Issues a credit note for a pending proposal. Called only once a person approved it, with the
+   * facts they were shown; a host desk must refuse with `credit_changed` when the proposal no longer
+   * equals them (`creditApprovalFacts`), so a grant never issues a credit nobody saw.
+   */
+  issueCredit(
+    input: IssueCreditInput,
+    options: { readonly requestId: string },
+  ): Promise<CreditNote>;
+  /** Records that a pending proposal will not be issued, and why (a person declined it). */
+  withdrawCredit(
+    input: { readonly creditId: string; readonly reason: string },
+    options: { readonly requestId: string },
+  ): Promise<Credit>;
   escalateCase(
     input: EscalateInput,
     options: { readonly requestId: string },
@@ -276,40 +337,32 @@ export type DeskRefusal =
   | "wrong_client"
   | "credit_changed"
   | "already_credited"
-  | "credit_waiting"
+  | "duplicate_credit"
+  | "credit_pending"
   | "already_escalated"
   | "no_one"
   | "reclean_pending"
   | "not_escalated"
   | "escalated";
 
-/** The credit the desk would issue, carried by a `credit_changed` refusal so it can be asked again. */
-export interface CreditQuote {
-  readonly caseId: string;
-  readonly client: string;
-  readonly invoiceId: string;
-  readonly line: number;
-  readonly creditCents: number;
-}
-
 /** A refusal the model reads: an unknown case, a date outside the window, a case not ready to close. */
 export class SupportDeskError extends Error {
   readonly code: DeskRefusal;
-  /** For `credit_changed`: what the desk would issue. */
-  readonly quote: CreditQuote | undefined;
-  /** For `credit_waiting`, `escalated` and `reclean_pending`: the case refused. */
+  /** The case refused, when there is one. */
   readonly caseId: string | undefined;
+  /** For the credit refusals: the credit proposal concerned. */
+  readonly creditId: string | undefined;
 
   constructor(
     code: DeskRefusal,
     message: string,
-    extra: { readonly quote?: CreditQuote; readonly caseId?: string } = {},
+    extra: { readonly caseId?: string; readonly creditId?: string } = {},
   ) {
     super(message);
     this.name = "SupportDeskError";
     this.code = code;
-    this.quote = extra.quote;
     this.caseId = extra.caseId;
+    this.creditId = extra.creditId;
   }
 }
 
@@ -319,6 +372,8 @@ export interface FakeSupportDeskOptions {
   readonly clients?: readonly Client[];
   readonly invoices?: readonly InvoiceRecord[];
   readonly cases?: readonly SupportCase[];
+  /** Credits proposed before today, each on one of `cases`. Omitted: the demonstration credit. */
+  readonly credits?: readonly Credit[];
   /** The clock. Omitted: Monday 9 November 2026, the morning of the demonstration week. */
   readonly now?: () => Date;
 }
@@ -412,8 +467,9 @@ export function demoInvoices(): readonly InvoiceRecord[] {
 
 /**
  * The cases on the desk on the morning of Monday 9 November 2026: one closed, and five open in
- * different states — a fresh complaint, a re-clean done and waiting for the client, a question, a
- * credit a person is still deciding, and a re-clean booked for tomorrow.
+ * different states — a fresh complaint with a credit proposed this morning, a re-clean done and
+ * waiting for the client, a question, a credit a person is still deciding (`demoCredits`), and a
+ * re-clean booked for tomorrow.
  */
 export function demoCases(clients: readonly Client[] = demoClients()): readonly SupportCase[] {
   const nameOf = (id: string) => clients.find((client) => client.id === id)?.name ?? id;
@@ -495,26 +551,16 @@ export function demoCases(clients: readonly Client[] = demoClients()): readonly 
       "Arthur Pell",
       "email from Arthur Pell, Friday 6 November",
     ),
-    {
-      ...base(
-        "C-304",
-        "CL-104",
-        "complaint",
-        "billing",
-        "2026-11-04",
-        "The October invoice charges 120 interior panes; the client counts 96 cleaned.",
-        "Lena Ortiz",
-        "email from Lena Ortiz, Wednesday 4 November",
-      ),
-      // Raised by hand last week and still with the person who approves credits.
-      credit: {
-        status: "waiting",
-        invoiceId: "INV-2044",
-        line: 1,
-        creditCents: 15000,
-        creditNoteId: null,
-      },
-    },
+    base(
+      "C-304",
+      "CL-104",
+      "complaint",
+      "billing",
+      "2026-11-04",
+      "The October invoice charges 120 interior panes; the client counts 96 cleaned.",
+      "Lena Ortiz",
+      "email from Lena Ortiz, Wednesday 4 November",
+    ),
     {
       ...base(
         "C-305",
@@ -527,6 +573,49 @@ export function demoCases(clients: readonly Client[] = demoClients()): readonly 
         "phone call from Ravi Menon, Wednesday 4 November",
       ),
       reclean: { date: "2026-11-10", done: false, bookedOn: "2026-11-04" },
+    },
+  ];
+}
+
+/**
+ * The credits proposed before the demonstration morning, each priced as the desk would price it now:
+ * on C-304, the October glass line, proposed last week and put to the person who approves credits,
+ * not yet decided; and on C-301, the cleaning line on Hawthorne Family Dental's October invoice,
+ * proposed this morning from Grace Liu's request and put to them too.
+ *
+ * CR-401 is seeded because eval scenarios name it: as for every role's demonstration data, the desk
+ * holds the records the scenarios' stubbed tools refer to, so the approval gate reads from the desk
+ * the same proposal the scenario's stubbed `propose_credit` tells the model about.
+ */
+export function demoCredits(): readonly Credit[] {
+  return [
+    {
+      id: "CR-400",
+      status: "pending",
+      caseId: "C-304",
+      clientId: "CL-104",
+      client: "Burnside Property Group",
+      invoiceId: "INV-2044",
+      line: 1,
+      lineName: "Interior window cleaning",
+      creditCents: 15000,
+      proposedOn: "2026-11-04",
+      creditNoteId: null,
+      withdrawnReason: null,
+    },
+    {
+      id: "CR-401",
+      status: "pending",
+      caseId: "C-301",
+      clientId: "CL-101",
+      client: "Hawthorne Family Dental",
+      invoiceId: "INV-2041",
+      line: 1,
+      lineName: "Office cleaning, one visit, up to 3,000 sq ft",
+      creditCents: 15000,
+      proposedOn: "2026-11-09",
+      creditNoteId: null,
+      withdrawnReason: null,
     },
   ];
 }
@@ -565,7 +654,9 @@ function addBusinessDays(from: string, days: number): string {
 }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
-type CaseState = Mutable<Omit<SupportCase, "escalations">> & { escalations: Escalation[] };
+type CaseState = Mutable<Omit<SupportCase, "credit" | "escalations">> & {
+  escalations: Escalation[];
+};
 
 const REASON_TOPIC: Partial<Record<EscalationReason, string>> = {
   safety: "safety-incident",
@@ -581,25 +672,53 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
   const today = () => isoDate(clock());
   const clients = [...(options.clients ?? demoClients())];
   const invoices = [...(options.invoices ?? demoInvoices())];
-  const cases: CaseState[] = (options.cases ?? demoCases(clients)).map((entry) => ({
-    ...entry,
-    escalations: [...entry.escalations],
+  const cases: CaseState[] = (options.cases ?? demoCases(clients)).map(
+    ({ credit: _credit, ...entry }) => ({ ...entry, escalations: [...entry.escalations] }),
+  );
+  // Every proposal ever made, so a pending one blocks closing its case whatever anyone says.
+  const proposals: Mutable<Credit>[] = (options.credits ?? demoCredits()).map((credit) => ({
+    ...credit,
   }));
   // Every write is remembered by its request id, so a replayed call is answered with what it already
   // did and never writes twice.
   const logged = new Map<string, SupportCase>();
   const recleans = new Map<string, SupportCase>();
+  const proposed = new Map<string, Credit>();
   const credits = new Map<string, CreditNote>();
+  const withdrawals = new Map<string, Credit>();
   const escalations = new Map<string, EscalationReceipt>();
   const closures = new Map<string, SupportCase>();
   let creditNoteNumber = 500;
 
-  const snapshot = (entry: CaseState): SupportCase => ({
-    ...entry,
-    reclean: entry.reclean === null ? null : { ...entry.reclean },
-    credit: entry.credit === null ? null : { ...entry.credit },
-    escalations: entry.escalations.map((escalation) => ({ ...escalation })),
-  });
+  /** The case's credit: its pending or issued proposal, if any. */
+  const liveCredit = (caseId: string): Mutable<Credit> | undefined =>
+    proposals.find((credit) => credit.caseId === caseId && credit.status !== "withdrawn");
+
+  const snapshot = (entry: CaseState): SupportCase => {
+    const credit = liveCredit(entry.id);
+    return {
+      ...entry,
+      reclean: entry.reclean === null ? null : { ...entry.reclean },
+      credit: credit === undefined ? null : { ...credit },
+      escalations: entry.escalations.map((escalation) => ({ ...escalation })),
+    };
+  };
+
+  const findCredit = (id: string): Mutable<Credit> => {
+    const credit = proposals.find(
+      (candidate) => candidate.id.toLowerCase() === id.trim().toLowerCase(),
+    );
+    if (credit === undefined) {
+      throw new SupportDeskError(
+        "not_found",
+        `No credit proposal has the id ${JSON.stringify(id)}. list_cases shows a case's credit. Nothing was written.`,
+      );
+    }
+    return credit;
+  };
+
+  const creditText = (credit: Credit): string =>
+    `${credit.id}, ${money(credit.creditCents)} to ${credit.client} on ${credit.invoiceId} line ${credit.line}`;
 
   const findClientById = (id: string): Client => {
     const client = clients.find(
@@ -768,7 +887,6 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
         openedOn: opened,
         firstResponseDue: opened,
         reclean: null,
-        credit: null,
         escalations: [],
         outcome: null,
         closedOn: null,
@@ -825,41 +943,35 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
       return receipt;
     },
 
-    async issueCredit(input, { requestId }): Promise<CreditNote> {
-      const prior = credits.get(requestId);
+    async listCredits(filter: CreditFilter = {}): Promise<readonly Credit[]> {
+      const same = (value: string, wanted: string | undefined) =>
+        wanted === undefined || value.toLowerCase() === wanted.trim().toLowerCase();
+      return proposals
+        .filter((credit) => same(credit.id, filter.creditId) && same(credit.caseId, filter.caseId))
+        .map((credit) => ({ ...credit }));
+    },
+
+    async proposeCredit(input, { requestId }): Promise<Credit> {
+      const prior = proposed.get(requestId);
       if (prior !== undefined) return prior;
 
       const entry = findCase(input.caseId);
       notClosed(entry);
       complaint(entry, "a credit");
-      if (entry.credit?.status === "waiting") {
-        throw new SupportDeskError(
-          "credit_waiting",
-          `${entry.id} already has a credit of ${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line} waiting for a person. Nothing more was credited.`,
-          { caseId: entry.id },
-        );
-      }
-      if (entry.credit !== null) {
-        throw new SupportDeskError(
-          "already_credited",
-          `${entry.id} already has credit note ${entry.credit.creditNoteId ?? ""} for ${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line}. A case gets one credit; nothing more was credited.`,
-          { caseId: entry.id },
-        );
-      }
       const record = invoices.find(
         (candidate) => candidate.id.toLowerCase() === input.invoiceId.trim().toLowerCase(),
       );
       if (record === undefined) {
         throw new SupportDeskError(
           "not_found",
-          `No invoice has the number ${JSON.stringify(input.invoiceId)}. list_cases shows ${entry.clientName}'s invoice lines. Nothing was credited.`,
+          `No invoice has the number ${JSON.stringify(input.invoiceId)}. list_cases shows ${entry.clientName}'s invoice lines. Nothing was proposed.`,
           { caseId: entry.id },
         );
       }
       if (record.clientId !== entry.clientId) {
         throw new SupportDeskError(
           "wrong_client",
-          `${record.id} is not ${entry.clientName}'s invoice, so it cannot carry a credit for ${entry.id}. list_cases shows ${entry.clientName}'s invoice lines. Nothing was credited.`,
+          `${record.id} is not ${entry.clientName}'s invoice, so it cannot carry a credit for ${entry.id}. list_cases shows ${entry.clientName}'s invoice lines. Nothing was proposed.`,
           { caseId: entry.id },
         );
       }
@@ -868,48 +980,117 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
       if (line === undefined) {
         throw new SupportDeskError(
           "not_found",
-          `${invoice.id} has lines 1 to ${invoice.lines.length}; there is no line ${input.line}. Nothing was credited.`,
+          `${invoice.id} has lines 1 to ${invoice.lines.length}; there is no line ${input.line}. Nothing was proposed.`,
           { caseId: entry.id },
         );
       }
-      // The person approved a client and an amount; anything else is not what they approved.
-      const quote: CreditQuote = {
-        caseId: entry.id,
-        client: entry.clientName,
-        invoiceId: invoice.id,
-        line: line.line,
-        creditCents: line.creditCents,
-      };
-      if (
-        input.creditCents !== quote.creditCents ||
-        input.client.trim().toLowerCase() !== quote.client.toLowerCase()
-      ) {
+      // A case gets one credit: the same line again is a duplicate, another line is a second credit.
+      const live = liveCredit(entry.id);
+      if (live !== undefined) {
+        const sameLine = live.invoiceId === invoice.id && live.line === line.line;
+        const code: DeskRefusal = sameLine
+          ? "duplicate_credit"
+          : live.status === "issued"
+            ? "already_credited"
+            : "credit_pending";
+        const state =
+          live.status === "issued"
+            ? `was issued as credit note ${live.creditNoteId ?? ""}`
+            : "is waiting for a person's decision";
         throw new SupportDeskError(
-          "credit_changed",
-          `The credit on ${invoice.id} line ${line.line} for ${entry.id} is ${money(quote.creditCents)} to ${quote.client}, worked out by the desk; this approval named ${JSON.stringify(input.client)} and ${Number.isFinite(input.creditCents) ? money(input.creditCents) : String(input.creditCents)}. An approval covers only the client and amount the person was shown. Nothing was credited.`,
-          { quote, caseId: entry.id },
+          code,
+          `${entry.id} already has credit ${creditText(live)}, which ${state}. A case gets one credit; nothing more was proposed.`,
+          { caseId: entry.id, creditId: live.id },
         );
       }
-      creditNoteNumber += 1;
-      const note: CreditNote = {
-        id: `CN-${creditNoteNumber}`,
+      const highest = Math.max(
+        400,
+        ...proposals.map((credit) => Number(credit.id.replace(/\D/g, ""))),
+      );
+      const credit: Credit = {
+        id: `CR-${highest + 1}`,
+        status: "pending",
         caseId: entry.id,
-        clientName: entry.clientName,
+        clientId: entry.clientId,
+        client: entry.clientName,
         invoiceId: invoice.id,
         line: line.line,
         lineName: line.name,
         creditCents: line.creditCents,
+        proposedOn: today(),
+        creditNoteId: null,
+        withdrawnReason: null,
+      };
+      proposals.push({ ...credit });
+      proposed.set(requestId, credit);
+      return credit;
+    },
+
+    async issueCredit(input, { requestId }): Promise<CreditNote> {
+      const prior = credits.get(requestId);
+      if (prior !== undefined) return prior;
+
+      const credit = findCredit(input.creditId);
+      if (credit.status === "issued") {
+        throw new SupportDeskError(
+          "already_credited",
+          `${credit.id} was already issued as credit note ${credit.creditNoteId ?? ""}. Nothing more was credited.`,
+          { caseId: credit.caseId, creditId: credit.id },
+        );
+      }
+      // The person approved this proposal as it stood; anything else is not what they approved.
+      if (!sameFacts(input.approved, creditApprovalFacts(credit))) {
+        throw new SupportDeskError(
+          "credit_changed",
+          `${credit.id} is not what the person approved: it changed after its facts were read. It now stands as ${creditText(credit)}, ${credit.status}. Nothing was credited.`,
+          { caseId: credit.caseId, creditId: credit.id },
+        );
+      }
+      const entry = findCase(credit.caseId);
+      notClosed(entry);
+      creditNoteNumber += 1;
+      const note: CreditNote = {
+        id: `CN-${creditNoteNumber}`,
+        creditId: credit.id,
+        caseId: credit.caseId,
+        clientName: credit.client,
+        invoiceId: credit.invoiceId,
+        line: credit.line,
+        lineName: credit.lineName,
+        creditCents: credit.creditCents,
         issuedOn: today(),
       };
-      entry.credit = {
-        status: "issued",
-        invoiceId: invoice.id,
-        line: line.line,
-        creditCents: line.creditCents,
-        creditNoteId: note.id,
-      };
+      credit.status = "issued";
+      credit.creditNoteId = note.id;
       credits.set(requestId, note);
       return note;
+    },
+
+    async withdrawCredit(input, { requestId }): Promise<Credit> {
+      const prior = withdrawals.get(requestId);
+      if (prior !== undefined) return prior;
+
+      const credit = findCredit(input.creditId);
+      const reason = required(input.reason, "why the credit will not be issued (reason)");
+      if (credit.status === "issued") {
+        throw new SupportDeskError(
+          "already_credited",
+          `${credit.id} was already issued as credit note ${credit.creditNoteId ?? ""}, so it cannot be withdrawn. Nothing was changed.`,
+          { caseId: credit.caseId, creditId: credit.id },
+        );
+      }
+      if (credit.status === "withdrawn") {
+        throw new SupportDeskError(
+          "invalid",
+          `${credit.id} was already withdrawn (${credit.withdrawnReason ?? "no reason recorded"}). Nothing was changed.`,
+          { caseId: credit.caseId, creditId: credit.id },
+        );
+      }
+      credit.status = "withdrawn";
+      credit.withdrawnReason = reason;
+      const receipt: Credit = { ...credit };
+      withdrawals.set(requestId, receipt);
+      return receipt;
     },
 
     async escalateCase(input, { requestId }): Promise<EscalationReceipt> {
@@ -946,19 +1127,14 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
           { caseId: entry.id },
         );
       }
-      // A complaint about someone is never handed to anyone it names: the usual owner, then the
-      // person who owns complaints, then the head of the company, whoever is first and not named.
-      // A complaint is about someone's conduct when it was logged as staff or safety, or is handed
-      // on for one of those reasons, whatever reason the escalation then gives. A name put in
-      // `about` on any other case (a refund on a quality complaint) cannot send it away from the
-      // person who owns that reason.
-      const aboutConduct =
-        input.reason === "staff" ||
-        input.reason === "safety" ||
-        entry.category === "staff" ||
-        entry.category === "safety";
+      // A case is never handed to anyone it names, whatever the reason and however it was logged:
+      // the usual owner, then the person who owns complaints, then the head of the company, whoever
+      // is first and not named. Who it is about, the note and the client's complaint are all read,
+      // eagerly: a false match only ever sends the case to someone else.
       const subjects = new Set(
-        aboutConduct && about !== null ? findPeople(facts, about).map((named) => named.id) : [],
+        [about ?? "", note, entry.summary].flatMap((words) =>
+          findPeople(facts, words).map((named) => named.id),
+        ),
       );
       const usual = ownerFor(input.reason);
       const candidates = [usual, person(facts, refunds.complaintOwner), companyHead(facts)].filter(
@@ -1003,11 +1179,15 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
         input.outcome,
         "the outcome: what was done and what the client said",
       );
-      if (entry.credit?.status === "waiting") {
+      // The desk's record decides, whatever a message or the office board says about it.
+      const pending = proposals.find(
+        (credit) => credit.caseId === entry.id && credit.status === "pending",
+      );
+      if (pending !== undefined) {
         throw new SupportDeskError(
-          "credit_waiting",
-          `${entry.id} has a credit of ${money(entry.credit.creditCents)} waiting for a person. It stays open until they decide. Nothing was closed.`,
-          { caseId: entry.id },
+          "credit_pending",
+          `${entry.id} has credit ${creditText(pending)}, waiting for a person's decision. It stays open until it is issued or withdrawn. Nothing was closed.`,
+          { caseId: entry.id, creditId: pending.id },
         );
       }
       if (entry.reclean !== null && !entry.reclean.done) {

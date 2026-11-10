@@ -1,14 +1,22 @@
 /**
  * The demonstration desk's limits, each one enforced in code: invoice lines priced from the price book
- * and the credit worked out here, a credit issued only as the desk worked it out and once per case, the
+ * and the credit worked out here, a credit proposed once per case and issued only as a person approved it, the
  * re-clean window and the kinds of case a re-clean puts right, the person a case is escalated to (never
  * the person a complaint is about), and the conditions a case must meet to close. Every write is
  * replayed under the same request id and must happen once.
  */
 
 import { describe, expect, it } from "vitest";
-import { companyHead, escalationOwner, loadCompanyFacts, person } from "./company.js";
-import { DEMO_NOW, fakeSupportDesk, type SupportDesk, SupportDeskError } from "./desk.js";
+import { companyHead, escalationOwner, findPeople, loadCompanyFacts, person } from "./company.js";
+import {
+  type Credit,
+  creditApprovalFacts,
+  DEMO_NOW,
+  demoCredits,
+  fakeSupportDesk,
+  type SupportDesk,
+  SupportDeskError,
+} from "./desk.js";
 
 const company = loadCompanyFacts();
 const refunds = company.policies.refunds;
@@ -28,14 +36,11 @@ async function refusal(promise: Promise<unknown>): Promise<SupportDeskError> {
 
 const priceOf = (id: string) => company.priceBook.find((item) => item.id === id);
 
-/** The credit for C-301 on the first line of its client's October invoice, as the desk works it out. */
-const CREDIT = {
-  caseId: "C-301",
-  client: "Hawthorne Family Dental",
-  invoiceId: "INV-2041",
-  line: 1,
-  creditCents: RECOVERY,
-};
+/**
+ * A credit for C-302 on the first line of its client's October invoice: the desk works out the rest.
+ * C-301 and C-304 already have a demonstration credit pending, so a fresh proposal is on C-302.
+ */
+const CREDIT = { caseId: "C-302", invoiceId: "INV-2042", line: 1 };
 
 const SAFETY = {
   clientId: "CL-102",
@@ -201,65 +206,138 @@ describe("fakeSupportDesk: re-cleans", () => {
 });
 
 describe("fakeSupportDesk: credits", () => {
-  it("issues the credit the desk worked out, records it on the case, and issues it once on replay", async () => {
+  it("proposes the credit the desk works out, issues nothing, and records one proposal on replay", async () => {
     const support = desk();
-    const note = await support.issueCredit(CREDIT, { requestId: "c1" });
-    const again = await support.issueCredit(CREDIT, { requestId: "c1" });
-    expect(again).toEqual(note);
+    const proposal = await support.proposeCredit(CREDIT, { requestId: "p1" });
+    const again = await support.proposeCredit(CREDIT, { requestId: "p1" });
+    expect(again).toEqual(proposal);
+    expect(proposal).toMatchObject({
+      id: "CR-402",
+      status: "pending",
+      caseId: "C-302",
+      clientId: "CL-102",
+      client: "Little Acorns Childcare",
+      invoiceId: "INV-2042",
+      line: 1,
+      creditCents: RECOVERY,
+      creditNoteId: null,
+    });
+    expect(await support.listCredits({ caseId: "C-302" })).toEqual([proposal]);
+    const [proposed] = await support.listCases({ caseId: "C-302" });
+    expect(proposed?.credit).toEqual(proposal);
+  });
+
+  it("refuses a second credit for the same line", async () => {
+    const support = desk();
+    await support.proposeCredit(CREDIT, { requestId: "p1" });
+    const pending = await refusal(support.proposeCredit(CREDIT, { requestId: "p2" }));
+    expect(pending.code).toBe("duplicate_credit");
+    const [proposal] = await support.listCredits({ caseId: "C-302" });
+    await support.issueCredit(
+      { creditId: proposal?.id ?? "", approved: creditApprovalFacts(proposal as Credit) },
+      { requestId: "i1" },
+    );
+    const issued = await refusal(support.proposeCredit(CREDIT, { requestId: "p3" }));
+    expect(issued.code).toBe("duplicate_credit");
+    // Another line on a case that already has its credit is not a second credit either.
+    const other = await refusal(support.proposeCredit({ ...CREDIT, line: 2 }, { requestId: "p4" }));
+    expect(other.code).toBe("already_credited");
+    expect(await support.listCredits({ caseId: "C-302" })).toHaveLength(1);
+  });
+
+  it("refuses another client's invoice, a missing line, a question, a closed case and a case with a credit pending", async () => {
+    const support = desk();
+    const code = async (input: typeof CREDIT, id: string) =>
+      (await refusal(support.proposeCredit(input, { requestId: id }))).code;
+    expect(await code({ ...CREDIT, invoiceId: "INV-2041" }, "w1")).toBe("wrong_client");
+    expect(await code({ ...CREDIT, line: 3 }, "w2")).toBe("not_found");
+    expect(await code({ ...CREDIT, invoiceId: "INV-0001" }, "w3")).toBe("not_found");
+    expect(await code({ ...CREDIT, caseId: "C-303" }, "w4")).toBe("not_a_complaint");
+    expect(await code({ ...CREDIT, caseId: "C-300" }, "w5")).toBe("closed");
+    expect(await code({ ...CREDIT, caseId: "C-304", invoiceId: "INV-2044", line: 2 }, "w6")).toBe(
+      "credit_pending",
+    );
+    expect(await code({ ...CREDIT, caseId: "C-304", invoiceId: "INV-2044", line: 1 }, "w7")).toBe(
+      "duplicate_credit",
+    );
+  });
+
+  it("issues exactly the approved proposal once on replay, and marks it issued", async () => {
+    const support = desk();
+    const proposal = await support.proposeCredit(CREDIT, { requestId: "p1" });
+    const input = { creditId: proposal.id, approved: creditApprovalFacts(proposal) };
+    const note = await support.issueCredit(input, { requestId: "i1" });
+    expect(await support.issueCredit(input, { requestId: "i1" })).toEqual(note);
     expect(note).toMatchObject({
       id: "CN-501",
-      caseId: "C-301",
-      invoiceId: "INV-2041",
+      creditId: proposal.id,
+      caseId: "C-302",
+      invoiceId: "INV-2042",
       line: 1,
       creditCents: RECOVERY,
       issuedOn: "2026-11-09",
     });
-    const [credited] = await support.listCases({ caseId: "C-301" });
-    expect(credited?.credit).toEqual({
-      status: "issued",
-      invoiceId: "INV-2041",
-      line: 1,
-      creditCents: RECOVERY,
-      creditNoteId: "CN-501",
-    });
-    const second = await refusal(support.issueCredit(CREDIT, { requestId: "c2" }));
-    expect(second.code).toBe("already_credited");
+    const [issued] = await support.listCredits({ creditId: proposal.id });
+    expect(issued).toMatchObject({ status: "issued", creditNoteId: "CN-501" });
+    const twice = await refusal(support.issueCredit(input, { requestId: "i2" }));
+    expect(twice.code).toBe("already_credited");
   });
 
-  it("issues nothing when the amount or client asked about is not the desk's, and says what is", async () => {
+  it("refuses when the proposal changed after the facts were read", async () => {
     const support = desk();
+    const proposal = await support.proposeCredit(CREDIT, { requestId: "p1" });
+    const approved = creditApprovalFacts(proposal);
     for (const changed of [
-      { ...CREDIT, creditCents: RECOVERY + 1 },
-      { ...CREDIT, creditCents: 50000 },
-      { ...CREDIT, client: "Someone Else" },
+      { ...approved, creditCents: RECOVERY + 1 },
+      { ...approved, client: "Someone Else" },
+      { ...approved, line: 2 },
     ]) {
-      const refused = await refusal(support.issueCredit(changed, { requestId: "c3" }));
+      const refused = await refusal(
+        support.issueCredit({ creditId: proposal.id, approved: changed }, { requestId: "c" }),
+      );
       expect(refused.code).toBe("credit_changed");
-      expect(refused.quote).toEqual(CREDIT);
     }
-    const [untouched] = await support.listCases({ caseId: "C-301" });
-    expect(untouched?.credit).toBeNull();
+    // Withdrawn while a person was deciding: the grant covers a pending proposal that is gone.
+    await support.withdrawCredit(
+      { creditId: proposal.id, reason: "Declined by a person." },
+      { requestId: "w1" },
+    );
+    const withdrawn = await refusal(
+      support.issueCredit({ creditId: proposal.id, approved }, { requestId: "c2" }),
+    );
+    expect(withdrawn.code).toBe("credit_changed");
+    expect((await support.listCredits({ creditId: proposal.id }))[0]?.status).toBe("withdrawn");
   });
 
-  it("refuses another client's invoice, a missing line, a question, a closed case and a credit already waiting", async () => {
+  it("withdraws a pending proposal once on replay with its reason, and never an issued one", async () => {
     const support = desk();
-    const code = async (input: typeof CREDIT, id: string) =>
-      (await refusal(support.issueCredit(input, { requestId: id }))).code;
-    expect(await code({ ...CREDIT, invoiceId: "INV-2042" }, "w1")).toBe("wrong_client");
-    expect(await code({ ...CREDIT, line: 3 }, "w2")).toBe("not_found");
-    expect(await code({ ...CREDIT, invoiceId: "INV-0001" }, "w3")).toBe("not_found");
-    expect(await code({ ...CREDIT, caseId: "C-303", client: "Sellwood Law Partners" }, "w4")).toBe(
-      "not_a_complaint",
-    );
-    expect(await code({ ...CREDIT, caseId: "C-300", client: "Gateway Accounting" }, "w5")).toBe(
-      "closed",
+    const proposal = await support.proposeCredit(CREDIT, { requestId: "p1" });
+    const input = { creditId: proposal.id, reason: "The person approving credits declined it." };
+    const withdrawn = await support.withdrawCredit(input, { requestId: "w1" });
+    expect(await support.withdrawCredit(input, { requestId: "w1" })).toEqual(withdrawn);
+    expect(withdrawn).toMatchObject({ status: "withdrawn", withdrawnReason: input.reason });
+    expect((await support.listCases({ caseId: "C-302" }))[0]?.credit).toBeNull();
+    expect((await refusal(support.withdrawCredit(input, { requestId: "w2" }))).code).toBe(
+      "invalid",
     );
     expect(
-      await code(
-        { ...CREDIT, caseId: "C-304", client: "Burnside Property Group", invoiceId: "INV-2044" },
-        "w6",
-      ),
-    ).toBe("credit_waiting");
+      (await refusal(support.withdrawCredit({ ...input, reason: " " }, { requestId: "w3" }))).code,
+    ).toBe("invalid");
+    expect(
+      (await refusal(support.withdrawCredit({ ...input, creditId: "CR-9" }, { requestId: "w4" })))
+        .code,
+    ).toBe("not_found");
+
+    const other = desk();
+    const issued = await other.proposeCredit(CREDIT, { requestId: "p" });
+    await other.issueCredit(
+      { creditId: issued.id, approved: creditApprovalFacts(issued) },
+      { requestId: "i" },
+    );
+    expect(
+      (await refusal(other.withdrawCredit({ ...input, creditId: issued.id }, { requestId: "w" })))
+        .code,
+    ).toBe("already_credited");
   });
 });
 
@@ -308,15 +386,15 @@ describe("fakeSupportDesk: escalation", () => {
     );
     expect(aboutHead.toPersonId).toBe(owner.id);
 
-    // Only a staff complaint has a subject: a name in `about` on a refund (the model naming who it
-    // wants the case to go to) never sends it away from the person who decides money back.
+    // Whatever the reason, a case never goes to anyone it names: a refund naming the person who
+    // decides money back goes up the line instead.
     const refundOwner = person(company, refunds.refundNeeds);
-    const misnamed = await desk().escalateCase(
+    const named = await desk().escalateCase(
       { caseId: "C-301", reason: "refund", note: "Wants October back.", about: refundOwner?.name },
       { requestId: "s3" },
     );
-    expect(misnamed.toPersonId).toBe(refundOwner?.id);
-    expect(misnamed.redirected).toBe(false);
+    expect(named.toPersonId).not.toBe(refundOwner?.id);
+    expect(named.redirected).toBe(true);
 
     // A crew member the record does not list is not a person the case could go to.
     const crew = await desk().escalateCase(
@@ -425,13 +503,68 @@ describe("fakeSupportDesk: escalation", () => {
       );
       expect(receipt.toPersonId, reason).not.toBe(owner.id);
     }
-    // A refund on a case that is not about anyone still ignores a misplaced name.
-    const refundOwner = person(company, refunds.refundNeeds);
-    const refund = await desk().escalateCase(
-      { caseId: "C-301", reason: "refund", note: "Money back.", about: refundOwner?.name },
-      { requestId: "st-refund" },
+  });
+
+  it("a complaint naming Tom under reason quality is not routed to Tom", async () => {
+    const owner = person(company, refunds.complaintOwner);
+    const head = companyHead(company);
+    if (owner === undefined || head === undefined) throw new Error("company changed");
+    const first = owner.name.split(" ")[0] ?? owner.name;
+    // Logged as a quality complaint, with the person named only in the client's own words.
+    const support = desk();
+    const logged = await support.logCase(
+      {
+        ...SAFETY,
+        category: "quality",
+        summary: `Floors left dirty, and ${first} hung up on us when we called.`,
+      },
+      { requestId: "q-log" },
     );
-    expect(refund.toPersonId).toBe(refundOwner?.id);
+    const fromSummary = await support.escalateCase(
+      { caseId: logged.id, reason: "unresolved", note: "Third poor visit this month." },
+      { requestId: "q1" },
+    );
+    expect(fromSummary.toPersonId).toBe(head.id);
+    expect(fromSummary.redirected).toBe(true);
+    // Named in the note on a case whose summary names nobody.
+    const fromNote = await desk().escalateCase(
+      { caseId: "C-301", reason: "unresolved", note: `The client says ${first} ignored them.` },
+      { requestId: "q2" },
+    );
+    expect(fromNote.toPersonId).toBe(head.id);
+    // A case that names nobody still goes to its usual owner.
+    const plain = await desk().escalateCase(
+      { caseId: "C-301", reason: "unresolved", note: "Third poor visit this month." },
+      { requestId: "q3" },
+    );
+    expect(plain.toPersonId).toBe(owner.id);
+    expect(plain.redirected).toBe(false);
+  });
+
+  it("findPeople matches DW and D. Whitfield to Dana", async () => {
+    const dana = person(company, "dana-whitfield");
+    if (dana === undefined) throw new Error("company changed");
+    expect(findPeople(company, "it was DW who promised it").map((who) => who.id)).toEqual([
+      dana.id,
+    ]);
+    expect(findPeople(company, "D. Whitfield signed it").map((who) => who.id)).toEqual([dana.id]);
+    // The money-back owner named by her initials is not handed the case.
+    const receipt = await desk().escalateCase(
+      { caseId: "C-301", reason: "refund", note: "DW promised a refund on the phone." },
+      { requestId: "dw" },
+    );
+    expect(receipt.toPersonId).not.toBe(dana.id);
+    expect(receipt.redirected).toBe(true);
+  });
+
+  it("existing title-word matches route as before", async () => {
+    // The words colleagues used before aliases existed still find the same people.
+    const ids = (words: string) => findPeople(company, words).map((who) => who.id);
+    expect(ids("the client services lead")).toEqual(["tom-becker"]);
+    expect(ids("HR")).toEqual(["jules-okafor"]);
+    expect(ids("the operations manager")).toEqual(["priya-raman"]);
+    expect(ids("finance and billing")).toEqual(["eileen-hart"]);
+    expect(ids("the night crew")).toEqual([]);
   });
 
   it("excludes every person a complaint names, not only the first", async () => {
@@ -519,7 +652,7 @@ describe("fakeSupportDesk: closing a case", () => {
     const code = async (caseId: string, outcome = "Sorted.") =>
       (await refusal(support.resolveCase({ caseId, outcome }, { requestId: `y-${caseId}` }))).code;
     expect(await code("C-302", "  ")).toBe("invalid");
-    expect(await code("C-304")).toBe("credit_waiting");
+    expect(await code("C-304")).toBe("credit_pending");
     expect(await code("C-305")).toBe("reclean_pending");
     const safety = await support.logCase(SAFETY, { requestId: "log" });
     expect(await code(safety.id)).toBe("not_escalated");
@@ -537,16 +670,45 @@ describe("fakeSupportDesk: closing a case", () => {
     ]);
   });
 
+  it("resolve_case refuses while a credit proposal is pending", async () => {
+    const support = desk();
+    const proposal = await support.proposeCredit(CREDIT, { requestId: "p" });
+    const pending = await refusal(
+      support.resolveCase({ caseId: "C-302", outcome: "Sorted." }, { requestId: "r1" }),
+    );
+    expect(pending.code).toBe("credit_pending");
+    expect(pending.message).toContain(proposal.id);
+    expect((await support.listCases({ caseId: "C-302" }))[0]?.status).toBe("open");
+  });
+
+  it("a withdrawn proposal lets the case resolve", async () => {
+    const support = desk();
+    const proposal = await support.proposeCredit(CREDIT, { requestId: "p" });
+    await support.withdrawCredit(
+      { creditId: proposal.id, reason: "Declined by the person who approves credits." },
+      { requestId: "w" },
+    );
+    const closed = await support.resolveCase(
+      { caseId: "C-302", outcome: "Credit declined; the client was told." },
+      { requestId: "r" },
+    );
+    expect(closed.status).toBe("closed");
+  });
+
   it("closes a complaint once its booked re-clean is no longer waiting, and after a credit is issued", async () => {
     const support = desk();
-    await support.issueCredit(CREDIT, { requestId: "credit" });
+    const proposal = await support.proposeCredit(CREDIT, { requestId: "propose" });
+    await support.issueCredit(
+      { creditId: proposal.id, approved: creditApprovalFacts(proposal) },
+      { requestId: "credit" },
+    );
     const closed = await support.resolveCase(
-      { caseId: "C-301", outcome: "Credit note issued on the October invoice." },
+      { caseId: "C-302", outcome: "Credit note issued on the October invoice." },
       { requestId: "close" },
     );
     expect(closed.status).toBe("closed");
-    // Booking a re-clean makes the case wait for it again.
-    const other = desk();
+    // Booking a re-clean makes the case wait for it again (with no credit pending on it).
+    const other = fakeSupportDesk({ credits: [], now: () => new Date(DEMO_NOW) });
     await other.bookReclean({ caseId: "C-301", date: "2026-11-11" }, { requestId: "book" });
     expect(
       (await refusal(other.resolveCase({ caseId: "C-301", outcome: "Done." }, { requestId: "c" })))
@@ -556,6 +718,16 @@ describe("fakeSupportDesk: closing a case", () => {
 });
 
 describe("fakeSupportDesk: demonstration data", () => {
+  it("prices each demonstration credit as the desk would propose it today", async () => {
+    expect(demoCredits().map((credit) => credit.caseId)).toEqual(["C-304", "C-301"]);
+    for (const seeded of demoCredits()) {
+      const fresh = fakeSupportDesk({ credits: [], now: () => new Date(DEMO_NOW) });
+      const proposal = await fresh.proposeCredit(seeded, { requestId: "p" });
+      const { id: _id, proposedOn: _on, ...expected } = seeded;
+      expect(proposal, seeded.id).toMatchObject(expected);
+    }
+  });
+
   it("lists cases by client, by id and by status", async () => {
     const support = desk();
     expect((await support.listCases()).map((entry) => entry.id)).toEqual([

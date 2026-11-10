@@ -13,13 +13,21 @@
     {
       "toolCalls": [
         {
-          "name": "offer_credit",
+          "name": "propose_credit",
           "args": {
             "caseId": "C-301",
-            "client": "Hawthorne Family Dental",
             "invoiceId": "INV-2041",
-            "line": 1,
-            "creditCents": 15000
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "offer_credit",
+          "args": {
+            "creditId": "CR-401"
           }
         }
       ]
@@ -43,9 +51,7 @@
       "toolCalls": [
         {
           "name": "list_cases",
-          "args": {
-            "clientId": "CL-105"
-          }
+          "args": {}
         }
       ]
     },
@@ -95,9 +101,7 @@
       "toolCalls": [
         {
           "name": "list_cases",
-          "args": {
-            "clientId": "CL-102"
-          }
+          "args": {}
         }
       ]
     },
@@ -203,9 +207,7 @@
       "toolCalls": [
         {
           "name": "list_cases",
-          "args": {
-            "clientId": "CL-103"
-          }
+          "args": {}
         }
       ]
     },
@@ -254,9 +256,7 @@
       "toolCalls": [
         {
           "name": "list_cases",
-          "args": {
-            "clientId": "CL-104"
-          }
+          "args": {}
         }
       ]
     },
@@ -279,9 +279,7 @@
       "toolCalls": [
         {
           "name": "list_cases",
-          "args": {
-            "clientId": "CL-103"
-          }
+          "args": {}
         }
       ]
     },
@@ -322,9 +320,7 @@
       "toolCalls": [
         {
           "name": "list_cases",
-          "args": {
-            "clientId": "CL-102"
-          }
+          "args": {}
         }
       ]
     },
@@ -357,13 +353,21 @@
     {
       "toolCalls": [
         {
-          "name": "offer_credit",
+          "name": "propose_credit",
           "args": {
             "caseId": "C-301",
-            "client": "Hawthorne Family Dental",
             "invoiceId": "INV-2041",
-            "line": 1,
-            "creditCents": 15000
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "offer_credit",
+          "args": {
+            "creditId": "CR-401"
           }
         }
       ]
