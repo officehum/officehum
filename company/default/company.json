@@ -736,6 +736,7 @@
   ],
   "staffPolicies": {
     "timeOffNoticeDays": 14,
+    "pastAbsenceWindowDays": 31,
     "overtimeNeedsApproval": true,
     "payQuestionsTo": "jules-okafor",
     "disciplineTo": "priya-raman",

@@ -18,10 +18,11 @@ the law may protect is never refused automatically: a person decides it.
 | `vacation` | A holiday, a trip, a day off for something they want to do. |
 | `personal` / `other` / `unspecified` | Anything else, or no reason given. |
 
-1. **Record it** with `record_time_off_request` straight away: the employee's name as they gave it
-   (a first name alone is enough; the desk says if two people share it), the first and last day, and
-   the reason category from their own words, even if they use no legal terms. Never ask for a
-   surname or a year first. When they give no year, take it from this week's dates in
+1. **Record it** with `record_time_off_request` straight away: the first and last day, and
+   the reason category from their own words, even if they use no legal terms. The request is the
+   sender's own: leave `employee` out. Give `employee` (a first name alone is enough; the desk says if
+   two people share it) only when someone on the company record files for another employee; the desk
+   refuses a crew member filing for someone else. Never ask for a surname or a year first. When they give no year, take it from this week's dates in
    `list_availability`'s heading: the next such date from today.
 2. **Pending, not approved.** Tell the employee it is recorded and who decides it, from the receipt.
 3. **Short notice, ordinary reason**: the desk refuses it with the notice it worked out. Ask with

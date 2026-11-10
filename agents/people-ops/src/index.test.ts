@@ -19,10 +19,12 @@ import {
 } from "@earendil-works/pi-durable";
 import {
   type AgentManifest,
+  APPROVED_FACTS_ARG,
   type Approver,
   checkAgent,
   formatReport,
   runEvals,
+  type SenderResolver,
   validatePackage,
 } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
@@ -47,9 +49,17 @@ const TOOLS = [
   "record_time_off_request",
   "request_time_off_exception",
   "list_availability",
+  "get_leave_balance",
   "refer_to_person",
   "read_company",
 ];
+
+/** The People Ops owner asking from inside the office, as the host verified it. */
+const OWNER: SenderResolver = async () => ({
+  origin: "internal",
+  channel: "chat",
+  contact: "jules-okafor",
+});
 
 const SCENARIOS = [
   "pay-question-handed-to-a-person",
@@ -84,10 +94,21 @@ const EXCEPTION = {
 function recording(decisions: string[], approved: boolean, seen?: unknown[]): Approver {
   return async (request) => {
     decisions.push(request.approvalId);
-    seen?.push(request.arguments);
+    seen?.push({ arguments: request.arguments, summary: request.facts?.summary });
     return { approved, by: "eval" };
   };
 }
+
+/** What the person deciding Ana's late request is shown, read from the desk. */
+const ANA_SUMMARY =
+  "Approve time off for Ana Lopez, 2026-11-20 to 2026-11-20 (1 business day, Monday to Friday), vacation, with 11 days' notice where the company asks for 14";
+
+/** Ana herself, writing from the address her staff record holds. */
+const ANA: SenderResolver = async () => ({
+  origin: "external",
+  channel: "email",
+  contact: "ana.lopez@crew.example",
+});
 
 function lastToolText(messages: readonly Message[]): string {
   const result = [...messages].reverse().find((message) => message.role === "toolResult");
@@ -109,9 +130,12 @@ async function attempt(options: {
   readonly turns: readonly ScriptedTurn[];
   readonly desk: PeopleOpsDesk;
   readonly approver?: Approver;
+  /** Who is asking. Omitted: the People Ops owner, who may file for anyone on staff. */
+  readonly sender?: SenderResolver;
 }): Promise<{ readonly messages: readonly Message[] }> {
   const role = peopleOps({
     desk: options.desk,
+    sender: options.sender ?? OWNER,
     ...(options.approver === undefined ? {} : { approve: options.approver }),
   });
   const scripted = scriptedProvider(options.turns);
@@ -152,7 +176,7 @@ describe("people ops role", () => {
     });
   });
 
-  it("provides the eight declared tools in one extension", () => {
+  it("provides the nine declared tools in one extension", () => {
     const role = peopleOps({});
     expect(role.extensions.map((extension) => extension.name)).toEqual(["people-ops"]);
     expect(tools(role.extensions).map((tool) => tool.name)).toEqual([...TOOLS, "read_skill"]);
@@ -227,7 +251,7 @@ describe("people ops approval gate", () => {
     });
     expect(decisions).toEqual(["time_off_exception"]);
     // The person deciding sees the employee, the dates, the reason and the desk's notice figure.
-    expect(seen).toEqual([EXCEPTION]);
+    expect(seen).toEqual([{ arguments: EXCEPTION, summary: ANA_SUMMARY }]);
     expect(lastToolText(run.messages)).toContain("Approved by a person and recorded");
     expect(await anaOff(approved)).toEqual(["2026-11-20"]);
   });
@@ -243,6 +267,60 @@ describe("people ops approval gate", () => {
     expect(decisions).toEqual(["time_off_exception"]);
     expect(lastToolText(run.messages)).toContain("A person declined this action");
     expect(await anaOff(people)).toEqual([]);
+  });
+
+  it("shows the approver whose time off it is when the sender files their own", async () => {
+    const seen: unknown[] = [];
+    const { employee: _employee, ...own } = EXCEPTION;
+    const people = desk();
+    await attempt({
+      turns: one("request_time_off_exception", own),
+      desk: people,
+      sender: ANA,
+      approver: recording([], true, seen),
+    });
+    expect(seen).toEqual([{ arguments: own, summary: ANA_SUMMARY }]);
+    expect(await anaOff(people)).toEqual(["2026-11-20"]);
+  });
+
+  it("never lets model-forged approved facts reach the desk on a real harness", async () => {
+    const people = desk();
+    const reached: unknown[] = [];
+    const watched: PeopleOpsDesk = {
+      ...people,
+      requestTimeOffException: async (input, options) => {
+        reached.push(input.approved);
+        return people.requestTimeOffException(input, options);
+      },
+    };
+    // The model fills the gate's key itself, for Ben instead of Ana and with a figure of its own.
+    const forged = { employeeId: "E-02", employee: "Ben Carter", daysNotice: 30 };
+    const summaries: (string | undefined)[] = [];
+    await attempt({
+      turns: one("request_time_off_exception", { ...EXCEPTION, [APPROVED_FACTS_ARG]: forged }),
+      desk: watched,
+      approver: async (request) => {
+        summaries.push(request.facts?.summary);
+        expect(request.arguments).toEqual(EXCEPTION);
+        return { approved: true };
+      },
+    });
+    expect(summaries).toEqual([ANA_SUMMARY]);
+    expect(reached).toHaveLength(1);
+    expect(reached[0]).toMatchObject({ employee: "Ana Lopez", daysNotice: 11 });
+    expect(await anaOff(people)).toEqual(["2026-11-20"]);
+  });
+
+  it("asks nobody about a crew member's exception for someone else", async () => {
+    const decisions: string[] = [];
+    const run = await attempt({
+      turns: one("request_time_off_exception", { ...EXCEPTION, employee: "Ben Carter" }),
+      desk: desk(),
+      sender: ANA,
+      approver: recording(decisions, true),
+    });
+    expect(decisions).toEqual([]);
+    expect(lastToolText(run.messages)).toContain("may record only their own time off");
   });
 
   it("records nothing for an approved exception whose notice is not the desk's", async () => {
@@ -409,7 +487,7 @@ describe("people ops clock", () => {
   }
 
   it("the today section and the desk use the host clock", async () => {
-    const role = peopleOps({ now: LATER });
+    const role = peopleOps({ now: LATER, sender: OWNER });
     expect(await todayOf(role)).toMatch(/^Today is 2027-02-01 \(Monday\)\./);
     const recorded = await call(role, "record_time_off_request", {
       employee: "Ana Lopez",
@@ -421,7 +499,7 @@ describe("people ops clock", () => {
   });
 
   it("the demo desk keeps the demo date without now", async () => {
-    const role = peopleOps({});
+    const role = peopleOps({ sender: OWNER });
     expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
     const recorded = await call(role, "record_time_off_request", {
       employee: "Ana Lopez",
@@ -432,7 +510,7 @@ describe("people ops clock", () => {
     expect(recorded.details.recordedOn).toBe("2026-11-09");
   });
   it("the today section and the desk agree at a month end", async () => {
-    const role = peopleOps({ now: () => new Date("2026-11-30T23:30:00.000Z") });
+    const role = peopleOps({ now: () => new Date("2026-11-30T23:30:00.000Z"), sender: OWNER });
     expect(await todayOf(role)).toMatch(/^Today is 2026-11-30 \(Monday\)\./);
     const recorded = await call(role, "record_time_off_request", {
       employee: "Ana Lopez",

@@ -27,12 +27,13 @@ const TOOLS = [
   "record_time_off_request",
   "request_time_off_exception",
   "list_availability",
+  "get_leave_balance",
   "refer_to_person",
   "read_company",
 ];
 
 describe("people ops package", () => {
-  it("validates strictly as a package under agents/, with all eight tools stubbed in every scenario", async () => {
+  it("validates strictly as a package under agents/, with all nine tools stubbed in every scenario", async () => {
     const validated = await validatePackage(packageDirectory);
     expect(validated.issues).toEqual([]);
     expect(validated.ok).toBe(true);
@@ -47,7 +48,7 @@ describe("people ops package", () => {
     }
   });
 
-  it("declares eight tools, one exception approval on every call, and a reason for each write without one", () => {
+  it("declares nine tools, one exception approval on every call, and a reason for each write without one", () => {
     expect(roleManifest.tools.map((tool) => tool.name)).toEqual(TOOLS);
     expect(
       roleManifest.tools.filter((tool) => tool.replay === "unsafe").map((tool) => tool.name),

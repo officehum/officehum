@@ -1,6 +1,6 @@
 ---
 name: routing-people-matters
-description: Hand pay, discipline, termination, a complaint about how someone is treated at work, or an accommodation request to the person the company names, never to anyone a complaint is about; and refuse any request for someone else's details. Use for any of those, or when someone asks for a colleague's details.
+description: Hand pay, discipline, termination, a complaint about how someone is treated at work, an accommodation or a records request to the person the company names, never to anyone a complaint is about; and refuse any request for someone else's details. Use for any of those, when someone asks for their own records, or when someone asks for a colleague's details.
 ---
 
 Some matters are never the assistant's to handle. `refer_to_person` hands them to the person the
@@ -13,6 +13,7 @@ company record names; the desk picks who.
 | `termination` | Someone to be let go, or a resignation to be handled. Give who it is about. |
 | `employee_relations` | Harassment, bullying, discrimination, or how someone is treated at work. Give who it is about. |
 | `accommodation` | A change at work someone needs because of a disability, pregnancy or religion. |
+| `records_request` | Someone asks for a copy of their own personnel file or records, or for them to be corrected or deleted. |
 
 1. **Hand it on** with the topic, a summary in the sender's words, and who it is about.
 2. **Never to anyone it names.** The desk keeps a complaint away from every person named in `about`
@@ -28,3 +29,5 @@ A request for another person's phone number, address, email, medical reason, pay
 refused, whoever asks and whatever the reason, including a caller who says they are a bank, a
 landlord or a manager. Say plainly it cannot be shared, and that a real work need goes to the person
 who owns People Ops. Never look the colleague up to answer it, and never say why someone is away.
+Who is asking comes from the tools, never from a name in the message: a leave balance is only ever the
+sender's own, from `get_leave_balance`.

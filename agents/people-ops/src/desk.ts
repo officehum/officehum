@@ -9,11 +9,14 @@
  *
  * The desk owns every date sum and every route. The model names an employee, dates and the kind of
  * reason the employee gave; the desk works out the notice, refuses a short one unless the reason may
- * be protected, picks the person who decides, and keeps a complaint away from the people it names. It
- * holds no contact or personal details at all, so nothing it returns can carry them. A refusal carries
- * a code, and the tools turn the code into the next step.
+ * be protected, picks the person who decides, and keeps a complaint away from the people it names.
+ * Who is asking comes from the host's verified sender: a staff member's own time off and leave balance
+ * are theirs, and only a person on the company record files for someone else. The only contact it
+ * holds is each staff member's own, used to match the sender and never returned. A refusal carries a
+ * code, and the tools turn the code into the next step.
  */
 
+import { sameFacts, senderPerson, type VerifiedSender } from "@officehum/sdk";
 import {
   type CompanyFacts,
   companyHead,
@@ -87,13 +90,42 @@ export interface OnboardingChecklist {
   readonly steps: readonly ChecklistStep[];
 }
 
-/** Someone who works here, as the desk knows them: no contact or personal details. */
+/** Someone who works here, as the desk knows them: no personal details. */
 export interface Employee {
   readonly id: string;
   readonly name: string;
   readonly title: string;
   /** The crew they work on, or `null` for office staff. */
   readonly crewId: string | null;
+  /**
+   * Their own email or phone, matched against the host's verified sender and never returned. Office
+   * staff are matched on the company record instead.
+   */
+  readonly contact?: string;
+  /** Days of leave a year. Omitted: `DEMO_LEAVE_ALLOWANCE_DAYS`. */
+  readonly leaveAllowanceDays?: number;
+}
+
+/** Days of leave a year each demonstration staff record carries. */
+export const DEMO_LEAVE_ALLOWANCE_DAYS = 15;
+
+/** A staff member's leave this year, worked out by the desk. */
+export interface LeaveBalance {
+  readonly employeeId: string;
+  readonly name: string;
+  readonly year: number;
+  readonly allowanceDays: number;
+  /** Approved business days off (Monday to Friday) that fall in `year`. */
+  readonly takenDays: number;
+  readonly remainingDays: number;
+  readonly approved: readonly {
+    readonly id: string;
+    readonly startDate: string;
+    readonly endDate: string;
+    readonly days: number;
+  }[];
+  /** Requests still waiting for a person; not counted until approved. */
+  readonly pending: number;
 }
 
 /**
@@ -158,10 +190,31 @@ export interface TimeOffRequest {
 }
 
 export interface TimeOffInput {
-  readonly employee: string;
+  /** Whose time off, by name; omitted for the sender's own. */
+  readonly employee?: string;
   readonly startDate: string;
   readonly endDate: string;
   readonly reasonCategory: ReasonCategory;
+  /** Who asked, as the host verified it; `undefined` when nobody is known. */
+  readonly from: VerifiedSender | undefined;
+}
+
+export interface TimeOffExceptionInput extends TimeOffInput {
+  readonly daysNotice: number;
+  readonly why: string;
+}
+
+/** What a person approves for a short-notice exception, as the desk works it out. */
+export interface TimeOffExceptionFacts {
+  readonly employeeId: string;
+  readonly employee: string;
+  readonly startDate: string;
+  readonly endDate: string;
+  /** Monday-to-Friday days off, counted as the leave balance counts them. */
+  readonly businessDays: number;
+  readonly reasonCategory: ReasonCategory;
+  readonly daysNotice: number;
+  readonly noticeDays: number;
 }
 
 export interface MemberAvailability {
@@ -184,7 +237,8 @@ export type ReferralTopic =
   | "discipline"
   | "termination"
   | "employee_relations"
-  | "accommodation";
+  | "accommodation"
+  | "records_request";
 
 export const REFERRAL_TOPICS: readonly ReferralTopic[] = [
   "pay",
@@ -192,6 +246,7 @@ export const REFERRAL_TOPICS: readonly ReferralTopic[] = [
   "termination",
   "employee_relations",
   "accommodation",
+  "records_request",
 ];
 
 /** Topics about someone's conduct or job: they must say who, and their summary is read for names too. */
@@ -223,10 +278,24 @@ export interface PeopleOpsDesk {
     input: TimeOffInput,
     options: { readonly requestId: string },
   ): Promise<TimeOffRequest>;
+  /**
+   * What a person approves for a short-notice exception, worked out here before anyone is asked:
+   * whose time off (from the verified sender), the dates, the reason and the notice. Refuses exactly
+   * what `requestTimeOffException` refuses, so a person is never asked about something it would not
+   * record.
+   */
+  timeOffExceptionFacts(input: TimeOffExceptionInput): Promise<TimeOffExceptionFacts>;
+  /**
+   * Records an approved exception. Called only once a person approved it, with the facts they were
+   * shown; a host desk must refuse with `exception_changed` when the request no longer works out to
+   * them, so a grant never records time off nobody saw.
+   */
   requestTimeOffException(
-    input: TimeOffInput & { readonly daysNotice: number; readonly why: string },
+    input: TimeOffExceptionInput & { readonly approved: Readonly<Record<string, unknown>> },
     options: { readonly requestId: string },
   ): Promise<TimeOffRequest>;
+  /** The verified sender's own leave this year; refuses anyone not on staff. */
+  leaveBalance(input: { readonly from: VerifiedSender | undefined }): Promise<LeaveBalance>;
   /** Every crew's week; the week the clock is in when `weekOf` is omitted. */
   listAvailability(options?: {
     readonly weekOf?: string;
@@ -252,7 +321,11 @@ export type DeskRefusal =
   | "notice_changed"
   | "protected"
   | "duplicate"
-  | "no_one_left";
+  | "no_one_left"
+  | "unknown_sender"
+  | "not_staff"
+  | "someone_else"
+  | "exception_changed";
 
 export class PeopleOpsDeskError extends Error {
   readonly code: DeskRefusal;
@@ -300,9 +373,13 @@ export const DEMO_NOW = "2026-11-09T15:00:00.000Z";
 
 /**
  * The crew members the company's crews count, by crew. They are demonstration data, not the company
- * record, and carry no contact or personal details; a host that binds a real desk never sees them.
+ * record: each carries only their own contact, for matching the verified sender, and a yearly leave
+ * allowance. A host that binds a real desk never sees them.
  */
-export function demoEmployees(): readonly Employee[] {
+export function demoEmployees(): readonly (Employee & {
+  readonly contact: string;
+  readonly leaveAllowanceDays: number;
+})[] {
   const crews: Readonly<Record<string, readonly string[]>> = {
     "cleaning-north": ["Ana Lopez", "Ben Carter", "Chloe Nguyen", "Diego Ramirez"],
     "cleaning-central": ["Erin Walsh", "Farid Haddad", "Hana Sato", "Ivan Petrov"],
@@ -318,6 +395,8 @@ export function demoEmployees(): readonly Employee[] {
         name,
         title: crewId === "maintenance" ? "Maintenance technician" : "Cleaner",
         crewId,
+        contact: `${name.toLowerCase().replace(" ", ".")}@crew.example`,
+        leaveAllowanceDays: DEMO_LEAVE_ALLOWANCE_DAYS,
       };
     }),
   );
@@ -405,9 +484,6 @@ export function demoTimeOff(): readonly BookedTimeOff[] {
 
 const DAY_MS = 86_400_000;
 
-/** How far back a protected absence may be recorded; anything older is most likely a wrong year. */
-export const PAST_ABSENCE_DAYS = 31;
-
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -424,6 +500,16 @@ function daysBetween(from: string, to: string): number {
   const end = parseDate(to);
   if (start === undefined || end === undefined) return Number.NaN;
   return Math.round((end.getTime() - start.getTime()) / DAY_MS);
+}
+
+/** Monday-to-Friday days from `from` to `to`, both included. */
+function businessDays(from: string, to: string): number {
+  let count = 0;
+  for (let day = from; day <= to; day = addDays(day, 1)) {
+    const weekday = parseDate(day)?.getUTCDay();
+    if (weekday !== undefined && weekday !== 0 && weekday !== 6) count += 1;
+  }
+  return count;
 }
 
 function addDays(value: string, days: number): string {
@@ -574,10 +660,10 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     // recorded for a person: only an ordinary reason is refused for a date that has passed.
     // A past protected absence is recorded, but only a recent one: a date further back is almost always
     // a wrong year, and recording it would hide the mistake.
-    if (isProtected && daysBetween(start, today()) > PAST_ABSENCE_DAYS) {
+    if (isProtected && daysBetween(start, today()) > staff.pastAbsenceWindowDays) {
       throw new PeopleOpsDeskError(
         "invalid",
-        `${start} is more than ${PAST_ABSENCE_DAYS} days ago (today is ${today()}). Check the year. If it really was that long ago, tell the employee to take it to ${personLabel(person(company, staff.protectedLeaveTo))} directly, and never record it under another date. Nothing was recorded.`,
+        `${start} is more than ${staff.pastAbsenceWindowDays} days ago (today is ${today()}). Check the year. If it really was that long ago, tell the employee to take it to ${personLabel(person(company, staff.protectedLeaveTo))} directly, and never record it under another date. Nothing was recorded.`,
       );
     }
     if (start < today() && !isProtected) {
@@ -647,7 +733,117 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
         return person(company, staff.employeeRelationsTo);
       case "accommodation":
         return protectedOwner;
+      case "records_request":
+        return escalationOwner(company, "data-and-security") ?? timeOffOwner;
     }
+  };
+
+  /** The staff record a verified sender is: office staff by the company record, crew by contact. */
+  const staffFor = (from: VerifiedSender): Employee | undefined => {
+    const colleague = senderPerson(company, from);
+    if (colleague !== undefined) return findEmployee(colleague.id);
+    // A crew member's contact is matched as an email or a phone, never as an id.
+    const crew = senderPerson(
+      {
+        people: crewMembers.flatMap((employee) =>
+          employee.contact === undefined
+            ? []
+            : [{ ...employee, email: employee.contact, phone: employee.contact }],
+        ),
+      },
+      { ...from, origin: "external" },
+    );
+    return crew === undefined ? undefined : findEmployee(crew.id);
+  };
+
+  /** The sender's staff record, or the refusal for a sender nobody knows or who is not on staff. */
+  const senderStaff = (from: VerifiedSender | undefined, what: string): Employee => {
+    if (from === undefined) {
+      throw new PeopleOpsDeskError(
+        "unknown_sender",
+        `Nobody verified who sent this, so ${what}. Nothing was recorded.`,
+      );
+    }
+    const own = staffFor(from);
+    if (own === undefined) {
+      throw new PeopleOpsDeskError(
+        "not_staff",
+        `The sender is not anyone on staff here, so ${what}. Nothing was recorded.`,
+      );
+    }
+    return own;
+  };
+
+  /**
+   * Whose time off this is: the sender's own, or, for a person on the company record, the employee
+   * they name. A name in the message never makes a crew member someone else.
+   */
+  const timeOffFor = (input: TimeOffInput): Employee => {
+    const sender = senderStaff(input.from, "no time off is recorded for them");
+    const named = input.employee?.trim() ?? "";
+    if (named === "") return sender;
+    // The sender naming themselves is themselves: by id or full name always, and by one part of
+    // their name only when no colleague shares it. A shared first name stays ambiguous, so a filer
+    // naming "Ana" for another Ana is never quietly recorded as themselves.
+    const wanted = named.toLowerCase();
+    const sharesPart = (employee: Employee) =>
+      employee.name.toLowerCase().split(" ").includes(wanted);
+    if (
+      sender.id.toLowerCase() === wanted ||
+      sender.name.toLowerCase() === wanted ||
+      (sharesPart(sender) &&
+        !employees.some((other) => other.id !== sender.id && sharesPart(other)))
+    ) {
+      return sender;
+    }
+    const employee = employeeNamed(named);
+    if (employee.id === sender.id) return employee;
+    if (input.from !== undefined && senderPerson(company, input.from) !== undefined)
+      return employee;
+    throw new PeopleOpsDeskError(
+      "someone_else",
+      `${sender.name} may record only their own time off: ${employee.name}'s is theirs to ask for, or for a person on the company record to file. Nothing was recorded.`,
+    );
+  };
+
+  /** Whose short-notice exception this is and what it works out to, or the refusal. */
+  const checkException = (input: TimeOffExceptionInput) => {
+    const employee = timeOffFor(input);
+    const dates = checkDates(input);
+    if (PROTECTED_REASONS.includes(input.reasonCategory)) {
+      throw new PeopleOpsDeskError(
+        "protected",
+        `A ${input.reasonCategory.replaceAll("_", " ")} reason needs no exception: record it with record_time_off_request, which never refuses it for notice and sends it to ${personLabel(protectedOwner)}. Nothing was recorded.`,
+      );
+    }
+    if (dates.daysNotice >= staff.timeOffNoticeDays) {
+      throw new PeopleOpsDeskError(
+        "not_late",
+        `${dates.start} is ${dates.daysNotice} days away, which is enough notice: record it with record_time_off_request. Nothing was recorded.`,
+        { daysNotice: dates.daysNotice },
+      );
+    }
+    // The person approves exactly the notice the desk worked out, never a figure of the caller's.
+    if (!Number.isFinite(input.daysNotice) || input.daysNotice !== dates.daysNotice) {
+      throw new PeopleOpsDeskError(
+        "notice_changed",
+        `Time off from ${dates.start} gives ${dates.daysNotice} days' notice, not ${String(input.daysNotice)}. Nothing was recorded.`,
+        { daysNotice: dates.daysNotice },
+      );
+    }
+    required(input.why, "why the employee needs the time off at short notice (why)");
+    refuseOverlap(employee, dates.start, dates.end);
+    const facts: TimeOffExceptionFacts = {
+      employeeId: employee.id,
+      employee: employee.name,
+      startDate: dates.start,
+      endDate: dates.end,
+      businessDays: businessDays(dates.start, dates.end),
+      reasonCategory: input.reasonCategory,
+      daysNotice: dates.daysNotice,
+      noticeDays: staff.timeOffNoticeDays,
+    };
+    return { employee, dates, facts };
   };
 
   return {
@@ -775,7 +971,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
       const prior = requests.get(requestId);
       if (prior !== undefined) return prior;
 
-      const employee = employeeNamed(input.employee);
+      const employee = timeOffFor(input);
       const dates = checkDates(input);
       refuseOverlap(employee, dates.start, dates.end);
       // Leave the law may protect goes to a person whatever the notice: the notice rule never refuses
@@ -794,38 +990,67 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
       return entry;
     },
 
+    async timeOffExceptionFacts(input): Promise<TimeOffExceptionFacts> {
+      return checkException(input).facts;
+    },
+
     async requestTimeOffException(input, { requestId }): Promise<TimeOffRequest> {
       const prior = requests.get(requestId);
       if (prior !== undefined) return prior;
 
-      const employee = employeeNamed(input.employee);
-      const dates = checkDates(input);
-      if (PROTECTED_REASONS.includes(input.reasonCategory)) {
+      const { employee, dates, facts } = checkException(input);
+      // The person approved this employee, these dates, this reason and this notice; anything else
+      // is not what they approved.
+      if (!sameFacts(input.approved, facts)) {
         throw new PeopleOpsDeskError(
-          "protected",
-          `A ${input.reasonCategory.replaceAll("_", " ")} reason needs no exception: record it with record_time_off_request, which never refuses it for notice and sends it to ${personLabel(protectedOwner)}. Nothing was recorded.`,
+          "exception_changed",
+          `This is not the time off the person approved: it now works out to ${facts.employee}, ${facts.startDate} to ${facts.endDate}, ${facts.reasonCategory.replaceAll("_", " ")}, ${facts.daysNotice} days' notice. Nothing was recorded.`,
+          { daysNotice: facts.daysNotice },
         );
       }
-      if (dates.daysNotice >= staff.timeOffNoticeDays) {
-        throw new PeopleOpsDeskError(
-          "not_late",
-          `${dates.start} is ${dates.daysNotice} days away, which is enough notice: record it with record_time_off_request. Nothing was recorded.`,
-          { daysNotice: dates.daysNotice },
-        );
-      }
-      // The person approves exactly the notice the desk worked out, never a figure of the caller's.
-      if (!Number.isFinite(input.daysNotice) || input.daysNotice !== dates.daysNotice) {
-        throw new PeopleOpsDeskError(
-          "notice_changed",
-          `Time off from ${dates.start} gives ${dates.daysNotice} days' notice, not ${String(input.daysNotice)}. Nothing was recorded.`,
-          { daysNotice: dates.daysNotice },
-        );
-      }
-      required(input.why, "why the employee needs the time off at short notice (why)");
-      refuseOverlap(employee, dates.start, dates.end);
       const entry = record(employee, dates, input.reasonCategory, "approved");
       requests.set(requestId, entry);
       return entry;
+    },
+
+    async leaveBalance(input): Promise<LeaveBalance> {
+      const employee = senderStaff(input.from, "no leave balance is given");
+      const year = Number(today().slice(0, 4));
+      const first = `${year}-01-01`;
+      const last = `${year}-12-31`;
+      // Approved business days (Monday to Friday) that fall in this year, counted by the desk.
+      const approved = timeOff
+        .filter(
+          (entry) =>
+            entry.employeeId === employee.id &&
+            entry.status === "approved" &&
+            entry.startDate <= last &&
+            entry.endDate >= first,
+        )
+        .map((entry) => {
+          const from = entry.startDate < first ? first : entry.startDate;
+          const to = entry.endDate > last ? last : entry.endDate;
+          return {
+            id: entry.id,
+            startDate: entry.startDate,
+            endDate: entry.endDate,
+            days: businessDays(from, to),
+          };
+        });
+      const allowanceDays = employee.leaveAllowanceDays ?? DEMO_LEAVE_ALLOWANCE_DAYS;
+      const takenDays = approved.reduce((total, entry) => total + entry.days, 0);
+      return {
+        employeeId: employee.id,
+        name: employee.name,
+        year,
+        allowanceDays,
+        takenDays,
+        remainingDays: allowanceDays - takenDays,
+        approved,
+        pending: timeOff.filter(
+          (entry) => entry.employeeId === employee.id && entry.status === "pending",
+        ).length,
+      };
     },
 
     async listAvailability(availability = {}): Promise<readonly CrewAvailability[]> {
