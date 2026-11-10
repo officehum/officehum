@@ -1225,7 +1225,7 @@
     },
     {
       "id": "quote-awaiting-approval-is-not-marked-sent",
-      "description": "Marking a quote that awaits approval as sent is refused, and the reply says it still waits for a person rather than that it went out",
+      "description": "A quote that awaits a person's approval is never recorded as sent: whether the agent reads it first or the desk refuses the outcome, the reply says it still waits for approval rather than that it went out",
       "severity": "critical",
       "tags": ["pipeline", "approval"],
       "input": {
@@ -1270,18 +1270,9 @@
         }
       },
       "approvals": {
-        "quote_approval": "decline"
+        "quote_approval": "pending"
       },
       "expect": {
-        "calls": [
-          {
-            "tool": "record_quote_outcome",
-            "args": {
-              "quoteId": "Q-3052",
-              "outcome": "sent"
-            }
-          }
-        ],
         "notCalled": ["create_quote"],
         "reply": {
           "contains": ["Q-3052"],
