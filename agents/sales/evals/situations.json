@@ -78,7 +78,7 @@
           "text": "Price book matches for \"nightly office cleaning\":\nclean-office-visit — Office cleaning, one visit, up to 3,000 sq ft — $185.00 per visit — The flat price for a site of 3,000 sq ft or less.\nporter-hour — Day porter — $42.00 per hour — Business hours."
         },
         "create_quote": {
-          "text": "Saved quote Q-3052 for Cascadia Legal Group (L-207), awaiting a person's approval: it is not ready to send, and the client must not be told it is.\n- 21.65 × Office cleaning, one visit, up to 3,000 sq ft at $185.00 = $4,005.25\n- 40 × Day porter at $42.00 = $1,680.00\nQuote Q-3052 for Cascadia Legal Group (L-207): 2 lines, subtotal $5,685.25, no discount, total $5,685.25, valid until 2026-12-01.\nIt waits because it is above the $5,000.00 quote limit.\nNext: call request_quote_approval with quoteId Q-3052, which asks Marcus Oyelaran."
+          "text": "Saved quote Q-3052 for Cascadia Legal Group (L-207), awaiting a person's approval: it is not ready to send, and the client must not be told it is.\n- 5 visits a week × 4.33 weeks = 21.65 visits; 21.65 × Office cleaning, one visit, up to 3,000 sq ft at $185.00 = $4,005.25\n- 40 × Day porter at $42.00 = $1,680.00\nQuote Q-3052 for Cascadia Legal Group (L-207): 2 lines, subtotal $5,685.25, no discount, total $5,685.25, valid until 2026-12-01.\nIt waits because it is above the $5,000.00 quote limit.\nNext: call request_quote_approval with quoteId Q-3052, which asks Marcus Oyelaran."
         },
         "request_quote_approval": {
           "text": "Approved quote Q-3052 for Cascadia Legal Group (L-207): 2 lines, subtotal $5,685.25, no discount, total $5,685.25, valid until 2026-12-01. It is ready to send."

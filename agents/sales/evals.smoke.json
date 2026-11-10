@@ -84,7 +84,8 @@
               {
                 "priceBookItemId": "clean-office-visit",
                 "description": "Nightly cleaning, five nights a week, 2,800 sq ft, one month",
-                "quantity": 21.65
+                "quantity": 1,
+                "visitsPerWeek": 5
               },
               {
                 "priceBookItemId": "porter-hour",
