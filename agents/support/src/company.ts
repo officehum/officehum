@@ -52,6 +52,8 @@ export interface Person {
   readonly name: string;
   readonly title: string;
   readonly email: string;
+  /** Other names colleagues use for them ("DW"); a complaint naming one is kept away from them. */
+  readonly aliases?: readonly string[];
   readonly decides: readonly string[];
 }
 

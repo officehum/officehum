@@ -289,6 +289,23 @@ describe("the company package's own consistency", () => {
       expect(companyIssues(readSource(directory))).toEqual([]);
     });
 
+    it("refuses a duplicate alias", () => {
+      const issues = issuesAfter((c) => {
+        c.people[1].aliases = ["dw"];
+        c.people[2].aliases = ["", 7];
+      });
+      expect(issues).toContain('people[1] (marcus-oyelaran) repeats the alias "dw"');
+      expect(issues).toContain("people[2] (priya-raman) aliases[0] must be a non-empty string");
+      expect(issues).toContain("people[2] (priya-raman) aliases[1] must be a non-empty string");
+    });
+
+    it("refuses aliases that are not a list", () => {
+      const issues = issuesAfter((c) => {
+        c.people[3].aliases = "TB";
+      });
+      expect(issues).toContain("people[3] (tom-becker) aliases must be a list of names");
+    });
+
     it("refuses a staff-policy contact who is not a person", () => {
       const issues = issuesAfter((c) => {
         c.staffPolicies.payQuestionsTo = "nobody";

@@ -114,6 +114,8 @@ export function companyIssues(source: CompanySource): readonly string[] {
   const people = asArray(company.people);
   if (people === undefined) add("company.json", "people is missing");
   const personIds = new Set<string>();
+  // An alias names one person: roles route a complaint away from whoever it names.
+  const aliases = new Map<string, string>();
   for (const [index, entry] of (people ?? []).entries()) {
     const person = asRecord(entry);
     const id = person === undefined ? undefined : text(person.id);
@@ -125,6 +127,28 @@ export function companyIssues(source: CompanySource): readonly string[] {
     personIds.add(id);
     if (text(asRecord(person)?.email) === undefined) {
       add("company.json", `people[${index}] (${id}) has no email`);
+    }
+    const named = asRecord(person)?.aliases;
+    if (named !== undefined) {
+      const list = asArray(named);
+      if (list === undefined) {
+        add("company.json", `people[${index}] (${id}) aliases must be a list of names`);
+      }
+      for (const [at, alias] of (list ?? []).entries()) {
+        if (typeof alias !== "string" || alias.trim() === "") {
+          add("company.json", `people[${index}] (${id}) aliases[${at}] must be a non-empty string`);
+          continue;
+        }
+        const key = alias.trim().toLowerCase();
+        const holder = aliases.get(key);
+        if (holder !== undefined) {
+          add(
+            "company.json",
+            `people[${index}] (${id}) repeats the alias ${JSON.stringify(alias)}, already ${holder}'s`,
+          );
+        }
+        aliases.set(key, holder ?? id);
+      }
     }
     const department = asRecord(person)?.department;
     if (typeof department !== "string" || !DEPARTMENTS.includes(department)) {

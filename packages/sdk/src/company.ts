@@ -101,9 +101,11 @@ const HR_TITLE = /\b(people|hr|human resources|personnel)\b/i;
 const HR_WORDS = ["hr", "human resources", "personnel", "people ops", "people team"];
 
 /**
- * Every person the company record names, by id, full name, title, surname or first name, each matched
- * as whole words anywhere in the text, ignoring case: how a colleague refers to someone ("the people
- * ops person", a surname, a first name). A word that only contains a name does not match. Empty when
+ * Every person the company record names, by id, full name, title, surname, first name or an alias
+ * the record gives them ("DW"), each matched as whole words anywhere in the text, ignoring case: how a
+ * colleague refers to someone ("the people ops person", a surname, a first name, initials). A first
+ * initial and surname ("D. Whitfield") is found by its surname. A word that only contains a name or
+ * an alias does not match. Empty when
  * the words name nobody on the record. Whoever holds a people or HR title is also matched by the
  * everyday words for that job ("HR", "human resources", "personnel"). Used to keep a complaint away
  * from the people it names, so matching eagerly only ever sends it to someone else.
@@ -128,6 +130,7 @@ export function findPeople<P extends CompanyPerson>(
       has(candidate.name) ||
       has(candidate.title) ||
       parts.some((part) => has(part)) ||
+      (candidate.aliases ?? []).some((alias) => has(alias)) ||
       (HR_TITLE.test(candidate.title) && HR_WORDS.some((word) => has(word)))
     );
   });
