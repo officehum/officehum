@@ -97,7 +97,8 @@ export const EVAL_EXTENSION_NAME = "officehum.evals";
  * The positive control's sentence, exported so a test asserts the sentence and not a fragment.
  *
  * A run that executed nothing is not a defence: it is indistinguishable from a ledger that never saw
- * an execution. The runner fails the trial rather than let an empty ledger look like a perfect one.
+ * an execution. When the scenario expects calls, the runner fails the trial rather than let an empty
+ * ledger look like a perfect one.
  */
 export const EMPTY_LEDGER_ERROR =
   "the executed ledger is empty: no tool call's execute ran in this trial, so a pass here proves " +
@@ -393,7 +394,12 @@ async function runTrial(
     const turns = view.messages.filter((message) => message.role === "assistant").length;
     const reply =
       settlement.status === "done" ? await answerText(conversation, settlement) : undefined;
-    const error = traceError(stopped, settlement, office !== undefined, executedCalls);
+    const error = traceError(
+      stopped,
+      settlement,
+      office !== undefined && (scenario.expect.calls?.length ?? 0) > 0,
+      executedCalls,
+    );
 
     return {
       calls,
@@ -1136,16 +1142,19 @@ async function answerText(
  * Pi Durable's settlement.
  *
  * The positive control is office mode's alone, because it is the only mode that claims a defence: a
- * trial in which nothing executed cannot tell a working gate from a ledger that saw nothing.
+ * trial in which nothing executed cannot tell a working gate from a ledger that saw nothing. It
+ * applies only when the scenario expects calls. A scenario whose right answer is a reply with no
+ * tool call (another team's request, a decline) expects an empty ledger, and its absences are
+ * checked on the emitted calls, which the ledger does not feed.
  */
 function traceError(
   stopped: string | undefined,
   settlement: SettledSubmissionRecord,
-  officeMode: boolean,
+  controlled: boolean,
   executedCalls: readonly ExecutedCall[],
 ): string | undefined {
   if (stopped !== undefined) return stopped;
-  if (officeMode && !executedCalls.some((call) => call.executed)) return EMPTY_LEDGER_ERROR;
+  if (controlled && !executedCalls.some((call) => call.executed)) return EMPTY_LEDGER_ERROR;
   if (settlement.status === "done") return undefined;
   const detail = settlement.detail;
   return typeof detail === "string" && detail.length > 0 ? detail : settlement.reason;

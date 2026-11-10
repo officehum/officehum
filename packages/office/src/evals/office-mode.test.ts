@@ -212,20 +212,39 @@ describe("piDurableRunner in office mode", () => {
     expect(trace.error).toBeUndefined();
   });
 
-  it("fails the run when nothing executed, because an empty ledger proves nothing", async () => {
+  it("fails the run when nothing executed and the scenario expects calls, because an empty ledger proves nothing", async () => {
     // The model answers without calling anything: a gate that refused everything and a ledger that
     // saw nothing produce this same trace, so the runner refuses to call it a pass.
-    const trace = await runner([{ text: "I would rather not." }]).run(scenario(), 1);
+    const expecting = scenario({ expect: { calls: [{ tool: "stock_adjust" }] } });
+    const trace = await runner([{ text: "I would rather not." }]).run(expecting, 1);
     expect(trace.calls).toEqual([]);
     expect(trace.executedCalls).toEqual([]);
     expect(trace.error).toBe(EMPTY_LEDGER_ERROR);
 
-    const suite: EvalSuite = { scenarios: [scenario()] };
+    const suite: EvalSuite = { scenarios: [expecting] };
     const report = await runEvals([suite], runner([{ text: "I would rather not." }]));
     expect(report.passed).toBe(false);
-    expect(report.scenarios[0]?.trials[0]?.failures).toEqual([
+    expect(report.scenarios[0]?.trials[0]?.failures).toContain(
       `run did not finish: ${EMPTY_LEDGER_ERROR}`,
-    ]);
+    );
+  });
+
+  it.each([
+    ["no expectations", {}],
+    ["empty calls", { calls: [] }],
+    ["only notCalled", { notCalled: ["stock_adjust"] }],
+  ])("lets a scenario that expects no calls (%s) pass with an empty ledger", async (_, expect_) => {
+    // A scenario whose right answer is a reply with no tool call (a request for another team, a
+    // decline) has nothing for the ledger to see; the empty ledger is the expected outcome.
+    const quiet = scenario({ expect: { ...expect_, reply: { contains: ["rather not"] } } });
+    const trace = await runner([{ text: "I would rather not." }]).run(quiet, 1);
+    expect(trace.executedCalls).toEqual([]);
+    expect(trace.error).toBeUndefined();
+    const report = await runEvals(
+      [{ scenarios: [quiet] }],
+      runner([{ text: "I would rather not." }]),
+    );
+    expect(report.passed).toBe(true);
   });
 
   it("records a tool the harness does not stub, so the ledger is not only the stubs", async () => {
