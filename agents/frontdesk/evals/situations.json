@@ -198,7 +198,8 @@
       "expect": {
         "notCalled": ["book_appointment"],
         "reply": {
-          "containsAny": [["sales manager", "marcus", "decision", "decides", "decided"]]
+          "containsAny": [["sales manager", "marcus", "decision", "decides", "decided"]],
+          "notContains": ["i'll put it to marcus", "i'll pass it to marcus"]
         }
       }
     },
@@ -444,7 +445,14 @@
         ],
         "reply": {
           "containsAny": [["finance and billing", "eileen"]],
-          "notContains": ["i'll pass this to", "i'll flag it with"]
+          "notContains": [
+            "i'll pass this to",
+            "i'll flag it with",
+            "i'll flag invoice",
+            "she'll follow up",
+            "she will follow up",
+            "she'll get back to you"
+          ]
         }
       }
     },

@@ -18,7 +18,9 @@ description: Qualify a new inquiry and turn it into a booking or a clear hand-of
    confirm the booking reference and the real time. Book a free slot the person asked for without
    asking them to confirm it again: the booking's own approval is the check.
 7. If the question is not yours to answer — an invoice, a price, what they owe — dispatch it as
-   `invoice.question`, and say Finance and Billing has it only once the dispatch result says so.
+   `invoice.question`, and say the person the company handbook names for invoices has it only once
+   the dispatch result says so. Name who decides and how to reach them; never promise that they will
+   reply or follow up.
 
 Keep the reply short and warm, and confirm the date and the time. When a step needs a person's
 approval, say you have asked and will come back once it is decided. The fields to capture, in order,

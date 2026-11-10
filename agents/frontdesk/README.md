@@ -95,7 +95,11 @@ An embedding host that builds the role itself (rather than the CLI) passes `mess
 
 The role's evals live in `evals/situations.json`, and the turns a scripted model plays back for them
 are in `evals.smoke.json` (beside `evals/`, not inside it: every `.json` in `evals/` is read as an
-eval suite). `officehum eval` installs only the role's own extensions on a fresh in-memory Pi Durable
+eval suite). The evals run against the default company in `company/default/`, whose handbook ships
+in `skills/company-handbook/`, so their checks and scripted turns name its people and titles, as
+every role's do. Everything else in the package reads the same for any company: `src/package.test.ts`
+fails if a company name, person, title or crew appears outside the handbook, the evals and this
+README. `officehum eval` installs only the role's own extensions on a fresh in-memory Pi Durable
 harness, so a role that needs Office Hum fails here:
 
 ```sh
