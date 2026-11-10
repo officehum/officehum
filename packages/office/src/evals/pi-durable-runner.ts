@@ -681,7 +681,10 @@ function bareSender(input: Scenario["input"]): SenderResolver {
   return async () => sender;
 }
 
-/** The approver the scenario scripts: a request it does not script stops the trial, never allowed. */
+/**
+ * The approver the scenario scripts: a request it does not script stops the trial, never allowed, and
+ * a `pending` one is left unanswered so the run goes on with the call blocked as waiting.
+ */
 function scenarioApprover(
   scenario: Scenario,
   approvalsRequested: string[],
@@ -694,6 +697,7 @@ function scenarioApprover(
       stop(`the ${request.approvalId} approval is not scripted by the scenario`);
       return { approved: false, by: "eval", note: "not scripted" };
     }
+    if (decision === "pending") return { approved: false, pending: true };
     return { approved: decision === "approve", by: "eval" };
   };
 }
@@ -902,6 +906,9 @@ function decisionHook(
         return undefined;
       }
       office.pendingUnscripted = undefined;
+      // A pending answer is no row at all: the gate records the ask as waiting, exactly as it does
+      // for a person who has not answered yet, and blocks the call.
+      if (chosen.decision === "pending") return undefined;
       const hash = argsHash(args);
       const answered = office.board.approvals.latestForCall(office.ticketId, call.name, hash);
       // Asking twice about the same call would be the second row the gate's dedupe exists to prevent;

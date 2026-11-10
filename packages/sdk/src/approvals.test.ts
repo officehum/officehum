@@ -112,6 +112,26 @@ describe("approvalGate", () => {
     );
   });
 
+  it("blocks a pending answer as waiting, and records no decision so the person can still answer", async () => {
+    const answers = [
+      { approved: false, pending: true },
+      { approved: true, by: "Sam" },
+    ];
+    const approve = vi.fn<Approver>(async () => answers.shift() ?? { approved: false });
+    const memos = new Map<string, unknown>();
+    const gate = beforeTool({ approvals, approve });
+    const waiting = await gate(call("book_appointment", {}), hookApi(memos), context);
+    expect(waiting?.block).toBe(
+      "book_appointment was not run: it needs a person's approval (Bookings after 18:00), and the " +
+        "request is with a person who has not answered yet. Nothing has been approved or declined. " +
+        "Say the request is waiting for a person's answer, and do not retry this call.",
+    );
+    expect([...memos.values()]).not.toContainEqual(expect.objectContaining({ approved: false }));
+    // The same call, recovered after the person answers, is asked again and runs on their yes.
+    expect(await gate(call("book_appointment", {}), hookApi(memos), context)).toBeUndefined();
+    expect(approve).toHaveBeenCalledTimes(2);
+  });
+
   it("never asks twice for the same call, so a crash cannot re-ask or forget a yes", async () => {
     const approve = vi.fn<Approver>(async () => ({ approved: true, by: "Sam" }));
     const memos = new Map<string, unknown>();

@@ -121,7 +121,11 @@ export const ScenarioSchema = Type.Object(
     // gives one clear message instead of one per possible shape.
     input: Type.Object({ kind: Type.Enum(["message", "ticket"]) }),
     stubs: Type.Record(Type.String(), Stub),
-    approvals: Type.Optional(Type.Record(Type.String(), Type.Enum(["approve", "decline"]))),
+    // `pending`: the request reaches a person who never answers during the trial, so the call stays
+    // unrun and the run goes on — how a scenario tests what the role says while it waits.
+    approvals: Type.Optional(
+      Type.Record(Type.String(), Type.Enum(["approve", "decline", "pending"])),
+    ),
     expect: Expect,
     trials: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
     limits: Type.Optional(

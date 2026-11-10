@@ -159,6 +159,34 @@ describe("piDurableRunner", () => {
     expect(trace.reply).toBeUndefined();
   });
 
+  it("leaves a pending approval unanswered: the call is blocked as waiting and the trial goes on", async () => {
+    const provider = scriptedProvider([
+      {
+        toolCalls: [{ name: "stock_adjust", args: { sku: BOLT, quantity: -50, reason: "damage" } }],
+      },
+      { text: "The write-off is waiting for a person's answer." },
+    ]);
+    const runner = piDurableRunner({ dir: stockroom, model: (): ScriptedModel => provider });
+    const trace = await runner.run(
+      scenario({ stubs: bothStubs, approvals: { large_decrease: "pending" } }),
+      1,
+    );
+    expect(trace.error).toBeUndefined();
+    expect(trace.approvalsRequested).toEqual(["large_decrease"]);
+    expect(trace.executedCalls).toEqual([
+      {
+        tool: "stock_adjust",
+        args: { sku: BOLT, quantity: -50, reason: "damage" },
+        executed: false,
+      },
+    ]);
+    expect(trace.reply).toBe("The write-off is waiting for a person's answer.");
+    // What the model was told: waiting, never declined.
+    const told = JSON.stringify(provider.requests[1]?.messages ?? []);
+    expect(told).toContain("has not answered yet");
+    expect(told).not.toContain("declined this action");
+  });
+
   it("stops the run once limits.maxTurns is passed", async () => {
     const runner = runnerFor(stockroom, {
       scenario: () => ({ toolCalls: [{ name: "stock_levels", args: { sku: BOLT } }] }),
