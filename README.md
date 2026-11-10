@@ -290,7 +290,7 @@ Operations, People Ops, Purchasing, Sales, Support) builds its demonstration des
 `--demo` asks: the role runs on the demonstration records it ships with, which live in memory and
 write nowhere, and the banner says `Desk: demonstration data (--demo)`. A `desk` client in `--clients`
 binds the business's own system instead. With neither, the role still starts, the banner says
-`Desk: none bound (pass --demo, or a desk in --clients)`, and every tool that reads or writes the desk
+`Desk: none bound (a role that keeps records refuses until you pass --demo or a desk in --clients)`, and every tool that reads or writes the desk
 refuses and says how to bind one, so a forgotten connection never shows made-up records. Hosts pass
 the same choice to `loadRole` as its reserved `demo` option; the eval runner always sets it.
 

@@ -139,7 +139,7 @@ export function deskBanner(
   if ("desk" in clients) return undefined;
   return demo === true
     ? "Desk: demonstration data (--demo)"
-    : "Desk: none bound (pass --demo, or a desk in --clients)";
+    : "Desk: none bound (a role that keeps records refuses until you pass --demo or a desk in --clients)";
 }
 
 /** Where a role package keeps the company record generated into it (`npm run sync-company`). */
