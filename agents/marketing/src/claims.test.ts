@@ -172,6 +172,9 @@ describe("findResultClaims", () => {
     "50% off the germs on every desk",
     "50% off every germ in the lunch room",
     "Sick days, 30% off.",
+    "30% off the months you lose to flu season",
+    "20% off the days you are losing to sickness",
+    "25% off the weeks your team loses to colds",
     "Complaints: 30% off.",
   ])("catches a result read by its stem, or named before the offer: %j", (text) => {
     expect(findResultClaims(text, [])).toHaveLength(1);

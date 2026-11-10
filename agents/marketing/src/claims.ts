@@ -74,12 +74,14 @@ const PRICE_WORDS = [
 /**
  * Stems of the words that make an offer a result, not a price: "30% off your hours of lost work",
  * "20% off sick days", "30% off staff sickness hours". Each is a stem, so a word that starts with it
- * counts: "sick" covers "sickness", "injur" covers "injury" and "injuries". An offer is masked only
+ * counts: "sick" covers "sickness", "injur" covers "injury" and "injuries", "lose" covers "loses". An offer is masked only
  * when none of them is in its phrase, or just before it ("Sick days, 30% off.").
  */
 export const RESULT_NOUNS: readonly string[] = [
   "sick",
   "lost",
+  "lose",
+  "losing",
   "complain",
   "downtime",
   "absen",
