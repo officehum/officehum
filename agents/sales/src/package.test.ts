@@ -87,6 +87,11 @@ describe("sales package", () => {
     expect(company.approvalLimits.quoteOverCents).toBe(500000);
   });
 
+  it("counts a recurring month with the weeks the company records, and has a per-visit item to count", () => {
+    expect(company.quoting.weeksPerMonth).toBe(4.33);
+    expect(company.priceBook.some((item) => /\bvisit\b/.test(item.unit))).toBe(true);
+  });
+
   it("takes its price book from the generated company facts, and its evals only name lines that exist", () => {
     const ids = new Set(company.priceBook.map((item) => item.id));
     expect(ids.size).toBeGreaterThan(10);

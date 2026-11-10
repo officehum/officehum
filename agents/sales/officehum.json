@@ -31,7 +31,7 @@
       "replay": "unsafe",
       "skill": "quoting-from-the-price-book",
       "noApproval": "Saves a quote in the CRM and sends nothing to the client. The desk prices every line from the price book; a quote with a discount or over the limit is saved awaiting approval, not ready to send, until request_quote_approval's quote_approval says yes.",
-      "description": "Create a quote for a lead from price book items and quantities; the model gives no prices. The desk prices each line, applies any minimum and works out the total. A quote with a discount, or whose total is above the business's limit, is saved awaiting a person's approval and is not ready to send."
+      "description": "Create a quote for a lead from price book items and quantities, and visits a week for a recurring per-visit line; the model gives no prices and no counts. The desk counts a recurring line's visits in a month from the company's weeks in a month, prices each line, applies any minimum and works out the total. A quote with a discount, or whose total is above the business's limit, is saved awaiting a person's approval and is not ready to send."
     },
     {
       "name": "request_quote_approval",

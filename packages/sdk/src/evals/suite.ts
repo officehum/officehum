@@ -259,7 +259,8 @@ export function validateSuite(
 }
 
 /**
- * Every `{ "includes": … }` in `args` must be exactly one non-empty string, reported with its path.
+ * Every `{ "includes": … }` in `args` must be exactly one non-empty string, and every `{ "some": … }`
+ * exactly one object of fields (checked the same way inside), each reported with its path.
  * A matcher is an argument's value, never `args` itself: at the top level `includes` would read as a
  * parameter of that name, which no matcher can then express, so it is refused.
  */
@@ -274,6 +275,12 @@ function matcherIssues(
     add(
       joinPath(path, "includes"),
       'an includes matcher goes on an argument\'s value, e.g. { "sku": { "includes": "…" } }, never on args itself',
+    );
+  }
+  if (top && "some" in args) {
+    add(
+      joinPath(path, "some"),
+      'a some matcher goes on an array argument\'s value, e.g. { "lines": { "some": { "sku": "…" } } }, never on args itself',
     );
   }
   for (const [key, value] of Object.entries(args)) {
@@ -293,6 +300,25 @@ function matcherIssues(
             .map((name) => show(name))
             .join(", ")}`,
         );
+      }
+      continue;
+    }
+    if ("some" in value) {
+      const { some, ...rest } = value as { some: unknown };
+      if (some === null || typeof some !== "object" || Array.isArray(some)) {
+        add(
+          joinPath(at, "some"),
+          'must be an object of fields: { "some": { … } } matches an array argument with an element that has them',
+        );
+      } else if (Object.keys(rest).length > 0) {
+        add(
+          at,
+          `a some matcher takes no other fields; remove ${Object.keys(rest)
+            .map((name) => show(name))
+            .join(", ")}`,
+        );
+      } else {
+        matcherIssues(some, joinPath(at, "some"), add, false);
       }
       continue;
     }

@@ -3,7 +3,8 @@
  *
  * `list_leads`, `get_quote`, `search_price_book` and `read_company` only read; `create_quote`,
  * `request_quote_approval` and `log_activity` write through the desk. The model names price book items
- * and quantities only: the desk prices every line and works out the total, and decides on that total
+ * and quantities only, and how many visits a week for a recurring line: the desk counts the month,
+ * prices every line and works out the total, and decides on that total
  * whether a quote waits for a person. The quote limit is the role's resolved `quote_limit_cents`,
  * read at every call so an overlay applies without a rebuild. A quote that waits is approved through
  * `request_quote_approval`, whose `quote_approval` gate reads what the person approves from the desk
@@ -151,6 +152,13 @@ function quoteDetails(quote: Quote) {
       priceBookItemId: line.priceBookItemId,
       description: line.description,
       quantity: line.quantity,
+      ...(line.recurring === undefined
+        ? {}
+        : {
+            quantityPerVisit: line.recurring.quantityPerVisit,
+            visitsPerWeek: line.recurring.visitsPerWeek,
+            weeksPerMonth: line.recurring.weeksPerMonth,
+          }),
       unitPriceCents: line.unitPriceCents,
       amountCents: line.amountCents,
       minimumApplied: line.minimumApplied,
@@ -165,9 +173,28 @@ function statusText(quote: Quote): string {
     : "draft, ready to send";
 }
 
-/** One line as a person reads it: quantity, item, unit price and amount, and any minimum. */
+/**
+ * How the desk counted a recurring line, as the model quotes it: "5 visits a week × 4.33 weeks =
+ * 21.65 visits", or "3 per visit × 5 visits a week × 4.33 weeks = 64.95" when each visit has several
+ * units. Empty for a one-off line.
+ */
+function countText(line: Quote["lines"][number]): string {
+  const count = line.recurring;
+  if (count === undefined) return "";
+  const visits = `${count.visitsPerWeek} ${count.visitsPerWeek === 1 ? "visit" : "visits"} a week × ${count.weeksPerMonth} weeks`;
+  return count.quantityPerVisit === 1
+    ? `${visits} = ${line.quantity} visits`
+    : `${count.quantityPerVisit} per visit × ${visits} = ${line.quantity}`;
+}
+
+/** A recurring line's count as a lead-in to its price arithmetic, or nothing for a one-off line. */
+function countPrefix(line: Quote["lines"][number]): string {
+  return line.recurring === undefined ? "" : `${countText(line)}; `;
+}
+
+/** One line as a person reads it: any count, quantity, item, unit price and amount, and any minimum. */
 function lineText(line: Quote["lines"][number]): string {
-  return `${line.quantity} × ${line.description} at ${money(line.unitPriceCents)} = ${money(line.amountCents)}${line.minimumApplied ? " (minimum applied)" : ""}`;
+  return `${countPrefix(line)}${line.quantity} × ${line.description} at ${money(line.unitPriceCents)} = ${money(line.amountCents)}${line.minimumApplied ? " (minimum applied)" : ""}`;
 }
 
 /** Why a quote waits, as one clause: "it carries a 10% discount and it is above the $5,000.00 quote limit". */
@@ -190,7 +217,7 @@ function quoteDetail(quote: Quote): string {
     `Quote ${quote.id} for ${quote.leadName} (${quote.leadId}), ${statusText(quote)}, issued ${quote.issuedOn}, valid until ${quote.validUntil}:`,
     ...quote.lines.map(
       (line) =>
-        `- ${line.priceBookItemId ?? "no price book item"} — ${line.description} — ${line.quantity} × ${money(line.unitPriceCents)} = ${money(line.amountCents)}${line.minimumApplied ? " (minimum applied)" : ""}`,
+        `- ${line.priceBookItemId ?? "no price book item"} — ${line.description} — ${countPrefix(line)}${line.quantity} × ${money(line.unitPriceCents)} = ${money(line.amountCents)}${line.minimumApplied ? " (minimum applied)" : ""}`,
     ),
     `Subtotal ${money(quote.subtotalCents)}, ${discount}, total ${money(quote.totalCents)}.`,
     ...(quote.notes === null ? [] : [`Notes: ${quote.notes}`]),
@@ -207,15 +234,21 @@ function totalsText(quote: Quote): string {
   return `${quote.id} for ${quote.leadName} (${quote.leadId}): ${count}, subtotal ${money(quote.subtotalCents)}, ${discount}, total ${money(quote.totalCents)}, valid until ${quote.validUntil}.`;
 }
 
-/** The receipt for a quote ready to send: what it says, and every minimum that changed a line. */
+/**
+ * The receipt for a quote ready to send: what it says, the month's count of every recurring line, and
+ * every minimum that changed a line.
+ */
 function quoteReceipt(quote: Quote, verb: string): string {
+  const counts = quote.lines
+    .filter((line) => line.recurring !== undefined)
+    .map((line) => `The desk counted the ${line.description} line as ${countText(line)}.`);
   const minimums = quote.lines
     .filter((line) => line.minimumApplied)
     .map(
       (line) =>
         `The price book's minimum set the ${line.description} line to ${money(line.amountCents)}.`,
     );
-  return [`${verb} ${totalsText(quote)}`, "It is ready to send.", ...minimums].join(" ");
+  return [`${verb} ${totalsText(quote)}`, "It is ready to send.", ...counts, ...minimums].join(" ");
 }
 
 /** The company record as one section reads: prose the model can answer a client with. */
@@ -456,7 +489,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
   const createQuote = defineTool({
     name: "create_quote",
     description:
-      "Create a quote for a lead from price book items and quantities. You give no prices: the desk prices each line from the price book, applies any minimum and works out the total. A quote under the business's quote limit with no discount is a draft ready to send. A quote with a discount, or whose total is above the limit, is saved awaiting a person's approval and is not ready to send: then call request_quote_approval with its quoteId.",
+      "Create a quote for a lead from price book items and quantities. You give no prices and no counts: the desk prices each line from the price book, counts a recurring line's visits in a month from visitsPerWeek, applies any minimum and works out the total. A quote under the business's quote limit with no discount is a draft ready to send. A quote with a discount, or whose total is above the limit, is saved awaiting a person's approval and is not ready to send: then call request_quote_approval with its quoteId.",
     parameters: Type.Object(
       {
         leadId: Type.String({ description: "The lead's id from list_leads, e.g. L-204" }),
@@ -474,8 +507,16 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
               ),
               quantity: Type.Number({
                 description:
-                  "How many units: a measured square footage, a count of restrooms, panes, units or visits, or a number of hours. The price comes from the book",
+                  "How many units: a measured square footage, a count of restrooms, panes, units or visits, or a number of hours. With visitsPerWeek, the units on each visit: restrooms per visit, or 1 for a whole-site visit. The price comes from the book",
               }),
+              visitsPerWeek: Type.Optional(
+                Type.Number({
+                  exclusiveMinimum: 0,
+                  maximum: 7,
+                  description:
+                    "For a recurring contract on an item priced per visit: how many visits a week, e.g. 5 for five nights a week. The desk counts the visits in a month and shows the count on the receipt; leave it out for a one-off line",
+                }),
+              ),
             },
             { additionalProperties: false },
           ),

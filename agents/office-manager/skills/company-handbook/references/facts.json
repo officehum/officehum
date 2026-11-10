@@ -402,6 +402,9 @@
       "notes": "A laundered mat swapped on the visit, per mat per month."
     }
   ],
+  "quoting": {
+    "weeksPerMonth": 4.33
+  },
   "policies": {
     "refunds": {
       "summary": "A complaint is answered the same business day, a re-clean is offered when the work fell short, a credit note is Eileen's, and money back is Dana's. A refund is never agreed at the counter or in an email by anyone else.",
@@ -536,7 +539,7 @@
     },
     {
       "term": "Visit",
-      "meaning": "One attendance at one site. A nightly contract of five nights a week is about 21.65 visits in a standard month, because a month is 4.33 weeks."
+      "meaning": "One attendance at one site. A recurring line is priced per visit, and the quote desk counts the visits in a month from the visits a week and the weeks in a month (4.33), so five nights a week is 21.65 visits."
     },
     {
       "term": "Scope of work",

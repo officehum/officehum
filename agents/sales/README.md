@@ -69,7 +69,7 @@ office's real gate, so a refused call is refused by the gate production uses.
 | `list_leads` | safe | The pipeline, filtered by stage or by a search on the company, contact or site |
 | `get_quote` | safe | One existing quote by its id: lead, lines, subtotal, discount, total and validity |
 | `search_price_book` | safe | The price book item a quote line is built from, with its unit, price and minimum |
-| `create_quote` | unsafe | A quote the desk prices from the book, one line per service: items and quantities, never prices. A discounted or over-limit quote is saved awaiting approval (quoting skill) |
+| `create_quote` | unsafe | A quote the desk prices from the book, one line per service: items and quantities (and `visitsPerWeek` for a recurring per-visit line), never prices or counts. A discounted or over-limit quote is saved awaiting approval (quoting skill) |
 | `request_quote_approval` | unsafe | Asks a person to approve a quote the desk held, by its id; on a yes it is a draft ready to send (quoting skill) |
 | `log_activity` | unsafe | An internal note on a lead: what was decided and what happens next |
 | `read_company` | safe | One section of the company record: profile, hours, people, services, pricing, policies, tone, escalation, glossary |
@@ -80,8 +80,11 @@ company record or from the desk — never from the model, and never from a const
 ## The quote approval
 
 The model names price book items and quantities; the desk prices every line, applies the book's
-per-line minimums and works out the total. The desk then decides whether a person must approve the
-quote, on that total:
+per-line minimums and works out the total. For a recurring line on an item priced per visit the model
+gives `visitsPerWeek`, and the desk bills `quantity × visitsPerWeek × quoting.weeksPerMonth` (the
+company record's weeks in a month), rounded to the hundredth and never to whole visits; the receipt
+shows the count, e.g. "5 visits a week × 4.33 weeks = 21.65 visits". The desk then decides whether a
+person must approve the quote, on that total:
 
 - a quote with any discount, whatever its size, or
 - a quote whose subtotal — after minimums, before any discount — is above the business's resolved
@@ -183,8 +186,9 @@ export interface SalesDesk {
 
 The desk owns the arithmetic and the price book: every quote line names a price book item and a
 quantity, the desk prices it from the book, and a line with no item is refused, because work the book
-does not cover is priced by a person. The desk also decides which quotes wait for approval, and
-`approveQuote` refuses facts that no longer match the quote. A quote's line amounts, the price book's minimums, any discount and the
+does not cover is priced by a person. A line with `visitsPerWeek` must name an item priced per visit,
+and the desk counts its month from the company's `quoting.weeksPerMonth`. The desk also decides which
+quotes wait for approval, and `approveQuote` refuses facts that no longer match the quote. A quote's line amounts, the price book's minimums, any discount and the
 total come back in the receipt, so the model never computes a figure. Every write carries a
 `requestId` derived from the durable call identity, so a retried call returns the quote it already
 made instead of a second draft.

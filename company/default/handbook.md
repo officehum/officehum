@@ -114,9 +114,10 @@ Some lines have a minimum. A deep clean of a small suite still costs the minimum
 and the drive cost that much. The quote shows the minimum being applied rather than quietly raising
 the unit price.
 
-Some quotes are recurring. A recurring line is priced per visit, and a month of service is
-twenty-one point six five visits at five nights a week, because a month is four and a third weeks.
-Nobody rounds that to twenty.
+Some quotes are recurring. A recurring line is priced per visit, and the quote desk counts the
+visits in a month from how many a week the client wants: twenty-one point six five visits at five
+nights a week, because the company counts a month as 4.33 weeks. Nobody works that out by hand, and
+nobody rounds it to twenty.
 
 A quote is valid for thirty days unless a person says otherwise, and it says what it includes and
 what it leaves out. It never says when the work starts.

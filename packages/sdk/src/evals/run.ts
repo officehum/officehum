@@ -311,6 +311,24 @@ function normaliseReply(text: string): string {
     .replace(/(\d{1,2}:\d{2}):00(?!\d)/g, "$1");
 }
 
+/**
+ * `{ "some": { … } }`: matches an array argument when at least one element matches those fields, the
+ * way `args` itself matches — only the fields listed, with matchers allowed inside. An array is
+ * otherwise compared whole, which a line a model words freely (a quote's description) never matches.
+ */
+export function isSomeMatcher(value: unknown): value is { some: Record<string, unknown> } {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  const some = (value as { some?: unknown }).some;
+  return (
+    keys.length === 1 &&
+    keys[0] === "some" &&
+    some !== null &&
+    typeof some === "object" &&
+    !Array.isArray(some)
+  );
+}
+
 /** `{ "includes": "…" }`: matches a string argument that contains the text. */
 export function isIncludesMatcher(value: unknown): value is { includes: string } {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
@@ -331,6 +349,9 @@ export function isIncludesMatcher(value: unknown): value is { includes: string }
 export function argsMatch(expected: unknown, actual: unknown): boolean {
   if (isIncludesMatcher(expected) && typeof actual === "string") {
     return actual.includes(expected.includes);
+  }
+  if (isSomeMatcher(expected)) {
+    return Array.isArray(actual) && actual.some((element) => argsMatch(expected.some, element));
   }
   if (expected !== null && typeof expected === "object" && !Array.isArray(expected)) {
     if (actual === null || typeof actual !== "object" || Array.isArray(actual)) return false;

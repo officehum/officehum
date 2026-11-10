@@ -246,6 +246,15 @@ export function companyIssues(source: CompanySource): readonly string[] {
       );
     }
   }
+  // The quote desk counts a recurring line's visits in a month from this, so a business that counts a
+  // month differently changes it here rather than in any role.
+  const weeksPerMonth = asRecord(company.quoting)?.weeksPerMonth;
+  if (typeof weeksPerMonth !== "number" || !Number.isFinite(weeksPerMonth) || weeksPerMonth <= 0) {
+    add(
+      "company.json",
+      `quoting.weeksPerMonth is ${JSON.stringify(weeksPerMonth) ?? "missing"}; it must be a positive number of weeks, e.g. 4.33`,
+    );
+  }
   // Every figure the company records as money, by the value in cents: the rule the prose is held to.
   walkCents(company, "", amounts);
 

@@ -51,6 +51,25 @@ describe("argsMatch", () => {
     expect(argsMatch({ text: "a" }, { text: "abc" })).toBe(false);
   });
 
+  it("matches an array argument when some element matches the given fields", () => {
+    const lines = [
+      { priceBookItemId: "porter-hour", quantity: 40, description: "Porter" },
+      { priceBookItemId: "clean-office-visit", quantity: 1, visitsPerWeek: 5 },
+    ];
+    expect(
+      argsMatch(
+        { lines: { some: { priceBookItemId: "clean-office-visit", visitsPerWeek: 5 } } },
+        { lines },
+      ),
+    ).toBe(true);
+    expect(argsMatch({ lines: { some: { visitsPerWeek: 4 } } }, { lines })).toBe(false);
+    expect(argsMatch({ lines: { some: { description: { includes: "Port" } } } }, { lines })).toBe(
+      true,
+    );
+    expect(argsMatch({ lines: { some: { quantity: 1 } } }, { lines: "not a list" })).toBe(false);
+    expect(argsMatch({ lines: { some: { quantity: 1 } } }, {})).toBe(false);
+  });
+
   it("matches a string argument that includes the given text", () => {
     expect(argsMatch({ text: { includes: "on time" } }, { text: "always on time." })).toBe(true);
     expect(argsMatch({ text: { includes: "on time" } }, { text: "always late." })).toBe(false);

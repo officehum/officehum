@@ -107,6 +107,33 @@ describe("validateSuite stubs", () => {
     for (const issue of issues) expect(issue.message).toMatch(/includes/);
   });
 
+  it("accepts a some matcher on an array argument, with matchers inside it", () => {
+    const suite = suiteWith({ get_invoice: { text: "{}" }, ...plain });
+    (suite.scenarios[0] as { expect: unknown }).expect = {
+      calls: [{ tool: "run_report", args: { period: { some: { month: { includes: "11" } } } } }],
+    };
+    expect(validateSuite(suite, manifest, "x").issues).toEqual([]);
+  });
+
+  it("reports a malformed some matcher with its path", () => {
+    const suite = suiteWith({ get_invoice: { text: "{}" }, ...plain });
+    (suite.scenarios[0] as { expect: unknown }).expect = {
+      calls: [
+        { tool: "run_report", args: { period: { some: "2026" } } },
+        { tool: "run_report", args: { period: { some: { month: "11" }, also: "x" } } },
+        { tool: "run_report", args: { period: { some: { month: { includes: "" } } } } },
+        { tool: "run_report", args: { some: { month: "11" } } },
+      ],
+    };
+    const issues = validateSuite(suite, manifest, "x").issues;
+    expect(issues.map((issue) => issue.path)).toEqual([
+      "scenarios[0].expect.calls[0].args.period.some",
+      "scenarios[0].expect.calls[1].args.period",
+      "scenarios[0].expect.calls[2].args.period.some.month.includes",
+      "scenarios[0].expect.calls[3].args.some",
+    ]);
+  });
+
   it("rejects an includes matcher at the top level of args, with its path", () => {
     const suite = suiteWith({
       get_invoice: { byArgs: [{ args: { includes: "1043" }, text: "{}" }] },
