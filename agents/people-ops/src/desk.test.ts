@@ -5,8 +5,16 @@
  * people it names, and a replayed write that happens once.
  */
 
+import type { VerifiedSender } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
-import { companyHead, escalationOwner, loadCompanyFacts, peopleOwner, person } from "./company.js";
+import {
+  type CompanyFacts,
+  companyHead,
+  escalationOwner,
+  loadCompanyFacts,
+  peopleOwner,
+  person,
+} from "./company.js";
 import {
   demoCandidates,
   demoEmployees,
@@ -20,7 +28,34 @@ import {
 const company = loadCompanyFacts();
 const staff = company.staffPolicies;
 const NOW = new Date("2026-11-09T15:00:00.000Z");
-const desk = (): PeopleOpsDesk => fakePeopleOpsDesk({ company, now: () => NOW });
+
+/** The People Ops owner, asking from inside the office: may file time off for anyone on staff. */
+const OWNER: VerifiedSender = {
+  origin: "internal",
+  channel: "chat",
+  contact: peopleOwner(company)?.id ?? "",
+};
+/** A crew member writing in from the address the desk holds for her. */
+const ANA: VerifiedSender = {
+  origin: "external",
+  channel: "email",
+  contact: "ana.lopez@crew.example",
+};
+
+/**
+ * The demonstration desk, with every time-off write filed by the People Ops owner unless a test says
+ * who sent it: who may file for whom has its own tests below.
+ */
+const desk = (facts: CompanyFacts = company): PeopleOpsDesk => {
+  const people = fakePeopleOpsDesk({ company: facts, now: () => NOW });
+  return {
+    ...people,
+    recordTimeOffRequest: (input, options) =>
+      people.recordTimeOffRequest({ from: OWNER, ...input }, options),
+    requestTimeOffException: (input, options) =>
+      people.requestTimeOffException({ from: OWNER, ...input }, options),
+  };
+};
 
 /** The refusal a desk call ends in, so a test can read its code. */
 async function refusal(promise: Promise<unknown>): Promise<PeopleOpsDeskError> {
@@ -43,9 +78,17 @@ describe("demonstration data", () => {
     for (const employee of demoEmployees()) expect(names.has(employee.name)).toBe(false);
   });
 
-  it("carries no contact or personal details anywhere", () => {
-    const text = JSON.stringify([demoEmployees(), demoCandidates(), demoTimeOff()]);
+  it("carries no contact or personal details beyond each staff member's own contact", () => {
+    const text = JSON.stringify([demoCandidates(), demoTimeOff()]);
     expect(text).not.toMatch(/@|\+\d|\d{3}[ -]\d{4}|\baddress\b|\bemail\b|\bsalary\b|\bwage\b/i);
+    // Each crew member has one contact, so the host's verified sender can be matched to them.
+    const contacts = demoEmployees().map((employee) => employee.contact);
+    expect(new Set(contacts).size).toBe(demoEmployees().length);
+    for (const employee of demoEmployees()) {
+      expect(employee.contact, employee.name).toMatch(/^[a-z.]+@crew\.example$/);
+      const { contact: _contact, ...rest } = employee;
+      expect(JSON.stringify(rest)).not.toMatch(/@|\+\d/);
+    }
   });
 
   it("keeps its time off on its own employees, and its hired candidate with a start date", () => {
@@ -402,6 +445,7 @@ describe("time off", () => {
           startDate: "2026-12-14",
           endDate: "2026-12-14",
           reasonCategory: "vacation",
+          from: OWNER,
         },
         { requestId: "ambiguous" },
       ),
@@ -653,5 +697,199 @@ describe("referrals", () => {
     const first = await people.referToPerson(input, { requestId: "r" });
     expect(await people.referToPerson(input, { requestId: "r" })).toEqual(first);
     expect((await people.referToPerson(input, { requestId: "r2" })).id).toBe("REF-2");
+  });
+});
+
+describe("company data and the verified sender", () => {
+  it("the past-absence window comes from company data", async () => {
+    const tenDays: CompanyFacts = {
+      ...company,
+      staffPolicies: { ...staff, pastAbsenceWindowDays: 10 },
+    };
+    const medical = (startDate: string) => ({
+      employee: "Chloe Nguyen",
+      startDate,
+      endDate: startDate,
+      reasonCategory: "medical" as const,
+    });
+    // 30 October is eleven days before Monday 9 November; 31 October is ten.
+    const old = await refusal(
+      desk(tenDays).recordTimeOffRequest(medical("2026-10-29"), { requestId: "a" }),
+    );
+    expect(old.code).toBe("invalid");
+    expect(old.message).toContain("more than 10 days ago");
+    const recent = await desk(tenDays).recordTimeOffRequest(medical("2026-10-30"), {
+      requestId: "b",
+    });
+    expect(recent.status).toBe("pending");
+    expect(staff.pastAbsenceWindowDays).toBe(31);
+  });
+
+  it("records requests go to the data owner", async () => {
+    const dataOwner = escalationOwner(company, "data-and-security");
+    if (dataOwner === undefined) throw new Error("company changed");
+    const referral = await desk().referToPerson(
+      { topic: "records_request", summary: "Asks for a copy of their own personnel file." },
+      { requestId: "rec" },
+    );
+    expect(referral).toMatchObject({ topic: "records_request", toName: dataOwner.name });
+    // A company whose escalation path names nobody for data sends it to the People Ops owner.
+    const noData: CompanyFacts = {
+      ...company,
+      escalation: company.escalation.filter((rule) => rule.topic !== "data-and-security"),
+    };
+    const fallback = await desk(noData).referToPerson(
+      { topic: "records_request", summary: "Asks for their file." },
+      { requestId: "rec2" },
+    );
+    expect(fallback.toName).toBe(peopleOwner(company)?.name);
+  });
+
+  it("get_leave_balance returns the sender's own balance from code", async () => {
+    const jamal = demoEmployees().find((employee) => employee.name === "Jamal Brooks");
+    if (jamal === undefined) throw new Error("demo changed");
+    const balance = await desk().leaveBalance({
+      from: { origin: "external", channel: "email", contact: jamal.contact.toUpperCase() },
+    });
+    // Jamal has one approved day this year (TO-101, Thursday 12 November).
+    expect(balance).toMatchObject({
+      employeeId: jamal.id,
+      name: "Jamal Brooks",
+      year: 2026,
+      allowanceDays: jamal.leaveAllowanceDays,
+      takenDays: 1,
+      remainingDays: jamal.leaveAllowanceDays - 1,
+    });
+    expect(balance.approved.map((entry) => entry.id)).toEqual(["TO-101"]);
+    // An office colleague on the company record is matched by their verified id.
+    const own = await desk().leaveBalance({ from: OWNER });
+    expect(own).toMatchObject({ name: peopleOwner(company)?.name, takenDays: 0 });
+  });
+
+  it("get_leave_balance refuses an unknown sender", async () => {
+    const people = desk();
+    expect((await refusal(people.leaveBalance({ from: undefined }))).code).toBe("unknown_sender");
+    const client = await refusal(
+      people.leaveBalance({
+        from: {
+          origin: "external",
+          channel: "email",
+          contact: "grace@hawthornefamilydental.example",
+        },
+      }),
+    );
+    expect(client.code).toBe("not_staff");
+    // A colleague's id typed by an outside sender is nobody.
+    const spoofed = await refusal(people.leaveBalance({ from: { ...OWNER, origin: "external" } }));
+    expect(spoofed.code).toBe("not_staff");
+  });
+
+  it("a staff sender cannot file time off for someone else", async () => {
+    const people = desk();
+    const request = {
+      startDate: "2026-12-21",
+      endDate: "2026-12-23",
+      reasonCategory: "vacation" as const,
+    };
+    const other = await refusal(
+      people.recordTimeOffRequest(
+        { ...request, employee: "Ben Carter", from: ANA },
+        { requestId: "x1" },
+      ),
+    );
+    expect(other.code).toBe("someone_else");
+    expect(other.message).toContain("Nothing was recorded");
+    // Her own request, named or not, is hers.
+    const own = await people.recordTimeOffRequest({ ...request, from: ANA }, { requestId: "x2" });
+    expect(own.employeeName).toBe("Ana Lopez");
+    const named = await people.recordTimeOffRequest(
+      { ...request, startDate: "2026-12-28", endDate: "2026-12-28", employee: "Ana", from: ANA },
+      { requestId: "x3" },
+    );
+    expect(named.employeeName).toBe("Ana Lopez");
+    // In the office her address arrives on an internal ticket; she is still herself, and only herself.
+    const inOffice = await people.recordTimeOffRequest(
+      {
+        ...request,
+        startDate: "2027-01-04",
+        endDate: "2027-01-04",
+        from: { ...ANA, origin: "internal" },
+      },
+      { requestId: "x-office" },
+    );
+    expect(inOffice.employeeName).toBe("Ana Lopez");
+    // Nobody known, or somebody not on staff, files nothing.
+    expect(
+      (
+        await refusal(
+          people.recordTimeOffRequest({ ...request, from: undefined }, { requestId: "x4" }),
+        )
+      ).code,
+    ).toBe("unknown_sender");
+    expect(
+      (
+        await refusal(
+          people.recordTimeOffRequest(
+            {
+              ...request,
+              employee: "Ana Lopez",
+              from: { ...ANA, contact: "someone@example.test" },
+            },
+            { requestId: "x5" },
+          ),
+        )
+      ).code,
+    ).toBe("not_staff");
+    // The exception path follows the same rule.
+    const exception = await refusal(
+      people.requestTimeOffException(
+        {
+          employee: "Ben Carter",
+          startDate: "2026-11-20",
+          endDate: "2026-11-20",
+          reasonCategory: "vacation",
+          daysNotice: 11,
+          why: "A wedding.",
+          from: ANA,
+        },
+        { requestId: "x6" },
+      ),
+    );
+    expect(exception.code).toBe("someone_else");
+  });
+
+  it("the People Ops owner can file for an employee", async () => {
+    const people = desk();
+    const filed = await people.recordTimeOffRequest(
+      {
+        employee: "Ana Lopez",
+        startDate: "2026-12-21",
+        endDate: "2026-12-23",
+        reasonCategory: "vacation",
+        from: OWNER,
+      },
+      { requestId: "own-1" },
+    );
+    expect(filed.employeeName).toBe("Ana Lopez");
+    // Another person on the company record may too; with no employee named, it is their own.
+    const ops = person(company, "priya-raman");
+    if (ops === undefined) throw new Error("company changed");
+    const priya: VerifiedSender = { origin: "internal", channel: "chat", contact: ops.id };
+    const forCrew = await people.recordTimeOffRequest(
+      {
+        employee: "Ben Carter",
+        startDate: "2026-12-21",
+        endDate: "2026-12-21",
+        reasonCategory: "vacation",
+        from: priya,
+      },
+      { requestId: "own-2" },
+    );
+    expect(forCrew.employeeName).toBe("Ben Carter");
+    const self = await people.recordTimeOffRequest(
+      { startDate: "2026-12-22", endDate: "2026-12-22", reasonCategory: "vacation", from: priya },
+      { requestId: "own-3" },
+    );
+    expect(self.employeeName).toBe(ops.name);
   });
 });

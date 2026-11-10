@@ -466,6 +466,13 @@ function departmentIssues(
     if (!whole(staff.timeOffNoticeDays, 0)) {
       add("company.json", "staffPolicies.timeOffNoticeDays must be a whole number of days");
     }
+    // How far back People Ops records a past absence; anything older is most likely a wrong year.
+    if (!whole(staff.pastAbsenceWindowDays, 1)) {
+      add(
+        "company.json",
+        "staffPolicies.pastAbsenceWindowDays must be a positive whole number of days",
+      );
+    }
     // A default, not a lock: the customer may set it false, but the policies must say so too.
     if (typeof staff.overtimeNeedsApproval !== "boolean") {
       add("company.json", "staffPolicies.overtimeNeedsApproval must be true or false");

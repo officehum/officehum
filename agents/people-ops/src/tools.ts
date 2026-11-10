@@ -1,8 +1,11 @@
 /**
- * The People Ops role's eight tools.
+ * The People Ops role's nine tools.
  *
- * `list_candidates`, `list_availability` and `read_company` only read, and none of them can print a
- * contact or personal detail: the desk holds none and the company section types none. The writes go
+ * `list_candidates`, `list_availability`, `get_leave_balance` and `read_company` only read, and none
+ * of them can print a contact or personal detail: the desk returns none and the company section types
+ * none. Who is asking comes from the host's verified sender (`SenderResolver`), never from an argument
+ * or the message: `get_leave_balance` gives only the sender's own balance, and a time-off request is
+ * the sender's own unless a person on the company record files it for someone. The writes go
  * through the desk with no approval — a stage move, an onboarding checklist, a pending time-off
  * request, a hand-off to a person — and each refusal comes back with a code the tools turn into the
  * next step. `request_time_off_exception` is the one approval-gated tool; its approval is
@@ -14,12 +17,13 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
-import { deskRefusal, refusal, requestId, textResult } from "@officehum/sdk";
+import { deskRefusal, refusal, requestId, type SenderResolver, textResult } from "@officehum/sdk";
 import { type CompanyFacts, type Person, peopleOwner, person, personLabel } from "./company.js";
 import {
   type Candidate,
   type CrewAvailability,
   type DeskRefusal,
+  type LeaveBalance,
   type PeopleOpsDesk,
   PeopleOpsDeskError,
   REASON_CATEGORIES,
@@ -33,6 +37,8 @@ import {
 export interface PeopleOpsToolDependencies {
   readonly desk: PeopleOpsDesk | undefined;
   readonly company: CompanyFacts;
+  /** The host's verified sender of each call's work. Omitted: every sender is unknown. */
+  readonly sender?: SenderResolver;
 }
 
 export interface PeopleOpsToolset {
@@ -42,6 +48,7 @@ export interface PeopleOpsToolset {
   readonly recordTimeOffRequest: ToolRegistration;
   readonly requestTimeOffException: ToolRegistration;
   readonly listAvailability: ToolRegistration;
+  readonly getLeaveBalance: ToolRegistration;
   readonly referToPerson: ToolRegistration;
   readonly readCompany: ToolRegistration;
 }
@@ -73,7 +80,7 @@ const DATE = Type.String({
 });
 
 const EMPLOYEE =
-  "The employee's name as they gave it: a full name, or a first name or surname alone. The desk finds them and says if more than one person has that name, so never ask for a surname first";
+  "Only when someone files for another employee: that employee's name as given, a full name or a first name or surname alone. Leave it out for the sender's own time off: the desk knows who sent the message. The desk finds the employee and says if more than one person has that name, so never ask for a surname first";
 
 const literals = <T extends string>(values: readonly T[], description: string) =>
   Type.Union(
@@ -119,6 +126,10 @@ export function HINTS(company: CompanyFacts): Record<DeskRefusal, string> {
       " Tell the employee what is already recorded and its status; do not record it again.",
     no_one_left:
       " Next: hand it to nobody it names. Tell the person plainly that you could not pass it to anyone on record who is not named in it, and that they can raise it directly with a manager they trust.",
+    unknown_sender: ` Next: tell them nothing was recorded or shared, and that they can ask from the address or number the company has for them, or ask the person who decides time off directly: ${hiring}.`,
+    not_staff: ` Next: say time off and leave balances are for staff only, and that ${hiring} decides time off; share nothing about anyone.`,
+    someone_else:
+      " Next: tell the sender each employee asks for their own time off, or a person on the company record files it for them; record nothing under the sender's name instead.",
   };
 }
 
@@ -155,6 +166,23 @@ function timeOffText(entry: TimeOffRequest): string {
     return `Recorded ${entry.id}: ${span}. Status: pending — not approved. The reason may be protected by law, so ${decides} decides it whatever the notice: it is never refused for short notice. This is an internal record: nothing has been sent to anyone. Do not ask for medical details, and say nothing about whether the law applies.`;
   }
   return `Recorded ${entry.id}: ${span}, with ${entry.daysNotice} days' notice. Status: pending — not approved. ${decides} decides it. This is an internal record: nothing has been sent to anyone.`;
+}
+
+function balanceText(balance: LeaveBalance): string {
+  const approved =
+    balance.approved.length === 0
+      ? "none"
+      : balance.approved
+          .map(
+            (entry) =>
+              `${entry.id}, ${entry.startDate} to ${entry.endDate} (${entry.days} ${entry.days === 1 ? "day" : "days"} this year)`,
+          )
+          .join("; ");
+  const pending =
+    balance.pending === 0
+      ? ""
+      : ` ${balance.pending} ${balance.pending === 1 ? "request is" : "requests are"} still waiting for a person and not counted.`;
+  return `Leave for ${balance.name} (the sender) in ${balance.year}: allowance ${balance.allowanceDays} days; approved and taken or booked ${balance.takenDays}; ${balance.remainingDays} days left. Approved: ${approved}.${pending} Worked out by the desk; this is the sender's own balance only.`;
 }
 
 function companySection(company: CompanyFacts, section: CompanySection): string {
@@ -221,12 +249,17 @@ function companySection(company: CompanyFacts, section: CompanySection): string 
 }
 
 /**
- * Builds the eight tools over one desk and one company. Every one is plain Pi Durable: they install
+ * Builds the nine tools over one desk and one company. Every one is plain Pi Durable: they install
  * into any harness, and a harness with no desk builds the same tools and refuses at the point of use.
  */
 export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleOpsToolset {
   const { company } = dependencies;
   const hints = HINTS(company);
+
+  /** Who this call's work came from, as the host verified it; `undefined` when nobody is known. */
+  const from = (api: { readonly conversationId: unknown; readonly taskId: unknown }) =>
+    dependencies.sender?.({ conversationId: api.conversationId, taskId: api.taskId }) ??
+    Promise.resolve(undefined);
   const hiring = personLabel(peopleOwner(company), "the person who decides hiring");
 
   /** A desk refusal as the model reads it, with the next step its code names. */
@@ -353,10 +386,10 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
   const recordTimeOffRequest = defineTool({
     name: "record_time_off_request",
     description:
-      "Record an employee's time-off request. It is recorded as pending for the person who decides it; nothing is approved. The desk refuses a request with less notice than the company asks unless the reason may be protected by law (illness, disability, pregnancy or a new child, military, jury duty, family care, bereavement), which is always recorded and sent to a person.",
+      "Record a time-off request: the sender's own, or, when a person on the company record files it, the employee they name. It is recorded as pending for the person who decides it; nothing is approved. The desk refuses a request with less notice than the company asks unless the reason may be protected by law (illness, disability, pregnancy or a new child, military, jury duty, family care, bereavement), which is always recorded and sent to a person. It refuses a crew member filing for someone else, and a sender not on staff.",
     parameters: Type.Object(
       {
-        employee: Type.String({ description: EMPLOYEE }),
+        employee: Type.Optional(Type.String({ description: EMPLOYEE })),
         startDate: DATE,
         endDate: Type.String({
           description: "The last day off, as YYYY-MM-DD; the start date for one day",
@@ -371,16 +404,17 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
       try {
         const entry = await desk.recordTimeOffRequest(
           {
-            employee: args.employee,
+            ...(args.employee === undefined ? {} : { employee: args.employee }),
             startDate: args.startDate,
             endDate: args.endDate,
             reasonCategory: args.reasonCategory as ReasonCategory,
+            from: await from(api),
           },
           { requestId: requestId("time-off", api) },
         );
         return { ...textResult(timeOffText(entry)), details: { ...entry } };
       } catch (error) {
-        return refused(error, { employee: args.employee });
+        return refused(error, args.employee === undefined ? {} : { employee: args.employee });
       }
     },
   });
@@ -391,7 +425,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
       "Ask a person to approve time off requested with less notice than the company asks, with the daysNotice record_time_off_request's refusal stated and why. Every call waits for a person; once approved, the desk records the time off as approved by them.",
     parameters: Type.Object(
       {
-        employee: Type.String({ description: EMPLOYEE }),
+        employee: Type.Optional(Type.String({ description: EMPLOYEE })),
         startDate: DATE,
         endDate: Type.String({ description: "The last day off, as YYYY-MM-DD" }),
         reasonCategory: REASON,
@@ -412,18 +446,19 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
       try {
         const entry = await desk.requestTimeOffException(
           {
-            employee: args.employee,
+            ...(args.employee === undefined ? {} : { employee: args.employee }),
             startDate: args.startDate,
             endDate: args.endDate,
             reasonCategory: args.reasonCategory as ReasonCategory,
             daysNotice: args.daysNotice,
             why: args.why,
+            from: await from(api),
           },
           { requestId: requestId("time-off-exception", api) },
         );
         return { ...textResult(timeOffText(entry)), details: { ...entry } };
       } catch (error) {
-        return refused(error, { employee: args.employee });
+        return refused(error, args.employee === undefined ? {} : { employee: args.employee });
       }
     },
   });
@@ -470,10 +505,30 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     },
   });
 
+  const getLeaveBalance = defineTool({
+    name: "get_leave_balance",
+    description:
+      "The sender's own leave this year: their allowance, the approved days, and the days left, worked out by the desk. It takes no employee: the desk knows who sent the message, and nobody gets another person's balance. Refused for a sender who is not on staff.",
+    parameters: Type.Object({}, { additionalProperties: false }),
+    replay: "safe",
+    execute: async (_args, api) => {
+      const desk = requireDesk(dependencies);
+      try {
+        const balance = await desk.leaveBalance({ from: await from(api) });
+        return {
+          ...textResult(balanceText(balance)),
+          details: { ...balance, approved: balance.approved.map((entry) => ({ ...entry })) },
+        };
+      } catch (error) {
+        return refused(error, {});
+      }
+    },
+  });
+
   const referToPerson = defineTool({
     name: "refer_to_person",
     description:
-      "Hand a matter to the person the company names for it: pay (a pay question or a raise), discipline, termination, employee_relations (harassment or how someone is treated at work) or accommodation. Give who it is about for discipline, termination and employee_relations: the desk never hands it to anyone named there. An internal hand-off: it decides nothing.",
+      "Hand a matter to the person the company names for it: pay (a pay question or a raise), discipline, termination, employee_relations (harassment or how someone is treated at work), accommodation, or records_request (someone asking for a copy of their own personnel file or records, or for their data to be corrected or deleted). Give who it is about for discipline, termination and employee_relations: the desk never hands it to anyone named there. An internal hand-off: it decides nothing.",
     parameters: Type.Object(
       {
         topic: literals(REFERRAL_TOPICS, "What the matter is"),
@@ -539,6 +594,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     recordTimeOffRequest,
     requestTimeOffException,
     listAvailability,
+    getLeaveBalance,
     referToPerson,
     readCompany,
   };

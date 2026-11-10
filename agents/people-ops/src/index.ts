@@ -19,7 +19,7 @@
  */
 
 import { fileURLToPath } from "node:url";
-import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
+import { type Approver, type DefinedRole, defineRole, type SenderResolver } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
 import { DEMO_NOW, fakePeopleOpsDesk, type PeopleOpsDesk } from "./desk.js";
@@ -50,6 +50,7 @@ export {
   type CandidateFilter,
   type ChecklistStep,
   type CrewAvailability,
+  DEMO_LEAVE_ALLOWANCE_DAYS,
   DEMO_NOW,
   type DeskRefusal,
   demoCandidates,
@@ -58,6 +59,7 @@ export {
   type Employee,
   type FakePeopleOpsDeskOptions,
   fakePeopleOpsDesk,
+  type LeaveBalance,
   type MemberAvailability,
   type OnboardingChecklist,
   type PeopleOpsDesk,
@@ -100,6 +102,12 @@ export interface PeopleOpsOptions {
    * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock with a host's desk.
    */
   readonly now?: () => Date;
+  /**
+   * Who each call's work came from, as the host verified it. A time-off request is the sender's own
+   * unless a person on the company record files it, and a leave balance is only ever the sender's.
+   * Omitted: every sender is unknown, so no time off is recorded and no balance is given.
+   */
+  readonly sender?: SenderResolver;
 }
 
 export default function peopleOps(options: PeopleOpsOptions = {}): DefinedRole {
@@ -111,7 +119,11 @@ export default function peopleOps(options: PeopleOpsOptions = {}): DefinedRole {
   // The demonstration desk applies the company's own notice period and routes to its own people, so a
   // first run and a real one refuse and route the same way.
   const desk = options.desk ?? fakePeopleOpsDesk({ company, now });
-  const tools = peopleOpsTools({ desk, company });
+  const tools = peopleOpsTools({
+    desk,
+    company,
+    ...(options.sender === undefined ? {} : { sender: options.sender }),
+  });
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
@@ -123,6 +135,7 @@ export default function peopleOps(options: PeopleOpsOptions = {}): DefinedRole {
       tools.recordTimeOffRequest,
       tools.requestTimeOffException,
       tools.listAvailability,
+      tools.getLeaveBalance,
       tools.referToPerson,
       tools.readCompany,
     ],

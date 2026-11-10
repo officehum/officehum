@@ -5,9 +5,10 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { VerifiedSender } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { companyHead, loadCompanyFacts, peopleOwner, person, personLabel } from "./company.js";
-import { type DeskRefusal, fakePeopleOpsDesk, type PeopleOpsDesk } from "./desk.js";
+import { type DeskRefusal, demoEmployees, fakePeopleOpsDesk, type PeopleOpsDesk } from "./desk.js";
 import { HINTS, type PeopleOpsToolset, peopleOpsTools } from "./tools.js";
 
 const company = loadCompanyFacts();
@@ -18,8 +19,18 @@ const NOW = new Date("2026-11-09T15:00:00.000Z");
 const call = (callId: string) =>
   ({ conversationId: "conversation-1", taskId: "task-1", callId }) as never;
 
-const tools = (desk: PeopleOpsDesk | undefined): PeopleOpsToolset =>
-  peopleOpsTools({ desk, company });
+/** The People Ops owner, asking from inside the office: may file time off for anyone on staff. */
+const OWNER: VerifiedSender = {
+  origin: "internal",
+  channel: "chat",
+  contact: peopleOwner(company)?.id ?? "",
+};
+
+/** The tools, asked by `sender`; `null` is a host that knows nobody. */
+const tools = (
+  desk: PeopleOpsDesk | undefined,
+  sender: VerifiedSender | null = OWNER,
+): PeopleOpsToolset => peopleOpsTools({ desk, company, sender: async () => sender ?? undefined });
 
 const desk = (): PeopleOpsDesk => fakePeopleOpsDesk({ company, now: () => NOW });
 
@@ -58,6 +69,9 @@ describe("refusal hints", () => {
       "protected",
       "duplicate",
       "no_one_left",
+      "unknown_sender",
+      "not_staff",
+      "someone_else",
     ];
     const hints = HINTS(company);
     for (const code of codes) expect(hints[code].trim().length, code).toBeGreaterThan(10);
@@ -372,6 +386,73 @@ describe("read_company", () => {
   });
 });
 
+describe("get_leave_balance", () => {
+  const jamal = demoEmployees().find((employee) => employee.name === "Jamal Brooks");
+  const JAMAL: VerifiedSender = {
+    origin: "external",
+    channel: "sms",
+    contact: jamal?.contact ?? "",
+  };
+
+  it("get_leave_balance returns the sender's own balance from code", async () => {
+    const result = await tools(desk(), JAMAL).getLeaveBalance.execute(
+      {},
+      call("lb1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toBe(
+      "Leave for Jamal Brooks (the sender) in 2026: allowance 15 days; approved and taken or booked 1; 14 days left. Approved: TO-101, 2026-11-12 to 2026-11-12 (1 day this year). Worked out by the desk; this is the sender's own balance only.",
+    );
+    expect(details(result)).toMatchObject({ remainingDays: 14, takenDays: 1 });
+    expect(JSON.stringify(details(result))).not.toContain("@");
+    // It takes no employee: there is nothing to name another person with.
+    const schema = tools(desk()).getLeaveBalance.parameters as unknown as {
+      properties: Record<string, unknown>;
+    };
+    expect(Object.keys(schema.properties)).toEqual([]);
+  });
+
+  it("get_leave_balance refuses an unknown sender", async () => {
+    const nobody = await tools(desk(), null).getLeaveBalance.execute(
+      {},
+      call("lb2"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(nobody).code).toBe("unknown_sender");
+    expect(text(nobody)).toContain("tell them nothing was recorded or shared");
+    const client = await tools(desk(), {
+      origin: "external",
+      channel: "email",
+      contact: "ravi@gatewayaccounting.example",
+    }).getLeaveBalance.execute({}, call("lb3"), BACKGROUND_CONTEXT);
+    expect(details(client).code).toBe("not_staff");
+    expect(text(client)).toContain("for staff only");
+  });
+
+  it("a staff sender cannot file time off for someone else, and records their own without a name", async () => {
+    const ANA: VerifiedSender = {
+      origin: "external",
+      channel: "email",
+      contact: "ana.lopez@crew.example",
+    };
+    const toolset = tools(desk(), ANA);
+    const request = { startDate: "2026-12-21", endDate: "2026-12-21", reasonCategory: "vacation" };
+    const other = await toolset.recordTimeOffRequest.execute(
+      { ...request, employee: "Ben Carter" },
+      call("se1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(other)).toMatchObject({ code: "someone_else", employee: "Ben Carter" });
+    expect(text(other)).toContain("record nothing under the sender's name instead");
+    const own = await toolset.recordTimeOffRequest.execute(
+      request,
+      call("se2"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(own)).toMatchObject({ employeeName: "Ana Lopez", status: "pending" });
+  });
+});
+
 describe("no desk", () => {
   it("refuses rather than pretending", async () => {
     await expect(
@@ -383,6 +464,7 @@ describe("no desk", () => {
 describe("no contact details anywhere", () => {
   it("prints none of the company's contact details from any tool", async () => {
     const toolset = tools(desk());
+    const crewContacts = demoEmployees().map((employee) => employee.contact);
     const outputs = [
       await toolset.listCandidates.execute({}, call("1"), BACKGROUND_CONTEXT),
       await toolset.listAvailability.execute({}, call("2"), BACKGROUND_CONTEXT),
@@ -407,9 +489,10 @@ describe("no contact details anywhere", () => {
         BACKGROUND_CONTEXT,
       ),
     ];
+    outputs.push(await toolset.getLeaveBalance.execute({}, call("6"), BACKGROUND_CONTEXT));
     for (const output of outputs) {
       const all = `${text(output)}\n${JSON.stringify(details(output))}`;
-      for (const contact of CONTACTS) expect(all).not.toContain(contact);
+      for (const contact of [...CONTACTS, ...crewContacts]) expect(all).not.toContain(contact);
     }
   });
 });

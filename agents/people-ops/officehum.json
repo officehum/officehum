@@ -32,7 +32,7 @@
       "name": "record_time_off_request",
       "replay": "unsafe",
       "noApproval": "Records a time-off request as pending for the person the company names to answer; it approves nothing. The desk refuses one inside the notice period unless its reason may be protected, and points to request_time_off_exception.",
-      "description": "Record an employee's time-off request, pending, for the person who decides it. The desk refuses short notice unless the reason may be protected by law, which always goes to a person."
+      "description": "Record the sender's own time-off request, or one a person on the company record files for an employee, pending, for the person who decides it. The desk refuses short notice unless the reason may be protected by law, which always goes to a person."
     },
     {
       "name": "request_time_off_exception",
@@ -45,10 +45,15 @@
       "description": "List crew members' availability for one week: the days each is unavailable. Availability only: no reasons, contact or personal details."
     },
     {
+      "name": "get_leave_balance",
+      "replay": "safe",
+      "description": "The sender's own leave this year: allowance, approved days and days left, worked out by the desk. Takes no employee; refused for a sender not on staff."
+    },
+    {
       "name": "refer_to_person",
       "replay": "unsafe",
-      "noApproval": "An internal hand-off to the person the company record names: pay, discipline, termination, a workplace complaint or an accommodation. The desk picks the person and never hands a complaint to anyone it names; it decides and sends nothing.",
-      "description": "Hand a pay question, a discipline or termination matter, a complaint about how someone is treated at work, or an accommodation request to the person the company names for it."
+      "noApproval": "An internal hand-off to the person the company record names: pay, discipline, termination, a workplace complaint, an accommodation or a records request. The desk picks the person and never hands a complaint to anyone it names; it decides and sends nothing.",
+      "description": "Hand a pay question, a discipline or termination matter, a complaint about how someone is treated at work, an accommodation request or a request for someone's own records to the person the company names for it."
     },
     {
       "name": "read_company",

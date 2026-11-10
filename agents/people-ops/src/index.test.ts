@@ -23,6 +23,7 @@ import {
   checkAgent,
   formatReport,
   runEvals,
+  type SenderResolver,
   validatePackage,
 } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
@@ -47,9 +48,17 @@ const TOOLS = [
   "record_time_off_request",
   "request_time_off_exception",
   "list_availability",
+  "get_leave_balance",
   "refer_to_person",
   "read_company",
 ];
+
+/** The People Ops owner asking from inside the office, as the host verified it. */
+const OWNER: SenderResolver = async () => ({
+  origin: "internal",
+  channel: "chat",
+  contact: "jules-okafor",
+});
 
 const SCENARIOS = [
   "pay-question-handed-to-a-person",
@@ -109,9 +118,12 @@ async function attempt(options: {
   readonly turns: readonly ScriptedTurn[];
   readonly desk: PeopleOpsDesk;
   readonly approver?: Approver;
+  /** Who is asking. Omitted: the People Ops owner, who may file for anyone on staff. */
+  readonly sender?: SenderResolver;
 }): Promise<{ readonly messages: readonly Message[] }> {
   const role = peopleOps({
     desk: options.desk,
+    sender: options.sender ?? OWNER,
     ...(options.approver === undefined ? {} : { approve: options.approver }),
   });
   const scripted = scriptedProvider(options.turns);
@@ -152,7 +164,7 @@ describe("people ops role", () => {
     });
   });
 
-  it("provides the eight declared tools in one extension", () => {
+  it("provides the nine declared tools in one extension", () => {
     const role = peopleOps({});
     expect(role.extensions.map((extension) => extension.name)).toEqual(["people-ops"]);
     expect(tools(role.extensions).map((tool) => tool.name)).toEqual([...TOOLS, "read_skill"]);
@@ -409,7 +421,7 @@ describe("people ops clock", () => {
   }
 
   it("the today section and the desk use the host clock", async () => {
-    const role = peopleOps({ now: LATER });
+    const role = peopleOps({ now: LATER, sender: OWNER });
     expect(await todayOf(role)).toMatch(/^Today is 2027-02-01 \(Monday\)\./);
     const recorded = await call(role, "record_time_off_request", {
       employee: "Ana Lopez",
@@ -421,7 +433,7 @@ describe("people ops clock", () => {
   });
 
   it("the demo desk keeps the demo date without now", async () => {
-    const role = peopleOps({});
+    const role = peopleOps({ sender: OWNER });
     expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
     const recorded = await call(role, "record_time_off_request", {
       employee: "Ana Lopez",
@@ -432,7 +444,7 @@ describe("people ops clock", () => {
     expect(recorded.details.recordedOn).toBe("2026-11-09");
   });
   it("the today section and the desk agree at a month end", async () => {
-    const role = peopleOps({ now: () => new Date("2026-11-30T23:30:00.000Z") });
+    const role = peopleOps({ now: () => new Date("2026-11-30T23:30:00.000Z"), sender: OWNER });
     expect(await todayOf(role)).toMatch(/^Today is 2026-11-30 \(Monday\)\./);
     const recorded = await call(role, "record_time_off_request", {
       employee: "Ana Lopez",

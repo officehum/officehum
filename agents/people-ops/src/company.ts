@@ -39,6 +39,8 @@ export interface Person {
   readonly id: string;
   readonly name: string;
   readonly title: string;
+  /** Other names colleagues use for them ("DW"); a complaint naming one is kept away from them. */
+  readonly aliases?: readonly string[];
   readonly decides: readonly string[];
 }
 
@@ -53,6 +55,11 @@ export interface Crew {
 export interface StaffPolicies {
   /** How many days ahead time off is asked for. */
   readonly timeOffNoticeDays: number;
+  /**
+   * How far back, in days, an absence the law may protect is still recorded; an older date is most
+   * likely a wrong year, so the desk refuses it.
+   */
+  readonly pastAbsenceWindowDays: number;
   readonly payQuestionsTo: string;
   /** Discipline, and so termination. */
   readonly disciplineTo: string;

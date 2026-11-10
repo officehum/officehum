@@ -338,6 +338,17 @@ describe("the company package's own consistency", () => {
       expect(issues).toContain("people[3] (tom-becker) aliases must be a list of names");
     });
 
+    it("refuses a non-positive pastAbsenceWindowDays", () => {
+      for (const value of [0, -3, 1.5, "31", undefined]) {
+        const issues = issuesAfter((c) => {
+          c.staffPolicies.pastAbsenceWindowDays = value;
+        });
+        expect(issues, String(value)).toContain(
+          "staffPolicies.pastAbsenceWindowDays must be a positive whole number of days",
+        );
+      }
+    });
+
     it("refuses a staff-policy contact who is not a person", () => {
       const issues = issuesAfter((c) => {
         c.staffPolicies.payQuestionsTo = "nobody";
