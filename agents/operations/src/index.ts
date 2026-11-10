@@ -13,8 +13,10 @@
  * jobs; the host brings the desk that holds its real schedule and, optionally, the person who decides
  * gated actions. Nothing here needs Office Hum, so the same bundle runs in a bare Pi Durable harness.
  *
- * With no desk the role runs on `fakeOperationsDesk`: the company's own crews and caps, a week of jobs
- * in memory, and nothing written anywhere.
+ * With `demo: true` and no desk the role runs on `fakeOperationsDesk`: the company's own crews and caps, a week of jobs
+ * in memory, and nothing written anywhere. That is
+ * what `officehum run --demo` and the evals run on. With neither, the role still starts, and every
+ * tool that reads or writes the desk refuses and says how to bind one.
  */
 
 import { fileURLToPath } from "node:url";
@@ -72,9 +74,15 @@ export {
 export interface OperationsOptions {
   /**
    * The host's scheduling system: field-service software in production, `fakeOperationsDesk` in a
-   * test or an eval. Omitted, the role runs on the demonstration week it ships with.
+   * test. Omitted, the demonstration week when `demo` is set; otherwise none, and every desk tool
+   * refuses.
    */
   readonly desk?: OperationsDesk;
+  /**
+   * Run on the demonstration week this package ships with when no `desk` is given. Set by the host
+   * (`officehum run --demo`, the eval runner), never by a client or a user's config.
+   */
+  readonly demo?: boolean;
   /**
    * The company to schedule for. Omitted, the generated facts in this package. A host with its own
    * company passes its own, and nothing in `company/default/` is involved.
@@ -89,20 +97,22 @@ export interface OperationsOptions {
   readonly approve?: Approver;
   /**
    * The host's clock. The prompt's `today` section and the demonstration desk read it. Omitted: the
-   * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock with a host's desk.
+   * demonstration date (`DEMO_NOW`) on the demonstration desk, the system clock otherwise.
    */
   readonly now?: () => Date;
 }
 
 export default function operations(options: OperationsOptions = {}): DefinedRole {
+  // The demonstration desk is built only when the host asks for it (`demo`) and binds no desk of
+  // its own; with neither, the tools refuse rather than invent records.
+  const demoDesk = options.desk === undefined && options.demo === true;
   // The demonstration data is dated around DEMO_NOW, so its desk keeps that date unless the host
-  // passes a clock; a host's own desk runs on the system clock. The prompt reads the same clock.
-  const now =
-    options.now ?? (options.desk === undefined ? () => new Date(DEMO_NOW) : () => new Date());
+  // passes a clock; otherwise the role runs on the system clock. The prompt reads the same clock.
+  const now = options.now ?? (demoDesk ? () => new Date(DEMO_NOW) : () => new Date());
   const company = options.company ?? loadCompanyFacts();
   // The demonstration desk schedules the company's own crews against their own caps, so a first run
   // and a real one refuse the same week.
-  const desk = options.desk ?? fakeOperationsDesk({ crews: company.crews, now });
+  const desk = demoDesk ? fakeOperationsDesk({ crews: company.crews, now }) : options.desk;
   const tools = operationsTools({ desk, company });
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),

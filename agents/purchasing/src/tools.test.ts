@@ -796,6 +796,6 @@ describe("with no desk", () => {
   it("refuses at the point of use", async () => {
     await expect(
       tools(undefined).listStock.execute({}, call("h1"), BACKGROUND_CONTEXT),
-    ).rejects.toThrow("No purchasing desk is configured");
+    ).rejects.toThrow("No purchasing desk is bound to this role, so nothing was read or written.");
   });
 });

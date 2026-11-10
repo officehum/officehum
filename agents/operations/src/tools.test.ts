@@ -327,6 +327,6 @@ describe("with no desk", () => {
   it("refuses rather than pretending", async () => {
     await expect(
       tools(undefined).listJobs.execute({}, call("c18"), BACKGROUND_CONTEXT),
-    ).rejects.toThrow("No operations desk is configured");
+    ).rejects.toThrow("No operations desk is bound to this role, so nothing was read or written.");
   });
 });

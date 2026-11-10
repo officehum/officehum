@@ -288,6 +288,14 @@ describe("the sender a trial's role is handed", () => {
     stubs: bothStubs,
   });
 
+  // Evals play their scenarios against the demonstration data, and the approval facts readers read it.
+  it("loads the role on its demonstration data", async () => {
+    const recording = await recordingRole(stockroom);
+    temps.push(recording.dir);
+    await piDurableRunner({ dir: recording.dir, model: levelsThenAnswer }).run(fromDana, 1);
+    expect(recording.options()?.demo).toBe(true);
+  });
+
   it("bare mode resolves the scenario's from", async () => {
     const recording = await recordingRole(stockroom);
     temps.push(recording.dir);

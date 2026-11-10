@@ -17,10 +17,12 @@ From a checkout of this repository:
 ```sh
 npm install
 npm run build
-node packages/cli/dist/index.js run agents/operations --model paper/ultramarine-1-flash
+node packages/cli/dist/index.js run agents/operations --demo --model paper/ultramarine-1-flash
 ```
 
-With no configuration the role runs on a **demonstration desk**: the company's four crews, the week
+Without `--demo`, and with no desk bound in `--clients`, the role starts but every tool that reads
+or writes its desk refuses and says how to bind one, so a forgotten connection never shows made-up
+records. With `--demo` the role runs on a **demonstration desk**: the company's four crews, the week
 of Monday 9 November 2026 in memory (its clock starts on that Monday, so "this week" has work in it),
 and nothing written anywhere. Ask it to put the Central crew on the Riverside Dental deep clean on
 Thursday and it will find their week is full and ask a person for the overtime. It needs a model key in
@@ -102,7 +104,11 @@ for (const extension of role.extensions) registry.install(extension);
 const root = await harness.root(context, { agent: role.agent });
 ```
 
-- **`desk`** — the schedule. Omitted: the demonstration desk, on the company's own crews.
+- **`desk`** — the schedule. Omitted: the demonstration desk, on the company's own
+  crews, when `demo` is set; otherwise none, and every desk tool refuses with how to bind one.
+- **`demo`** — run on the demonstration desk when no `desk` is given. Set by the host
+  (`officehum run --demo`, the eval runner); `loadRole` reserves the name, so a client file can never
+  set it.
 - **`company`** — a host's own company facts, in the shape of `references/facts.json`.
 - **`approve`** — decides the gated actions. Omitted: overtime and a contract move are both blocked.
 - **`overlays`** — the business's own `AGENTS.md`, skills and `settings.json`, lowest first.

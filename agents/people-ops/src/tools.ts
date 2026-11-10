@@ -110,7 +110,9 @@ const REASON = literals(
 
 function requireDesk(dependencies: PeopleOpsToolDependencies): PeopleOpsDesk {
   if (dependencies.desk === undefined) {
-    throw new Error("No people desk is configured for this role.");
+    throw new Error(
+      "No people desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
+    );
   }
   return dependencies.desk;
 }

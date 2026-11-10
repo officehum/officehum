@@ -16,11 +16,13 @@ From a machine with no copy of this repository:
 
 ```sh
 npm install -g officehum        # or use npx officehum
-officehum run ./sales-account-manager
+officehum run ./sales-account-manager --demo
 ```
 
-Then type a message. With no configuration at all the role runs on a **demonstration desk**: five
-leads in memory, the company's own price book, and nothing written anywhere. Ask it to quote the
+Then type a message. With `--demo` the role runs on a **demonstration desk**: five leads in memory,
+the company's own price book, and nothing written anywhere. Without `--demo` and with no desk bound,
+the role still starts, but every tool that reads or writes the pipeline refuses and says how to bind
+one, so a forgotten CRM never shows made-up leads. Ask it to quote the
 Riverside Dental deep clean and it will price it from the book, apply the minimum, and tell you what
 the quote says. It needs a model key in the environment (`PAPERINSTRUMENTS_API_KEY` for Paper) for
 that conversation, like every role.
@@ -30,7 +32,7 @@ From a checkout of this repository:
 ```sh
 npm install
 npm run build
-node packages/cli/dist/index.js run agents/sales --model paper/ultramarine-1-flash
+node packages/cli/dist/index.js run agents/sales --demo --model paper/ultramarine-1-flash
 ```
 
 ## Run its evals
@@ -239,6 +241,7 @@ officehum run agents/sales --clients ./clients.json --model paper/ultramarine-1-
 ```
 
 An embedding host passes `desk`, `company`, `approve` and `overlays` straight to the factory instead.
+With a `desk` client bound, `--demo` changes nothing: the business's own desk is used.
 
 ## Install it as a library
 
@@ -250,7 +253,10 @@ for (const extension of role.extensions) registry.install(extension);
 const root = await harness.root(context, { agent: role.agent });
 ```
 
-- **`desk`** — the pipeline. Omitted: the demonstration desk, priced from the same book.
+- **`desk`** — the pipeline. Omitted: the demonstration desk, priced from the same book, when `demo`
+  is set; otherwise none, and every desk tool refuses with how to bind one.
+- **`demo`** — run on the demonstration desk when no `desk` is given. Set by the host (`officehum run
+  --demo`, the eval runner); `loadRole` reserves the name, so a client file can never set it.
 - **`approve`** — decides the gated actions. Omitted: a discounted or over-limit quote stays saved
   awaiting approval and its approval is refused, which is the safe direction.
 - **`overlays`** — the business's own `AGENTS.md`, skills, `settings.json` and limits, lowest first.

@@ -10,9 +10,10 @@
  * ```
  *
  * The package brings its own prompt, skills, tools and approval conditions; the host brings the
- * QuickBooks connection, optionally its own accounts desk (payables and bank records; omitted, the
- * demonstration desk, which moves no money), and the person who decides gated actions. Nothing here
- * needs Office Hum, so the same bundle runs in a bare Pi Durable harness.
+ * QuickBooks connection, its own accounts desk (payables and bank records; omitted, the
+ * demonstration desk, which moves no money, when the host sets `demo`, and otherwise none, so the
+ * payables tools refuse), and the person who decides gated actions. Nothing here needs Office Hum, so
+ * the same bundle runs in a bare Pi Durable harness.
  */
 
 import { fileURLToPath } from "node:url";
@@ -114,10 +115,15 @@ export interface BookkeeperOptions {
   readonly quickbooks?: QuickBooks;
   /**
    * The host's payables and bank records: accounting software in production, `fakeAccountingDesk` in
-   * a test or an eval. Omitted, the role runs on the demonstration desk it ships with, whose payments
-   * are recorded in memory and move no money.
+   * a test. Omitted, the demonstration desk when `demo` is set, whose payments are recorded in memory
+   * and move no money; otherwise none, and every payables tool refuses.
    */
   readonly desk?: AccountingDesk;
+  /**
+   * Run on the demonstration accounts desk this package ships with when no `desk` is given. Set by
+   * the host (`officehum run --demo`, the eval runner), never by a client or a user's config.
+   */
+  readonly demo?: boolean;
   /**
    * The company whose suppliers, catalogue and people the desk and the hand-offs use. Omitted, the
    * generated facts in this package.
@@ -133,20 +139,21 @@ export interface BookkeeperOptions {
   /**
    * The host's clock. The prompt's `today` section, the demonstration desk and the QuickBooks tools
    * (due dates, days overdue, reminder times) read it. Omitted: the demonstration date (`DEMO_NOW`)
-   * when neither a desk nor a QuickBooks connection is given, the system clock otherwise.
+   * on the demonstration desk with no QuickBooks connection, the system clock otherwise.
    */
   readonly now?: () => Date;
 }
 
 export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
+  // The demonstration desk is built only when the host asks for it (`demo`) and binds no desk of
+  // its own; with neither, the payables tools refuse rather than invent bills.
+  const demoDesk = options.desk === undefined && options.demo === true;
   // The demonstration data is dated around DEMO_NOW, so a role on it keeps that date unless the host
   // passes a clock. A host's own desk or QuickBooks connection holds real dates, so it runs on the
   // system clock. The prompt, the desk and the QuickBooks tools all read this one clock.
   const now =
     options.now ??
-    (options.desk === undefined && options.quickbooks === undefined
-      ? () => new Date(DEMO_NOW)
-      : () => new Date());
+    (demoDesk && options.quickbooks === undefined ? () => new Date(DEMO_NOW) : () => new Date());
   // The collections cadence is read from the role's own resolved limits at every call, so an
   // overlay's value is what a reminder is measured against and a reload needs no rebuild. The
   // reader is bound to the role this call returns; before it exists no cadence resolves, and a
@@ -158,7 +165,7 @@ export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
   // The demonstration desk prices bills from the company's own catalogue, so a first run and a real
   // one refuse the same supplier. The major-item limit is read live, like the collections cadence.
   const payables = payablesTools({
-    desk: options.desk ?? fakeAccountingDesk({ company, now }),
+    desk: demoDesk ? fakeAccountingDesk({ company, now }) : options.desk,
     company,
     limits,
   });

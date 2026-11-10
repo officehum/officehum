@@ -118,7 +118,9 @@ const LINES = Type.Array(
 /** The desk, or a refusal: a host with no desk gets no read and no write. */
 function requireDesk(dependencies: PurchasingToolDependencies): PurchasingDesk {
   if (dependencies.desk === undefined) {
-    throw new Error("No purchasing desk is configured for this role.");
+    throw new Error(
+      "No purchasing desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
+    );
   }
   return dependencies.desk;
 }

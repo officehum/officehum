@@ -154,12 +154,14 @@ async function stageOf(desk: SalesDesk, leadId: string): Promise<string | undefi
 async function attempt(options: {
   readonly prompt: string;
   readonly turns: readonly ScriptedTurn[];
-  readonly desk: SalesDesk;
+  readonly desk: SalesDesk | undefined;
+  readonly demo?: boolean;
   readonly approver?: Approver;
   readonly overlays?: readonly string[];
 }): Promise<{ readonly messages: readonly Message[] }> {
   const role = sales({
-    desk: options.desk,
+    ...(options.desk === undefined ? {} : { desk: options.desk }),
+    ...(options.demo === undefined ? {} : { demo: options.demo }),
     ...(options.approver === undefined ? {} : { approve: options.approver }),
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
   });
@@ -294,7 +296,7 @@ describe("sales role", () => {
   });
 
   it("returns output, not content, so the SDK tool-result guard passes on the Sales role", async () => {
-    const list = tools(sales({}).extensions).find((tool) => tool.name === "list_leads");
+    const list = tools(sales({ demo: true }).extensions).find((tool) => tool.name === "list_leads");
     if (list === undefined) throw new Error("missing list_leads");
     const result = await list.execute(
       {},
@@ -432,6 +434,60 @@ describe("sales approval gates", () => {
         { text: "Noted." },
       ],
       desk,
+    });
+    expect(lastToolText(run.messages)).toContain("Recorded call");
+  });
+});
+
+/** What every desk tool says when the host bound no desk and did not ask for the demonstration. */
+const NO_DESK =
+  "No sales desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.";
+
+const logCallTurns: readonly ScriptedTurn[] = [
+  {
+    toolCalls: [
+      {
+        name: "log_activity",
+        args: { leadId: "L-204", kind: "call", summary: "Spoke to Dr. Nguyen." },
+      },
+    ],
+  },
+  { text: "Noted." },
+];
+
+describe("sales with no desk bound", () => {
+  it("refuses to create a quote, and the refusal says how to bind a desk", async () => {
+    const run = await attempt({
+      prompt: "Quote Riverside Dental a first deep clean.",
+      turns: [
+        { toolCalls: [{ name: "create_quote", args: { leadId: "L-204", lines: SMALL_LINES } }] },
+        { text: "Could not." },
+      ],
+      desk: undefined,
+    });
+    expect(lastToolText(run.messages)).toContain(NO_DESK);
+  });
+
+  it("refuses to log an activity, and the refusal says how to bind a desk", async () => {
+    const run = await attempt({ prompt: "Log the call.", turns: logCallTurns, desk: undefined });
+    expect(lastToolText(run.messages)).toContain(NO_DESK);
+  });
+
+  it("refuses to read approval facts, so the gate asks nobody about a quote no desk holds", async () => {
+    const role = sales({});
+    const reader = role.approvalFacts.quote_approval;
+    if (reader === undefined) throw new Error("missing the quote_approval facts reader");
+    await expect(
+      reader({ quoteId: "Q-3051" }, {} as never, { conversationId: 1, taskId: 1 } as never),
+    ).rejects.toThrow(NO_DESK);
+  });
+
+  it("runs on the demonstration pipeline when the host asks for it", async () => {
+    const run = await attempt({
+      prompt: "Log the call.",
+      turns: logCallTurns,
+      desk: undefined,
+      demo: true,
     });
     expect(lastToolText(run.messages)).toContain("Recorded call");
   });

@@ -18,10 +18,12 @@ From a checkout of this repository:
 ```sh
 npm install
 npm run build
-node packages/cli/dist/index.js run agents/support --model paper/ultramarine-1-flash
+node packages/cli/dist/index.js run agents/support --demo --model paper/ultramarine-1-flash
 ```
 
-With no configuration the role runs on a **demonstration desk**: five clients on recurring contracts,
+Without `--demo`, and with no desk bound in `--clients`, the role starts but every tool that reads
+or writes its desk refuses and says how to bind one, so a forgotten connection never shows made-up
+records. With `--demo` the role runs on a **demonstration desk**: five clients on recurring contracts,
 their October 2026 invoices priced from the price book, and six cases on the morning of Monday
 9 November 2026 — a fresh complaint from Hawthorne Family Dental (C-301) with a credit proposed this
 morning (CR-401), a re-clean done and waiting for Little Acorns Childcare to confirm (C-302), a
@@ -145,7 +147,11 @@ for (const extension of role.extensions) registry.install(extension);
 const root = await harness.root(context, { agent: role.agent });
 ```
 
-- **`desk`** — the support system. Omitted: the demonstration desk, on the company's own data.
+- **`desk`** — the support system. Omitted: the demonstration desk, on the company's own
+  data, when `demo` is set; otherwise none, and every desk tool refuses with how to bind one.
+- **`demo`** — run on the demonstration desk when no `desk` is given. Set by the host
+  (`officehum run --demo`, the eval runner); `loadRole` reserves the name, so a client file can never
+  set it.
 - **`company`** — a host's own company facts, in the shape of `references/facts.json`.
 - **`approve`** — decides the gated actions. Omitted: every credit is blocked.
 - **`sender`** — who each call's work came from, as the host verified it. A sender comes from one of

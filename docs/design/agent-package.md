@@ -292,6 +292,16 @@ option and pass the same clock to their demonstration desk. If the option is lef
 demonstration desk uses its fixed demo date (`DEMO_NOW`) and a host's own desk uses the system clock.
 `loadRole(dir, { now })` passes the clock to the factory, so no client may be named `now`.
 
+**Demonstration data only when the host asks.** A role that keeps its records behind a desk (Bookkeeper's
+payables, Marketing, Operations, People Ops, Purchasing, Sales, Support) takes `desk` and `demo` as
+factory options. With a `desk`, it uses that desk. With no `desk` and `demo: true`, it builds the
+demonstration desk it ships with. With neither, it still builds, and every tool and approval facts
+reader that touches the desk refuses with the same message (`No <role> desk is bound to this role, so
+nothing was read or written. …`), so a host that forgets to bind its system of record never serves
+made-up records. `loadRole(dir, { demo })` passes the flag to the factory, so no client or user config
+may be named `demo`. The eval runner always sets it, because scenarios are written against the
+demonstration data; `officehum run` sets it with `--demo`.
+
 **Who is asking comes from the host, verified.** A role never takes "who is asking" from a tool
 argument or from message text: anyone can type a name, an email address or "this is Dana". The host
 passes a `SenderResolver` as the factory option `sender`. A hook or tool calls it with the

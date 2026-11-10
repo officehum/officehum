@@ -68,10 +68,12 @@ export interface RunArguments {
   readonly clientFile?: string;
   /** Who the operator at the terminal is: a person id or email on the role's company record. */
   readonly as?: string;
+  /** Run the role on its demonstration data when no desk is bound (`--demo`). */
+  readonly demo?: boolean;
 }
 
 const RUN_USAGE =
-  "usage: officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE] [--as PERSON]";
+  "usage: officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE] [--as PERSON] [--demo]";
 
 /** Parses the run command's arguments: one positional role directory, then the flags above. */
 export function parseRunArguments(args: readonly string[]): RunArguments {
@@ -83,6 +85,7 @@ export function parseRunArguments(args: readonly string[]): RunArguments {
   let model: string | undefined;
   let clientFile: string | undefined;
   let as: string | undefined;
+  let demo = false;
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
     if (token === undefined) continue;
@@ -90,6 +93,11 @@ export function parseRunArguments(args: readonly string[]): RunArguments {
       if (roleDir !== undefined)
         throw new UsageError(`Only one role directory is allowed.\n${RUN_USAGE}`);
       roleDir = token;
+      continue;
+    }
+    // The one flag that takes no value.
+    if (token === "--demo") {
+      demo = true;
       continue;
     }
     const value = args[index + 1];
@@ -116,7 +124,22 @@ export function parseRunArguments(args: readonly string[]): RunArguments {
     ...(model === undefined ? {} : { model }),
     ...(clientFile === undefined ? {} : { clientFile }),
     ...(as === undefined ? {} : { as }),
+    ...(demo ? { demo } : {}),
   };
+}
+
+/**
+ * The banner line that says what the role's desk is: the demonstration data with `--demo`, or none
+ * bound, with how to bind one. A desk passed in `--clients` is the operator's own and needs no line.
+ */
+export function deskBanner(
+  demo: boolean | undefined,
+  clients: Readonly<Record<string, unknown>>,
+): string | undefined {
+  if ("desk" in clients) return undefined;
+  return demo === true
+    ? "Desk: demonstration data (--demo)"
+    : "Desk: none bound (a role that keeps records refuses until you pass --demo or a desk in --clients)";
 }
 
 /** Where a role package keeps the company record generated into it (`npm run sync-company`). */

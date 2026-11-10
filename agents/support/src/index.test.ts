@@ -229,7 +229,9 @@ describe("support role", () => {
   });
 
   it("returns output, not content, so the SDK tool-result guard passes", async () => {
-    const list = tools(support({}).extensions).find((tool) => tool.name === "list_cases");
+    const list = tools(support({ demo: true }).extensions).find(
+      (tool) => tool.name === "list_cases",
+    );
     if (list === undefined) throw new Error("missing list_cases");
     const result = await list.execute(
       {},
@@ -525,6 +527,36 @@ describe("support brief contract", () => {
   });
 });
 
+describe("support with no desk bound", () => {
+  const NO_DESK =
+    "No support desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.";
+  const call = { conversationId: 1, taskId: 1, callId: "call" } as never;
+  const tool = (role: ReturnType<typeof support>, name: string): ToolRegistration => {
+    const found = tools(role.extensions).find((entry) => entry.name === name);
+    if (found === undefined) throw new Error(`missing ${name}`);
+    return found;
+  };
+
+  it("refuses to read or write, and says how to bind a desk", async () => {
+    const role = support({});
+    await expect(tool(role, "list_cases").execute({}, call, BACKGROUND_CONTEXT)).rejects.toThrow(
+      NO_DESK,
+    );
+    await expect(tool(role, "log_case").execute({}, call, BACKGROUND_CONTEXT)).rejects.toThrow(
+      NO_DESK,
+    );
+  });
+
+  it("runs on the demonstration desk when the host asks for it", async () => {
+    const result = await tool(support({ demo: true }), "list_cases").execute(
+      {},
+      call,
+      BACKGROUND_CONTEXT,
+    );
+    expect(result.output?.[0]).toMatchObject({ type: "text" });
+  });
+});
+
 describe("support clock", () => {
   const LATER = () => new Date("2027-02-01T09:00:00.000Z");
 
@@ -562,13 +594,13 @@ describe("support clock", () => {
   };
 
   it("the today section and the desk use the host clock", async () => {
-    const role = support({ now: LATER });
+    const role = support({ demo: true, now: LATER });
     expect(await todayOf(role)).toMatch(/^Today is 2027-02-01 \(Monday\)\./);
     expect((await call(role, "log_case", CASE)).details.openedOn).toBe("2027-02-01");
   });
 
   it("the demo desk keeps the demo date without now", async () => {
-    const role = support({});
+    const role = support({ demo: true });
     expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
     expect((await call(role, "log_case", CASE)).details.openedOn).toBe("2026-11-09");
   });

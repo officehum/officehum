@@ -849,6 +849,36 @@ describe("bookkeeper brief contract (RASF-3127)", () => {
   });
 });
 
+describe("bookkeeper with no desk bound", () => {
+  const NO_DESK =
+    "No accounts desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.";
+  const call = { conversationId: 1, taskId: 1, callId: "call" } as never;
+  const tool = (role: ReturnType<typeof bookkeeper>, name: string): ToolRegistration => {
+    const found = tools(role.extensions).find((entry) => entry.name === name);
+    if (found === undefined) throw new Error(`missing ${name}`);
+    return found;
+  };
+
+  it("refuses to read or write, and says how to bind a desk", async () => {
+    const role = bookkeeper({});
+    await expect(
+      tool(role, "list_vendor_bills").execute({}, call, BACKGROUND_CONTEXT),
+    ).rejects.toThrow(NO_DESK);
+    await expect(
+      tool(role, "record_vendor_bill").execute({}, call, BACKGROUND_CONTEXT),
+    ).rejects.toThrow(NO_DESK);
+  });
+
+  it("runs on the demonstration desk when the host asks for it", async () => {
+    const result = await tool(bookkeeper({ demo: true }), "list_vendor_bills").execute(
+      {},
+      call,
+      BACKGROUND_CONTEXT,
+    );
+    expect(result.output?.[0]).toMatchObject({ type: "text" });
+  });
+});
+
 describe("bookkeeper clock", () => {
   const LATER = () => new Date("2027-02-01T09:00:00.000Z");
 
@@ -878,7 +908,7 @@ describe("bookkeeper clock", () => {
   }
 
   it("the today section and the desk use the host clock", async () => {
-    const role = bookkeeper({ now: LATER });
+    const role = bookkeeper({ demo: true, now: LATER });
     expect(await todayOf(role)).toMatch(/^Today is 2027-02-01 \(Monday\)\./);
     // The desk's default period is the month before its today: January 2027, with no statement.
     const summary = await call(role, "reconcile_summary", {});
@@ -886,7 +916,7 @@ describe("bookkeeper clock", () => {
   });
 
   it("the demo desk keeps the demo date without now", async () => {
-    const role = bookkeeper({});
+    const role = bookkeeper({ demo: true });
     expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
     expect((await call(role, "reconcile_summary", {})).details.period).toBe("2026-10");
   });

@@ -92,7 +92,9 @@ const STATUSES: readonly DraftStatus[] = ["held", "draft", "published"];
 /** The desk, or a refusal: a host with no desk gets no read and no write. */
 function requireDesk(dependencies: MarketingToolDependencies): MarketingDesk {
   if (dependencies.desk === undefined) {
-    throw new Error("No marketing desk is configured for this role.");
+    throw new Error(
+      "No marketing desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
+    );
   }
   return dependencies.desk;
 }

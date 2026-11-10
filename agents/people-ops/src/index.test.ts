@@ -219,7 +219,9 @@ describe("people ops role", () => {
   });
 
   it("returns output, not content, so the SDK tool-result guard passes", async () => {
-    const list = tools(peopleOps({}).extensions).find((tool) => tool.name === "list_candidates");
+    const list = tools(peopleOps({ demo: true }).extensions).find(
+      (tool) => tool.name === "list_candidates",
+    );
     if (list === undefined) throw new Error("missing list_candidates");
     const result = await list.execute(
       {},
@@ -458,6 +460,36 @@ describe("people ops brief contract", () => {
   });
 });
 
+describe("people ops with no desk bound", () => {
+  const NO_DESK =
+    "No people desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.";
+  const call = { conversationId: 1, taskId: 1, callId: "call" } as never;
+  const tool = (role: ReturnType<typeof peopleOps>, name: string): ToolRegistration => {
+    const found = tools(role.extensions).find((entry) => entry.name === name);
+    if (found === undefined) throw new Error(`missing ${name}`);
+    return found;
+  };
+
+  it("refuses to read or write, and says how to bind a desk", async () => {
+    const role = peopleOps({});
+    await expect(
+      tool(role, "list_candidates").execute({}, call, BACKGROUND_CONTEXT),
+    ).rejects.toThrow(NO_DESK);
+    await expect(
+      tool(role, "update_candidate_stage").execute({}, call, BACKGROUND_CONTEXT),
+    ).rejects.toThrow(NO_DESK);
+  });
+
+  it("runs on the demonstration desk when the host asks for it", async () => {
+    const result = await tool(peopleOps({ demo: true }), "list_candidates").execute(
+      {},
+      call,
+      BACKGROUND_CONTEXT,
+    );
+    expect(result.output?.[0]).toMatchObject({ type: "text" });
+  });
+});
+
 describe("people ops clock", () => {
   const LATER = () => new Date("2027-02-01T09:00:00.000Z");
 
@@ -487,7 +519,7 @@ describe("people ops clock", () => {
   }
 
   it("the today section and the desk use the host clock", async () => {
-    const role = peopleOps({ now: LATER, sender: OWNER });
+    const role = peopleOps({ demo: true, now: LATER, sender: OWNER });
     expect(await todayOf(role)).toMatch(/^Today is 2027-02-01 \(Monday\)\./);
     const recorded = await call(role, "record_time_off_request", {
       employee: "Ana Lopez",
@@ -499,7 +531,7 @@ describe("people ops clock", () => {
   });
 
   it("the demo desk keeps the demo date without now", async () => {
-    const role = peopleOps({ sender: OWNER });
+    const role = peopleOps({ demo: true, sender: OWNER });
     expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
     const recorded = await call(role, "record_time_off_request", {
       employee: "Ana Lopez",
@@ -510,7 +542,11 @@ describe("people ops clock", () => {
     expect(recorded.details.recordedOn).toBe("2026-11-09");
   });
   it("the today section and the desk agree at a month end", async () => {
-    const role = peopleOps({ now: () => new Date("2026-11-30T23:30:00.000Z"), sender: OWNER });
+    const role = peopleOps({
+      demo: true,
+      now: () => new Date("2026-11-30T23:30:00.000Z"),
+      sender: OWNER,
+    });
     expect(await todayOf(role)).toMatch(/^Today is 2026-11-30 \(Monday\)\./);
     const recorded = await call(role, "record_time_off_request", {
       employee: "Ana Lopez",

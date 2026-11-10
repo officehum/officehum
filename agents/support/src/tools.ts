@@ -133,7 +133,9 @@ const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 /** The desk, or a refusal: a host with no desk gets no read and no write. */
 function requireDesk(dependencies: SupportToolDependencies): SupportDesk {
   if (dependencies.desk === undefined) {
-    throw new Error("No support desk is configured for this role.");
+    throw new Error(
+      "No support desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
+    );
   }
   return dependencies.desk;
 }

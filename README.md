@@ -275,6 +275,7 @@ Flags:
 | `--model provider/model` | The model to run; default is the manifest's `defaultModel` |
 | `--clients FILE` | A JSON file naming the role's app clients |
 | `--as PERSON` | Who the operator at the terminal is: a person id or email on the role's company record |
+| `--demo` | Run the role on its demonstration data when no desk is bound (takes no value) |
 
 **Who is asking.** The terminal is the operator's own machine, so the operator says who they are with
 `--as`. It must name a person on the company record generated into the role package
@@ -284,7 +285,16 @@ before any role code runs and lists the ids it accepts. The role then gets that 
 place an order they asked for and Support can show them case data. With no `--as` the sender is
 unknown, the startup banner says so, and anything a role gives only to a known sender is refused.
 
-**The date.** `officehum run` passes the role no clock, so a role with a demonstration desk works on
+**The desk.** A role that keeps its records behind a desk (Bookkeeper's payables, Marketing,
+Operations, People Ops, Purchasing, Sales, Support) builds its demonstration desk only when asked.
+`--demo` asks: the role runs on the demonstration records it ships with, which live in memory and
+write nowhere, and the banner says `Desk: demonstration data (--demo)`. A `desk` client in `--clients`
+binds the business's own system instead. With neither, the role still starts, the banner says
+`Desk: none bound (a role that keeps records refuses until you pass --demo or a desk in --clients)`, and every tool that reads or writes the desk
+refuses and says how to bind one, so a forgotten connection never shows made-up records. Hosts pass
+the same choice to `loadRole` as its reserved `demo` option; the eval runner always sets it.
+
+**The date.** `officehum run` passes the role no clock, so a role on its demonstration desk works on
 that desk's fixed demo date (`DEMO_NOW`) and its prompt has no `today` section.
 
 At the prompt, `/commands` lists the manifest's operator views, `/NAME` runs one (an engine view with
