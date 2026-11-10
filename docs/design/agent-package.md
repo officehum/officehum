@@ -790,7 +790,10 @@ Each file in the `evals` directory holds scenarios:
   reads the role's own files. A stub is `{ "text", "isError"? }`, or `{ "byArgs": [{ "args", "text",
   "isError"? }], "otherwise"? }`, which answers by the call's arguments: the first entry whose `args`
   match answers, else `otherwise`, else the trial stops. In `byArgs` and in `expect.calls[].args`, an
-  argument given as `{ "includes": "…" }` matches a string argument that contains that text. So a
+  argument given as `{ "includes": "…" }` matches a string argument that contains that text. An
+  argument given as `{ "some": { … } }` matches an array argument when at least one element has
+  those fields, matched the same way (only the fields listed, matchers allowed inside), e.g. a quote
+  line `{ "lines": { "some": { "priceBookItemId": "clean-office-visit", "visitsPerWeek": 5 } } }`. So a
   parameter cannot be matched against the literal object `{ "includes": … }`: that object is always
   the matcher. A matcher goes on an argument's value only: `validateSuite` refuses `includes` directly
   under `args`, with its path.
