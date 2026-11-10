@@ -174,8 +174,9 @@ export interface SalesDesk {
    * Prices a quote from the book and saves it: a `draft` ready to send, or `awaiting_approval` when it
    * carries a discount or its subtotal is above `quoteLimitCents`. A line with `visitsPerWeek` must
    * name an item priced per visit; a host desk bills it `quantity × visitsPerWeek × weeksPerMonth`,
-   * with the company's `quoting.weeksPerMonth`, and records that count in `recurring`. A host desk must hold every quote
-   * for approval when `quoteLimitCents` is `undefined`, never treat a missing limit as no limit.
+   * with the company's `quoting.weeksPerMonth`, and records that count in `recurring`. A host desk
+   * must hold every quote for approval when `quoteLimitCents` is `undefined`, never treat a missing
+   * limit as no limit.
    */
   createQuote(
     draft: QuoteDraft,

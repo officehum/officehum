@@ -31,9 +31,11 @@ Run it before `create_quote`, and again on the receipt before the quote is descr
 A nightly contract for a 2,800 sq ft office, five nights a week:
 
 - The site is under the flat-cleaning size, so the recurring line is the flat per-visit item.
-- The quantity is the visits-a-month count for five nights a week from the quoting skill: 21.65.
-- One line: the visit item, quantity 21.65; the desk prices it from the book.
-- Restroom consumables, per restroom per visit, is a second line if supplies are in the contract.
+- One line: the visit item, quantity 1 (one site each visit) and `visitsPerWeek` 5; the desk counts
+  the visits in a month, prices them from the book and shows the count on the receipt.
+- Restroom consumables, per restroom per visit, is a second line if supplies are in the contract:
+  quantity the number of restrooms, `visitsPerWeek` 5.
+- The count told to the client is the receipt's, word for word.
 - The subtotal is the desk's; if it lands above the quote limit the quote is saved awaiting approval,
   `request_quote_approval` asks the person the handbook names for it, and the reply says so.
 
@@ -48,7 +50,8 @@ A first deep clean for a 3,200 sq ft suite:
 ## The mistakes that actually happen
 
 - Quoting the flat visit price for a site over the flat size, which underprices the job.
-- Counting visits as twenty for a five-night week, which underquotes every month by a noticeable sum.
+- Working out the visits in a month by hand, or rounding them to twenty for a five-night week, instead
+  of giving `visitsPerWeek` and letting the desk count.
 - Forgetting that the minimum applies to the line, not to the quote: several small lines at their
   minimums can take a quote above the limit, and the desk then holds it for a person.
 - Describing a quote as "held" while an approval is outstanding.
