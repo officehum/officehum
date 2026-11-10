@@ -13,7 +13,7 @@ import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
-import { gatewayOutput, serveRuntime } from "@officehum/office";
+import { serveRuntime } from "@officehum/office";
 import { scriptedProvider } from "@officehum/office/testing";
 
 const directory = process.env.OFFICEHUM_TEST_DIRECTORY;
@@ -95,7 +95,7 @@ await serveRuntime({
   models: scripted.models,
   model: scripted.model,
   input: process.stdin,
-  output: gatewayOutput(),
+  output: process.stdout,
   log: (line) => process.stderr.write(`${line}\n`),
 });
 process.exit(0);

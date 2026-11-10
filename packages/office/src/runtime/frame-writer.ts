@@ -48,9 +48,10 @@ export class FrameWriter {
 
   /**
    * Resolves once every queued frame has been handed to the stream, the stream broke, or `timeoutMs`
-   * passed: a reader that never reads again must not keep the process from exiting.
+   * passed: a reader that never reads again must not keep the process from exiting. False when it
+   * gave up, so the caller can destroy the stream.
    */
-  async flush(timeoutMs = Number.POSITIVE_INFINITY): Promise<void> {
+  async flush(timeoutMs = Number.POSITIVE_INFINITY): Promise<boolean> {
     let timer: NodeJS.Timeout | undefined;
     const expired = new Promise<"expired">((resolve) => {
       if (Number.isFinite(timeoutMs)) timer = setTimeout(() => resolve("expired"), timeoutMs);
@@ -61,12 +62,13 @@ export class FrameWriter {
           this.#log(
             `Gave up waiting for the gateway to read ${this.#queue.length} queued frame(s).`,
           );
-          return;
+          return false;
         }
       }
     } finally {
       clearTimeout(timer);
     }
+    return true;
   }
 
   /**

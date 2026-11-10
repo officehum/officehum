@@ -150,7 +150,6 @@ export {
 export {
   type AgentInfo,
   type AgentToolInfo,
-  gatewayOutput,
   openRuntime,
   type Runtime,
   type RuntimeOptions,

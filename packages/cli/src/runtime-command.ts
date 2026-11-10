@@ -9,7 +9,7 @@
 
 import type { Readable, Writable } from "node:stream";
 import type { ModelRef } from "@earendil-works/pi-durable";
-import { gatewayOutput, loadOfficeRoles, readOfficeFile, serveRuntime } from "@officehum/office";
+import { loadOfficeRoles, readOfficeFile, serveRuntime } from "@officehum/office";
 import type { CliDependencies, CliIo } from "./cli.js";
 import { modelsFor, parseModelRef } from "./run.js";
 import { UsageError } from "./usage-error.js";
@@ -99,7 +99,7 @@ export async function runRuntimeCommand(
       models,
       ...(override === undefined ? {} : { model: override }),
       input: dependencies.stdio?.input ?? process.stdin,
-      output: dependencies.stdio?.output ?? gatewayOutput(),
+      output: dependencies.stdio?.output ?? process.stdout,
       signal: stop.signal,
       log: (line) => io.error(line),
     });

@@ -58,7 +58,7 @@ describe("FrameWriter", () => {
     const writer = new FrameWriter(stalled, (line) => log.push(line));
     writer.write({ n: 1 });
     writer.write({ n: 2 });
-    await writer.flush(20);
+    expect(await writer.flush(20)).toBe(false);
     expect(log.at(-1)).toContain("Gave up waiting");
     stalled.destroy();
     await new Promise((resolve) => setImmediate(resolve));

@@ -48,8 +48,10 @@ supervise.
   as sent by the gateway.
 - **Submits are serialized** so two frames with one request id cannot both start work.
 - `approve` answers `not_found` until RASF-3108. `--demo` is passed to every role, as in `run`.
-- **stdout never blocks** (added after review): on Linux Node writes to a pipe synchronously, so the
-  CLI writes through a socket on fd 1 when stdout is a pipe. SIGTERM and SIGINT close the office.
+- **stdout never blocks the harness**: frames are queued and written with backpressure; a test stalls
+  the reader of a child runtime and checks its event loop still turns (Node writes `process.stdout`
+  on a pipe through a non-blocking socket). A final flush is bounded, and the output destroyed if the
+  reader never returns. SIGTERM and SIGINT close the office.
 
 ## Tests (first)
 

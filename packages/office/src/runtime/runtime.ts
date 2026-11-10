@@ -21,8 +21,6 @@
  * a restart a request that finished before it replays only its `settled` event.
  */
 
-import { fstatSync } from "node:fs";
-import { Socket } from "node:net";
 import type { Readable, Writable } from "node:stream";
 import type { JsonValue } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -441,7 +439,13 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
       // An intent left by a crash wins over this command's agent and conversation: the retry must
       // reach the conversation where Pi Durable may already hold it.
       const intent = index.get(key);
-      const agent = intent === undefined ? requested : (agents.get(intent.agent) ?? requested);
+      const agent = intent === undefined ? requested : agents.get(intent.agent);
+      if (agent === undefined) {
+        throw new RuntimeError(
+          "not_found",
+          `Request ${key} belongs to ${intent?.agent}, which this office no longer runs.`,
+        );
+      }
       const conversation =
         intent?.conversation ??
         conversationKey(agent.name, command.principal, command.conversation);
@@ -674,19 +678,6 @@ async function settledEvent(
 /** How long a closing runtime waits for the gateway to read its last frames. */
 const FLUSH_TIMEOUT_MS = 5_000;
 
-/**
- * The runtime's stdout as a stream that never blocks the event loop. On Linux, Node writes to a pipe
- * synchronously, so a gateway that stops reading would freeze the harness; a socket over the same
- * descriptor writes asynchronously and reports backpressure instead. A file or terminal keeps
- * `process.stdout`.
- */
-export function gatewayOutput(): Writable {
-  const stat = fstatSync(1);
-  if (stat.isFIFO() || stat.isSocket())
-    return new Socket({ fd: 1, readable: false, writable: true });
-  return process.stdout;
-}
-
 export interface ServeRuntimeOptions extends Omit<RuntimeOptions, "send"> {
   /** Where frames arrive: the runtime's stdin. */
   readonly input: Readable;
@@ -732,6 +723,7 @@ export async function serveRuntime(options: ServeRuntimeOptions): Promise<void> 
   } finally {
     options.signal?.removeEventListener("abort", stop);
     await runtime.close();
-    await writer.flush(FLUSH_TIMEOUT_MS);
+    // A gateway that stopped reading leaves a write pending, which would keep the process alive.
+    if (!(await writer.flush(FLUSH_TIMEOUT_MS))) options.output.destroy();
   }
 }
