@@ -63,7 +63,8 @@ const DASH = "(?:[—–~]|-{1,2})";
 /** Markdown emphasis a model may put around a name: "**Morgan Ellis**". */
 const MARK = String.raw`(?:\*{1,2}|_{1,2})?`;
 /** A speaker by role, leading in with a colon: "A practice manager:", "One of our clients:". */
-const ROLE = String.raw`(?:client|customer|manager|director|owner|tenant|administrator|coordinator|partner)s?`;
+const ROLE =
+  "(?:client|customer|manager|director|owner|tenant|administrator|coordinator|partner)s?";
 /** What may sit between the closing mark and an attribution on the same line. */
 const LEAD = String.raw`^[^\S\n]*[,.!?]?`;
 
