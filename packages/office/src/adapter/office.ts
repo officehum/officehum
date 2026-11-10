@@ -118,7 +118,7 @@ export interface Office {
    */
   abort(conversation: Conversation): Promise<void>;
   /**
-   * `watchEvents` + `AgentEventStream.start`, mapped to Office Hum's four kinds. Resolves once the
+   * `watchEvents` + `AgentEventStream.start`, mapped to Office Hum's event kinds. Resolves once the
    * watch is attached, so every event committed after it resolves reaches `onEvent`; a host that must
    * not miss a run's events attaches before it submits. `stop` detaches.
    */
@@ -126,7 +126,7 @@ export interface Office {
     conversation: Conversation,
     onEvent: (event: OfficeEvent) => void,
   ): Promise<{ stop(): Promise<void> }>;
-  /** `watchEvents`, mapped to Office Hum's four kinds. Iterate until done, then `return`. */
+  /** `watchEvents`, mapped to Office Hum's event kinds. Iterate until done, then `return`. */
   watch(conversation: Conversation): AsyncIterable<OfficeEvent>;
   /**
    * `Harness.resume`: enable scheduling, so work admitted before the last close continues. For a host

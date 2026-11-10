@@ -24,15 +24,19 @@ supervise.
 - **Scoped request ids.** The runtime keys a submission by `<principal.id, URI-encoded>/<requestId>`,
   so `a/b` + `c` and `a` + `b/c` cannot collide. `accepted` and every `event` carry the scoped id; the
   gateway rewrites it to the client's own. A durable session document maps each scoped id to its
-  submission, conversation and agent, written after `submit`; a crash between the two is covered
-  because Pi Durable's `submit` is itself idempotent per conversation, and a settled status on return
-  reads as `existing`.
+  submission, conversation and agent. The conversation and agent are written first, as an intent,
+  then the submission id once Pi Durable admits it: a retry after a crash in between goes back to the
+  intent's conversation, where Pi Durable's own per-conversation request id dedupes it, and start-up
+  completes an intent from the request id stored on an open submission.
 - **Disposition** comes from the admitted submission's status: `placed` → `started`, `queued` →
-  `queued`, already settled → `existing`; a scoped id already in the index is `existing` with no call.
-- **Conversations.** Each agent's default conversation is keyed `agent:<id>`; a `conversation` value
-  names `agent:<id>:<conversation>`. A saved conversation keeps its model.
-- **Events.** Each conversation has one listener attached before any submit. Tool and text events go
-  to the conversation's oldest unsettled tracked request; `settled` comes from the submission itself
+  `queued`; settled at once is `started` for new work and `existing` for a retried intent; a scoped
+  id already in the index is `existing` with no call.
+- **Conversations are per principal** (added after review): `agent:<id>:<principal>` and
+  `agent:<id>:<principal>:<conversation>`, ids URI-encoded, so one principal's transcript, queue and
+  `abort` never reach another's. A saved conversation keeps its model.
+- **Events.** Each conversation has one listener attached before any submit. The adapter now maps a
+  submission's `placed` status too; tool and text events go to the first placed, unsettled
+  submission, held briefly if it is not tracked yet. `settled` comes from the submission itself
   (watch event or status check, once). `text_delta` is emitted: Pi Durable 1.3 exposes partial text
   in `message_update`. Events are kept in memory per request; after a restart only `settled` is
   replayed for a request that finished before it (documented; reconnect semantics are RASF-3106).
@@ -44,6 +48,8 @@ supervise.
   as sent by the gateway.
 - **Submits are serialized** so two frames with one request id cannot both start work.
 - `approve` answers `not_found` until RASF-3108. `--demo` is passed to every role, as in `run`.
+- **stdout never blocks** (added after review): on Linux Node writes to a pipe synchronously, so the
+  CLI writes through a socket on fd 1 when stdout is a pipe. SIGTERM and SIGINT close the office.
 
 ## Tests (first)
 

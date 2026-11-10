@@ -21,6 +21,8 @@
  * a restart a request that finished before it replays only its `settled` event.
  */
 
+import { fstatSync } from "node:fs";
+import { Socket } from "node:net";
 import type { Readable, Writable } from "node:stream";
 import type { JsonValue } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -97,11 +99,16 @@ export interface AgentInfo {
   readonly openRequests?: number;
 }
 
-type IndexedRequest = { submission: number; conversation: string; agent: string };
+/**
+ * One entry of the request index. Written before the submission is admitted, as an intent naming the
+ * conversation and agent, then completed with the submission's id: a retry after a crash in between
+ * goes back to the same conversation, where Pi Durable's own request id dedupes it.
+ */
+type IndexedRequest = { conversation: string; agent: string; submission?: number };
 
 /**
- * The durable request index: scoped request id → its submission, conversation key and agent. Written
- * only by the runtime, after Pi Durable admits the submission.
+ * The durable request index: scoped request id → its conversation key, agent and submission. Written
+ * only by the runtime.
  */
 const RequestIndexDoc = defineDoc<{ requests: Record<string, IndexedRequest> }>({
   kind: "officehum.runtime.requests",
@@ -109,6 +116,9 @@ const RequestIndexDoc = defineDoc<{ requests: Record<string, IndexedRequest> }>(
   scope: "session",
   initial: () => ({ requests: {} }),
 });
+
+/** At most this many events are held for a placed submission the runtime has not tracked yet. */
+const PENDING_EVENT_LIMIT = 10_000;
 
 interface AgentEntry {
   readonly name: string;
@@ -120,8 +130,16 @@ interface AgentEntry {
 interface OpenConversation {
   readonly key: string;
   readonly conversation: Conversation;
-  /** Unsettled requests in submission order; the first is the one the run is working on. */
-  readonly open: Tracked[];
+  /**
+   * Submissions Pi Durable has placed and not settled, in placement order. The run works on the
+   * first: its tool and text events belong to it.
+   */
+  readonly placed: number[];
+  /**
+   * Events of a placed submission that is not tracked yet: a run can start before `submit` returns.
+   * Handed to the request when it is tracked; dropped when the submission settles untracked.
+   */
+  readonly pending: Map<number, RequestEvent[]>;
 }
 
 interface Tracked {
@@ -144,8 +162,13 @@ export function scopedRequestId(principal: Principal, requestId: string): string
   return `${encodeURIComponent(principal.id)}/${requestId}`;
 }
 
-function conversationKey(agent: string, conversation: string | undefined): string {
-  return conversation === undefined ? `agent:${agent}` : `agent:${agent}:${conversation}`;
+/**
+ * Each principal has its own conversations with an agent, so one person's transcript, queue and
+ * `abort` never reach another's. Ids are URI-encoded, so no part can contain the `:` separator.
+ */
+function conversationKey(agent: string, principal: Principal, conversation?: string): string {
+  const base = `agent:${agent}:${encodeURIComponent(principal.id)}`;
+  return conversation === undefined ? base : `${base}:${encodeURIComponent(conversation)}`;
 }
 
 function modelName(model: ModelRef): string {
@@ -196,26 +219,70 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
     const tracked = new Map<string, Tracked>();
     const bySubmission = new Map<number, Tracked>();
     const conversations = new Map<string, Promise<OpenConversation>>();
+    const restoring = new Map<string, Promise<Tracked | undefined>>();
+    const settlements = new Set<Promise<void>>();
+    let closing: Promise<void> | undefined;
+
+    const writeIndex = async (key: string, entry: IndexedRequest) => {
+      await office.harness.commit(async (transaction) => {
+        const document = await transaction.doc(RequestIndexDoc);
+        document.requests[key] = entry;
+      }, BACKGROUND_CONTEXT);
+      index.set(key, entry);
+    };
+
+    const toRequestEvent = (event: OfficeEvent): RequestEvent | undefined => {
+      switch (event.kind) {
+        case "text":
+          return { kind: "text_delta", text: event.delta };
+        case "tool_start":
+          return { kind: "tool_start", toolCallId: event.callId, tool: event.tool };
+        case "tool_end":
+          return {
+            kind: "tool_end",
+            toolCallId: event.callId,
+            tool: event.tool,
+            ok: !event.failed,
+          };
+        default:
+          return undefined;
+      }
+    };
 
     const onEvent = (open: OpenConversation, event: OfficeEvent) => {
+      if (event.kind === "placed") {
+        const id = event.submissionId as number;
+        if (!open.placed.includes(id)) open.placed.push(id);
+        return;
+      }
       if (event.kind === "settled") {
-        const request = bySubmission.get(event.submissionId as number);
+        const id = event.submissionId as number;
+        forget(open, id);
+        const request = bySubmission.get(id);
         if (request !== undefined) settle(request);
         return;
       }
-      const request = open.open[0];
-      if (request === undefined) return;
-      if (event.kind === "text") emit(request, { kind: "text_delta", text: event.delta });
-      else if (event.kind === "tool_start") {
-        emit(request, { kind: "tool_start", toolCallId: event.callId, tool: event.tool });
-      } else {
-        emit(request, {
-          kind: "tool_end",
-          toolCallId: event.callId,
-          tool: event.tool,
-          ok: !event.failed,
-        });
+      const mapped = toRequestEvent(event);
+      const current = open.placed[0];
+      if (mapped === undefined || current === undefined) return;
+      const request = bySubmission.get(current);
+      if (request !== undefined) {
+        emit(request, mapped);
+        return;
       }
+      const held = open.pending.get(current) ?? [];
+      if (held.length === PENDING_EVENT_LIMIT) {
+        log(`Dropping events for submission ${current}: it is not tracked.`);
+        return;
+      }
+      held.push(mapped);
+      open.pending.set(current, held);
+    };
+
+    const forget = (open: OpenConversation, id: number) => {
+      const position = open.placed.indexOf(id);
+      if (position !== -1) open.placed.splice(position, 1);
+      open.pending.delete(id);
     };
 
     const conversationFor = (key: string, agent: AgentEntry): Promise<OpenConversation> => {
@@ -223,7 +290,7 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
       if (opening === undefined) {
         opening = (async () => {
           const conversation = await office.conversation(key, { agent: agent.settings });
-          const open: OpenConversation = { key, conversation, open: [] };
+          const open: OpenConversation = { key, conversation, placed: [], pending: new Map() };
           await office.listen(conversation, (event) => onEvent(open, event));
           return open;
         })();
@@ -249,17 +316,21 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
     const settle = (request: Tracked) => {
       if (request.settling) return;
       request.settling = true;
-      const position = request.conversation.open.indexOf(request);
-      if (position !== -1) request.conversation.open.splice(position, 1);
-      void (async () => {
+      forget(request.conversation, request.submission as number);
+      const settling = (async () => {
         try {
           const record = await statusOf(request.submission);
           emit(request, await settledEvent(request.conversation.conversation, record));
         } catch (error) {
+          // While closing, the office going away is the reason; the request is not failed, and it
+          // settles properly on the next start.
+          if (closing !== undefined) return;
           log(`Could not read how ${request.key} settled: ${String(error)}`);
           emit(request, { kind: "settled", status: "failed" });
         }
       })();
+      settlements.add(settling);
+      void settling.finally(() => settlements.delete(settling));
     };
 
     const statusOf = async (id: SubmissionId): Promise<SubmissionRecord> => {
@@ -269,7 +340,7 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
       return await submission.status(BACKGROUND_CONTEXT);
     };
 
-    /** Starts tracking a submission and settles it at once if it already has. */
+    /** Starts tracking a submission: hands it any events held for it, and settles it if it has. */
     const track = (
       key: string,
       agent: string,
@@ -286,35 +357,50 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
         subscribed: false,
         settling: false,
       };
+      const id = submission as number;
       tracked.set(key, request);
-      bySubmission.set(submission as number, request);
-      open.open.push(request);
+      bySubmission.set(id, request);
+      // A run resumed after a restart was placed before it: no `placed` event will come for it.
+      if (record?.status === "placed" && !open.placed.includes(id)) open.placed.push(id);
+      for (const event of open.pending.get(id) ?? []) emit(request, event);
+      open.pending.delete(id);
       if (record !== undefined && TERMINAL.has(record.status)) settle(request);
       return request;
     };
 
-    /** A request known to the durable index but not tracked in this process: one from a past run. */
-    const restore = async (key: string): Promise<Tracked | undefined> => {
-      const indexed = index.get(key);
-      if (indexed === undefined) return undefined;
-      const agent = agents.get(indexed.agent);
-      if (agent === undefined) {
-        throw new RuntimeError(
-          "not_found",
-          `Request ${key} belongs to ${indexed.agent}, which this office no longer runs.`,
-        );
-      }
-      const open = await conversationFor(indexed.conversation, agent);
-      const submission = indexed.submission as unknown as SubmissionId;
-      // Another command may have restored it while the conversation opened.
+    /**
+     * A request known to the durable index but not tracked in this process: one from a past run.
+     * Memoised, so two commands restoring one request get one tracked request.
+     */
+    const restore = (key: string): Promise<Tracked | undefined> => {
       const known = tracked.get(key);
-      if (known !== undefined) return known;
-      return track(key, indexed.agent, open, submission, await statusOf(submission));
+      if (known !== undefined) return Promise.resolve(known);
+      let restored = restoring.get(key);
+      if (restored === undefined) {
+        restored = (async () => {
+          const indexed = index.get(key);
+          // An intent without a submission: the crash came before Pi Durable answered. A retried
+          // submit goes back to its conversation and finds out.
+          if (indexed?.submission === undefined) return undefined;
+          const agent = agents.get(indexed.agent);
+          if (agent === undefined) {
+            throw new RuntimeError(
+              "not_found",
+              `Request ${key} belongs to ${indexed.agent}, which this office no longer runs.`,
+            );
+          }
+          const open = await conversationFor(indexed.conversation, agent);
+          const submission = indexed.submission as unknown as SubmissionId;
+          return track(key, indexed.agent, open, submission, await statusOf(submission));
+        })();
+        restoring.set(key, restored);
+        void restored.finally(() => restoring.delete(key)).catch(() => {});
+      }
+      return restored;
     };
 
     const find = async (principal: Principal, requestId: string): Promise<Tracked> => {
-      const key = scopedRequestId(principal, requestId);
-      const request = tracked.get(key) ?? (await restore(key));
+      const request = await restore(scopedRequestId(principal, requestId));
       if (request === undefined) {
         throw new RuntimeError(
           "not_found",
@@ -344,16 +430,24 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
     };
 
     const submit = async (command: Submit & { principal: Principal }) => {
-      const agent = agentFor(command.agent);
+      const requested = agentFor(command.agent);
       const key = scopedRequestId(command.principal, command.requestId);
-      const existing = tracked.get(key) ?? (await restore(key));
+      const existing = await restore(key);
       if (existing !== undefined) {
         send({ type: "accepted", id: command.id, requestId: key, disposition: "existing" });
         subscribe(existing, 0);
         return;
       }
-      const conversation = conversationKey(agent.name, command.conversation);
+      // An intent left by a crash wins over this command's agent and conversation: the retry must
+      // reach the conversation where Pi Durable may already hold it.
+      const intent = index.get(key);
+      const agent = intent === undefined ? requested : (agents.get(intent.agent) ?? requested);
+      const conversation =
+        intent?.conversation ??
+        conversationKey(agent.name, command.principal, command.conversation);
       const open = await conversationFor(conversation, agent);
+      if (intent === undefined) await writeIndex(key, { conversation, agent: agent.name });
+
       const { input } = command;
       const submission = await office.submit(
         open.conversation,
@@ -369,20 +463,21 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
             },
       );
       const request = track(key, agent.name, open, submission.id, undefined);
-      const entry: IndexedRequest = {
-        submission: submission.id as number,
+      await writeIndex(key, {
         conversation,
         agent: agent.name,
-      };
-      await office.harness.commit(async (transaction) => {
-        const document = await transaction.doc(RequestIndexDoc);
-        document.requests[key] = entry;
-      }, BACKGROUND_CONTEXT);
-      index.set(key, entry);
+        submission: submission.id as number,
+      });
 
       const record = await submission.status(BACKGROUND_CONTEXT);
+      // New work that already finished was still started here; only a retry of an intent can find
+      // work admitted before.
       const disposition =
-        record.status === "queued" ? "queued" : record.status === "placed" ? "started" : "existing";
+        record.status === "queued"
+          ? "queued"
+          : record.status === "placed" || intent === undefined
+            ? "started"
+            : "existing";
       send({ type: "accepted", id: command.id, requestId: key, disposition });
       // Events recorded between admission and this reply go out now, after `accepted`.
       subscribe(request, 0);
@@ -462,28 +557,40 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
       }
     };
     let submitting: Promise<void> = Promise.resolve();
-
-    // Attach to the work a previous run left unsettled, then let it continue.
-    const reverse = new Map([...index].map(([key, entry]) => [entry.submission, key]));
+    // Attach to the work a previous run left unsettled, then let it continue. A submission whose
+    // index entry is only an intent (a crash came between admission and the index write) is found
+    // by the request id Pi Durable stored with it, and its entry completed.
+    const reverse = new Map(
+      [...index].flatMap(([key, entry]) =>
+        entry.submission === undefined ? [] : [[entry.submission, key] as const],
+      ),
+    );
     for (const id of await office.openSubmissions()) {
-      const key = reverse.get(id as number);
-      if (key === undefined) {
-        log(`Submission ${String(id)} was not made through the runtime; leaving it to its owner.`);
-        continue;
-      }
       try {
+        let key = reverse.get(id as number);
+        if (key === undefined) {
+          const requestId = (await statusOf(id)).requestId;
+          const intent = requestId === undefined ? undefined : index.get(requestId);
+          if (requestId === undefined || intent === undefined) {
+            log(
+              `Submission ${String(id)} was not made through the runtime; leaving it to its owner.`,
+            );
+            continue;
+          }
+          await writeIndex(requestId, { ...intent, submission: id as number });
+          key = requestId;
+        }
         await restore(key);
       } catch (error) {
         // One request we cannot attach to (its agent left the office file) must not stop the office.
         log(
-          `Could not attach to ${key}: ${error instanceof Error ? error.message : String(error)}`,
+          `Could not attach to submission ${String(id)}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
     office.resume();
     send({ type: "welcome", version: 1, serverId: options.serverId });
 
-    let closing: Promise<void> | undefined;
     return {
       async handle(json) {
         const id = replyId(json);
@@ -530,7 +637,11 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
         }
       },
       async close() {
-        closing ??= office.close();
+        closing ??= (async () => {
+          // Let settles already under way read their answer before the office goes.
+          await Promise.allSettled([...settlements]);
+          await office.close();
+        })();
         return await closing;
       },
     };
@@ -558,6 +669,22 @@ async function settledEvent(
   }
   const reason = (record as { reason?: unknown }).reason;
   return { kind: "settled", status: reason === "aborted" ? "aborted" : "failed" };
+}
+
+/** How long a closing runtime waits for the gateway to read its last frames. */
+const FLUSH_TIMEOUT_MS = 5_000;
+
+/**
+ * The runtime's stdout as a stream that never blocks the event loop. On Linux, Node writes to a pipe
+ * synchronously, so a gateway that stops reading would freeze the harness; a socket over the same
+ * descriptor writes asynchronously and reports backpressure instead. A file or terminal keeps
+ * `process.stdout`.
+ */
+export function gatewayOutput(): Writable {
+  const stat = fstatSync(1);
+  if (stat.isFIFO() || stat.isSocket())
+    return new Socket({ fd: 1, readable: false, writable: true });
+  return process.stdout;
 }
 
 export interface ServeRuntimeOptions extends Omit<RuntimeOptions, "send"> {
@@ -591,6 +718,8 @@ export async function serveRuntime(options: ServeRuntimeOptions): Promise<void> 
   };
   const stop = () => options.input.destroy();
   options.signal?.addEventListener("abort", stop, { once: true });
+  // A stop asked for while the office was opening has already fired.
+  if (options.signal?.aborted === true) stop();
   try {
     try {
       for await (const chunk of options.input) dispatch(decoder.push(chunk as Uint8Array | string));
@@ -603,6 +732,6 @@ export async function serveRuntime(options: ServeRuntimeOptions): Promise<void> 
   } finally {
     options.signal?.removeEventListener("abort", stop);
     await runtime.close();
-    await writer.flush();
+    await writer.flush(FLUSH_TIMEOUT_MS);
   }
 }

@@ -47,6 +47,25 @@ describe("FrameWriter", () => {
     expect(chunks.join("")).toBe('{"n":1}\n{"n":2}\n');
   });
 
+  it("stops waiting when the stream closes without draining, and bounds the final flush", async () => {
+    const log: string[] = [];
+    const stalled = new Writable({
+      highWaterMark: 1,
+      write(_chunk, _encoding, _callback) {
+        // Never calls back: the reader stopped.
+      },
+    });
+    const writer = new FrameWriter(stalled, (line) => log.push(line));
+    writer.write({ n: 1 });
+    writer.write({ n: 2 });
+    await writer.flush(20);
+    expect(log.at(-1)).toContain("Gave up waiting");
+    stalled.destroy();
+    await new Promise((resolve) => setImmediate(resolve));
+    await writer.flush();
+    expect(log.some((line) => line.includes("the output closed"))).toBe(true);
+  });
+
   it("reports a broken stream once and drops the rest", async () => {
     const log: string[] = [];
     const broken = new Writable({

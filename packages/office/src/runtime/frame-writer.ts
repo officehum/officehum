@@ -46,9 +46,46 @@ export class FrameWriter {
     if (!this.#pumping) this.#running = this.#pump();
   }
 
-  /** Resolves once every queued frame has been handed to the stream (or the stream broke). */
-  async flush(): Promise<void> {
-    while (this.#pumping) await this.#running;
+  /**
+   * Resolves once every queued frame has been handed to the stream, the stream broke, or `timeoutMs`
+   * passed: a reader that never reads again must not keep the process from exiting.
+   */
+  async flush(timeoutMs = Number.POSITIVE_INFINITY): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    const expired = new Promise<"expired">((resolve) => {
+      if (Number.isFinite(timeoutMs)) timer = setTimeout(() => resolve("expired"), timeoutMs);
+    });
+    try {
+      while (this.#pumping) {
+        if ((await Promise.race([this.#running, expired])) === "expired") {
+          this.#log(
+            `Gave up waiting for the gateway to read ${this.#queue.length} queued frame(s).`,
+          );
+          return;
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Waits for `drain`. A stream closed without an error never drains, so a close is the break it is;
+   * an `error` rejects through `once`. Both listeners are removed whichever comes first.
+   */
+  async #drained(): Promise<void> {
+    const cancel = new AbortController();
+    const drained = once(this.#output, "drain", { signal: cancel.signal }).then(() => "drain");
+    const closed = once(this.#output, "close", { signal: cancel.signal }).then(() => "close");
+    try {
+      if ((await Promise.race([drained, closed])) === "close") {
+        throw new Error("the output closed");
+      }
+    } finally {
+      cancel.abort();
+      drained.catch(() => {});
+      closed.catch(() => {});
+    }
   }
 
   async #pump(): Promise<void> {
@@ -57,7 +94,7 @@ export class FrameWriter {
       while (this.#queue.length > 0 && !this.#broken) {
         const frames = this.#queue.join("");
         this.#queue = [];
-        if (!this.#output.write(frames)) await once(this.#output, "drain");
+        if (!this.#output.write(frames)) await this.#drained();
       }
     } catch (error) {
       this.#break(error);

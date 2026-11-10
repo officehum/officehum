@@ -6,13 +6,14 @@
  * plain-node process needs no TypeScript build step: one safe tool and one unsafe tool, both recording
  * their calls to `calls.log`. The unsafe tool tells the parent over IPC when it starts, then blocks.
  * On restart the model sees what Pi Durable reports for the interrupted unsafe call; the script writes
- * any tool result for it to `seen.log`.
+ * any tool result for it to `seen.log`. It answers `{ ask: "alive" }` over IPC, so a test can tell
+ * whether its event loop still runs while nobody reads its stdout.
  */
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
-import { serveRuntime } from "@officehum/office";
+import { gatewayOutput, serveRuntime } from "@officehum/office";
 import { scriptedProvider } from "@officehum/office/testing";
 
 const directory = process.env.OFFICEHUM_TEST_DIRECTORY;
@@ -81,6 +82,12 @@ const script = (messages) => {
 };
 const scripted = scriptedProvider(script);
 
+// The parent asks over IPC whether the event loop still turns: a runtime blocked writing to a pipe
+// the gateway stopped reading could not answer.
+process.on("message", (message) => {
+  if (message?.ask === "alive") void tell({ status: "alive" });
+});
+
 await serveRuntime({
   serverId: "office-kill",
   roles: [role],
@@ -88,7 +95,7 @@ await serveRuntime({
   models: scripted.models,
   model: scripted.model,
   input: process.stdin,
-  output: process.stdout,
+  output: gatewayOutput(),
   log: (line) => process.stderr.write(`${line}\n`),
 });
 process.exit(0);

@@ -245,14 +245,25 @@ stderr. `docs/superpowers/plans/2026-11-10-runtime-process.md` records how it is
   to the client's own. `subscribe` and `abort` take the client's request id and find only that
   principal's request.
 - **Exactly once.** The scoped id is kept in a durable index beside the office, so the same request id
-  again, even after a restart, gets `accepted` with `existing` and no new work.
-- **Conversations.** An agent's default conversation is shared by its requests; `conversation` names
-  another one. A request submitted while its conversation is busy is `queued`.
-- **Events.** `submit` subscribes the connection to its request. Events are kept in memory: after a
-  restart, a request that finished before it replays only its `settled` event, and a resumed request's
-  events start again from `seq` 1. `text_delta` is sent when the harness commits partial output (every
-  100 ms by default, so a short answer may arrive with none).
-- **`abort`** stops the request's whole conversation, and so every request queued in it.
+  again, even after a restart, gets `accepted` with `existing` and no new work. The index records
+  the request's conversation before the work is admitted, so a retry after a crash goes back to the
+  same conversation (whatever `conversation` it names), where the harness recognizes it.
+- **Conversations are per principal.** Each principal has its own default conversation with each
+  agent, and `conversation` names another of theirs. One person's transcript, queue and `abort` never
+  reach another's. A request submitted while its conversation is busy is `queued`.
+- **Events.** `submit` subscribes the connection to its request. Tool and text events belong to the
+  request the harness placed in the run. Events are kept in memory: after a restart, a request that
+  finished before it replays only its `settled` event, and a resumed request's events are numbered
+  again from `seq` 1, so an `afterSeq` from before the restart can skip some of them; `settled` is
+  always sent. `text_delta` is sent when the harness commits partial output (every 100 ms by default,
+  so a short answer may arrive with none).
+- **`abort`** stops the request's whole conversation, and so every request that principal queued in
+  it.
+- **Stopping.** The input ending, SIGINT or SIGTERM closes the office cleanly; unfinished work resumes
+  on the next start. A killed runtime loses nothing either: Pi Durable resumes the run, and an unsafe
+  tool that was interrupted is reported to the model as interrupted rather than run again.
+- **stdout** is a pipe the gateway reads; the runtime writes to it without blocking, so a gateway that
+  stops reading costs memory, not progress.
 - **`approve`** answers `not_found` until remote approvals (RASF-3108); until then gated actions are
   refused.
 

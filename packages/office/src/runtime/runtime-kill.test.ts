@@ -60,6 +60,34 @@ function lines(directory: string, file: string): string[] {
   return existsSync(path) ? readFileSync(path, "utf8").trim().split("\n").filter(Boolean) : [];
 }
 
+describe("runtime process output", () => {
+  it("keeps its event loop running while the gateway stops reading stdout", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "officehum-runtime-stall-"));
+    temps.push(directory);
+    const runtime = runtimeChild(directory, "first");
+    await runtime.waitFor(() => runtime.frames.find((f) => f.type === "welcome"), "welcome");
+    runtime.child.stdout?.pause();
+    // Far more than a pipe holds (64 KiB on Linux), so the runtime's writes back up.
+    const pings = 4_000;
+    let batch = "";
+    for (let n = 0; n < pings; n++) {
+      batch += `${JSON.stringify({ type: "ping", id: `p${n}-${"x".repeat(40)}`, principal })}\n`;
+    }
+    runtime.child.stdin?.write(batch);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    runtime.child.send({ ask: "alive" });
+    await runtime.waitFor(
+      () => runtime.signals.find((s) => (s as { status?: string }).status === "alive"),
+      "the runtime to answer while its stdout is full",
+    );
+    runtime.child.stdout?.resume();
+    await runtime.waitFor(
+      () => (runtime.frames.filter((f) => f.type === "result").length === pings ? true : undefined),
+      "every ping's result once the reader resumes",
+    );
+  }, 60_000);
+});
+
 describe("runtime process crash and restart", () => {
   it("resumes after a kill during an unsafe tool without running it again", async () => {
     const directory = mkdtempSync(join(tmpdir(), "officehum-runtime-kill-"));

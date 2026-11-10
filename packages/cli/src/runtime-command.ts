@@ -9,7 +9,7 @@
 
 import type { Readable, Writable } from "node:stream";
 import type { ModelRef } from "@earendil-works/pi-durable";
-import { loadOfficeRoles, readOfficeFile, serveRuntime } from "@officehum/office";
+import { gatewayOutput, loadOfficeRoles, readOfficeFile, serveRuntime } from "@officehum/office";
 import type { CliDependencies, CliIo } from "./cli.js";
 import { modelsFor, parseModelRef } from "./run.js";
 import { UsageError } from "./usage-error.js";
@@ -88,6 +88,9 @@ export async function runRuntimeCommand(
 
   const stop = new AbortController();
   const unregister = register({ close: async () => stop.abort() });
+  // The gateway stops its runtime with SIGTERM: close the office cleanly rather than die mid-commit.
+  const terminate = () => stop.abort();
+  process.once("SIGTERM", terminate);
   try {
     await serveRuntime({
       serverId: file.id,
@@ -96,11 +99,12 @@ export async function runRuntimeCommand(
       models,
       ...(override === undefined ? {} : { model: override }),
       input: dependencies.stdio?.input ?? process.stdin,
-      output: dependencies.stdio?.output ?? process.stdout,
+      output: dependencies.stdio?.output ?? gatewayOutput(),
       signal: stop.signal,
       log: (line) => io.error(line),
     });
   } finally {
+    process.removeListener("SIGTERM", terminate);
     unregister();
   }
   return 0;

@@ -2,11 +2,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
-import { defineExtension, defineTool } from "@earendil-works/pi-durable";
+import { defineDoc, defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { type EventMessage, LineDecoder, type ServerMessage } from "@officehum/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { OfficeStorage } from "../adapter/index.js";
+import { type OfficeStorage, openOffice } from "../adapter/index.js";
 import type { LoadedRole } from "../roles/load-role.js";
 import { type ScriptedScript, scriptedProvider } from "../testing/scripted-model.js";
 import { openRuntime, type Runtime, scopedRequestId, serveRuntime } from "./runtime.js";
@@ -198,6 +199,67 @@ describe("openRuntime", () => {
       office.eventsFor(key).filter((message) => message.event.kind === "tool_end").length;
     expect(toolEnds("ada/r1")).toBe(1);
     expect(toolEnds("ada/r2")).toBe(1);
+  });
+
+  it("gives each principal their own conversation, so one's busy run never queues another's", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let first = true;
+    const office = await open(lookupThenAnswer, {
+      roles: [
+        helperRole("helper", async () => {
+          if (first) {
+            first = false;
+            await gate;
+          }
+        }),
+      ],
+    });
+    await office.runtime.handle(submit("c1", "r1", ada));
+    await office.find((m) => m.type === "event" && m.event.kind === "tool_start");
+    await office.runtime.handle(submit("c2", "r2", bo));
+    expect(office.sent.find((m) => m.type === "accepted" && m.id === "c2")).toMatchObject({
+      disposition: "started",
+    });
+    // Bo's abort reaches only Bo's conversation; Ada's run carries on.
+    await office.settledFor("bo/r2");
+    await office.runtime.handle({ type: "abort", id: "a1", requestId: "r2", principal: bo });
+    release();
+    expect((await office.settledFor("ada/r1")).event).toMatchObject({ status: "done" });
+  });
+
+  it("sends a retry after a crash between admission and the index back to the original conversation", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "officehum-runtime-"));
+    temps.push(directory);
+    const storage = { sqlite: join(directory, "office.sqlite") };
+    const first = await open([{ text: "Admitted once." }], { storage });
+    await first.runtime.handle(submit("c1", "r1"));
+    await first.settledFor("ada/r1");
+    await first.runtime.close();
+
+    // Leave only the intent, as a crash right after Pi Durable admitted the submission would.
+    const office = await openOffice({ storage, models: scriptedProvider([]).models });
+    const IndexDoc = defineDoc<{ requests: Record<string, { submission?: number }> }>({
+      kind: "officehum.runtime.requests",
+      version: 1,
+      scope: "session",
+      initial: () => ({ requests: {} }),
+    });
+    await office.harness.commit(async (transaction) => {
+      const document = await transaction.doc(IndexDoc);
+      const entry = document.requests["ada/r1"];
+      if (entry !== undefined) delete entry.submission;
+    }, BACKGROUND_CONTEXT);
+    await office.close();
+
+    // The retry names another conversation; it must still land where Pi Durable holds r1.
+    const second = await open([], { storage });
+    await second.runtime.handle(submit("c2", "r1", ada, { conversation: "elsewhere" }));
+    expect(second.sent[1]).toMatchObject({ type: "accepted", disposition: "existing" });
+    expect((await second.settledFor("ada/r1")).event).toMatchObject({ answer: "Admitted once." });
+    expect(second.scripted.calls).toBe(0);
   });
 
   it("submits a ticket as the role's input", async () => {
