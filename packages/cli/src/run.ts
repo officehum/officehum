@@ -209,21 +209,54 @@ export function runModels(
     }
     return injected;
   }
-  if (ref.provider !== "paper" && ref.provider !== "openai") {
-    throw new Error(
-      `The ${command} command runs paper or openai models, not ${JSON.stringify(ref.provider)}. Pass --model paper/${PAPER_MODEL_REF.modelId} or openai/gpt-6-sol.`,
-    );
+  return { models: liveModels([ref], command), model: ref };
+}
+
+/**
+ * One model collection serving every ref, for a command that runs several roles at once (the
+ * runtime). Each distinct provider must be paper or openai, with its credential set; every model must
+ * exist. An injected collection (tests) is used when the first ref's injection covers them all.
+ */
+export function modelsFor(
+  refs: readonly ModelRef[],
+  dependencies: Pick<CliDependencies, "createRunModels">,
+  command: string,
+): ReturnType<typeof createModels> {
+  const [first] = refs;
+  if (first === undefined) throw new Error(`The ${command} command has no model to run.`);
+  if (dependencies.createRunModels !== undefined) {
+    const { models } = runModels(first, dependencies, command);
+    for (const ref of refs) {
+      if (models.getModel(ref.provider, ref.modelId) === undefined) {
+        throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
+      }
+    }
+    return models;
   }
-  const keyName = ref.provider === "paper" ? "PAPERINSTRUMENTS_API_KEY" : "OPENAI_API_KEY";
-  if (!process.env[keyName]?.trim()) {
-    throw new Error(`Set ${keyName} in your shell before running against ${ref.provider}.`);
-  }
+  return liveModels(refs, command);
+}
+
+/** Registers each live provider the refs name, after checking its credential is set. */
+function liveModels(refs: readonly ModelRef[], command: string): ReturnType<typeof createModels> {
   const models = createModels();
-  models.setProvider(ref.provider === "paper" ? paperProvider() : openaiProvider());
-  if (models.getModel(ref.provider, ref.modelId) === undefined) {
-    throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
+  for (const provider of new Set(refs.map((ref) => ref.provider))) {
+    if (provider !== "paper" && provider !== "openai") {
+      throw new Error(
+        `The ${command} command runs paper or openai models, not ${JSON.stringify(provider)}. Pass --model paper/${PAPER_MODEL_REF.modelId} or openai/gpt-6-sol.`,
+      );
+    }
+    const keyName = provider === "paper" ? "PAPERINSTRUMENTS_API_KEY" : "OPENAI_API_KEY";
+    if (!process.env[keyName]?.trim()) {
+      throw new Error(`Set ${keyName} in your shell before running against ${provider}.`);
+    }
+    models.setProvider(provider === "paper" ? paperProvider() : openaiProvider());
   }
-  return { models, model: ref };
+  for (const ref of refs) {
+    if (models.getModel(ref.provider, ref.modelId) === undefined) {
+      throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
+    }
+  }
+  return models;
 }
 
 type ClientEntry = { readonly module: string; readonly export?: string };

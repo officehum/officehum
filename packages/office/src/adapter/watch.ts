@@ -2,7 +2,7 @@
  * Office Hum's view of Pi Durable's agent event stream.
  *
  * Pi Durable 1.3.0 emits 27 top-level event kinds (`AgentEvent` in `dist/harness/events.d.ts`) plus a
- * nested change list inside `message_update`. Office Hum consumes four things and everything else is
+ * nested change list inside `message_update`. Office Hum consumes five things and everything else is
  * dropped here, so callers never match on raw Pi Durable event shapes. Add a kind when a caller needs
  * it rather than widening the pattern at the call site.
  */
@@ -25,6 +25,11 @@ export type OfficeEvent =
       readonly tool: string;
       readonly callId: string;
       readonly failed: boolean;
+    }
+  | {
+      /** A submission's input entered the transcript: the run that follows is working on it. */
+      readonly kind: "placed";
+      readonly submissionId: SubmissionId;
     }
   | {
       readonly kind: "settled";
@@ -75,6 +80,7 @@ export function officeEvents(event: AgentEvent): readonly OfficeEvent[] {
         readonly status?: unknown;
       };
       const status = typeof record.status === "string" ? record.status : "unknown";
+      if (status === "placed") return [{ kind: "placed", submissionId: record.id }];
       return TERMINAL.has(status) ? [{ kind: "settled", submissionId: record.id, status }] : [];
     }
     default:

@@ -141,6 +141,23 @@ export {
 } from "./roles/run-role.js";
 export { boardSenderResolver } from "./roles/sender.js";
 export {
+  loadOfficeRoles,
+  type OfficeFile,
+  type OfficeFileRole,
+  parseOfficeFile,
+  readOfficeFile,
+} from "./runtime/office-file.js";
+export {
+  type AgentInfo,
+  type AgentToolInfo,
+  openRuntime,
+  type Runtime,
+  type RuntimeOptions,
+  type ServeRuntimeOptions,
+  scopedRequestId,
+  serveRuntime,
+} from "./runtime/runtime.js";
+export {
   emailInText,
   openSmsIntake,
   SMS_CALLBACK_TYPE,
