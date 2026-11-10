@@ -311,7 +311,10 @@ what any outside contact gets. The rule lives in one place, the SDK's `colleague
 beside `senderPerson`, and every role that trusts staff asks it (Support before showing any client's
 cases, Purchasing before placing a requested order or recording a delivery report, People Ops before
 treating a sender as office staff). `senderPerson` on its own is for recognising an outside contact,
-never for trusting one as staff.
+never for trusting one as staff. The one exception is People Ops' crew: they are not on the company
+record and have no internal channel, so a text or email from a crew member's own number or address
+(matched against their staff record) may read their own leave balance and file their own time off,
+under the same notice and approval rules. Filing for anyone else still needs a colleague.
 
 **The head of the company** is the SDK's `companyHead(company)`: whoever holds a head title (one
 that starts with managing director, owner, president or chief executive, so not "Vice President",

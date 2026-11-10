@@ -79,7 +79,10 @@ anyone.
 message. Office staff are colleagues: a person on the company record writing from inside the office
 (`origin: "internal"`, by id, email or phone; the SDK's `colleague`). An outside email or text from a
 colleague's own address is not a colleague. Crew members are matched by the contact their staff
-record holds. A time-off request is the sender's own; only a colleague (the People Ops owner, say)
+record holds, on any channel: crew have no internal channel, and a text or email from their own
+number or address is how they really ask. That is the one place staff are trusted on an outside
+channel, and it reaches only their own balance and their own time off, under the same notice and
+approval rules; filing for anyone else still needs a colleague. A time-off request is the sender's own; only a colleague (the People Ops owner, say)
 may name another employee (`someone_else` otherwise). A sender nobody verified is refused with `unknown_sender`, and one who is
 not on staff with `not_staff`. `get_leave_balance` takes no arguments at all: it gives the sender
 their allowance (each demonstration staff record carries one) less the approved business days
@@ -95,8 +98,10 @@ before anyone is asked (whose time off, from the verified sender, the dates, the
 notice figure) and shows exactly that to the person; on a yes those facts reach the tool under the
 gate's own key, and the desk records only that request (`exception_changed` if it no longer works
 out the same, `notice_changed` for any other notice figure). The notice is counted from the day the
-request was first made, which the desk keeps, so a person who decides on a later day approves facts
-that have not gone stale overnight; a first day that has passed by then is still refused. The role never approves anything: a recorded request is pending until a person decides, and
+request was asked, which the desk keeps, so a person who decides on a later day approves facts that
+have not gone stale overnight; a first day that has passed by then is still refused. That day belongs
+to one pending ask: both gates read the facts once per ask, so a request declined or withdrawn at the
+gate and asked again later starts a new day and shows the notice left then; recording it ends the ask. The role never approves anything: a recorded request is pending until a person decides, and
 only an approved exception is recorded as approved.
 
 **Leave the law may protect.** A reason category of medical, disability, pregnancy or parental,
