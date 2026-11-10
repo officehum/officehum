@@ -124,6 +124,17 @@ describe("people ops package", () => {
     expect(escalationOwner(company, "supplies-and-equipment")).toBeDefined();
     // A complaint about the person who takes complaints has somewhere else to go.
     expect(companyHead(company)?.id).not.toBe(staff.employeeRelationsTo);
+    // The head is the head title, never the first "director" in record order.
+    const retitled = {
+      ...company,
+      people: [
+        { ...company.people[1], id: "finance-director", title: "Finance Director" },
+        ...company.people,
+      ],
+    } as typeof company;
+    expect(companyHead(retitled)?.title).toMatch(
+      /managing director|owner|president|chief executive/i,
+    );
     const crews = new Set(company.crews.map((crew) => crew.id));
     for (const employee of demoEmployees()) expect(crews.has(employee.crewId ?? "")).toBe(true);
   });

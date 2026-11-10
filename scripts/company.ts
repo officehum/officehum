@@ -23,6 +23,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { HEAD_TITLE } from "../packages/sdk/src/company.ts";
 
 /** Where the company is described, relative to the repository root. */
 export const COMPANY_DIRECTORY = "company/default";
@@ -196,6 +197,24 @@ export function companyIssues(source: CompanySource): readonly string[] {
         );
       }
     }
+  }
+
+  // One person heads the company: roles send a complaint about its usual owner to them, so two head
+  // titles would make that choice depend on record order.
+  let head: { index: number; id: string; title: string } | undefined;
+  for (const [index, entry] of (people ?? []).entries()) {
+    const person = asRecord(entry);
+    const title = person === undefined ? undefined : text(person.title);
+    if (title === undefined || !HEAD_TITLE.test(title)) continue;
+    const id = text(person?.id) ?? "?";
+    if (head === undefined) {
+      head = { index, id, title };
+      continue;
+    }
+    add(
+      "company.json",
+      `people[${index}] (${id}) has the head title ${JSON.stringify(title)}, and so does people[${head.index}] (${head.id}) (${JSON.stringify(head.title)}); only one person may head the company (managing director, owner, president or chief executive)`,
+    );
   }
 
   const priceBook = asArray(company.priceBook);

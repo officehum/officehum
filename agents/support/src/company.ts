@@ -11,7 +11,12 @@
  * passes `company` to the factory instead, and nothing in this file runs.
  */
 
-import { findPeople, loadCompanyFacts as loadFacts, personLabel } from "@officehum/sdk";
+import {
+  findPeople,
+  loadCompanyFacts as loadFacts,
+  personLabel,
+  companyHead as sdkCompanyHead,
+} from "@officehum/sdk";
 
 /** Where the generated facts live, from either `src/company.ts` or `dist/company.js`. */
 export const COMPANY_FACTS_URL = new URL(
@@ -144,13 +149,11 @@ export function escalationOwner(
 }
 
 /**
- * The person at the top of the company: whoever holds a director's or owner's title. A complaint about
- * the person who would normally take it goes here instead.
+ * The person at the top of the company, by the SDK's one rule: a head title first, a bare director
+ * only when nobody holds one. A complaint about the person who would normally take it goes here.
  */
 export function companyHead(company: Pick<CompanyFacts, "people">): Person | undefined {
-  return company.people.find((candidate) =>
-    /\b(managing director|director|owner|president|chief executive)\b/i.test(candidate.title),
-  );
+  return sdkCompanyHead(company);
 }
 
 export { findPeople, personLabel };

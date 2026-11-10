@@ -55,7 +55,9 @@ export {
 export {
   type CompanyPerson,
   colleague,
+  companyHead,
   findPeople,
+  HEAD_TITLE,
   loadCompanyFacts,
   personLabel,
   type SenderResolver,

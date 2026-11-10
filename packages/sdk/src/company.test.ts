@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   colleague,
+  companyHead,
   findPeople,
   loadCompanyFacts,
   personLabel,
@@ -168,5 +169,25 @@ describe("senderPerson", () => {
     expect(colleague(staff, from("external", "+15035550143"))).toBeUndefined();
     expect(colleague(staff, from("internal", "someone@else.test"))).toBeUndefined();
     expect(colleague(staff, undefined)).toBeUndefined();
+  });
+});
+
+describe("companyHead", () => {
+  const people = (...titles: string[]) => ({
+    people: titles.map((title, index) => ({ id: `p${index}`, name: `Person ${index}`, title })),
+  });
+
+  it("picks the head title over a director listed before it", () => {
+    expect(companyHead(people("Finance Director", "Managing Director"))?.id).toBe("p1");
+    expect(companyHead(people("Operations Director", "Owner"))?.id).toBe("p1");
+    expect(companyHead(people("Director of Sales", "President"))?.id).toBe("p1");
+    expect(companyHead(people("Finance Director", "Chief Executive Officer"))?.id).toBe("p1");
+  });
+
+  it("falls back to the first bare director only when nobody holds a head title", () => {
+    expect(companyHead(people("Office Manager", "Finance Director", "Sales Director"))?.id).toBe(
+      "p1",
+    );
+    expect(companyHead(people("Office Manager", "Crew Lead"))).toBeUndefined();
   });
 });

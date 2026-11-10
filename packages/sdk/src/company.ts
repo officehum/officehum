@@ -105,6 +105,27 @@ export function loadCompanyFacts<T extends object>(url: URL): T {
   return parsed as T;
 }
 
+/** A title that heads the company. The company validator allows one person to hold one. */
+export const HEAD_TITLE = /\b(managing director|owner|president|chief executive)\b/i;
+/** A director's title, which heads the company only when nobody holds a head title. */
+const DIRECTOR_TITLE = /\bdirector\b/i;
+
+/**
+ * The person at the top of the company: whoever holds a head title (managing director, owner,
+ * president, chief executive), wherever they sit in the record. Only when nobody does, the first
+ * person whose title says director, in record order. `undefined` when neither exists. A complaint
+ * about the person who would normally take it goes here instead, so a "Finance Director" listed
+ * before the managing director must never be picked.
+ */
+export function companyHead<P extends CompanyPerson>(company: {
+  readonly people: readonly P[];
+}): P | undefined {
+  return (
+    company.people.find((candidate) => HEAD_TITLE.test(candidate.title)) ??
+    company.people.find((candidate) => DIRECTOR_TITLE.test(candidate.title))
+  );
+}
+
 /** "Name, Title", or the fallback when the company names nobody. */
 export function personLabel(who: CompanyPerson | undefined, fallback = "a person"): string {
   return who === undefined ? fallback : `${who.name}, ${who.title}`;

@@ -121,6 +121,17 @@ describe("support package", () => {
       expect(escalationOwner(company, topic), topic).toBeDefined();
     }
     expect(companyHead(company)).toBeDefined();
+    // The head is the head title, never the first "director" in record order.
+    const retitled = {
+      ...company,
+      people: [
+        { ...company.people[1], id: "finance-director", title: "Finance Director" },
+        ...company.people,
+      ],
+    } as typeof company;
+    expect(companyHead(retitled)?.title).toMatch(
+      /managing director|owner|president|chief executive/i,
+    );
 
     const clients = new Set(demoClients().map((client) => client.id));
     const prices = new Set(company.priceBook.map((item) => item.id));

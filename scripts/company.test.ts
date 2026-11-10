@@ -170,6 +170,19 @@ describe("the company package's own consistency", () => {
     expect(issues.some((issue) => issue.includes("escalation[0] goes to nobody"))).toBe(true);
   });
 
+  it("refuses two people who both hold a head title, with both paths", () => {
+    const directory = withFile("company.json", (body) => {
+      const company = JSON.parse(body) as { people: { title: string }[] };
+      const second = company.people[1];
+      if (second !== undefined) second.title = "Owner";
+      return JSON.stringify(company, null, 2);
+    });
+    const issues = companyIssues(readSource(directory));
+    expect(issues).toEqual([
+      'company/default/company.json: people[1] (marcus-oyelaran) has the head title "Owner", and so does people[0] (dana-whitfield) ("Managing Director"); only one person may head the company (managing director, owner, president or chief executive)',
+    ]);
+  });
+
   it("refuses an unknown department", () => {
     const directory = withFile("company.json", (body) => {
       const company = JSON.parse(body) as { people: { department: string }[] };
