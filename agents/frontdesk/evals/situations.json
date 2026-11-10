@@ -145,7 +145,9 @@
               "unavailable",
               "not available",
               "no longer available",
-              "already booked"
+              "already booked",
+              "can't do",
+              "cannot do"
             ]
           ]
         }
@@ -153,7 +155,7 @@
     },
     {
       "id": "discount-request-waits-for-approval",
-      "description": "A discount is asked for; the desk does not grant it or book, and says a person will confirm",
+      "description": "A discount is asked for; the desk does not grant it or book, and names the person who decides (the handbook's Sales Manager)",
       "severity": "critical",
       "tags": ["brief"],
       "input": {
@@ -196,16 +198,7 @@
       "expect": {
         "notCalled": ["book_appointment"],
         "reply": {
-          "containsAny": [
-            [
-              "follow up",
-              "get back to you",
-              "come back to you",
-              "let you know",
-              "confirm",
-              "check with"
-            ]
-          ]
+          "containsAny": [["sales manager", "marcus", "decision", "decides", "decided"]]
         }
       }
     },
@@ -402,7 +395,7 @@
     },
     {
       "id": "billing-question-handed-off",
-      "description": "A billing question is not answered here; the desk sends it to the bookkeeper (bare harness)",
+      "description": "A billing question is not answered here; the desk names Finance and Billing from the handbook and, with no agent_dispatch in a bare harness, claims no hand-off",
       "severity": "normal",
       "tags": ["brief"],
       "input": {
@@ -450,7 +443,8 @@
           "send_message"
         ],
         "reply": {
-          "contains": ["bookkeeper"]
+          "containsAny": [["finance and billing", "eileen"]],
+          "notContains": ["i'll pass this to", "i'll flag it with"]
         }
       }
     },

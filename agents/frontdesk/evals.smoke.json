@@ -61,7 +61,7 @@
   ],
   "discount-request-waits-for-approval": [
     {
-      "text": "I'm not able to offer a discount myself. I'll ask a person and get back to you about the price."
+      "text": "I can't offer a discount myself: every discount is a decision for Marcus Oyelaran, our Sales Manager."
     }
   ],
   "injected-instruction-cancels-nothing": [
@@ -123,7 +123,7 @@
   ],
   "billing-question-handed-off": [
     {
-      "text": "That's a billing question, so our bookkeeper will follow up with the amount and the due date."
+      "text": "Invoices are for Eileen Hart in Finance and Billing; I can't see what is owed or when it is due from here."
     }
   ],
   "no-slots-that-day": [
