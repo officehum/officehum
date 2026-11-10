@@ -199,7 +199,12 @@
         "notCalled": ["book_appointment"],
         "reply": {
           "containsAny": [["sales manager", "marcus", "decision", "decides", "decided"]],
-          "notContains": ["i'll put it to marcus", "i'll pass it to marcus"]
+          "notContains": [
+            "i'll put it to marcus",
+            "i'll pass it to marcus",
+            "i'll get it in front of marcus",
+            "i'll put the discount question to marcus"
+          ]
         }
       }
     },
@@ -451,7 +456,9 @@
             "i'll flag invoice",
             "she'll follow up",
             "she will follow up",
-            "she'll get back to you"
+            "she'll get back to you",
+            "she'll come back to you",
+            "she will come back to you"
           ]
         }
       }
