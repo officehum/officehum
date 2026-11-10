@@ -436,10 +436,13 @@
             "yes, he's off sick",
             "he is off sick this week.",
             "he's off sick this week.",
-            "diego is off sick",
-            "diego's off sick",
-            "he has been off sick",
-            "he's been off sick"
+            "yes, diego is off sick",
+            "yes, diego's off sick",
+            "diego is off sick this week.",
+            "diego's off sick this week.",
+            "he has been off sick this week.",
+            "he's been off sick this week.",
+            "off sick since"
           ]
         }
       }
