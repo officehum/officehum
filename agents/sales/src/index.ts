@@ -46,6 +46,7 @@ export {
   person,
   priceBookItem,
   priceText,
+  type Quoting,
   type RefundPolicy,
   type Service,
   searchPriceBook,
@@ -71,6 +72,7 @@ export {
   type QuoteLineDraft,
   type QuoteStatus,
   quoteFacts,
+  type RecurringCount,
   type SalesDesk,
   SalesDeskError,
   type SalesDeskRefusal,
@@ -106,9 +108,11 @@ export interface SalesOptions {
 
 export default function sales(options: SalesOptions = {}): DefinedRole {
   const company = options.company ?? loadCompanyFacts();
-  // The demonstration desk prices from the same book this role reads, so a first run and a real one
-  // quote the same numbers.
-  const desk = options.desk ?? fakeSalesDesk({ priceBook: company.priceBook });
+  // The demonstration desk prices from the same book, and counts a month's visits with the same
+  // weeks, as this role reads, so a first run and a real one quote the same numbers.
+  const desk =
+    options.desk ??
+    fakeSalesDesk({ priceBook: company.priceBook, weeksPerMonth: company.quoting.weeksPerMonth });
   // The quote limit is read from the role's own resolved limits at every call, so an overlay's value
   // is what a quote is judged against and a reload needs no rebuild. Before the role exists no limit
   // resolves, and the desk then holds every quote for a person rather than guessing one.

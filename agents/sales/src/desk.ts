@@ -9,7 +9,8 @@
  * The desk owns the arithmetic. A quote's unit prices, line amounts, minimums, discount and total are
  * worked out here and returned in the receipt, never by the model and never by the tool: the same
  * rule as the Bookkeeper's invoices, for the same reason. The caller names price book items and
- * quantities only.
+ * quantities only, and for a recurring per-visit line how many visits a week: the desk counts the
+ * visits in a month from the company's weeks in a month.
  *
  * The desk also decides whether a person must approve a quote, on the total it worked out itself, so
  * a minimum that raises a line counts towards the limit. A quote with a discount, or over the limit,
@@ -64,8 +65,16 @@ export interface QuoteLineDraft {
   readonly priceBookItemId: string;
   /** What the line says; the item's name when it is omitted. */
   readonly description?: string;
-  /** How many units, which may be fractional for hours and months. The book sets the price. */
+  /**
+   * How many units, which may be fractional for hours and months. The book sets the price. With
+   * `visitsPerWeek`, the units on each visit: restrooms per visit, or 1 for a whole-site visit.
+   */
   readonly quantity: number;
+  /**
+   * For a recurring line priced per visit: how many visits a week, more than zero and at most seven.
+   * The desk then bills `quantity × visitsPerWeek × weeksPerMonth`, so nobody counts a month by hand.
+   */
+  readonly visitsPerWeek?: number;
 }
 
 /** A quote as the caller asks for it. */
@@ -77,11 +86,23 @@ export interface QuoteDraft {
   readonly notes?: string;
 }
 
+/** How the desk counted a recurring line's units for a month, so the receipt can show the count. */
+export interface RecurringCount {
+  /** The units on each visit, as the caller gave them in `quantity`. */
+  readonly quantityPerVisit: number;
+  readonly visitsPerWeek: number;
+  /** The company's weeks in a month when the line was priced. */
+  readonly weeksPerMonth: number;
+}
+
 /** One line of a quote as the desk worked it out. */
 export interface QuoteLine {
   readonly priceBookItemId: string | null;
   readonly description: string;
+  /** The units billed: for a recurring line, the month's count the desk worked out. */
   readonly quantity: number;
+  /** How a recurring line's quantity was counted; absent on a one-off line. */
+  readonly recurring?: RecurringCount;
   readonly unitPriceCents: number;
   /** The line's amount in integer cents: quantity times unit price, or the item's minimum. */
   readonly amountCents: number;
@@ -151,7 +172,9 @@ export interface SalesDesk {
   getQuote(id: string): Promise<Quote>;
   /**
    * Prices a quote from the book and saves it: a `draft` ready to send, or `awaiting_approval` when it
-   * carries a discount or its subtotal is above `quoteLimitCents`. A host desk must hold every quote
+   * carries a discount or its subtotal is above `quoteLimitCents`. A line with `visitsPerWeek` must
+   * name an item priced per visit; a host desk bills it `quantity × visitsPerWeek × weeksPerMonth`,
+   * with the company's `quoting.weeksPerMonth`, and records that count in `recurring`. A host desk must hold every quote
    * for approval when `quoteLimitCents` is `undefined`, never treat a missing limit as no limit.
    */
   createQuote(
@@ -186,8 +209,8 @@ export class SalesDeskError extends Error {
 }
 
 /**
- * The facts a person approves on a quote: its lead, each line's item, quantity and amount, the
- * discount and the total. Its status is left out on purpose: approving is what changes it.
+ * The facts a person approves on a quote: its lead, each line's item, visits a week, quantity and
+ * amount, the discount and the total. Its status is left out on purpose: approving is what changes it.
  */
 export function quoteFacts(quote: Quote): Record<string, unknown> {
   return {
@@ -195,6 +218,7 @@ export function quoteFacts(quote: Quote): Record<string, unknown> {
     leadId: quote.leadId,
     lines: quote.lines.map((line) => ({
       priceBookItemId: line.priceBookItemId,
+      visitsPerWeek: line.recurring?.visitsPerWeek ?? null,
       quantity: line.quantity,
       amountCents: line.amountCents,
     })),
@@ -210,11 +234,31 @@ export interface FakeSalesDeskOptions {
   readonly quotes?: readonly Quote[];
   /** The price book quotes are validated against; the company's own when omitted. */
   readonly priceBook?: readonly PriceBookItem[];
+  /** The weeks in a month a recurring line is counted with; the company's own when omitted. */
+  readonly weeksPerMonth?: number;
   /** The clock, so a receipt's dates are reproducible in a test. */
   readonly now?: () => Date;
 }
 
 const DAY_MS = 86_400_000;
+
+/** The most visits a week a recurring line may ask for: one a day. */
+const MAX_VISITS_PER_WEEK = 7;
+
+/** Whether an item is priced per visit, by its unit: "visit", "restroom per visit". */
+function perVisit(item: PriceBookItem): boolean {
+  return /\bvisit\b/i.test(item.unit);
+}
+
+/**
+ * A month's units for a recurring line, to the hundredth: the handbook's count is not rounded to whole
+ * visits. Rounded half up in hundredths after the multiplication, through `toFixed`'s shortest decimal
+ * so a float such as 64.94999… still reads as the 64.95 a person works out.
+ */
+function monthlyQuantity(count: RecurringCount): number {
+  const exact = count.quantityPerVisit * count.visitsPerWeek * count.weeksPerMonth;
+  return Math.round(Number((exact * 100).toPrecision(12))) / 100;
+}
 
 /** `YYYY-MM-DD` of a date, in UTC: the only date form a receipt carries. */
 function isoDate(date: Date): string {
@@ -236,6 +280,7 @@ function matches(lead: Lead, query: string): boolean {
 /** An in-memory desk: the demo pipeline, the company's price book, and nothing that leaves the process. */
 export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
   const priceBook = options.priceBook ?? loadCompanyFacts().priceBook;
+  const weeksPerMonth = options.weeksPerMonth ?? loadCompanyFacts().quoting.weeksPerMonth;
   const clock = options.now ?? (() => new Date());
   const leads: Lead[] = (options.leads ?? demoLeads()).map((lead) => ({ ...lead }));
   const quoteByRequest = new Map<string, Quote>();
@@ -297,13 +342,31 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
         `${where} names ${JSON.stringify(line.priceBookItemId)}, which is not in the price book. A person prices work the book does not cover.`,
       );
     }
-    const priced = Math.round(line.quantity * item.unitPriceCents);
+    let recurring: RecurringCount | undefined;
+    if (line.visitsPerWeek !== undefined) {
+      const visits = line.visitsPerWeek;
+      if (!Number.isFinite(visits) || visits <= 0 || visits > MAX_VISITS_PER_WEEK) {
+        throw new SalesDeskError(
+          `${where} gives visitsPerWeek ${String(visits)}; it must be more than zero and at most ${MAX_VISITS_PER_WEEK} visits a week.`,
+        );
+      }
+      if (!perVisit(item)) {
+        throw new SalesDeskError(
+          `${where} gives visitsPerWeek, but ${item.id} is priced per ${item.unit}, not per visit. Leave visitsPerWeek out and give the quantity of ${item.unit} itself, or choose an item priced per visit.`,
+        );
+      }
+      recurring = { quantityPerVisit: line.quantity, visitsPerWeek: visits, weeksPerMonth };
+    }
+    // The minimum is judged on the month's count, so a recurring line is held to it as a whole.
+    const quantity = recurring === undefined ? line.quantity : monthlyQuantity(recurring);
+    const priced = Math.round(quantity * item.unitPriceCents);
     const minimum = item.minimumCents;
     const applies = minimum !== null && priced < minimum;
     return {
       priceBookItemId: item.id,
       description: line.description ?? item.name,
-      quantity: line.quantity,
+      quantity,
+      ...(recurring === undefined ? {} : { recurring }),
       unitPriceCents: item.unitPriceCents,
       amountCents: applies ? minimum : priced,
       minimumApplied: applies,

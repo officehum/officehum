@@ -96,6 +96,15 @@ export interface PriceBookItem {
   readonly notes: string;
 }
 
+/** How the company counts a quote, where that is a rule of its own rather than a price. */
+export interface Quoting {
+  /**
+   * The weeks in a month a recurring per-visit line is counted with: the desk multiplies the visits
+   * a week by it, so the model never does that arithmetic.
+   */
+  readonly weeksPerMonth: number;
+}
+
 export interface RefundPolicy {
   readonly summary: string;
   readonly recleanWindowDays: number;
@@ -152,6 +161,7 @@ export interface CompanyFacts {
   readonly people: readonly Person[];
   readonly services: readonly Service[];
   readonly priceBook: readonly PriceBookItem[];
+  readonly quoting: Quoting;
   readonly policies: Policies;
   readonly tone: Tone;
   readonly escalation: readonly EscalationRule[];

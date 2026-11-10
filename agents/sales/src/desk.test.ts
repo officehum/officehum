@@ -183,3 +183,144 @@ describe("fakeSalesDesk approveQuote", () => {
     expect([made.id, next.id]).toEqual(["Q-3051", "Q-3054"]);
   });
 });
+
+describe("fakeSalesDesk recurring lines", () => {
+  /** One line of a quote for L-207, with the desk's own weeks in a month. */
+  async function line(draft: Record<string, unknown>, requestId = "recurring") {
+    const quote = await desk().createQuote(
+      { leadId: "L-207", lines: [draft as never] },
+      { requestId, quoteLimitCents: LIMIT },
+    );
+    return quote.lines[0];
+  }
+
+  it("counts five visits a week as 21.65 visits a month, from the company's weeks in a month", async () => {
+    const counted = await line({
+      priceBookItemId: "clean-office-visit",
+      quantity: 1,
+      visitsPerWeek: 5,
+    });
+    expect(counted?.quantity).toBe(21.65);
+    expect(counted?.amountCents).toBe(400525);
+    expect(counted?.recurring).toEqual({
+      quantityPerVisit: 1,
+      visitsPerWeek: 5,
+      weeksPerMonth: 4.33,
+    });
+  });
+
+  it("counts two visits a week as 8.66, not rounded to whole visits", async () => {
+    const counted = await line({
+      priceBookItemId: "clean-office-visit",
+      quantity: 1,
+      visitsPerWeek: 2,
+    });
+    expect(counted?.quantity).toBe(8.66);
+    expect(counted?.amountCents).toBe(160210);
+  });
+
+  it("multiplies the units on each visit: three restrooms five times a week is 64.95", async () => {
+    const counted = await line({
+      priceBookItemId: "restroom-sanitise",
+      quantity: 3,
+      visitsPerWeek: 5,
+    });
+    expect(counted?.quantity).toBe(64.95);
+    expect(counted?.amountCents).toBe(422175);
+  });
+
+  it("counts a month from the weeks the company sets, not a constant in the desk", async () => {
+    const quote = await fakeSalesDesk({ now: () => NOW, weeksPerMonth: 4 }).createQuote(
+      {
+        leadId: "L-207",
+        lines: [{ priceBookItemId: "clean-office-visit", quantity: 1, visitsPerWeek: 5 }],
+      },
+      { requestId: "four-weeks", quoteLimitCents: LIMIT },
+    );
+    expect(quote.lines[0]?.quantity).toBe(20);
+  });
+
+  it("applies the item's minimum after the visits are counted", async () => {
+    // One deep-clean-sized minimum cannot be shown with a per-visit item, so a book with one proves it.
+    const quote = await fakeSalesDesk({
+      now: () => NOW,
+      weeksPerMonth: 4.33,
+      priceBook: [
+        {
+          id: "visit-with-minimum",
+          name: "A visit with a minimum",
+          category: "cleaning",
+          unit: "visit",
+          unitPriceCents: 1000,
+          minimumCents: 50000,
+          notes: "",
+        },
+      ],
+    }).createQuote(
+      {
+        leadId: "L-207",
+        lines: [{ priceBookItemId: "visit-with-minimum", quantity: 1, visitsPerWeek: 5 }],
+      },
+      { requestId: "minimum", quoteLimitCents: LIMIT },
+    );
+    expect(quote.lines[0]?.quantity).toBe(21.65);
+    expect(quote.lines[0]?.minimumApplied).toBe(true);
+    expect(quote.lines[0]?.amountCents).toBe(50000);
+  });
+
+  it("refuses visitsPerWeek on an item that is not priced per visit", async () => {
+    await expect(
+      line({ priceBookItemId: "clean-deep-sqft", quantity: 3000, visitsPerWeek: 5 }),
+    ).rejects.toThrow(/Line 1 gives visitsPerWeek, but clean-deep-sqft is priced per sq ft/);
+  });
+
+  it("refuses a frequency that is not more than zero and at most seven a week", async () => {
+    for (const visitsPerWeek of [0, -1, 8, Number.NaN]) {
+      await expect(
+        line({ priceBookItemId: "clean-office-visit", quantity: 1, visitsPerWeek }),
+      ).rejects.toMatchObject({
+        code: "invalid",
+        message: expect.stringContaining("visitsPerWeek"),
+      });
+    }
+  });
+
+  it("leaves a line without visitsPerWeek exactly as it was", async () => {
+    const plain = await line({ priceBookItemId: "clean-office-visit", quantity: 21.65 });
+    expect(plain?.quantity).toBe(21.65);
+    expect(plain?.amountCents).toBe(400525);
+    expect(plain).not.toHaveProperty("recurring");
+  });
+
+  it("answers a replayed request with the same quote", async () => {
+    const one = desk();
+    const draft = {
+      leadId: "L-207",
+      lines: [{ priceBookItemId: "clean-office-visit", quantity: 1, visitsPerWeek: 5 }],
+    };
+    const first = await one.createQuote(draft, { requestId: "replay", quoteLimitCents: LIMIT });
+    const again = await one.createQuote(draft, { requestId: "replay", quoteLimitCents: LIMIT });
+    expect(again).toBe(first);
+  });
+
+  it("puts the frequency in the facts a person approves, so a changed one is not approved", async () => {
+    const one = desk();
+    const quote = await one.createQuote(
+      {
+        leadId: "L-207",
+        lines: [{ priceBookItemId: "clean-office-visit", quantity: 1, visitsPerWeek: 5 }],
+        discountPercent: 5,
+      },
+      { requestId: "facts", quoteLimitCents: LIMIT },
+    );
+    const facts = quoteFacts(quote) as { lines: { visitsPerWeek: number | null }[] };
+    expect(facts.lines[0]?.visitsPerWeek).toBe(5);
+    const changed = {
+      ...facts,
+      lines: facts.lines.map((entry) => ({ ...entry, visitsPerWeek: 4 })),
+    };
+    await expect(
+      one.approveQuote({ quoteId: quote.id, approved: changed }, { requestId: "approve" }),
+    ).rejects.toMatchObject({ code: "quote_changed" });
+  });
+});
