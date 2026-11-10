@@ -48,7 +48,9 @@ const TextStub = Type.Object(
 
 /**
  * A canned result that depends on the call's arguments: the first entry whose `args` match (the same
- * partial match `expect.calls[].args` uses) answers; `otherwise` answers the rest.
+ * partial match `expect.calls[].args` uses) answers; `otherwise` answers the rest. An argument given
+ * as `{ "includes": "…" }` matches a string argument that contains that text, so a stub can answer
+ * every draft that quotes a passage, however the model worded the rest.
  */
 const ArgsStub = Type.Object(
   {
@@ -190,6 +192,9 @@ export function validateSuite(
     }
     for (const [tool, stub] of Object.entries(scenario.stubs)) {
       if (!("byArgs" in stub)) continue;
+      stub.byArgs.forEach((entry, entryIndex) => {
+        matcherIssues(entry.args, at(`stubs.${tool}.byArgs[${entryIndex}].args`), add);
+      });
       // Only engine tools name their parameters in the manifest; a tool defined in code has none to check.
       const parameters = manifestTools.get(tool)?.parameters;
       if (parameters === undefined) continue;
@@ -212,6 +217,8 @@ export function validateSuite(
 
     const { expect } = scenario;
     expect.calls?.forEach((call, callIndex) => {
+      if (call.args !== undefined)
+        matcherIssues(call.args, at(`expect.calls[${callIndex}].args`), add);
       if (!tools.has(call.tool))
         add(at(`expect.calls[${callIndex}].tool`), `${show(call.tool)} is not a declared tool`);
     });
@@ -228,4 +235,35 @@ export function validateSuite(
   return crossIssues.length > 0
     ? { ok: false, issues: crossIssues }
     : { ok: true, value: suite, issues: [] };
+}
+
+/** Every `{ "includes": … }` in `args` must be exactly one non-empty string, reported with its path. */
+function matcherIssues(
+  args: unknown,
+  path: string,
+  add: (path: string, message: string) => void,
+): void {
+  if (args === null || typeof args !== "object" || Array.isArray(args)) return;
+  for (const [key, value] of Object.entries(args)) {
+    const at = joinPath(path, key);
+    if (value === null || typeof value !== "object" || Array.isArray(value)) continue;
+    if ("includes" in value) {
+      const { includes, ...rest } = value as { includes: unknown };
+      if (typeof includes !== "string" || includes === "") {
+        add(
+          joinPath(at, "includes"),
+          'must be a non-empty string: { "includes": "…" } matches a string argument that contains it',
+        );
+      } else if (Object.keys(rest).length > 0) {
+        add(
+          at,
+          `an includes matcher takes no other fields; remove ${Object.keys(rest)
+            .map((name) => show(name))
+            .join(", ")}`,
+        );
+      }
+      continue;
+    }
+    matcherIssues(value, at, add);
+  }
 }

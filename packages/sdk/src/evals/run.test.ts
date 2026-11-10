@@ -3,7 +3,14 @@ import { describe, expect, it } from "vitest";
 import sampleDesk from "../../fixtures/sample-desk/src/index.js";
 import { checkAgent } from "../agent.js";
 import { validatePackage } from "../package.js";
-import { type AgentRunner, formatReport, gradeTrace, runEvals, type Trace } from "./run.js";
+import {
+  type AgentRunner,
+  argsMatch,
+  formatReport,
+  gradeTrace,
+  runEvals,
+  type Trace,
+} from "./run.js";
 import type { EvalSuite, Scenario } from "./suite.js";
 
 const trace = (fields: Partial<Trace>): Trace => ({
@@ -35,6 +42,26 @@ function scriptedRunner(traces: Record<string, Trace[]>): AgentRunner {
     },
   };
 }
+
+describe("argsMatch", () => {
+  it("matches exact values and partial objects, as before", () => {
+    expect(argsMatch({ sku: "BOLT-10" }, { sku: "BOLT-10", qty: 2 })).toBe(true);
+    expect(argsMatch({ sku: "BOLT-10" }, { sku: "BOLT-1" })).toBe(false);
+    expect(argsMatch({ filter: { id: "D-1" } }, { filter: { id: "D-1", x: 1 } })).toBe(true);
+    expect(argsMatch({ text: "a" }, { text: "abc" })).toBe(false);
+  });
+
+  it("matches a string argument that includes the given text", () => {
+    expect(argsMatch({ text: { includes: "on time" } }, { text: "always on time." })).toBe(true);
+    expect(argsMatch({ text: { includes: "on time" } }, { text: "always late." })).toBe(false);
+    expect(argsMatch({ text: { includes: "x" } }, {})).toBe(false);
+  });
+
+  it("matches an object argument that has an includes field as a partial object, not a substring", () => {
+    expect(argsMatch({ q: { includes: "a" } }, { q: { includes: "a", more: 1 } })).toBe(true);
+    expect(argsMatch({ q: { includes: "a" } }, { q: { includes: "ab" } })).toBe(false);
+  });
+});
 
 describe("gradeTrace", () => {
   const booking = scenario({

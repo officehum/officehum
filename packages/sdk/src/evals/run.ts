@@ -311,8 +311,27 @@ function normaliseReply(text: string): string {
     .replace(/(\d{1,2}:\d{2}):00(?!\d)/g, "$1");
 }
 
-/** Partial match, shared by expected calls and per-argument stubs: every field `expected` names must equal the actual value; nested objects match the same way. */
+/** `{ "includes": "…" }`: matches a string argument that contains the text. */
+export function isIncludesMatcher(value: unknown): value is { includes: string } {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return (
+    keys.length === 1 &&
+    keys[0] === "includes" &&
+    typeof (value as { includes: unknown }).includes === "string"
+  );
+}
+
+/**
+ * Partial match, shared by expected calls and per-argument stubs: every field `expected` names must
+ * equal the actual value; nested objects match the same way. `{ "includes": "…" }` against a string
+ * matches when the string contains that text. Against anything else it is an ordinary partial
+ * object, so a suite that only used exact values matches exactly as it did.
+ */
 export function argsMatch(expected: unknown, actual: unknown): boolean {
+  if (isIncludesMatcher(expected) && typeof actual === "string") {
+    return actual.includes(expected.includes);
+  }
   if (expected !== null && typeof expected === "object" && !Array.isArray(expected)) {
     if (actual === null || typeof actual !== "object" || Array.isArray(actual)) return false;
     return Object.entries(expected).every(([key, value]) =>

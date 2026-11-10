@@ -390,11 +390,13 @@ describe("marketing brief contract", () => {
     const quoteStub = quote?.stubs.draft_post;
     if (quoteStub === undefined || !("byArgs" in quoteStub))
       throw new Error("the invented quote's draft_post stub must answer by its arguments");
-    for (const entry of quoteStub.byArgs) {
-      expect(entry.isError).toBe(true);
-      expect(String(entry.args.text)).toContain("Morgan Ellis");
-      expect(entry.text).toContain("not a testimonial on the company's record");
-    }
+    expect(quoteStub.byArgs).toEqual([
+      {
+        args: { text: { includes: "Morgan Ellis" } },
+        isError: true,
+        text: expect.stringContaining("not a testimonial on the company's record"),
+      },
+    ]);
     expect(quoteStub.otherwise?.text).toContain("Saved D-106");
     expect(quote?.expect.reply?.notContains).toContain("d-106");
     expect(quote?.expect.notCalled).toEqual(
@@ -406,11 +408,9 @@ describe("marketing brief contract", () => {
     const recordedStub = recorded?.stubs.draft_post;
     if (recordedStub === undefined || !("byArgs" in recordedStub))
       throw new Error("the recorded quote's draft_post stub must answer by its arguments");
-    for (const entry of recordedStub.byArgs) {
-      expect(String(entry.args.text)).toContain(
-        "The crew is always on time and our lobby looks great every morning.",
-      );
-    }
+    expect(recordedStub.byArgs.map((entry) => entry.args)).toEqual([
+      { text: { includes: "always on time and our lobby looks great every morning" } },
+    ]);
     expect(recordedStub.otherwise?.isError).toBe(true);
 
     // Review Focus 1: another team's request names the owner and calls no desk tool.

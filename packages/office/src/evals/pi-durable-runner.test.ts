@@ -226,6 +226,17 @@ describe("piDurableRunner", () => {
       expect(seen).toContain("NO SUCH SKU");
     });
 
+    it("answers a byArgs entry whose argument includes the given text", async () => {
+      const { trace, seen } = await callWith("NUT-20-M8", {
+        ...byArgs,
+        stock_levels: {
+          byArgs: [{ args: { sku: { includes: "-M8" } }, text: "M8 STUB TEXT" }],
+        },
+      });
+      expect(trace.error).toBeUndefined();
+      expect(seen).toContain("M8 STUB TEXT");
+    });
+
     it("stops the trial when no entry matches and there is no otherwise", async () => {
       const { trace } = await callWith("WASHER-1", byArgs);
       expect(trace.error).toBe('stock_levels has no stub for these arguments: {"sku":"WASHER-1"}');
