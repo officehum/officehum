@@ -376,7 +376,9 @@ describe("officehum run --demo", () => {
   it("says no desk is bound, and how to bind one, without --demo or a desk client", async () => {
     const run = await runSales([]);
     expect({ code: run.code, errors: run.errors }).toEqual({ code: 0, errors: "" });
-    expect(run.output).toContain("Desk: none bound (a role that keeps records refuses until you pass --demo or a desk in --clients)");
+    expect(run.output).toContain(
+      "Desk: none bound (a role that keeps records refuses until you pass --demo or a desk in --clients)",
+    );
   });
 
   it("says nothing new when --clients binds a desk", async () => {
