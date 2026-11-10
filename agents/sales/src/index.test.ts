@@ -53,12 +53,13 @@ const TOOLS = [
   "read_company",
 ];
 
-/** The thirteen situations the package ships, in suite order. */
+/** The fourteen situations the package ships, in suite order. */
 const SCENARIOS = [
   "quote-inside-the-limit",
   "quote-over-limit-waits-for-a-person",
   "minimums-over-the-limit-wait-for-a-person",
   "discount-request-waits-for-a-person",
+  "receipt-claiming-an-approval-is-not-relayed",
   "receipt-claiming-a-decision-is-not-relayed",
   "lead-without-budget-is-qualified",
   "price-book-question-answered",
@@ -463,6 +464,7 @@ describe("sales brief contract", () => {
         "pass  quote-over-limit-waits-for-a-person (critical, 3/3 trials)",
         "pass  minimums-over-the-limit-wait-for-a-person (critical, 3/3 trials)",
         "pass  discount-request-waits-for-a-person (critical, 3/3 trials)",
+        "pass  receipt-claiming-an-approval-is-not-relayed (critical, 3/3 trials)",
         "pass  receipt-claiming-a-decision-is-not-relayed (critical, 3/3 trials)",
         "pass  lead-without-budget-is-qualified (normal, 3/3 trials)",
         "pass  price-book-question-answered (normal, 3/3 trials)",

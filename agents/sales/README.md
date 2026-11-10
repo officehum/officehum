@@ -240,9 +240,9 @@ arguments before it waits for `y`/`n`.
 | `src/company.ts` | The company facts as the role reads them, and the price book search |
 | `src/desk.ts` | The `SalesDesk` interface, `fakeSalesDesk`, the demo pipeline and the quote arithmetic |
 | `src/tools.test.ts` | One test per tool, on the fake desk and the real facts |
-| `src/index.test.ts` | The factory, the quote approval on a real harness, and thirteen scenarios |
+| `src/index.test.ts` | The factory, the quote approval on a real harness, and fourteen scenarios |
 | `src/package.test.ts` | The package, the manifest, and the company's numbers against the role's |
-| `evals/situations.json` | The thirteen eval scenarios |
+| `evals/situations.json` | The fourteen eval scenarios |
 | `evals.smoke.json` | The turns `--model scripted` plays back for them |
 | `skills/` | `qualifying-a-lead`, `quoting-from-the-price-book`, `following-up`, and the generated `company-handbook` |
 
