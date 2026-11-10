@@ -474,9 +474,17 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
       const desk = requireDesk(dependencies);
       const approved = approvedFacts(args);
       if (approved === undefined) {
+        // No record exists yet, so the refusal names the request itself: whose, which dates, why.
+        const whose = typeof args.employee === "string" ? args.employee : "the sender";
         return refusal(
-          "Nothing was recorded: this call carries no facts a person approved. A short-notice exception is recorded only after the approval gate has put it to a person and they said yes. Next: tell the employee it needs a person's approval and nothing was recorded.",
-          { code: "not_approved" },
+          `Nothing was recorded for time off for ${whose} from ${args.startDate} to ${args.endDate} (${args.reasonCategory}): this call carries no facts a person approved. A short-notice exception is recorded only after the approval gate has put it to a person and they said yes. Next: tell the employee it needs a person's approval and nothing was recorded.`,
+          {
+            code: "not_approved",
+            ...(typeof args.employee === "string" ? { employee: args.employee } : {}),
+            startDate: args.startDate,
+            endDate: args.endDate,
+            reasonCategory: args.reasonCategory,
+          },
         );
       }
       try {

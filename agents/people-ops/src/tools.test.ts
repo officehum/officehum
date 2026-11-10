@@ -298,6 +298,16 @@ describe("request_time_off_exception", () => {
       BACKGROUND_CONTEXT,
     );
     expect(details(unapproved).code).toBe("not_approved");
+    // The refusal names the request it refers to, as the other desks name their record's id.
+    expect(details(unapproved)).toMatchObject({
+      employee: "Ana Lopez",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      reasonCategory: "vacation",
+    });
+    expect(text(unapproved)).toContain(
+      "time off for Ana Lopez from 2026-11-20 to 2026-11-20 (vacation)",
+    );
   });
 
   it("refuses a notice figure that is not the desk's, giving the right one", async () => {
