@@ -794,7 +794,11 @@ Each file in the `evals` directory holds scenarios:
   parameter cannot be matched against the literal object `{ "includes": … }`: that object is always
   the matcher. A matcher goes on an argument's value only: `validateSuite` refuses `includes` directly
   under `args`, with its path.
-- `approvals` scripts the person's decision for each approval id.
+- `approvals` scripts the person's decision for each approval id: `approve`, `decline` or `pending`.
+  `pending` means the request reaches a person who has not answered by the end of the trial: the
+  call is blocked as waiting and the run goes on, so a scenario can grade what the role says while
+  it waits. An approver gives the same answer as `{ approved: false, pending: true }`; the gate
+  records no decision for it, so the same call is asked again later and runs on a yes.
 - `expect.calls` must appear in that order, with other calls allowed in between; `args` matches only
   the fields listed. `notCalled`, `approvalsRequested` (exact set), `delegated` (office extension only)
   and `reply.contains` / `reply.containsAny` / `reply.notContains` complete the checks. Reply matching

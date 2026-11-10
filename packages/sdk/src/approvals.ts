@@ -141,6 +141,11 @@ export type ApprovalDecision = {
   readonly by?: string;
   /** Why, shown to the agent when declined. */
   readonly note?: string;
+  /**
+   * The request reached a person who has not answered yet (`approved` is then ignored). The call is
+   * not run and no decision is recorded, so the same call is asked again later and runs on a yes.
+   */
+  readonly pending?: boolean;
 };
 
 /** Asks a person to decide. May take as long as the person needs. */
@@ -323,6 +328,17 @@ export function approvalGate(options: ApprovalGateOptions): HookRegistration {
             },
             context,
           );
+          // Nothing is memoised for a pending answer: memoising it would turn "not yet" into a
+          // standing no for this call, and the person's later answer could never reach it.
+          if (answer.pending === true) {
+            return {
+              block:
+                `${call.name} was not run: it needs a person's approval (${approval.description}), ` +
+                "and the request is with a person who has not answered yet. Nothing has been " +
+                "approved or declined. Say the request is waiting for a person's answer, and do not " +
+                "retry this call.",
+            };
+          }
           // First write wins: after a crash mid-ask, the decision recorded first stands.
           decision = await api.memo<StoredDecision>(
             memoKey,
