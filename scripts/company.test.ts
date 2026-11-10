@@ -183,6 +183,28 @@ describe("the company package's own consistency", () => {
     ]);
   });
 
+  it("does not count a title that only contains a head's words as a second head", () => {
+    // Vice President, Product Owner and Co-owner are not the head of the company.
+    for (const title of [
+      "Vice President, Sales",
+      "Product Owner",
+      "Co-owner",
+      "Assistant to the Managing Director",
+    ]) {
+      const directory = withFile("company.json", (body) => {
+        const company = JSON.parse(body) as { people: { title: string }[] };
+        const second = company.people[1];
+        if (second !== undefined) second.title = title;
+        return JSON.stringify(company, null, 2);
+      });
+      const issues = companyIssues(readSource(directory));
+      expect(
+        issues.filter((issue) => issue.includes("head title")),
+        title,
+      ).toEqual([]);
+    }
+  });
+
   it("refuses an unknown department", () => {
     const directory = withFile("company.json", (body) => {
       const company = JSON.parse(body) as { people: { department: string }[] };

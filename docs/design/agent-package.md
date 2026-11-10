@@ -313,9 +313,10 @@ cases, Purchasing before placing a requested order or recording a delivery repor
 treating a sender as office staff). `senderPerson` on its own is for recognising an outside contact,
 never for trusting one as staff.
 
-**The head of the company** is the SDK's `companyHead(company)`: whoever holds a head title
-(managing director, owner, president or chief executive), wherever they sit in the record, and a bare
-"director" only when nobody does. Roles send a complaint about its usual owner there. The company
+**The head of the company** is the SDK's `companyHead(company)`: whoever holds a head title (one
+that starts with managing director, owner, president or chief executive, so not "Vice President",
+"Product Owner" or "Co-owner"), wherever they sit in the record, and a bare "director" only when
+nobody does. Roles send a complaint about its usual owner there. The company
 validator (`npm run sync-company`) refuses two people with head titles, naming both paths.
 
 A sender comes from one of three places today, and nowhere else:

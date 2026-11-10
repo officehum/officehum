@@ -105,8 +105,12 @@ export function loadCompanyFacts<T extends object>(url: URL): T {
   return parsed as T;
 }
 
-/** A title that heads the company. The company validator allows one person to hold one. */
-export const HEAD_TITLE = /\b(managing director|owner|president|chief executive)\b/i;
+/**
+ * A title that heads the company: it starts with managing director, owner, president or chief
+ * executive. Anchored, so "Vice President, Sales", "Product Owner" and "Co-owner" are not heads. The
+ * company validator allows one person to hold one.
+ */
+export const HEAD_TITLE = /^\s*(managing director|owner|president|chief executive)\b/i;
 /** A director's title, which heads the company only when nobody holds a head title. */
 const DIRECTOR_TITLE = /\bdirector\b/i;
 

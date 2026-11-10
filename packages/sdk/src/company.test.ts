@@ -184,6 +184,13 @@ describe("companyHead", () => {
     expect(companyHead(people("Finance Director", "Chief Executive Officer"))?.id).toBe("p1");
   });
 
+  it("counts only a title that is a head's, not one that contains the words", () => {
+    expect(companyHead(people("Vice President, Sales", "President"))?.id).toBe("p1");
+    expect(companyHead(people("Product Owner", "Owner"))?.id).toBe("p1");
+    expect(companyHead(people("Co-owner", "Managing Director"))?.id).toBe("p1");
+    expect(companyHead(people("Product Owner", "Vice President"))).toBeUndefined();
+  });
+
   it("falls back to the first bare director only when nobody holds a head title", () => {
     expect(companyHead(people("Office Manager", "Finance Director", "Sales Director"))?.id).toBe(
       "p1",
