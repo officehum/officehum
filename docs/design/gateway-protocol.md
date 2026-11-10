@@ -318,7 +318,8 @@ principal. Refused commands get `forbidden` (HTTP 403); a missing or bad token g
 restarts. The gateway drops events the current runtime has already sent it and forwards `settled`
 once. A run resumed after a runtime restart does its unfinished steps again, so its `tool_start` for a
 step that was interrupted can appear twice; an unsafe tool is not run again. The gateway keeps the
-latest 2,000 events of a request in memory, so numbering and replay last as long as the gateway
+latest 2,000 events of a request in memory; a client resuming from further back than that gets the
+kept ones, with a gap before them, and `settled`. Numbering and replay last as long as the gateway
 process: after a gateway restart, `Last-Event-ID` from before it does not apply (RASF-3106).
 
 **Restarts.** The gateway restarts the runtime after any exit it did not ask for, not only a failing

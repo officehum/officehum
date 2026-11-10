@@ -50,7 +50,10 @@ export interface AuditEntry {
 export interface RequestSnapshot {
   readonly requestId: string;
   readonly settled: boolean;
+  /** The events still kept, the latest up to the per-request limit. */
   readonly events: readonly EventMessage[];
+  /** Every event the request has had, kept or not. */
+  readonly eventCount: number;
 }
 
 interface Pending {
@@ -254,7 +257,12 @@ export class Router {
     const state = this.#requests.get(scopedRequestId(principal, requestId));
     return state === undefined
       ? undefined
-      : { requestId: state.requestId, settled: state.settled, events: [...state.events] };
+      : {
+          requestId: state.requestId,
+          settled: state.settled,
+          events: [...state.events],
+          eventCount: state.nextSeq - 1,
+        };
   }
 
   #lost(principal: Principal, requestId: string, why: string): void {

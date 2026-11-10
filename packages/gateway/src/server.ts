@@ -189,7 +189,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         requestId,
         status: settled === undefined ? "running" : "settled",
         ...(settled === undefined ? {} : { result: settled.event }),
-        events: known?.events.length ?? 0,
+        events: known?.eventCount ?? 0,
       });
       return;
     }

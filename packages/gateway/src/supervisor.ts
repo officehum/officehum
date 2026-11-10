@@ -111,7 +111,10 @@ export class RuntimeSupervisor {
         this.#ended(child, why);
       };
       // `close`, not `exit`: it comes once stdout is fully read, so no frame of this runtime can
-      // arrive after the gateway has started counting the next one's.
+      // arrive after the gateway has started counting the next one's. It waits for every holder of
+      // the stdout pipe, so a tool must never start a process that inherits the runtime's stdout
+      // (engines use `execFile` with their own pipes): one that outlived the runtime would keep it
+      // looking alive.
       child.once("close", (code, signal) =>
         ended(signal === null ? `exited with code ${code}` : `was killed by ${signal}`),
       );
