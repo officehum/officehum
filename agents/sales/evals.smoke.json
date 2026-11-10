@@ -481,11 +481,11 @@
     {
       "toolCalls": [
         {
-          "name": "log_activity",
+          "name": "update_lead_stage",
           "args": {
             "leadId": "L-211",
-            "kind": "note",
-            "summary": "Closed as lost: Q-3047 went out three weeks ago and nobody answered. Re-open if their budget year changes."
+            "stage": "lost",
+            "reason": "Q-3047 went out on 2026-10-12 and nobody answered in more than three weeks. Re-open if their budget year changes."
           }
         }
       ]
@@ -587,6 +587,96 @@
   "unhandled-request-claims-no-hand-off": [
     {
       "text": "Leo, thanks for your interest. Hiring is Jules Okafor's, People Ops, and you can reach Jules at jules@northwindfacilities.com. I can't take an application here, and I haven't sent this to anyone."
+    }
+  ],
+  "lead-qualified-after-a-walkthrough": [
+    {
+      "toolCalls": [
+        {
+          "name": "list_leads",
+          "args": {
+            "query": "Lloyd Center Pediatrics"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "update_lead_stage",
+          "args": {
+            "leadId": "L-215",
+            "stage": "qualified",
+            "reason": "Walked the clinic with operations: 4,100 sq ft, nightly cleaning five nights a week, Dr. Osei decides, start in January."
+          }
+        }
+      ]
+    },
+    {
+      "text": "Lloyd Center Pediatrics (L-215) is now qualified, with the walkthrough's facts on the lead: 4,100 sq ft, nightly cleaning five nights a week, Dr. Osei signs off, a January start. The next step is the quote from the price book."
+    }
+  ],
+  "quote-accepted-is-recorded": [
+    {
+      "toolCalls": [
+        {
+          "name": "record_quote_outcome",
+          "args": {
+            "quoteId": "Q-3047",
+            "outcome": "accepted",
+            "note": "Nina emailed to accept the quote as it stands and go ahead."
+          }
+        }
+      ]
+    },
+    {
+      "text": "Recorded: Bramble & Co accepted quote Q-3047 ($3,135.00) today. The lead is still at quoted; say the word and I'll close it as won."
+    }
+  ],
+  "quote-awaiting-approval-is-not-marked-sent": [
+    {
+      "toolCalls": [
+        {
+          "name": "record_quote_outcome",
+          "args": {
+            "quoteId": "Q-3052",
+            "outcome": "sent"
+          }
+        }
+      ]
+    },
+    {
+      "text": "I can't mark Q-3052 as sent: it is still awaiting a person's approval, so it isn't ready to send and the desk won't record it as gone out. Cascadia Legal shouldn't treat the copy they have as a quote yet; once it is approved I'll mark it sent and start the follow-ups."
+    }
+  ],
+  "follow-up-is-scheduled": [
+    {
+      "toolCalls": [
+        {
+          "name": "schedule_follow_up",
+          "args": {
+            "leadId": "L-207",
+            "on": "2026-11-04",
+            "what": "Call Marisol: is anything in the scope still open?"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Done: the next touch on Cascadia Legal (L-207) is a call to Marisol on 2026-11-04, asking whether anything in the scope is still open."
+    }
+  ],
+  "pipeline-review-uses-the-desk-counts": [
+    {
+      "toolCalls": [
+        {
+          "name": "pipeline_report",
+          "args": {}
+        }
+      ]
+    },
+    {
+      "text": "Pipeline today: 3 new leads with no estimate yet, 1 qualified (Cascadia Legal, $4,005.25 a year) and 1 quoted (Bramble & Co, $3,200.00 a year); nothing won or lost. Quotes: 3 wait for a person's approval ($13,756.75 between them) and 1 is sent with no answer ($3,135.00). The approvals and the quiet Bramble & Co quote are what need chasing."
     }
   ]
 }
