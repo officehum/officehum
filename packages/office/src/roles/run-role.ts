@@ -68,23 +68,32 @@ function requireEngine(role: LoadedRole): Engine {
   return engine;
 }
 
-async function resultFor(
+/**
+ * The assistant's answer to a settled input submission, as plain text; `undefined` when it settled
+ * without one (unanswered, a passive write, or an answer with no text).
+ */
+export async function answerText(
   conversation: Conversation,
-  submissionId: SubmissionId,
   settlement: SettledSubmissionRecord,
-): Promise<RoleRunResult> {
-  if (settlement.status !== "done" || settlement.type !== "input") {
-    return { submissionId, settlement };
-  }
+): Promise<string | undefined> {
+  if (settlement.status !== "done" || settlement.type !== "input") return undefined;
   const entry = await conversation.commit(
     (transaction) => transaction.entry(AssistantEntry, settlement.answer),
     BACKGROUND_CONTEXT,
   );
   const message = entry?.model?.find((item) => item.role === "assistant");
-  const text = message?.content
+  return message?.content
     .filter((block) => block.type === "text")
     .map((block) => block.text)
     .join("");
+}
+
+async function resultFor(
+  conversation: Conversation,
+  submissionId: SubmissionId,
+  settlement: SettledSubmissionRecord,
+): Promise<RoleRunResult> {
+  const text = await answerText(conversation, settlement);
   return text === undefined ? { submissionId, settlement } : { submissionId, settlement, text };
 }
 

@@ -8,7 +8,7 @@
  *
  * The adapter adds no policy: no approvals, budgets, retries or routing. It wraps, in order:
  * `Harness.open` + `resume()`, `createRegistry`, `Harness.root`/`createConversation`/`conversation`,
- * `Conversation.submit`/`configure`/`abort`, `Harness.submission`/`inspect`, `watchEvents`,
+ * `Conversation.submit`/`configure`/`abort`, `Harness.submission`/`inspect`/`resume`, `watchEvents`,
  * `Session.snapshot` and `Session.close`. Each method names what it wraps.
  */
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -117,8 +117,22 @@ export interface Office {
    * once that scope is idle. The eval runner uses it to end a trial whose run must stop.
    */
   abort(conversation: Conversation): Promise<void>;
+  /**
+   * `watchEvents` + `AgentEventStream.start`, mapped to Office Hum's four kinds. Resolves once the
+   * watch is attached, so every event committed after it resolves reaches `onEvent`; a host that must
+   * not miss a run's events attaches before it submits. `stop` detaches.
+   */
+  listen(
+    conversation: Conversation,
+    onEvent: (event: OfficeEvent) => void,
+  ): Promise<{ stop(): Promise<void> }>;
   /** `watchEvents`, mapped to Office Hum's four kinds. Iterate until done, then `return`. */
   watch(conversation: Conversation): AsyncIterable<OfficeEvent>;
+  /**
+   * `Harness.resume`: enable scheduling, so work admitted before the last close continues. For a host
+   * that opened with `resume: false` to attach to its unsettled work first. Idempotent.
+   */
+  resume(): void;
   /** `Harness.inspect().submissions`: unsettled submissions, for a resume pass. */
   openSubmissions(): Promise<readonly SubmissionId[]>;
   /** `Session.snapshot` for a session-scoped document. */
@@ -162,6 +176,19 @@ export async function openOffice(options: OpenOfficeOptions): Promise<Office> {
   );
   // Resume by default: work admitted before the last close continues, and this is idempotent.
   if (options.resume !== false) harness.resume();
+  const listen: Office["listen"] = async (conversation, onEvent) => {
+    const stream = await watchEvents(harness, conversation.id, BACKGROUND_CONTEXT);
+    stream.start(async (events) => {
+      for (const event of events) {
+        for (const mapped of officeEvents(event)) onEvent(mapped);
+      }
+    });
+    return {
+      async stop() {
+        await stream.stop();
+      },
+    };
+  };
   let closing: Promise<void> | undefined;
   return {
     harness,
@@ -215,14 +242,12 @@ export async function openOffice(options: OpenOfficeOptions): Promise<Office> {
     async snapshot(token) {
       return await harness.snapshot(token, BACKGROUND_CONTEXT);
     },
+    listen,
     watch: async function* (conversation) {
-      const stream = await watchEvents(harness, conversation.id, BACKGROUND_CONTEXT);
       const pending: OfficeEvent[] = [];
       let wake: (() => void) | undefined;
-      stream.start(async (events) => {
-        for (const event of events) {
-          for (const mapped of officeEvents(event)) pending.push(mapped);
-        }
+      const listening = await listen(conversation, (event) => {
+        pending.push(event);
         wake?.();
       });
       try {
@@ -240,8 +265,11 @@ export async function openOffice(options: OpenOfficeOptions): Promise<Office> {
           wake = undefined;
         }
       } finally {
-        await stream.stop();
+        await listening.stop();
       }
+    },
+    resume() {
+      harness.resume();
     },
     async close() {
       closing ??= harness.close(BACKGROUND_CONTEXT);
