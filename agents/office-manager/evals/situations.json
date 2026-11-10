@@ -50,7 +50,9 @@
         "approvalsRequested": [],
         "reply": {
           "contains": ["booking.request"],
-          "containsAny": [["?", "missing"]]
+          "containsAny": [
+            ["?", "missing", "nobody can start", "without knowing", "need to know", "needs to know"]
+          ]
         }
       }
     },
