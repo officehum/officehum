@@ -105,10 +105,10 @@ const HR_WORDS = ["hr", "human resources", "personnel", "people ops", "people te
  * the record gives them ("DW"), each matched as whole words anywhere in the text, ignoring case: how a
  * colleague refers to someone ("the people ops person", a surname, a first name, initials). A first
  * initial and surname ("D. Whitfield") is found by its surname. A word that only contains a name or
- * an alias does not match. Empty when
- * the words name nobody on the record. Whoever holds a people or HR title is also matched by the
- * everyday words for that job ("HR", "human resources", "personnel"). Used to keep a complaint away
- * from the people it names, so matching eagerly only ever sends it to someone else.
+ * an alias does not match. Empty when the words name nobody on the record. Whoever holds a people or
+ * HR title is also matched by the everyday words for that job ("HR", "human resources",
+ * "personnel"). Used to keep a complaint away from the people it names, so matching eagerly only
+ * ever sends it to someone else.
  */
 export function findPeople<P extends CompanyPerson>(
   company: { readonly people: readonly P[] },

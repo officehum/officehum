@@ -33,6 +33,17 @@
       ]
     },
     {
+      "toolCalls": [
+        {
+          "name": "withdraw_credit",
+          "args": {
+            "creditId": "CR-401",
+            "reason": "Declined by the person who approves credits."
+          }
+        }
+      ]
+    },
+    {
       "text": "Grace, I asked Eileen Hart, Finance and Billing, to approve a credit of $150.00 on the cleaning line of invoice INV-2041 for case C-301, and it was declined, so no credit has been issued. I'm sorry that isn't the answer you hoped for. If you would like treatment rooms 2 and 3 put right, I can book a re-clean at no charge this week, or I can hand your complaint to Tom Becker, Client Services Lead, who owns complaints about a visit."
     }
   ],
@@ -368,6 +379,17 @@
           "name": "offer_credit",
           "args": {
             "creditId": "CR-401"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "withdraw_credit",
+          "args": {
+            "creditId": "CR-401",
+            "reason": "Declined by the person who approves credits."
           }
         }
       ]

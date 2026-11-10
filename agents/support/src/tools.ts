@@ -296,7 +296,9 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     const creditId = error.creditId ?? "the credit";
     const next: Record<DeskRefusal, string> = {
       not_escalated: ` Next: call escalate_case with caseId ${caseId} and reason safety, which hands it to ${safetyOwner}.`,
-      credit_pending: ` ${creditId} on ${caseId} waits for a decision by ${creditOwner}: tell the client it is with them, and do not propose or ask for another. Leave the case open.`,
+      credit_pending: ` ${creditId} on ${caseId} is proposed and not issued: if an approval in this conversation returned a decision, say that decision (record a decline with withdraw_credit); otherwise tell the client ${creditOwner} has it. Do not propose or ask for another. Leave the case open.`,
+      note_names_owner:
+        " Next: if the complaint is about them, call escalate_case again with them in about. Otherwise call again with a note that addresses no one. Never drop a name the client used.",
       duplicate_credit: ` ${creditId} is that credit: tell the client where it stands, and do not propose it again.`,
       reclean_pending:
         " Next: leave it open until the re-clean is done, and tell the client its date.",
@@ -335,7 +337,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
         ? "none"
         : entry.credit.status === "issued"
           ? `credit note ${entry.credit.creditNoteId ?? ""}, ${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line}`
-          : `${entry.credit.id}, ${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line}, waiting for a decision by ${creditOwner} (already put to them: do not call propose_credit or offer_credit for this case)`;
+          : `${entry.credit.id}, ${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line}, proposed and put to ${creditOwner}; not issued. If an approval in this conversation returned a decision, say that decision; otherwise say ${creditOwner} has it. Do not call propose_credit or offer_credit for this case.`;
     const escalated =
       entry.escalations.length === 0
         ? "no"
@@ -371,7 +373,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
   const findClient = defineTool({
     name: "find_client",
     description:
-      "Find a client by all or part of its name, its contact's name, an email, a contract number or words from its site. Returns its id, contact, site, contract and how many of its cases are open.",
+      "Find a client by all or part of its name, its contact's name, an email, a contract number or words from its site. Returns its id, contact, site, contract and how many of its cases are open. A client's contact finds only their own client; a sender the desk does not know finds none.",
     parameters: Type.Object(
       {
         query: Type.String({
@@ -382,9 +384,14 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
       { additionalProperties: false },
     ),
     replay: "safe",
-    execute: async (args) => {
+    execute: async (args, api) => {
       const desk = requireDesk(dependencies);
-      const clients = await desk.findClient(args.query);
+      // A client's contact sees only its own record, an unknown sender none, a colleague any.
+      const who = await asker(desk, api);
+      if (who.kind === "unknown") return unknownSender({ found: false, clients: [] });
+      const clients = (await desk.findClient(args.query)).filter(
+        (client) => who.kind === "colleague" || client.id === who.clientId,
+      );
       const details: JsonObject = { found: clients.length > 0, clients: plainList(clients) };
       if (clients.length === 0) {
         return refusal(
@@ -509,9 +516,11 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     execute: async (args, api) => {
       const desk = requireDesk(dependencies);
       try {
+        // A client logs on its own account, whatever client the call names.
+        const who = await asker(desk, api);
         const entry = await desk.logCase(
           {
-            clientId: args.clientId,
+            clientId: who.kind === "client" ? who.clientId : args.clientId,
             kind: args.kind as CaseKind,
             category: args.category as CaseCategory,
             summary: args.summary,
@@ -598,7 +607,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
         );
         return {
           ...textResult(
-            `Proposed credit ${creditLine(credit)}, worked out by the desk. Nothing is issued: a person decides it. Next: call offer_credit with creditId ${credit.id}, which asks ${creditOwner}.`,
+            `Proposed credit ${creditLine(credit)}, worked out by the desk. Nothing is issued: a person decides it. Next: call offer_credit with creditId ${credit.id}, which asks ${creditOwner}. If they decline, record it with withdraw_credit for ${credit.id}, reason declined.`,
           ),
           details: plain(credit),
         };
@@ -608,15 +617,29 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     },
   });
 
-  const creditFacts: ApprovalFactsReader = async (args) => {
+  /** What a sender is told for a proposal that does not exist, or is not theirs to see. */
+  const noSuchCredit = (creditId: string) =>
+    `No credit proposal has the id ${JSON.stringify(creditId)}. Nothing was put to a person and nothing was credited. Next: record the credit with propose_credit, which gives its id.`;
+
+  /** The proposal, when this call's sender may see it: a colleague any, a client only its own. */
+  const reachableCredit = async (
+    desk: SupportDesk,
+    creditId: string,
+    call: { readonly conversationId: unknown; readonly taskId: unknown },
+  ): Promise<Credit | undefined> => {
+    const [credit] = await desk.listCredits({ creditId });
+    if (credit === undefined) return undefined;
+    const who = await asker(desk, call);
+    if (who.kind === "colleague") return credit;
+    return who.kind === "client" && who.clientId === credit.clientId ? credit : undefined;
+  };
+
+  const creditFacts: ApprovalFactsReader = async (args, _context, call) => {
     const desk = requireDesk(dependencies);
     const creditId = String(args.creditId);
-    const [credit] = await desk.listCredits({ creditId });
-    if (credit === undefined) {
-      throw new Error(
-        `No credit proposal has the id ${JSON.stringify(creditId)}. Nothing was put to a person and nothing was credited. Next: record the credit with propose_credit, which gives its id.`,
-      );
-    }
+    // Another client's proposal reads exactly like one that does not exist, before anyone is asked.
+    const credit = await reachableCredit(desk, creditId, call);
+    if (credit === undefined) throw new Error(noSuchCredit(creditId));
     if (credit.status === "issued") {
       throw new Error(
         `${credit.id} was already issued as credit note ${credit.creditNoteId ?? ""}. Nothing was put to a person and nothing more was credited. Tell the client what was credited.`,
@@ -635,7 +658,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
 
   const offerCredit = defineTool({
     name: "offer_credit",
-    description: `Ask a person (${creditOwner}) to approve one proposed credit, named by the creditId propose_credit gave. The desk reads the proposal (client, case, invoice line and amount) and shows it to the person; every call waits for a person. Once approved, the desk issues exactly that credit, and refuses if the proposal changed since the person saw it. A credit is not money back.`,
+    description: `Ask a person (${creditOwner}) to approve one proposed credit, named by the creditId propose_credit gave. The desk reads the proposal (client, case, invoice line and amount) and shows it to the person; every call waits for a person. Once approved, the desk issues exactly that credit, and refuses if the proposal changed since the person saw it. If the person declines, tell the client it was declined and record the decline with withdraw_credit (reason: declined). A credit is not money back.`,
     parameters: Type.Object(
       {
         creditId: Type.String({
@@ -655,6 +678,10 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
           `Nothing was credited: this call for ${args.creditId} carries no facts a person approved. A credit is issued only after the approval gate has put the proposal to a person and they said yes. Next: tell the client a credit needs a person's approval and nothing was issued.`,
           { code: "not_approved", creditId: args.creditId },
         );
+      }
+      // Checked again at the point of writing: a grant never issues a credit out of the sender's reach.
+      if ((await reachableCredit(desk, args.creditId, api)) === undefined) {
+        return refusal(noSuchCredit(args.creditId), { code: "not_found", creditId: args.creditId });
       }
       try {
         const note = await desk.issueCredit(
@@ -742,6 +769,8 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
       const who = await asker(desk, api);
       const blocked = who.kind === "client" ? await outOfReach(desk, who, args.caseId) : undefined;
       if (blocked !== undefined) return blocked;
+      const generic =
+        "Next: tell them it is recorded and a person will look at it. Share nothing about the case or who has it.";
       try {
         const receipt = await desk.escalateCase(
           {
@@ -757,7 +786,15 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
         const redirected = receipt.redirected
           ? ` The case names the person it would normally go to, so it went to ${named} instead: never say it is with anyone it names.`
           : "";
-        const client = who.kind === "unknown" ? "" : ` (${receipt.clientName})`;
+        if (who.kind === "unknown") {
+          return {
+            ...textResult(
+              `Handed on: a person will look at it. This is an internal hand-off: nothing has been sent to the sender. ${generic}`,
+            ),
+            details: { caseId: receipt.caseId, reason: receipt.reason },
+          };
+        }
+        const client = ` (${receipt.clientName})`;
         // What to tell the client follows from the reason the desk recorded.
         const tell =
           receipt.reason === "refund"
@@ -770,6 +807,18 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
           details: plain(receipt),
         };
       } catch (error) {
+        // An unknown sender learns nothing about the case from a refusal either, except when the
+        // desk asks for a note that addresses no one, which names only the company record.
+        if (
+          who.kind === "unknown" &&
+          error instanceof SupportDeskError &&
+          error.code !== "note_names_owner"
+        ) {
+          return refusal(`It was not handed on from here. ${generic}`, {
+            caseId: args.caseId,
+            code: "unknown_sender",
+          });
+        }
         return refused(error, { caseId: args.caseId });
       }
     },
@@ -778,7 +827,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
   const resolveCase = defineTool({
     name: "resolve_case",
     description:
-      "Close a case with its outcome: what was done and what the client said. The desk refuses a case with a credit proposal still waiting for a person's decision, a re-clean not yet done, a safety complaint not handed to a person, or a case already handed to someone.",
+      "Close a case with its outcome: what was done and what the client said. The desk refuses a case with a credit proposal not yet issued or withdrawn, a re-clean not yet done, a safety complaint not handed to a person, or a case already handed to someone.",
     parameters: Type.Object(
       {
         caseId: CASE_ID,

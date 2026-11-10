@@ -23,6 +23,7 @@ export {
 } from "./agent.js";
 export {
   APPROVED_FACTS_ARG,
+  type ApprovalCallIdentity,
   type ApprovalCondition,
   type ApprovalConditionContext,
   type ApprovalDecision,

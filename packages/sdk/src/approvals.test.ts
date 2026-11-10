@@ -325,7 +325,11 @@ describe("approval facts read before the gate asks", () => {
     const read = reader();
     const gate = beforeTool({ approvals, approve, facts: { book_after_hours: read } });
     await gate(call("book_appointment", { bookingId: "B-1" }), hookApi(), context);
-    expect(read).toHaveBeenCalledWith({ bookingId: "B-1" }, context);
+    // The reader is told whose call it is, so a role can scope what it reads to the call's sender.
+    expect(read).toHaveBeenCalledWith({ bookingId: "B-1" }, context, {
+      conversationId: "conversation-1",
+      taskId: "task-1",
+    });
     expect(approve.mock.calls[0]?.[0]).toMatchObject({
       arguments: { bookingId: "B-1" },
       facts: BOOKING,

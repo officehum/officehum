@@ -159,6 +159,30 @@ export function companyIssues(source: CompanySource): readonly string[] {
     }
   }
 
+  // An alias that is another person's id, full name or a part of it would make one word name two
+  // people, so a complaint about one would silently be kept from both.
+  for (const [index, entry] of (people ?? []).entries()) {
+    const person = asRecord(entry);
+    const id = person === undefined ? undefined : text(person.id);
+    if (id === undefined) continue;
+    for (const alias of asArray(person?.aliases) ?? []) {
+      if (typeof alias !== "string" || alias.trim() === "") continue;
+      const key = alias.trim().toLowerCase();
+      const holder = (people ?? []).map(asRecord).find((other) => {
+        const otherId = text(other?.id);
+        if (otherId === undefined || otherId === id) return false;
+        const name = text(other?.name)?.toLowerCase() ?? "";
+        return otherId.toLowerCase() === key || name === key || name.split(" ").includes(key);
+      });
+      if (holder !== undefined) {
+        add(
+          "company.json",
+          `people[${index}] (${id}) alias ${JSON.stringify(alias)} is already another person's name (${String(holder.id)})`,
+        );
+      }
+    }
+  }
+
   const priceBook = asArray(company.priceBook);
   if (priceBook === undefined) add("company.json", "priceBook is missing");
   const priceIds = new Set<string>();

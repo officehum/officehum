@@ -128,6 +128,43 @@ describe("find_client", () => {
     expect(details(result).found).toBe(true);
   });
 
+  it("shows an external sender only their own client, an unknown sender none, a colleague all", async () => {
+    const own = await tools(desk(), GRACE).findClient.execute(
+      { query: "Hawthorne" },
+      call("a-own"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(own)).toContain("CL-101 — Hawthorne Family Dental");
+    const other = await tools(desk(), GRACE).findClient.execute(
+      { query: "Burnside" },
+      call("a-other"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(other)).toBe(true);
+    expect(text(other)).not.toContain("lena@burnsideproperty.example");
+    expect(details(other)).toMatchObject({ found: false, clients: [] });
+    // A broad query still shows a client nobody but itself.
+    const broad = await tools(desk(), GRACE).findClient.execute(
+      { query: "e" },
+      call("a-broad"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(broad)).toContain("Clients (1):");
+    const nobody = await tools(desk(), null).findClient.execute(
+      { query: "Hawthorne" },
+      call("a-nobody"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(nobody)).toMatchObject({ code: "unknown_sender", clients: [] });
+    expect(text(nobody)).not.toContain("grace@");
+    const colleague = await tools(desk()).findClient.execute(
+      { query: "e" },
+      call("a-all"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(colleague)).toContain("Clients (5):");
+  });
+
   it("says plainly when no client matches", async () => {
     const result = await tools(desk()).findClient.execute(
       { query: "Acme Widgets" },
@@ -222,7 +259,7 @@ describe("list_cases", () => {
         expect(details(refused).code, tool).toBe("unknown_sender");
         expect(text(refused), tool).not.toContain("Hawthorne");
       }
-      // A complaint still reaches a person, and the receipt names no client.
+      // A complaint still reaches a person, and the receipt says nothing about the case or who has it.
       const logged = await support.logCase.execute(SAFETY, call("u-log"), BACKGROUND_CONTEXT);
       expect(isError(logged)).toBe(false);
       const handed = await support.escalateCase.execute(
@@ -230,9 +267,40 @@ describe("list_cases", () => {
         call("u-esc"),
         BACKGROUND_CONTEXT,
       );
-      expect(text(handed)).toContain(`Handed C-306 to ${safetyOwner}, for safety.`);
+      expect(isError(handed)).toBe(false);
+      expect(text(handed)).toContain("a person will look at it");
+      expect(text(handed)).not.toContain(safetyOwner);
       expect(text(handed)).not.toContain("Little Acorns");
+      // A refusal on someone else's case is just as generic: no category, owner or outcome.
+      const closed = await support.escalateCase.execute(
+        { caseId: "C-300", reason: "unresolved", note: "Still unhappy." },
+        call("u-closed"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(isError(closed)).toBe(true);
+      expect(details(closed).code).toBe("unknown_sender");
+      expect(text(closed)).toContain("a person will look at it");
+      expect(text(closed)).not.toMatch(/closed|kitchen|Gateway|Ravi/);
     }
+  });
+
+  it("an internal ticket carrying a client's email counts as that client, never a colleague", async () => {
+    // Office trials put a client's address on an internal ticket: it narrows to that client only.
+    const internalGrace = tools(desk(), { ...GRACE, origin: "internal" });
+    const own = await internalGrace.listCases.execute({}, call("m6-own"), BACKGROUND_CONTEXT);
+    expect(text(own)).toContain("Cases (1):");
+    const other = await internalGrace.listCases.execute(
+      { clientId: "CL-104" },
+      call("m6-other"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(other)).not.toContain("Burnside");
+    const write = await internalGrace.resolveCase.execute(
+      { caseId: "C-302", outcome: "Done." },
+      call("m6-write"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(write).code).toBe("not_found");
   });
 
   it("a client may act only on its own cases", async () => {
@@ -269,7 +337,7 @@ describe("list_cases", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(result)).toContain(
-      `credit: CR-400, $150.00 on INV-2044 line 1, waiting for a decision by ${creditOwner} (already put to them: do not call propose_credit or offer_credit for this case)`,
+      `credit: CR-400, $150.00 on INV-2044 line 1, proposed and put to ${creditOwner}; not issued. If an approval in this conversation returned a decision, say that decision; otherwise say ${creditOwner} has it. Do not call propose_credit or offer_credit for this case.`,
     );
     expect(text(result)).toContain("re-clean: booked for 2026-11-10, not done yet");
     expect(text(result)).not.toContain("propose_credit with caseId C-304");
@@ -333,6 +401,18 @@ describe("log_case", () => {
     );
     expect(text(result)).toContain("Logged C-306");
     expect(text(result)).not.toContain("escalate_case");
+  });
+
+  it("logs an external client's case on its own account, whatever client the call names", async () => {
+    const support = desk();
+    const result = await tools(support, GRACE).logCase.execute(
+      { ...SAFETY, clientId: "CL-104" },
+      call("c-own"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(result)).toContain("Logged C-306 for Hawthorne Family Dental");
+    expect(text(result)).not.toContain("Burnside");
+    expect((await support.listCases({ caseId: "C-306" }))[0]?.clientId).toBe("CL-101");
   });
 
   it("refuses an unknown client", async () => {
@@ -403,7 +483,7 @@ describe("propose_credit", () => {
       "Proposed credit CR-402: $150.00 to Little Acorns Childcare on INV-2042 line 1 (Office cleaning, one visit, up to 3,000 sq ft), case C-302, worked out by the desk. Nothing is issued: a person decides it.",
     );
     expect(text(first)).toContain(
-      `Next: call offer_credit with creditId CR-402, which asks ${creditOwner}.`,
+      `Next: call offer_credit with creditId CR-402, which asks ${creditOwner}. If they decline, record it with withdraw_credit for CR-402, reason declined.`,
     );
     expect(details(first)).toMatchObject({ id: "CR-402", status: "pending", creditCents: 15000 });
     expect(await support.listCredits({ caseId: "C-302" })).toHaveLength(1);
@@ -425,7 +505,8 @@ describe("propose_credit", () => {
       BACKGROUND_CONTEXT,
     );
     expect(details(waiting).code).toBe("credit_pending");
-    expect(text(waiting)).toContain(`CR-400 on C-304 waits for a decision by ${creditOwner}`);
+    expect(text(waiting)).toContain(`CR-400 on C-304 is proposed and not issued`);
+    expect(text(waiting)).toContain(`otherwise tell the client ${creditOwner} has it`);
   });
 });
 
@@ -442,7 +523,11 @@ describe("offer_credit", () => {
     ]);
     expect(schema.required).toEqual(["creditId"]);
     await toolset.proposeCredit.execute(CREDIT, call("p"), BACKGROUND_CONTEXT);
-    const read = await toolset.creditFacts({ creditId: "CR-402" }, BACKGROUND_CONTEXT as never);
+    const read = await toolset.creditFacts(
+      { creditId: "CR-402" },
+      BACKGROUND_CONTEXT as never,
+      call("cf"),
+    );
     expect(read.summary).toBe(
       "Issue credit CR-402: $150.00 to Little Acorns Childcare on INV-2042 line 1 (Office cleaning, one visit, up to 3,000 sq ft), case C-302, worked out by the desk",
     );
@@ -450,12 +535,51 @@ describe("offer_credit", () => {
     expect(read.facts).toEqual(creditApprovalFacts(credit as never));
     // Nothing to approve: a proposal that does not exist, is issued or was withdrawn.
     await expect(
-      toolset.creditFacts({ creditId: "CR-9" }, BACKGROUND_CONTEXT as never),
+      toolset.creditFacts({ creditId: "CR-9" }, BACKGROUND_CONTEXT as never, call("cf")),
     ).rejects.toThrow("Nothing was put to a person");
     await support.withdrawCredit({ creditId: "CR-400", reason: "Declined." }, { requestId: "w" });
     await expect(
-      toolset.creditFacts({ creditId: "CR-400" }, BACKGROUND_CONTEXT as never),
+      toolset.creditFacts({ creditId: "CR-400" }, BACKGROUND_CONTEXT as never, call("cf")),
     ).rejects.toThrow("was withdrawn");
+  });
+
+  it("never puts another client's proposal to a person, answering as if it did not exist", async () => {
+    const support = desk();
+    const unknownId = async (sender: VerifiedSender | null) =>
+      tools(support, sender)
+        .creditFacts({ creditId: "CR-999" }, BACKGROUND_CONTEXT as never, call("f0"))
+        .catch((error: Error) => error.message);
+    for (const sender of [GRACE, null]) {
+      const message = await tools(support, sender)
+        .creditFacts({ creditId: "CR-400" }, BACKGROUND_CONTEXT as never, call("f1"))
+        .catch((error: Error) => error.message);
+      // Word for word what an id nobody has gets, with only the id changed: no client, no state.
+      expect(message).toBe((await unknownId(sender)).replace("CR-999", "CR-400"));
+      expect(message).not.toContain("Burnside");
+    }
+    // Grace's own proposal reads as usual.
+    const own = await tools(support, GRACE).creditFacts(
+      { creditId: "CR-401" },
+      BACKGROUND_CONTEXT as never,
+      call("f2"),
+    );
+    expect(own.summary).toContain("Hawthorne Family Dental");
+  });
+
+  it("checks the sender again before issuing, even with approved facts", async () => {
+    const support = desk();
+    const args = await approvedCall(support, "CR-400");
+    for (const sender of [GRACE, null]) {
+      const result = await tools(support, sender).offerCredit.execute(
+        args,
+        call("f3"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(details(result).code).toBe("not_found");
+      expect(text(result)).toContain('No credit proposal has the id "CR-400"');
+      expect(text(result)).not.toContain("Burnside");
+    }
+    expect((await support.listCredits({ creditId: "CR-400" }))[0]?.status).toBe("pending");
   });
 
   it("issues the approved proposal once on replay, saying it was approved", async () => {
@@ -627,6 +751,12 @@ describe("next steps come from the refusal's code, not its wording", () => {
       ],
       ["credit_pending", "resolveCase", { caseId: "C-9", outcome: "x" }, creditOwner],
       [
+        "note_names_owner",
+        "escalateCase",
+        { caseId: "C-9", reason: "refund", note: "x" },
+        "call escalate_case again with them in about",
+      ],
+      [
         "duplicate_credit",
         "proposeCredit",
         { caseId: "C-9", invoiceId: "INV-9", line: 1 },
@@ -667,7 +797,7 @@ describe("next steps come from the refusal's code, not its wording", () => {
       expect(details(result).code).toBe(code);
     }
     const changed = await tools(quiet("credit_changed", { creditId: "CR-9" })).offerCredit.execute(
-      { creditId: "CR-9", [APPROVED_FACTS_ARG]: { id: "CR-9" } },
+      { creditId: "CR-400", [APPROVED_FACTS_ARG]: { id: "CR-400" } },
       call("q-changed"),
       BACKGROUND_CONTEXT,
     );

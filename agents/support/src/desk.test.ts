@@ -526,12 +526,28 @@ describe("fakeSupportDesk: escalation", () => {
     );
     expect(fromSummary.toPersonId).toBe(head.id);
     expect(fromSummary.redirected).toBe(true);
-    // Named in the note on a case whose summary names nobody.
-    const fromNote = await desk().escalateCase(
-      { caseId: "C-301", reason: "unresolved", note: `The client says ${first} ignored them.` },
-      { requestId: "q2" },
+    // Named only in the note, the usual owner is a question, not a guess: refused, then routed away
+    // once `about` says the complaint is about them.
+    const support2 = desk();
+    const fromNote = await refusal(
+      support2.escalateCase(
+        { caseId: "C-301", reason: "unresolved", note: `The client says ${first} ignored them.` },
+        { requestId: "q2" },
+      ),
     );
-    expect(fromNote.toPersonId).toBe(head.id);
+    expect(fromNote.code).toBe("note_names_owner");
+    expect(fromNote.message).toContain(owner.name);
+    expect((await support2.listCases({ caseId: "C-301" }))[0]?.escalations).toHaveLength(0);
+    const aboutThem = await support2.escalateCase(
+      {
+        caseId: "C-301",
+        reason: "unresolved",
+        note: `The client says ${first} ignored them.`,
+        about: first,
+      },
+      { requestId: "q2b" },
+    );
+    expect(aboutThem.toPersonId).toBe(head.id);
     // A case that names nobody still goes to its usual owner.
     const plain = await desk().escalateCase(
       { caseId: "C-301", reason: "unresolved", note: "Third poor visit this month." },
@@ -539,6 +555,57 @@ describe("fakeSupportDesk: escalation", () => {
     );
     expect(plain.toPersonId).toBe(owner.id);
     expect(plain.redirected).toBe(false);
+  });
+
+  it("refuses a note addressed to the usual owner, and routes the retry to them", async () => {
+    const refundOwner = person(company, refunds.refundNeeds);
+    const creditOwner = person(company, refunds.creditNeeds);
+    if (refundOwner === undefined || creditOwner === undefined) throw new Error("company changed");
+    // "for the managing director to decide" names the refund owner by title, but is not about them.
+    const support = desk();
+    const addressed = await refusal(
+      support.escalateCase(
+        {
+          caseId: "C-301",
+          reason: "refund",
+          note: `Wants October back; for the ${refundOwner.title.toLowerCase()} to decide.`,
+        },
+        { requestId: "n1" },
+      ),
+    );
+    expect(addressed.code).toBe("note_names_owner");
+    expect((await support.listCases({ caseId: "C-301" }))[0]?.escalations).toHaveLength(0);
+    const retried = await support.escalateCase(
+      { caseId: "C-301", reason: "refund", note: "Wants October back." },
+      { requestId: "n2" },
+    );
+    expect(retried.toPersonId).toBe(refundOwner.id);
+    expect(retried.redirected).toBe(false);
+    // The same on billing, and a complaint about the billing owner goes elsewhere through about.
+    const first = creditOwner.name.split(" ")[0] ?? creditOwner.name;
+    const billing = await refusal(
+      desk().escalateCase(
+        { caseId: "C-304", reason: "billing", note: `For ${first} to decide.` },
+        { requestId: "n3" },
+      ),
+    );
+    expect(billing.code).toBe("note_names_owner");
+    const aboutOwner = await desk().escalateCase(
+      {
+        caseId: "C-304",
+        reason: "billing",
+        note: `${first} overcharged us.`,
+        about: creditOwner.name,
+      },
+      { requestId: "n4" },
+    );
+    expect(aboutOwner.toPersonId).not.toBe(creditOwner.id);
+    // A note naming someone other than the usual owner still keeps the case away from them.
+    const other = await desk().escalateCase(
+      { caseId: "C-301", reason: "refund", note: `${first} quoted the wrong figure.` },
+      { requestId: "n5" },
+    );
+    expect(other.toPersonId).toBe(refundOwner.id);
   });
 
   it("findPeople matches DW and D. Whitfield to Dana", async () => {
@@ -550,7 +617,7 @@ describe("fakeSupportDesk: escalation", () => {
     expect(findPeople(company, "D. Whitfield signed it").map((who) => who.id)).toEqual([dana.id]);
     // The money-back owner named by her initials is not handed the case.
     const receipt = await desk().escalateCase(
-      { caseId: "C-301", reason: "refund", note: "DW promised a refund on the phone." },
+      { caseId: "C-301", reason: "refund", note: "Promised a refund on the phone.", about: "DW" },
       { requestId: "dw" },
     );
     expect(receipt.toPersonId).not.toBe(dana.id);

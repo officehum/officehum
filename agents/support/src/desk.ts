@@ -339,6 +339,7 @@ export type DeskRefusal =
   | "already_credited"
   | "duplicate_credit"
   | "credit_pending"
+  | "note_names_owner"
   | "already_escalated"
   | "no_one"
   | "reclean_pending"
@@ -996,7 +997,7 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
         const state =
           live.status === "issued"
             ? `was issued as credit note ${live.creditNoteId ?? ""}`
-            : "is waiting for a person's decision";
+            : "is proposed and not issued";
         throw new SupportDeskError(
           code,
           `${entry.id} already has credit ${creditText(live)}, which ${state}. A case gets one credit; nothing more was proposed.`,
@@ -1129,14 +1130,27 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
       }
       // A case is never handed to anyone it names, whatever the reason and however it was logged:
       // the usual owner, then the person who owns complaints, then the head of the company, whoever
-      // is first and not named. Who it is about, the note and the client's complaint are all read,
-      // eagerly: a false match only ever sends the case to someone else.
+      // is first and not named. Who it is about and the client's complaint are read eagerly: a false
+      // match only ever sends the case to someone else.
       const subjects = new Set(
-        [about ?? "", note, entry.summary].flatMap((words) =>
+        [about ?? "", entry.summary].flatMap((words) =>
           findPeople(facts, words).map((named) => named.id),
         ),
       );
       const usual = ownerFor(input.reason);
+      // The note is the model's own words, and "for the owner to decide" names the owner without
+      // being about them. When only the note names the usual owner, the desk cannot tell which it is, so it asks
+      // rather than guess: guessing "about" would send a refund away from the one person who decides
+      // money back. Anyone else the note names is still kept away from the case.
+      const inNote = findPeople(facts, note).map((named) => named.id);
+      if (usual !== undefined && inNote.includes(usual.id) && !subjects.has(usual.id)) {
+        throw new SupportDeskError(
+          "note_names_owner",
+          `The note names ${usual.name}, ${usual.title}, who would normally take ${input.reason} for ${entry.id}. Nothing was handed on.`,
+          { caseId: entry.id },
+        );
+      }
+      for (const id of inNote) subjects.add(id);
       const candidates = [usual, person(facts, refunds.complaintOwner), companyHead(facts)].filter(
         (candidate): candidate is Person => candidate !== undefined,
       );
@@ -1186,7 +1200,7 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
       if (pending !== undefined) {
         throw new SupportDeskError(
           "credit_pending",
-          `${entry.id} has credit ${creditText(pending)}, waiting for a person's decision. It stays open until it is issued or withdrawn. Nothing was closed.`,
+          `${entry.id} has credit ${creditText(pending)}, proposed and neither issued nor withdrawn. It stays open until it is issued, or withdrawn with withdraw_credit. Nothing was closed.`,
           { caseId: entry.id, creditId: pending.id },
         );
       }

@@ -299,6 +299,25 @@ describe("the company package's own consistency", () => {
       expect(issues).toContain("people[2] (priya-raman) aliases[1] must be a non-empty string");
     });
 
+    it("refuses an alias that is another person's name, first name, surname or id", () => {
+      const issues = issuesAfter((c) => {
+        c.people[0].aliases = ["DW", "Tom", "becker", "eileen-hart", "Priya Raman"];
+      });
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "Tom" is already another person\'s name (tom-becker)',
+      );
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "becker" is already another person\'s name (tom-becker)',
+      );
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "eileen-hart" is already another person\'s name (eileen-hart)',
+      );
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "Priya Raman" is already another person\'s name (priya-raman)',
+      );
+      expect(issues).not.toContain('alias "DW"');
+    });
+
     it("refuses aliases that are not a list", () => {
       const issues = issuesAfter((c) => {
         c.people[3].aliases = "TB";

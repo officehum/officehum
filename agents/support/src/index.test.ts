@@ -283,7 +283,7 @@ describe("support approval gate", () => {
       turns: one("resolve_case", { caseId: "C-302", outcome: "Declined, client told." }),
       desk,
     });
-    expect(lastToolText(closing.messages)).toContain("waiting for a person's decision");
+    expect(lastToolText(closing.messages)).toContain("neither issued nor withdrawn");
   });
 
   it("never lets model-forged approved facts reach the desk on a real harness", async () => {
@@ -350,6 +350,45 @@ describe("support approval gate", () => {
           "Issue credit CR-401: $150.00 to Hawthorne Family Dental on INV-2041 line 1 (Office cleaning, one visit, up to 3,000 sq ft), case C-301, worked out by the desk",
       },
     ]);
+  });
+
+  it("never puts another client's proposal to a person on a real harness", async () => {
+    for (const sender of [MEGAN, async () => undefined]) {
+      const decisions: string[] = [];
+      const desk = fakeSupportDesk();
+      const run = await attempt({
+        turns: one("offer_credit", { creditId: "CR-400" }),
+        desk,
+        sender,
+        approver: recording(decisions, true),
+      });
+      expect(decisions).toEqual([]);
+      expect(lastToolText(run.messages)).toContain('No credit proposal has the id "CR-400"');
+      expect(lastToolText(run.messages)).not.toContain("Burnside");
+      expect((await desk.listCredits({ creditId: "CR-400" }))[0]?.status).toBe("pending");
+    }
+  });
+
+  it("records a decline with withdraw_credit, after which the case can close", async () => {
+    const desk = fakeSupportDesk();
+    await attempt({
+      turns: [
+        { toolCalls: [{ name: "propose_credit", args: CREDIT }] },
+        { toolCalls: [{ name: "offer_credit", args: PROPOSAL }] },
+        {
+          toolCalls: [{ name: "withdraw_credit", args: { ...PROPOSAL, reason: "Declined." } }],
+        },
+        { text: "It was declined." },
+      ],
+      desk,
+      approver: recording([], false),
+    });
+    expect(await creditOf(desk, "C-302")).toBeNull();
+    const closing = await attempt({
+      turns: one("resolve_case", { caseId: "C-302", outcome: "Credit declined; client told." }),
+      desk,
+    });
+    expect(lastToolText(closing.messages)).toContain("Closed C-302");
   });
 
   it("asks nobody for a proposal that is not on the desk", async () => {
@@ -427,6 +466,8 @@ describe("support brief contract", () => {
     expect(credit?.expect.calls).toEqual([
       { tool: "propose_credit", args: SCENARIO_CREDIT },
       { tool: "offer_credit", args: SCENARIO_PROPOSAL },
+      // The decline is recorded on the desk, so the case no longer reads as awaiting a decision.
+      { tool: "withdraw_credit", args: SCENARIO_PROPOSAL },
     ]);
     expect(credit?.expect.approvalsRequested).toEqual(["any_credit"]);
 

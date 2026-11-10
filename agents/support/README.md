@@ -83,8 +83,8 @@ proposal as `pending`, issuing nothing. `offer_credit` then names only the propo
 approval gate reads the proposal's facts from the desk (client, case, line and amount), shows them to
 the person, and hands exactly those facts to the tool on a yes, so a model-written amount never reaches
 the desk. The desk issues only while the proposal still equals what the person saw (`credit_changed`
-otherwise; a host desk must refuse the same way). On a decline the role calls nothing more: the
-proposal stays `pending` until `withdraw_credit` records the decline, and `resolve_case` refuses
+otherwise; a host desk must refuse the same way). On a decline the role records it with
+`withdraw_credit` (reason: declined); until then the proposal stays `pending`, and `resolve_case` refuses
 (`credit_pending`) while any proposal on the case is pending, whatever the office board says. A case
 gets one credit: the same line again is `duplicate_credit`.
 
@@ -92,8 +92,11 @@ gets one credit: the same line again is `duplicate_credit`.
 message. A colleague on the company record (an internal sender) may read any client's cases; a sender
 whose address is a client's contact on the desk sees only that client's cases, and another client's
 case reads as one that does not exist; anyone else gets no case data, only "log it and a person will
-look". `log_case` and `escalate_case` stay open to everyone, so an unknown sender's complaint still
-reaches a person.
+look". The same holds for `find_client` (a client finds only its own record) and for a credit put to
+a person (`offer_credit` and its facts reader answer another client's proposal as one that does not
+exist, and check again before issuing). `log_case` and `escalate_case` stay open to everyone, so an
+unknown sender's complaint still reaches a person, but a client logs only on its own account and an
+unknown sender's hand-off receipt and refusals say nothing about the case.
 
 **Refunds** have no tool. The manifest's `mayNot` and the prompt hand money back to the person the
 company record names for it (`policies.refunds.refundNeeds`) through `escalate_case` with reason
@@ -108,7 +111,10 @@ case.
 for safety, legal and data, the refunds policy for refunds, billing and complaints. A case is never
 handed to anyone it names, whatever the reason: `about`, the note and the case's summary are all read
 (by name, surname, first name, title or an alias such as "DW", as whole words), and the case goes to
-the person who owns complaints, or to the head of the company if it names them. A safety case is
+the person who owns complaints, or to the head of the company if it names them. When only the note
+names the person the reason normally goes to ("for the owner to decide"), the desk cannot tell an
+address from a complaint, so it refuses with `note_names_owner` and asks for the person in `about`
+if the complaint is about them, or for a note that addresses no one. A safety case is
 escalated for safety before any other reason. A safety complaint's `log_case` receipt names
 `escalate_case` as the next step, and the desk refuses to close a safety case that was never handed
 on.

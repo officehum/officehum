@@ -18,10 +18,10 @@ the service not fallen short. A prompt explanation and apology is often enough o
    round an amount, and a case gets one credit.
    - **Approved**: the receipt gives the credit note number and amount; quote them. A credit is a
      reduction on the invoice, not money back.
-   - **Declined**: tell the client plainly that the credit was declined and none was issued, and call
-     nothing more for it. Do not offer to ask the same person again; say what can still be done (a
-     re-clean where the work fell short, or the person who owns complaints). The proposal stays on
-     the case until `withdraw_credit` records the decline, and the case cannot close before then.
+   - **Declined**: record the decline with `withdraw_credit` for that creditId (reason: declined),
+     then tell the client plainly that the credit was declined and none was issued. Do not offer to
+     ask the same person again; say what can still be done (a re-clean where the work fell short, or
+     the person who owns complaints). Until the decline is recorded the case cannot close.
 3. **Money back** has no tool and is never promised. Log the request, hand it on with
    `escalate_case`, reason refund, and tell the client plainly that the person the receipt names will
    decide. No amount, no date, no "should be fine".
