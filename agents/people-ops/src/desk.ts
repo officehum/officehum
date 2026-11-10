@@ -289,9 +289,10 @@ export interface PeopleOpsDesk {
    * Records an approved exception. Called only once a person approved it, with the facts they were
    * shown; a host desk must refuse with `exception_changed` when the request no longer works out to
    * them, so a grant never records time off nobody saw. The facts are stable while a person decides:
-   * the notice is counted from the day the request was first made (the desk keeps that day), never
-   * recounted from today, so a grant given on a later day still records. A first day that has passed
-   * by then is still refused.
+   * the notice is counted from the day the request was asked (the desk keeps that day, and
+   * `timeOffExceptionFacts`, which a gate calls once per ask, starts it), never recounted from today,
+   * so a grant given on a later day still records. Recording ends the ask; one declined or withdrawn
+   * at the gate is asked afresh. A first day that has passed by then is still refused.
    */
   requestTimeOffException(
     input: TimeOffExceptionInput & { readonly approved: Readonly<Record<string, unknown>> },
@@ -564,9 +565,11 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
   const requests = new Map<string, TimeOffRequest>();
   const referrals = new Map<string, Referral>();
   /**
-   * The day each short-notice request was first put to the desk, by employee, dates and reason. Its
-   * notice is counted from that day, so what a person approves does not go stale at midnight while
-   * they decide.
+   * The day each pending short-notice request was asked, by employee, dates and reason. Its notice is
+   * counted from that day, so what a person approves does not go stale at midnight while they decide.
+   * It holds for one pending ask only: both approval gates read a request's facts once per ask (never
+   * again while it waits, nor on the grant), so a facts read starts a new asking day, and recording
+   * the request ends it. A request declined or withdrawn at the gate is therefore asked afresh.
    */
   const askedOn = new Map<string, string>();
   let timeOffNumber = 103;
@@ -694,14 +697,18 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
   const askKey = (employee: Employee, start: string, end: string, reason: ReasonCategory): string =>
     JSON.stringify([employee.id, start, end, reason]);
 
-  /** The notice a short-notice request gave on the day it was first asked, recording that day now. */
+  /**
+   * The notice a short-notice request gave on the day it was asked, recording that day now. A new ask
+   * (a facts read, which a gate makes once per ask) starts a new day rather than reusing a pending one.
+   */
   const noticeWhenAsked = (
     employee: Employee,
     dates: { readonly start: string; readonly end: string },
     reason: ReasonCategory,
+    newAsk = false,
   ): number => {
     const key = askKey(employee, dates.start, dates.end, reason);
-    const asked = askedOn.get(key) ?? today();
+    const asked = (newAsk ? undefined : askedOn.get(key)) ?? today();
     askedOn.set(key, asked);
     return Math.max(0, daysBetween(asked, dates.start));
   };
@@ -834,7 +841,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
   };
 
   /** Whose short-notice exception this is and what it works out to, or the refusal. */
-  const checkException = (input: TimeOffExceptionInput) => {
+  const checkException = (input: TimeOffExceptionInput, newAsk = false) => {
     const employee = timeOffFor(input);
     const checked = checkDates(input);
     if (PROTECTED_REASONS.includes(input.reasonCategory)) {
@@ -854,7 +861,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     // The notice is the one given when the request was first made, never a figure recounted today.
     const dates = {
       ...checked,
-      daysNotice: noticeWhenAsked(employee, checked, input.reasonCategory),
+      daysNotice: noticeWhenAsked(employee, checked, input.reasonCategory, newAsk),
     };
     // The person approves exactly the notice the desk worked out, never a figure of the caller's.
     if (!Number.isFinite(input.daysNotice) || input.daysNotice !== dates.daysNotice) {
@@ -1028,7 +1035,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     },
 
     async timeOffExceptionFacts(input): Promise<TimeOffExceptionFacts> {
-      return checkException(input).facts;
+      return checkException(input, true).facts;
     },
 
     async requestTimeOffException(input, { requestId }): Promise<TimeOffRequest> {
@@ -1046,6 +1053,8 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
         );
       }
       const entry = record(employee, dates, input.reasonCategory, "approved");
+      // Decided: the pending ask is over.
+      askedOn.delete(askKey(employee, dates.start, dates.end, input.reasonCategory));
       requests.set(requestId, entry);
       return entry;
     },

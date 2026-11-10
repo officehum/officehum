@@ -836,8 +836,7 @@ describe("company data and the verified sender", () => {
     expect(facts.daysNotice).toBe(11);
 
     now = new Date("2026-11-10T09:00:00.000Z");
-    // The same request on the next day still works out to what the person approved.
-    expect(await people.timeOffExceptionFacts(input)).toEqual(facts);
+    // The grant on the next day still works out to what the person approved on the day it was asked.
     const recorded = await people.requestTimeOffException(
       { ...input, approved: facts },
       { requestId: "ex-next-day" },
@@ -862,6 +861,43 @@ describe("company data and the verified sender", () => {
       people.requestTimeOffException({ ...input, approved: facts }, { requestId: "ex-too-late" }),
     );
     expect(passed.code).toBe("invalid");
+  });
+
+  it("starts a new asking day for a new ask once an earlier one was declined", async () => {
+    // Asked on 9 November and declined at the gate (the desk records nothing). Asked again on 12
+    // November: the facts reader runs once per ask, so the new ask shows the notice left then.
+    let now = NOW;
+    const people = fakePeopleOpsDesk({ company, now: () => now });
+    const request = {
+      employee: "Ana Lopez",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      reasonCategory: "vacation" as const,
+      from: OWNER,
+    };
+    const first = await people.timeOffExceptionFacts({
+      ...request,
+      daysNotice: 11,
+      why: "A wedding.",
+    });
+    expect(first.daysNotice).toBe(11);
+
+    now = new Date("2026-11-12T09:00:00.000Z");
+    // The old figure is no longer the notice of a pending ask.
+    const stale = await refusal(
+      people.timeOffExceptionFacts({ ...request, daysNotice: 11, why: "A wedding." }),
+    );
+    expect(stale).toMatchObject({ code: "notice_changed", daysNotice: 8 });
+    const again = { ...request, daysNotice: 8, why: "A wedding." };
+    const second = await people.timeOffExceptionFacts(again);
+    expect(second.daysNotice).toBe(8);
+    // Granted the next day, it records with the new ask's notice.
+    now = new Date("2026-11-13T09:00:00.000Z");
+    const recorded = await people.requestTimeOffException(
+      { ...again, approved: second },
+      { requestId: "re-ask" },
+    );
+    expect(recorded).toMatchObject({ status: "approved", daysNotice: 8 });
   });
 
   it("counts the notice from the day an exception was first put to the desk, even with no refusal first", async () => {
