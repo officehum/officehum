@@ -11,24 +11,40 @@
  * does not open a quote.
  *
  * Attributed means one of:
- * - after the quote, a dash and a name ("— Name", "- a client", "— a Pearl District client"), a name
- *   on the next line ("Name, Company"), on the same line with no dash, or in brackets ("(Name,
- *   Company)"), or a speech verb with its speaker ("says Name", "Name said", "she said", "the
- *   practice manager told us");
+ * - after the quote, a dash and a name or title ("— Name", "— Office Manager at Harbor Dental",
+ *   "— Tenants, Lloyd Tower", "- a client", "— our client at Harbor Dental"), a review site ("–
+ *   Google review"), "That's from Name", a name on the next line ("Name, Company", "Title at
+ *   Company"), on the same line with no dash, or in brackets ("(Name, Company)"), or a speech verb
+ *   with its speaker ("says Name", "notes Name", "shares Name", "Name said", "she said");
  * - before the quote, in the same sentence, a speech verb or "according to" (`Name wrote: "…"`,
- *   `Here's what Name had to say:`), or a lead-in with a colon: a name (`Name, Company:`, `Client
- *   Name:`, `Name from Company:`) or a speaker by role ("From a client:", "A practice manager:").
+ *   `Here's what Name had to say:`, `One customer put it best:`, but not "we put it"), "Hear it
+ *   from Name", or a lead-in with a colon: a name (`Name, Company:`, `Client Name:`, `Name from
+ *   Company:`, `Name (Company):`), a client feature (`Client spotlight, Company:`) or a speaker by
+ *   role ("From a client:", "A practice manager:").
  *
  * A name is a capitalised word or words, possibly in markdown emphasis ("**Name**"). Not a speaker:
- * - the company itself (its trading or legal name, or their first word), its own people, and a
- *   service or price book line named in full, since then the company is talking;
+ * - the company itself (its trading or legal name, or their first word), its own people by their
+ *   full name (never a first name or an initial a customer may share), and a service or price book
+ *   line named in full, since then the company is talking;
  * - a greeting ("Hi Name,", "Dear Office Managers,");
- * - a line made only of call-to-action, heading and audience words ("Learn More", "What We Do",
- *   "Property Managers,"); see `NOT_A_SPEAKER_WORDS`;
- * - a bullet followed by another list item;
+ * - a bullet followed by another list item.
+ *
+ * A dash is an explicit signature: after one, only the company is not a speaker ("— Team
+ * Acme"). A line with no dash (the next line, the same line, a lead-in) is also not a speaker
+ * when it reads as the company's own writing rather than a name. Names are nouns for people, so:
+ * - a line made only of heading, call-to-action and audience words, the company's first name word
+ *   and its services ("Learn More", "What We Do", "Property Managers,", "Day Porter Service"); see
+ *   `NOT_A_SPEAKER_WORDS`;
+ * - a line after the quote that opens with a question word or an imperative ("How It Works",
+ *   "Schedule Yours Today"), or ends in a place word ("Denver Metro Area"); see `HEADING_FIRST`
+ *   and `PLACE_LAST`;
+ * - a lead-in label whose head (last) word names a piece of writing ("Crew Motto:", "Subject:");
+ *   see `LABEL_HEAD`;
  * - a line that is not a short name line: a place ("Seattle, WA") or a sentence ("Winter Specials,
  *   now on."). A name line is two to four capitalised words, then at most a ", tail" of six words,
  *   or of ten when it ends in a capitalised word ("…at Harbor Dental in Seattle").
+ * These are word classes (question words, imperatives, place nouns, kinds of writing), not lists of
+ * phrases: a new heading is covered by its first or last word.
  *
  * A first name alone on the next line is not read as a name: it cannot be told from a place or a
  * one-word heading. A dash followed by ordinary words ("— and we mean it", "— Ask us how"), and an
@@ -61,7 +77,13 @@ const FULL_NAME = String.raw`${NOT_A_NAME}${WORD}(?:[^\S\n]+${WORD}){1,3}`;
 const SOMEONE = String.raw`(?:[Aa]n?|[Tt]he|[Oo]ne\s+of\s+our)\s+[a-z][\w-]*(?:\s+[a-z][\w-]*){0,2}`;
 /** Where a name or a speaker ends: a comma, a bracket, a full stop, the line or the text. */
 const NAME_END = String.raw`\s*(?:[,.)\]]|\n|$)`;
-const SPEECH = String.raw`(?:said|says|writes|wrote|adds|added|told\s+(?:us|me)|tells\s+us|(?:had|has)\s+to\s+say)`;
+const SPEECH = String.raw`(?:said|says|writes|wrote|adds|added|told\s+(?:us|me)|tells\s+us|(?:had|has)\s+to\s+say|put\s+it)`;
+/** Verbs that are speech only right after a quote: before one, "notes" and "shares" are nouns. */
+const SPEECH_AFTER = `(?:${SPEECH}|notes|noted|shares|shared)`;
+/** The company speaking for itself: "We put it simply:" is not a customer. */
+const NOT_US = String.raw`(?<!\b(?:[Ww]e|I|[Yy]ou)\s+)`;
+/** Where a client's title or name says where they work: "Office Manager at Harbor Dental". */
+const ORG = String.raw`(?<org>${WORD}(?:[^\S\n]+${WORD}){0,3})`;
 /** A lowercase speaker before a speech verb: a pronoun, or a determiner and up to three words. */
 const SPEAKER = String.raw`(?:[Ss]he|[Hh]e|[Tt]hey|(?:[Aa]n?|[Tt]he|[Oo]ur|[Oo]ne\s+of\s+our|[Aa]nother|[Tt]heir)(?:\s+[\w'’-]+){1,3})`;
 const DASH = "(?:[—–~]|-{1,2})";
@@ -83,37 +105,64 @@ interface Rule {
   readonly nameLine?: boolean;
   /** For a lead-in with no comma part: a heading ("New Year Promise:") is longer than a name. */
   readonly leadIn?: boolean;
+  /** For a dash attribution: an explicit signature, so only the company itself is not a speaker. */
+  readonly dash?: boolean;
 }
 
 /** After the quote. */
 const AFTER: readonly Rule[] = [
   // A dash, then a name or an unnamed speaker.
-  { pattern: new RegExp(String.raw`${LEAD}\s*${DASH}\s*${MARK}(?<who>${NAME})${MARK}${NAME_END}`) },
+  {
+    pattern: new RegExp(String.raw`${LEAD}\s*${DASH}\s*${MARK}(?<who>${NAME})${MARK}${NAME_END}`),
+    dash: true,
+  },
   { pattern: new RegExp(String.raw`${LEAD}\s*${DASH}\s*${SOMEONE}${NAME_END}`) },
-  // An unnamed speaker by role, whatever words describe them: "— a Pearl District client".
+  // An unnamed speaker by role, whatever words describe them and wherever they are: "— a Pearl
+  // District client", "— our client at Harbor Dental".
   {
     pattern: new RegExp(
-      String.raw`${LEAD}\s*${DASH}\s*(?:[Aa]n?|[Tt]he|[Oo]ne\s+of\s+our)\s+(?:[\w'’-]+\s+){0,3}${ROLE}${NAME_END}`,
+      String.raw`${LEAD}\s*${DASH}\s*(?:[Aa]n?|[Tt]he|[Oo]ur|[Oo]ne\s+of\s+our)\s+(?:[\w'’-]+\s+){0,3}${ROLE}(?:\s+(?:at|from|of|in)\s+[^\n,.]{1,40})?${NAME_END}`,
     ),
   },
-  // A name of two capitalised words, or one followed by where they are from, needs nothing after it:
-  // "— Morgan Ellis of Harbor Dental".
+  // A whole name or title and where they are from: "— Office Manager at Harbor Dental".
   {
     pattern: new RegExp(
-      String.raw`${LEAD}\s*${DASH}\s*(?<who>${NOT_A_NAME}${WORD})\s+(?:[A-Z]|(?:of|from|at)\s)`,
+      String.raw`${LEAD}\s*${DASH}\s*${MARK}(?<who>${NAME})${MARK}\s+(?:of|from|at)\s+${ORG}`,
+    ),
+    dash: true,
+  },
+  // Two or more capitalised words need nothing after them: "— Morgan Ellis Our floors are next",
+  // "— Property Managers across Denver".
+  {
+    pattern: new RegExp(
+      String.raw`${LEAD}\s*${DASH}\s*${MARK}(?<who>${NOT_A_NAME}${WORD}(?:\s+${WORD}){1,3})`,
+    ),
+    dash: true,
+  },
+  // A review site, after a dash or in brackets: "– Google review", "(5-star Yelp review)".
+  {
+    pattern: new RegExp(
+      String.raw`${LEAD}\s*(?:${DASH}|[([])\s*(?:[Aa]\s+|[Vv]ia\s+)?(?:[A-Z0-9][\w'’.-]*\s+){1,2}[Rr]eview(?:er)?\b`,
     ),
   },
-  // A name alone on the next line: two to four capitalised words, then at most a short ", Company".
+  // "That's from Morgan at Harbor Dental."
   {
     pattern: new RegExp(
-      String.raw`${LEAD}[^\S\n]*\n\s*${MARK}(?<who>${FULL_NAME})${MARK}(?:,[^\S\n]*(?<tail>[^\n]*?))?[^\S\n]*(?:\n|$)`,
+      String.raw`${LEAD}\s*(?:[Tt]hat(?:'|’|\s+i)s|[Tt]his\s+is)\s+from\s+(?:${MARK}(?<who>${NAME})|${SOMEONE})`,
+    ),
+  },
+  // A name alone on the next line: two to four capitalised words, then at most a short ", Company"
+  // or "at Company".
+  {
+    pattern: new RegExp(
+      String.raw`${LEAD}[^\S\n]*\n\s*${MARK}(?<who>${FULL_NAME})${MARK}(?:,[^\S\n]*(?<tail>[^\n]*?)|[^\S\n]+(?:of|from|at)[^\S\n]+${ORG})?[^\S\n]*(?:\n|$)`,
     ),
     nameLine: true,
   },
   // The same, on the quote's own line with no dash: "\"…\" Morgan Ellis, Harbor Dental".
   {
     pattern: new RegExp(
-      String.raw`${LEAD}[^\S\n]+${MARK}(?<who>${FULL_NAME})${MARK}(?:,[^\S\n]*(?<tail>[^\n]*?))?[^\S\n]*(?:\n|$)`,
+      String.raw`${LEAD}[^\S\n]+${MARK}(?<who>${FULL_NAME})${MARK}(?:,[^\S\n]*(?<tail>[^\n]*?)|[^\S\n]+(?:of|from|at)[^\S\n]+${ORG})?[^\S\n]*(?:\n|$)`,
     ),
     nameLine: true,
   },
@@ -121,9 +170,9 @@ const AFTER: readonly Rule[] = [
   { pattern: new RegExp(String.raw`^\s*[([]\s*(?<who>${NAME})\s*[,)\]]`) },
   { pattern: new RegExp(String.raw`^\s*[([]\s*${SOMEONE}\s*[,)\]]`) },
   // A speech verb, then or after its speaker.
-  { pattern: new RegExp(String.raw`${LEAD}\s*${SPEECH}\b`) },
-  { pattern: new RegExp(String.raw`${LEAD}\s*(?<who>${NAME})\s+${SPEECH}\b`) },
-  { pattern: new RegExp(String.raw`${LEAD}\s*${SPEAKER}\s+${SPEECH}\b`) },
+  { pattern: new RegExp(String.raw`${LEAD}\s*${SPEECH_AFTER}\b`) },
+  { pattern: new RegExp(String.raw`${LEAD}\s*(?<who>${NAME})\s+${SPEECH_AFTER}\b`) },
+  { pattern: new RegExp(String.raw`${LEAD}\s*${SPEAKER}\s+${SPEECH_AFTER}\b`) },
 ];
 
 /** A sentence break before the quote ends the search; "Dr. Lee" is not a break. */
@@ -133,7 +182,7 @@ const BEFORE: readonly Rule[] = [
   // A speech verb or "according to", then up to 60 characters within the sentence.
   {
     pattern: new RegExp(
-      String.raw`(?:\b${SPEECH}\b|\b[Aa]ccording\s+to\b)(?:(?!${NO_BREAK})[^\n]){0,60}$`,
+      String.raw`(?:${NOT_US}\b${SPEECH}\b|\b[Aa]ccording\s+to\b)(?:(?!${NO_BREAK})[^\n]){0,60}$`,
     ),
   },
   // A name leading in with a colon: "Name:" or "Name, Company:" at the start of a sentence or line.
@@ -143,10 +192,27 @@ const BEFORE: readonly Rule[] = [
     ),
     leadIn: true,
   },
-  // A name and where they are from: "Morgan from Harbor Dental:".
+  // A name and where they are from: "Morgan from Harbor Dental:", "Morgan Ellis (Harbor Dental):".
   {
     pattern: new RegExp(
       String.raw`(?:^|[.!?]\s+|\n\s*)(?<who>${NAME})\s+(?:from|at|of)\s+(?<org>${WORD}(?:\s+${WORD}){0,3}):\s*$`,
+    ),
+  },
+  {
+    pattern: new RegExp(
+      String.raw`(?:^|[.!?]\s+|\n\s*)(?<who>${NAME})\s*\((?<org>[^()\n]{1,60})\):\s*$`,
+    ),
+  },
+  // "Hear it from Morgan at Harbor Dental:", "Hear from a client:".
+  {
+    pattern: new RegExp(
+      String.raw`\b[Hh]ear\s+(?:it\s+)?from\s+(?:(?<who>${NAME})|${SOMEONE})(?:(?!${NO_BREAK})[^\n]){0,60}$`,
+    ),
+  },
+  // A client feature naming the client: "Client spotlight, Harbor Dental:".
+  {
+    pattern: new RegExp(
+      String.raw`(?:^|[.!?]\s+|\n\s*)(?:[Cc]lient|[Cc]ustomer|[Tt]enant)s?(?:\s+[a-z][\w-]*){1,2},\s*${ORG}:\s*$`,
     ),
   },
   // A speaker by role: "From a client:", "One of our clients:", "A practice manager:".
@@ -180,18 +246,47 @@ export function ownNames(company: CompanyFacts): OwnNames {
 }
 
 /**
- * Words of a call to action, a heading or an audience: a line made only of these, and of the company's
- * own name, is not a speaker ("Learn More", "Free Walkthrough", "What We Do", "Property Managers,",
- * "Team" and the company's name, "Spring Special"). Audiences are plural ("Office Managers"), so a client's title,
- * which is singular ("Office Manager, Harbor Dental"), still names a speaker. Keep this list short:
- * it holds the words such lines are made of, not whole phrases.
+ * Words of a call to action, a heading or an audience: a line with no dash made only of these, the
+ * company's first name word and its services is not a speaker ("Learn More", "Free Walkthrough",
+ * "What We Do", "Property Managers,", "Spring Special"). After a dash the line must also name the
+ * company ("— Team Acme"), so "— Tenants, Lloyd Tower" still names a speaker. Keep this list
+ * short: it holds the words such lines are made of, not whole phrases.
  */
 const NOT_A_SPEAKER_WORDS = new Set(
   (
     "learn more free walkthrough what why how who we do our your us about meet join follow try " +
-    "start get book call contact today now here see read team crew services special specials " +
+    "start get book call contact today now here see read team crew service services special specials " +
     "spring summer autumn fall winter offer offers news update updates testimonials " +
     "property office building managers owners tenants clients customers"
+  ).split(" "),
+);
+
+/**
+ * Lines after a quote that are headings, not names. A person's name is a noun, so a title-case line
+ * opening with a question word or an imperative ("How It Works", "Schedule Yours Today") is a
+ * heading. Only for a line with no dash: "— Ask Morgan" is not a signature anyway (see NOT_A_NAME).
+ */
+const HEADING_FIRST = new Set(
+  (
+    "how what why who when where which schedule book call contact request get try start learn see " +
+    "read find visit claim save discover explore ask email message sign subscribe register order " +
+    "reserve grab"
+  ).split(" "),
+);
+
+/** The last word of a place line: "Denver Metro Area", "Clark County", "Pearl District". */
+const PLACE_LAST = new Set(
+  "area metro county region district valley city downtown neighborhood neighbourhood".split(" "),
+);
+
+/**
+ * The head of a label leading in with a colon: in English the last word of a compound names the
+ * thing, and these name a piece of writing, not a person ("Crew Motto:", "Subject:").
+ */
+const LABEL_HEAD = new Set(
+  (
+    "motto subject slogan tagline promise pledge rule rules headline title tip note reminder update " +
+    "mission question answer fact creed mantra"
   ).split(" "),
 );
 
@@ -233,10 +328,19 @@ function isOwn(who: string, own: Own): boolean {
   // Only the company's own names exempt a speaker by their first word ("— Company"); a service
   // shares first words with clients' titles ("Office cleaning", "Office Manager").
   if (own.companyFirst.has(lower.split(" ")[0] ?? "")) return true;
-  const prefixes = (names: readonly string[]) =>
-    names.some((name) => name.startsWith(lower) || lower.startsWith(name));
-  if (prefixes(own.company) || prefixes(own.people)) return true;
-  return own.offerings.includes(lower);
+  if (own.company.some((name) => name.startsWith(lower) || lower.startsWith(name))) return true;
+  // A person only by their full name: a customer may share a first name or an initial with staff.
+  return own.people.includes(lower) || own.offerings.includes(lower);
+}
+
+/** `words` with every service or price line named in full taken out: "Day Porter Service". */
+function withoutOfferings(words: readonly string[], own: Own): string[] {
+  let line = ` ${words.join(" ")} `;
+  for (const offering of own.offerings) {
+    const name = wordsOf(offering).join(" ");
+    if (name !== "") line = line.split(` ${name} `).join(" ");
+  }
+  return line.split(" ").filter((word) => word !== "");
 }
 
 /** Whether a rule's match names someone who could have said the quote. */
@@ -246,11 +350,24 @@ function isSpeaker(rule: Rule, match: RegExpExecArray, own: Own): boolean {
   if (isOwn(who, own)) return false;
   const org = match.groups?.org;
   if (org !== undefined && isOwn(org, own)) return false;
-  const words = wordsOf(who);
-  if (words.every((word) => NOT_A_SPEAKER_WORDS.has(word) || own.companyFirst.has(word))) {
-    return false;
-  }
   const tail = match.groups?.tail;
+  const words = wordsOf(who);
+  // Words the company's own lines are made of: headings, its first name word and its services.
+  const left = withoutOfferings(words, own);
+  const plain = left.every((word) => NOT_A_SPEAKER_WORDS.has(word) || own.companyFirst.has(word));
+  if (rule.dash === true) {
+    // A dash is an explicit signature, so heading words alone do not clear it: "— Office Manager at
+    // Harbor Dental", "— Tenants, Lloyd Tower". Only a line that also names the company does.
+    if (plain && words.some((word) => own.companyFirst.has(word))) return false;
+  } else if (rule.nameLine === true || rule.leadIn === true) {
+    if (plain) return false;
+    if (rule.nameLine === true && tail === undefined && org === undefined) {
+      if (HEADING_FIRST.has(words[0] ?? "") || PLACE_LAST.has(words.at(-1) ?? "")) return false;
+    }
+    if (rule.leadIn === true && tail === undefined && LABEL_HEAD.has(words.at(-1) ?? "")) {
+      return false;
+    }
+  }
   if (rule.nameLine === true && tail !== undefined) {
     if (own.offerings.includes(wordsOf(`${who} ${tail}`).join(" "))) return false;
     // "Morgan Ellis, office manager at Harbor Dental in Seattle" names where they are; "Winter

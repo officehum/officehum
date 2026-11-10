@@ -188,6 +188,10 @@ describe("findUnrecordedTestimonials", () => {
     const S = '"Clean offices make for happy teams every single day"';
     const I = '"We switched to Northwind last spring and have not looked back since."';
     const refused = (text: string) => findUnrecordedTestimonials(text, RECORD, OWN);
+    // Re-review 3's probes: S2 is a slogan, Q an invented customer quote.
+    const S2 = '"Clean offices, happy teams, every single night of the week"';
+    const Q = '"Northwind is the only vendor we never have to chase, honestly."';
+    const Qc = Q.replace('."', ',"');
 
     it.each([
       // Re-review 1: the company, greetings, lists, places, headings.
@@ -242,6 +246,30 @@ describe("findUnrecordedTestimonials", () => {
       `${S}\n#Portland #CleanOffices`,
       `${S}\nPortland`,
       `${S}\n\nTestimonials`,
+      // Re-review 3, honest probes.
+      'One rule on every shift: "leave every room better than we found it." Proud of this crew.\n\n#Portland #FacilityServices',
+      `${S2}\n\nWarm regards,\nPriya Raman\nAccount Manager, Northwind Facilities\n+1 503 555 0142`,
+      `${S2}\n\nHow It Works\n1. Free walkthrough\n2. Fixed quote`,
+      `${S2}\n\nSchedule Yours Today`,
+      `${S2}\nFixed Monthly Pricing. No Surprises.`,
+      'Subject: "Your office, spotless by Monday morning, every week"\n\nHi Facilities Team,\nQuick note from Northwind.',
+      'Our motto has always been "if it is not clean, it is not done, full stop."\nCommercial Cleaning Since 2009',
+      '"Spotless floors, fresh restrooms, and zero missed visits" — that is the standard we hold.',
+      '"Your lobby is the first thing every visitor sees each day."\nCascade Dental Group trusts us with theirs.',
+      'Crew Motto: "we leave it better than we found it, every night."',
+      '"We treat every building like it is our own, every visit." — Dana Whitfield, Managing Director',
+      `${S2}\n\nDay Porter Service\nWindow Cleaning\nFloor Care`,
+      `${S2}\nWhy Northwind?\nInsured crews, fixed prices.`,
+      'Three words we live by:\n"On time, every time, no matter the weather."\nNorthwind Facilities Ltd.',
+      `${S2}\nPortland Metro Area`,
+      `${S2}\nGet In Touch`,
+      // R1: a dash line made only of heading words and the company's own name.
+      `${S2} — Team Northwind`,
+      // R3: a staff member signing in full is still the company.
+      `${S2} — Rosa Martinez, Northwind Facilities`,
+      // R5: "put it" by the company itself, and "notes" as a noun, are not a speaker.
+      `We put it simply: ${S2}`,
+      `Read our notes: ${S2}`,
     ])("leaves %j alone", (text) => {
       expect(refused(text)).toEqual([]);
     });
@@ -289,6 +317,43 @@ describe("findUnrecordedTestimonials", () => {
       `Morgan from Harbor Dental: ${I}`,
       `Client Morgan Ellis: ${I}`,
       `${I} — a Pearl District client`,
+      // Re-review 3, invented probes.
+      `${Q} — Facilities Director, Pearl Lofts`,
+      `${Q} — Property Manager, Lloyd Tower`,
+      `${Q} — Office Manager at Harbor Dental`,
+      `${Q} — Property Manager at Lloyd Tower`,
+      `${Q} — Team Lead at Harbor Dental`,
+      `${Q}\nOffice Manager at Harbor Dental`,
+      `As Jordan Pike, GM at Lloyd Tower, put it: ${Q}`,
+      `${Q} That's from Jordan Pike at Lloyd Tower.`,
+      `Jordan Pike (Lloyd Tower): ${Q}`,
+      `One customer put it best: ${Q}`,
+      `${Qc} notes Jordan Pike, GM of Lloyd Tower.`,
+      `${Qc} shares Jordan Pike.`,
+      `⭐⭐⭐⭐⭐ ${Q} – Google review`,
+      `${Q} — J.P., Lloyd Tower`,
+      `${Q} — Sam, office manager at a Pearl District clinic`,
+      `${Q} — Rosa M., Lloyd Tower`,
+      `${Q} — Tenants, Lloyd Tower`,
+      `${Q} — Office Managers, Harbor Dental`,
+      `${Q} — our client at Harbor Dental`,
+      `Hear it from Jordan at Lloyd Tower: ${Q}`,
+      `Client spotlight, Harbor Dental: ${Q}`,
+      `${Q}\n\n**Jordan Pike**\nGM, Lloyd Tower`,
+      `${Q} (GM, Lloyd Tower)`,
+      `${Q} — GM, Lloyd Tower`,
+      // R1: client titles after a dash, whatever words they share with headings.
+      `${Q} — Office Manager of Harbor Dental`,
+      `${Q} — Office Manager from Harbor Dental`,
+      `${Q} — Building Manager from Lloyd Tower`,
+      // R2: plural groups after a dash.
+      `${Q} — Clients, Pearl District`,
+      `${Q} — Property Managers across Portland`,
+      `${Q} — Building Owners, Pearl Lofts`,
+      // R5: review sites, after a dash or in brackets.
+      `${Q} — Yelp review`,
+      `${Q} — 5-star Facebook review`,
+      `${Q} (Google review)`,
     ])("refuses %j", (text) => {
       expect(refused(text)).toHaveLength(1);
     });
