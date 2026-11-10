@@ -26,11 +26,11 @@ import {
   type ApprovalFactsReader,
   approvedFacts,
   approvedFactsParameter,
+  colleague,
   deskRefusal,
   refusal,
   requestId,
   type SenderResolver,
-  senderPerson,
   textResult,
 } from "@officehum/sdk";
 import {
@@ -90,7 +90,13 @@ export interface SupportToolset {
  */
 type Asker =
   | { readonly kind: "colleague"; readonly person: Person }
-  | { readonly kind: "client"; readonly clientId: string; readonly clientName: string }
+  | {
+      readonly kind: "client";
+      readonly clientId: string;
+      readonly clientName: string;
+      /** The client's contact on the desk: who a case from this sender was raised by. */
+      readonly contactName: string;
+    }
   | { readonly kind: "unknown" };
 
 /** The company section `read_company` can answer for. */
@@ -116,6 +122,9 @@ const SECTIONS: readonly CompanySection[] = [
 ];
 
 const KINDS: readonly CaseKind[] = ["complaint", "question"];
+
+/** Who raised a case, as recorded when nobody verified the sender. */
+const UNVERIFIED_REPORTER = "an unverified sender";
 
 const CASE_ID = Type.String({ description: "The case number, e.g. C-301" });
 
@@ -252,10 +261,8 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     });
     if (sender === undefined) return { kind: "unknown" };
     // Only an internal sender is a colleague: an outside contact spelling a colleague's address is not.
-    if (sender.origin === "internal") {
-      const colleague = senderPerson(company, sender);
-      if (colleague !== undefined) return { kind: "colleague", person: colleague };
-    }
+    const person = colleague(company, sender);
+    if (person !== undefined) return { kind: "colleague", person };
     // A client is whoever's contact address on the desk the verified sender is, whole and ignoring
     // case. An internal ticket carrying a client's address (an office trial) is that client too.
     const contact = sender.contact.trim().toLowerCase();
@@ -265,7 +272,12 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     );
     return client === undefined
       ? { kind: "unknown" }
-      : { kind: "client", clientId: client.id, clientName: client.name };
+      : {
+          kind: "client",
+          clientId: client.id,
+          clientName: client.name,
+          contactName: client.contact,
+        };
   };
 
   /** What an unknown sender is told instead of any case data. */
@@ -313,6 +325,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
       already_booked: " Tell the client the date already booked.",
       already_escalated: " Tell the client who already has it.",
       wrong_client: " Next: use a line of the case's own client's invoice, from list_cases.",
+      no_account: ` Next: call escalate_case with caseId ${caseId} and reason unresolved, which hands it to ${complaintOwner} to find out who sent it.`,
       // The desk's own message already says what to do for these.
       not_found: "",
       invalid: "",
@@ -348,7 +361,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
             )
             .join("; ");
     return [
-      `${entry.id} — ${entry.clientName} (${entry.clientId}) — ${entry.kind}, ${words(entry.category)} — ${entry.status} — priority ${entry.priority} — opened ${entry.openedOn} by ${entry.reportedBy} (${entry.source}) — first response due ${entry.firstResponseDue}`,
+      `${entry.id} — ${entry.clientId === null ? entry.clientName : `${entry.clientName} (${entry.clientId})`} — ${entry.kind}, ${words(entry.category)} — ${entry.status} — priority ${entry.priority} — opened ${entry.openedOn} by ${entry.reportedBy} (${entry.source}) — first response due ${entry.firstResponseDue}`,
       `  ${entry.summary}`,
       `  re-clean: ${reclean} — credit: ${credit} — escalated: ${escalated}`,
       ...(entry.status === "closed"
@@ -453,11 +466,13 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
           { found: false, cases: [], invoices: [] },
         );
       }
-      // A credit can be asked for on an open complaint that has none yet.
+      // A credit can be asked for on an open complaint on a client's account that has none yet.
       const eligible = cases.filter(
         (entry) => entry.kind === "complaint" && entry.status !== "closed" && entry.credit === null,
       );
-      const clientIds = [...new Set(eligible.map((entry) => entry.clientId))];
+      const clientIds = [
+        ...new Set(eligible.flatMap((entry) => (entry.clientId === null ? [] : [entry.clientId]))),
+      ];
       const invoiceLines: string[] = [];
       const invoices: Invoice[] = [];
       for (const clientId of clientIds) {
@@ -488,7 +503,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
   const logCase = defineTool({
     name: "log_case",
     description:
-      "Log what a client raised as a case: a complaint (something went wrong) or a question, its category, a summary in the client's own terms, who raised it and the message it came from. The desk numbers it and sets its priority. An internal record: it sends nothing to the client.",
+      "Log what a client raised as a case: a complaint (something went wrong) or a question, its category, a summary in the client's own terms and the message it came from. Who raised it is recorded from the verified sender. The desk numbers it and sets its priority. An internal record: it sends nothing to the client.",
     parameters: Type.Object(
       {
         clientId: Type.String({ description: "The client's id from find_client, e.g. CL-101" }),
@@ -504,7 +519,6 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
           },
         ),
         summary: Type.String({ minLength: 1, description: "What the client raised, briefly" }),
-        reportedBy: Type.String({ minLength: 1, description: "Who raised it" }),
         source: Type.String({
           minLength: 1,
           description: "The message it came from: its channel, sender and when",
@@ -516,15 +530,24 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     execute: async (args, api) => {
       const desk = requireDesk(dependencies);
       try {
-        // A client logs on its own account, whatever client the call names.
+        // A client logs on its own account, whatever client the call names. Nobody verified an
+        // unknown sender, so their case goes on no client's account: an unverified complaint never
+        // lands on a real client's account. Who raised it always comes from the verified sender,
+        // never from the model: the client's contact on the desk, or the colleague on record.
         const who = await asker(desk, api);
+        const unknown = who.kind === "unknown";
         const entry = await desk.logCase(
           {
-            clientId: who.kind === "client" ? who.clientId : args.clientId,
+            clientId: who.kind === "client" ? who.clientId : unknown ? null : args.clientId,
             kind: args.kind as CaseKind,
             category: args.category as CaseCategory,
             summary: args.summary,
-            reportedBy: args.reportedBy,
+            reportedBy:
+              who.kind === "client"
+                ? who.contactName
+                : who.kind === "colleague"
+                  ? who.person.name
+                  : UNVERIFIED_REPORTER,
             source: args.source,
           },
           { requestId: requestId("log", api) },
@@ -538,7 +561,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
               : "";
         return {
           ...textResult(
-            `Logged ${entry.id} for ${entry.clientName}: ${entry.kind}, ${words(entry.category)}, priority ${entry.priority}. First response due ${entry.firstResponseDue}. This is an internal record: nothing has been sent to the client.${next}`,
+            `Logged ${entry.id}${unknown ? "" : ` for ${entry.clientName}`}: ${entry.kind}, ${words(entry.category)}, priority ${entry.priority}. First response due ${entry.firstResponseDue}. This is an internal record: nothing has been sent to the client.${next}`,
           ),
           details: plain(entry),
         };

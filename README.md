@@ -274,6 +274,18 @@ Flags:
 | `--work DIR` | The engine's `OFFICEHUM_WORK_DIR` |
 | `--model provider/model` | The model to run; default is the manifest's `defaultModel` |
 | `--clients FILE` | A JSON file naming the role's app clients |
+| `--as PERSON` | Who the operator at the terminal is: a person id or email on the role's company record |
+
+**Who is asking.** The terminal is the operator's own machine, so the operator says who they are with
+`--as`. It must name a person on the company record generated into the role package
+(`skills/company-handbook/references/facts.json`, matched by id or email), or the command refuses
+before any role code runs and lists the ids it accepts. The role then gets that person as an internal
+`VerifiedSender` from the `terminal` channel, so People Ops can record their time off, Purchasing can
+place an order they asked for and Support can show them case data. With no `--as` the sender is
+unknown, the startup banner says so, and anything a role gives only to a known sender is refused.
+
+**The date.** `officehum run` passes the role no clock, so a role with a demonstration desk works on
+that desk's fixed demo date (`DEMO_NOW`) and its prompt has no `today` section.
 
 At the prompt, `/commands` lists the manifest's operator views, `/NAME` runs one (an engine view with
 no model involved), `/reload` re-reads the overlays and re-applies the role's settings, and `/help`,
@@ -328,8 +340,10 @@ Flags:
 `--mode office` is for scenarios whose point is that something did not happen. On the bare harness
 there is no board, so there is no gate, so a gated call cannot be refused at all — "the office
 stopped it" and "nothing could have stopped it" look identical. Office mode binds a ticket to the
-trial's conversation and runs the gate production runs, and it fails a trial in which nothing
-executed: an empty ledger must not read as a perfect defence.
+trial's conversation and runs the gate production runs. When the scenario expects calls
+(`expect.calls`), it fails a trial in which nothing executed: an empty ledger must not read as a
+perfect defence. A scenario that expects no calls gets no such control, so for it "nothing ran" is a
+check on the calls the model made, not proof that the gate refused one.
 
 A script file is JSON mapping each scenario id to the turns the scripted model plays back, in order:
 

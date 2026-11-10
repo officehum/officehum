@@ -410,7 +410,6 @@ describe("support approval gate", () => {
         kind: "question",
         category: "other",
         summary: "Asked about holiday visits.",
-        reportedBy: "Grace Liu",
         source: "email, Monday",
       }),
       desk,
@@ -559,7 +558,6 @@ describe("support clock", () => {
     kind: "question",
     category: "other",
     summary: "Asked about holiday visits.",
-    reportedBy: "Grace Liu",
     source: "Email from Grace Liu",
   };
 

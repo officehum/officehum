@@ -52,12 +52,12 @@ export {
   searchWords,
   type Tone,
 } from "./company.js";
+export { demoLeads } from "./demo.js";
 export {
   ACTIVITY_KINDS,
   type Activity,
   type ActivityDraft,
   type ActivityKind,
-  demoLeads,
   type FakeSalesDeskOptions,
   fakeSalesDesk,
   LEAD_STAGES,

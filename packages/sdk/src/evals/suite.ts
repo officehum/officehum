@@ -26,6 +26,15 @@ const MessageInput = Type.Object(
     text: Type.String({ minLength: 1 }),
     channel: Type.Optional(Type.Enum(["email", "sms", "chat"])),
     from: Type.Optional(Type.String({ minLength: 1 })),
+    /**
+     * Where `from` wrote from: `internal` (inside the office, so a colleague on the company record
+     * is one) or `external` (an outside channel). Bare mode defaults it to external. In office mode
+     * it is the ticket's provenance origin, and with none given office mode defaults to internal, so
+     * a staff `from` with no origin is a colleague in office mode and not in bare mode: a scenario
+     * that relies on a staff sender says `internal`. Under inbound-email delivery it is ignored: an
+     * inbound email is always external.
+     */
+    origin: Type.Optional(Type.Enum(["internal", "external"])),
   },
   { additionalProperties: false },
 );
@@ -182,6 +191,14 @@ export function validateSuite(
     if (seen.has(scenario.id)) add(at("id"), `${show(scenario.id)} is used by another scenario`);
     seen.add(scenario.id);
 
+    if (scenario.input.kind === "message" && scenario.input.origin !== undefined) {
+      if (scenario.input.from === undefined) {
+        add(
+          at("input.origin"),
+          "says where the sender wrote from, but the scenario names no sender: add input.from, or remove origin",
+        );
+      }
+    }
     for (const tool of Object.keys(scenario.stubs)) {
       if (!tools.has(tool)) add(at(`stubs.${tool}`), "is not a declared tool");
     }
@@ -237,13 +254,24 @@ export function validateSuite(
     : { ok: true, value: suite, issues: [] };
 }
 
-/** Every `{ "includes": … }` in `args` must be exactly one non-empty string, reported with its path. */
+/**
+ * Every `{ "includes": … }` in `args` must be exactly one non-empty string, reported with its path.
+ * A matcher is an argument's value, never `args` itself: at the top level `includes` would read as a
+ * parameter of that name, which no matcher can then express, so it is refused.
+ */
 function matcherIssues(
   args: unknown,
   path: string,
   add: (path: string, message: string) => void,
+  top = true,
 ): void {
   if (args === null || typeof args !== "object" || Array.isArray(args)) return;
+  if (top && "includes" in args) {
+    add(
+      joinPath(path, "includes"),
+      'an includes matcher goes on an argument\'s value, e.g. { "sku": { "includes": "…" } }, never on args itself',
+    );
+  }
   for (const [key, value] of Object.entries(args)) {
     const at = joinPath(path, key);
     if (value === null || typeof value !== "object" || Array.isArray(value)) continue;
@@ -264,6 +292,6 @@ function matcherIssues(
       }
       continue;
     }
-    matcherIssues(value, at, add);
+    matcherIssues(value, at, add, false);
   }
 }

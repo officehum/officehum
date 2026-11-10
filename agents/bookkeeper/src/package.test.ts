@@ -1,14 +1,6 @@
-import {
-  cpSync,
-  existsSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type AgentManifest,
@@ -17,6 +9,7 @@ import {
   validatePackage,
 } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
+import { companyFactLeaks } from "../../../scripts/company-fact-guard.js";
 import manifest from "../officehum.json" with { type: "json" };
 import { financeLead, loadCompanyFacts, purchasingLead } from "./company.js";
 import { demoBills } from "./desk.js";
@@ -265,39 +258,12 @@ describe("bookkeeper package (RASF-3126)", () => {
   });
 
   it("names no company fact outside the generated handbook, so another company can run it", () => {
-    const skipped = new Set(["dist", "node_modules", "evals", "evals.smoke.json", "README.md"]);
-    const files: string[] = [];
-    const walk = (directory: string): void => {
-      for (const entry of readdirSync(directory, { withFileTypes: true })) {
-        const path = join(directory, entry.name);
-        const local = relative(packageDirectory, path);
-        if (skipped.has(entry.name) || local === join("skills", "company-handbook")) continue;
-        if (entry.isDirectory()) walk(path);
-        else if (!entry.name.endsWith(".test.ts")) files.push(path);
-      }
-    };
-    walk(packageDirectory);
-    expect(files.length).toBeGreaterThan(10);
-
-    const facts = company as unknown as {
-      profile: { legalName: string; tradingName: string; address: { city: string } };
-    };
-    const names = [
-      facts.profile.legalName,
-      facts.profile.tradingName,
-      facts.profile.address.city,
-      ...company.people.flatMap((worker) => [worker.name, worker.name.split(" ")[0] ?? ""]),
-    ].filter((fact) => fact !== "");
-    // The demonstration desk's bills record who entered them; demo data may name people.
-    const demoData = join(packageDirectory, "src", "desk.ts");
-    const found: string[] = [];
-    for (const file of files.filter((path) => path !== demoData)) {
-      const text = readFileSync(file, "utf8");
-      for (const fact of names) {
-        const pattern = new RegExp(`\\b${fact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
-        if (pattern.test(text)) found.push(`${relative(packageDirectory, file)}: ${fact}`);
-      }
-    }
-    expect(found).toEqual([]);
+    // The shared guard: company names, people, first names, titles and crew names.
+    // The demonstration desk's bills record who entered them: demo data, by design.
+    expect(
+      companyFactLeaks(packageDirectory, {
+        allow: ["src/desk.ts: Eileen Hart", "src/desk.ts: Eileen"],
+      }),
+    ).toEqual([]);
   });
 });

@@ -304,14 +304,46 @@ sender, by email for any sender (whole, ignoring case), and by phone for any sen
 for digit on a leading "+" and the digits, so the SMS gateway's E.164 number matches the record's
 formatted one.
 
-Office Hum's resolver is `boardSenderResolver(board)`. It reads the provenance row of the ticket the
+**One rule for a colleague.** A sender is a colleague, a person on the company record a role may
+treat as staff, only when `origin` is `internal`. An outside email or text is never a colleague, even
+from a colleague's own address or number: an outside channel does not prove who typed it, so it gets
+what any outside contact gets. The rule lives in one place, the SDK's `colleague(company, sender)`
+beside `senderPerson`, and every role that trusts staff asks it (Support before showing any client's
+cases, Purchasing before placing a requested order or recording a delivery report, People Ops before
+treating a sender as office staff). `senderPerson` on its own is for recognising an outside contact,
+never for trusting one as staff. The one exception is People Ops' crew: they are not on the company
+record and have no internal channel, so a text or email from a crew member's own number or address
+(matched against their staff record) may read their own leave balance and file their own time off,
+under the same notice and approval rules. Filing for anyone else still needs a colleague.
+
+**The head of the company** is the SDK's `companyHead(company)`: whoever holds a head title (one
+that starts with managing director, owner, president or chief executive, so not "Vice President",
+"Product Owner" or "Co-owner"), wherever they sit in the record, and a bare "director" only when
+nobody does. Roles send a complaint about its usual owner there. The company
+validator (`npm run sync-company`) refuses two people with head titles, naming both paths.
+
+A sender comes from one of three places today, and nowhere else:
+
+- **The eval runner**, from the scenario (below).
+- **`officehum run --as PERSON`**, for the operator at the terminal. The terminal is the operator's
+  own machine, so they say who they are; the CLI checks it against the company record generated into
+  the role package (`skills/company-handbook/references/facts.json`, by id or email, as `colleague`
+  matches an internal sender) and refuses anyone it does not name. The role gets
+  `{ origin: "internal", channel: "terminal", contact: <person id> }` for every call. With no `--as`
+  the CLI passes no resolver and the sender is unknown.
+- **A board-backed host**, which passes `boardSenderResolver(board)`. Today the only such host is the
+  eval runner's office mode; no production host opens a board for a role yet.
+
+`boardSenderResolver(board)` reads the provenance row of the ticket the
 conversation is bound to, which the channel gateway resolved before the ticket existed. A child
 ticket, `agent_dispatch` children included, copies its root's row, so delegated work keeps the
 original asker. `loadRole(dir, { sender })` passes the resolver to the factory, so no client or user
 config may be named `sender`. The eval runner hands a role the same thing: in office mode the
-board's resolver, with the scenario's `from` and `channel` on the ticket's provenance (an
-inbound-email delivery keeps `email` as its channel); in bare mode the scenario's `from` as an
-outside contact, or unknown when the scenario names nobody.
+board's resolver, with the scenario's `from` and `channel` on the ticket's provenance and its
+`origin` as the provenance's origin (internal when the scenario gives none; an inbound-email delivery
+is always external and keeps `email` as its channel); in bare mode the scenario's `from` with its
+`origin` (external when the scenario gives none), or unknown when the scenario names nobody. A
+scenario whose sender is staff says `"origin": "internal"`.
 
 ## Overlays: configuring a role without changing it
 
@@ -749,14 +781,19 @@ Each file in the `evals` directory holds scenarios:
 }
 ```
 
-- `input` is a `message` (text, optional `channel` and `from`) or a `ticket` (`type` from `accepts`,
-  `payload`, optional `provenance: "external"`). Ticket inputs need the office extension.
+- `input` is a `message` (text, optional `channel`, `from` and `origin`) or a `ticket` (`type` from
+  `accepts`, `payload`, optional `provenance: "external"`). Ticket inputs need the office extension.
+  `origin` is `"internal"` or `"external"`: where `from` wrote from. Bare mode defaults it to
+  external; office mode makes it the ticket's provenance origin. It needs a `from`.
 - Every declared tool is stubbed in every scenario, so evals never touch a real system. Stubs keep the
   tool's real name, description and parameters, using `wrapTool`. `read_skill` runs for real: it only
   reads the role's own files. A stub is `{ "text", "isError"? }`, or `{ "byArgs": [{ "args", "text",
   "isError"? }], "otherwise"? }`, which answers by the call's arguments: the first entry whose `args`
   match answers, else `otherwise`, else the trial stops. In `byArgs` and in `expect.calls[].args`, an
-  argument given as `{ "includes": "…" }` matches a string argument that contains that text.
+  argument given as `{ "includes": "…" }` matches a string argument that contains that text. So a
+  parameter cannot be matched against the literal object `{ "includes": … }`: that object is always
+  the matcher. A matcher goes on an argument's value only: `validateSuite` refuses `includes` directly
+  under `args`, with its path.
 - `approvals` scripts the person's decision for each approval id.
 - `expect.calls` must appear in that order, with other calls allowed in between; `args` matches only
   the fields listed. `notCalled`, `approvalsRequested` (exact set), `delegated` (office extension only)

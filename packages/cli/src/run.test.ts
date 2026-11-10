@@ -10,13 +10,27 @@ import { scriptedProvider } from "@officehum/office/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CliDependencies, CliIo } from "./cli.js";
 import { runCli } from "./cli.js";
-import { readClientConfig, requestIdFor, terminalApprover, terminalUser } from "./run.js";
+import {
+  operatorSender,
+  parseRunArguments,
+  readClientConfig,
+  requestIdFor,
+  terminalApprover,
+  terminalUser,
+} from "./run.js";
 
 const sampleDesk = fileURLToPath(new URL("../../sdk/fixtures/sample-desk", import.meta.url));
 const sampleStockroom = fileURLToPath(
   new URL("../../sdk/fixtures/sample-stockroom", import.meta.url),
 );
 const clientsFile = fileURLToPath(new URL("./fixtures/clients.json", import.meta.url));
+const peopleOps = fileURLToPath(new URL("../../../agents/people-ops", import.meta.url));
+/** The first person on the company record generated into the People Ops package. */
+const colleague = (
+  JSON.parse(
+    readFileSync(join(peopleOps, "skills/company-handbook/references/facts.json"), "utf8"),
+  ) as { people: { id: string; name: string; email: string }[] }
+).people[0] as { id: string; name: string; email: string };
 const temps: string[] = [];
 afterEach(() => {
   for (const directory of temps.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -244,5 +258,89 @@ describe("officehum run", () => {
     expect(requestIdFor("hello", 0)).toBe(requestIdFor("hello", 0));
     expect(requestIdFor("hello", 0)).not.toBe(requestIdFor("hello", 1));
     expect(requestIdFor("hello", 0)).not.toBe(requestIdFor("other", 0));
+  });
+});
+
+describe("officehum run --as", () => {
+  /** A model that asks for the sender's own leave balance, then repeats what the tool said. */
+  const balanceModel = () =>
+    scriptedProvider((messages) => {
+      const result = messages.find((message) => message.role === "toolResult");
+      if (result === undefined) return { toolCalls: [{ name: "get_leave_balance", args: {} }] };
+      const text = (result.content as { type: string; text?: string }[])
+        .map((part) => part.text ?? "")
+        .join("");
+      return { text: `TOOL SAID: ${text}` };
+    });
+
+  const runPeopleOps = async (extra: readonly string[]) => {
+    const directory = temporary();
+    const terminal = scripted(["What is my leave balance?", undefined]);
+    const code = await runCli(
+      [
+        "run",
+        peopleOps,
+        "--model",
+        "scripted/scripted-1",
+        "--db",
+        join(directory, "office.sqlite"),
+        ...extra,
+      ],
+      terminal.io,
+      runDeps(balanceModel()),
+    );
+    return { code, output: terminal.output.join("\n"), errors: terminal.errors.join("\n") };
+  };
+
+  it("gives the role the operator as an internal sender, by person id", async () => {
+    const run = await runPeopleOps(["--as", colleague.id]);
+    expect({ code: run.code, errors: run.errors }).toEqual({ code: 0, errors: "" });
+    expect(run.output).toContain(`Sender: ${colleague.name} (${colleague.id}), at this terminal`);
+    expect(run.output).toContain(`TOOL SAID: Leave for ${colleague.name} (the sender)`);
+    expect(run.output).not.toContain("Nobody verified");
+  }, 20_000);
+
+  it("leaves the sender unknown without --as, and says so", async () => {
+    const run = await runPeopleOps([]);
+    expect(run.code).toBe(0);
+    expect(run.output).toContain("Sender: unknown");
+    expect(run.output).toContain("--as");
+    expect(run.output).toContain("TOOL SAID: Nobody verified who sent this");
+  }, 20_000);
+
+  // A wrong --as is a usage error (exit 2), refused before any role code runs.
+  it("refuses someone the company record does not name, and says how to fix it", async () => {
+    const run = await runPeopleOps(["--as", "nobody@example.com"]);
+    expect(run.code).toBe(2);
+    expect(run.errors).toContain('--as "nobody@example.com" is not anyone on the company record');
+    expect(run.errors).toContain(colleague.id);
+    expect(run.output).not.toContain("TOOL SAID");
+  }, 20_000);
+
+  it("refuses --as for a role package with no company record", async () => {
+    const terminal = scripted([undefined]);
+    const code = await runCli(
+      ["run", sampleDesk, "--model", "scripted/scripted-1", "--as", colleague.id],
+      terminal.io,
+      runDeps(scriptedProvider([])),
+    );
+    expect(code).toBe(2);
+    expect(terminal.errors.join("\n")).toContain("has no company record");
+  });
+
+  it("matches the operator by email too, and always passes their person id", async () => {
+    const { sender, person } = operatorSender(peopleOps, colleague.email.toUpperCase());
+    expect(person.id).toBe(colleague.id);
+    expect(await sender({ conversationId: "1", taskId: "1" })).toEqual({
+      origin: "internal",
+      channel: "terminal",
+      contact: colleague.id,
+    });
+  });
+
+  it("parses --as once, with a value", () => {
+    expect(parseRunArguments([sampleDesk, "--as", "x"]).as).toBe("x");
+    expect(parseRunArguments([sampleDesk]).as).toBeUndefined();
+    expect(() => parseRunArguments([sampleDesk, "--as"])).toThrow("--as requires a value");
   });
 });

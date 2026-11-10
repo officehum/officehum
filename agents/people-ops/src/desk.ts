@@ -16,7 +16,7 @@
  * code, and the tools turn the code into the next step.
  */
 
-import { sameFacts, senderPerson, type VerifiedSender } from "@officehum/sdk";
+import { colleague, sameFacts, senderPerson, type VerifiedSender } from "@officehum/sdk";
 import {
   type CompanyFacts,
   companyHead,
@@ -288,7 +288,11 @@ export interface PeopleOpsDesk {
   /**
    * Records an approved exception. Called only once a person approved it, with the facts they were
    * shown; a host desk must refuse with `exception_changed` when the request no longer works out to
-   * them, so a grant never records time off nobody saw.
+   * them, so a grant never records time off nobody saw. The facts are stable while a person decides:
+   * the notice is counted from the day the request was asked (the desk keeps that day, and
+   * `timeOffExceptionFacts`, which a gate calls once per ask, starts it), never recounted from today,
+   * so a grant given on a later day still records. Recording ends the ask; one declined or withdrawn
+   * at the gate is asked afresh. A first day that has passed by then is still refused.
    */
   requestTimeOffException(
     input: TimeOffExceptionInput & { readonly approved: Readonly<Record<string, unknown>> },
@@ -560,6 +564,14 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
   const checklists = new Map<string, OnboardingChecklist>();
   const requests = new Map<string, TimeOffRequest>();
   const referrals = new Map<string, Referral>();
+  /**
+   * The day each pending short-notice request was asked, by employee, dates and reason. Its notice is
+   * counted from that day, so what a person approves does not go stale at midnight while they decide.
+   * It holds for one pending ask only: both approval gates read a request's facts once per ask (never
+   * again while it waits, nor on the grant), so a facts read starts a new asking day, and recording
+   * the request ends it. A request declined or withdrawn at the gate is therefore asked afresh.
+   */
+  const askedOn = new Map<string, string>();
   let timeOffNumber = 103;
   let checklistNumber = 0;
   let referralNumber = 0;
@@ -639,7 +651,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     return only;
   };
 
-  /** Checks the dates and works out the notice. */
+  /** Checks the dates and works out the notice as of today. */
   const checkDates = (input: TimeOffInput) => {
     const isProtected = PROTECTED_REASONS.includes(input.reasonCategory);
     const start = input.startDate.trim();
@@ -679,6 +691,26 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
       );
     }
     return { start, end, daysNotice: Math.max(0, daysBetween(today(), start)) };
+  };
+
+  /** The key a short-notice request's asking day is kept under: whose, which dates, which reason. */
+  const askKey = (employee: Employee, start: string, end: string, reason: ReasonCategory): string =>
+    JSON.stringify([employee.id, start, end, reason]);
+
+  /**
+   * The notice a short-notice request gave on the day it was asked, recording that day now. A new ask
+   * (a facts read, which a gate makes once per ask) starts a new day rather than reusing a pending one.
+   */
+  const noticeWhenAsked = (
+    employee: Employee,
+    dates: { readonly start: string; readonly end: string },
+    reason: ReasonCategory,
+    newAsk = false,
+  ): number => {
+    const key = askKey(employee, dates.start, dates.end, reason);
+    const asked = (newAsk ? undefined : askedOn.get(key)) ?? today();
+    askedOn.set(key, asked);
+    return Math.max(0, daysBetween(asked, dates.start));
   };
 
   const refuseOverlap = (employee: Employee, start: string, end: string): void => {
@@ -738,10 +770,13 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     }
   };
 
-  /** The staff record a verified sender is: office staff by the company record, crew by contact. */
+  /**
+   * The staff record a verified sender is: office staff only as a colleague (on the company record,
+   * writing from inside the office), crew by the contact their staff record holds.
+   */
   const staffFor = (from: VerifiedSender): Employee | undefined => {
-    const colleague = senderPerson(company, from);
-    if (colleague !== undefined) return findEmployee(colleague.id);
+    const office = colleague(company, from);
+    if (office !== undefined) return findEmployee(office.id);
     // A crew member's contact is matched as an email or a phone, never as an id.
     const crew = senderPerson(
       {
@@ -798,8 +833,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     }
     const employee = employeeNamed(named);
     if (employee.id === sender.id) return employee;
-    if (input.from !== undefined && senderPerson(company, input.from) !== undefined)
-      return employee;
+    if (colleague(company, input.from) !== undefined) return employee;
     throw new PeopleOpsDeskError(
       "someone_else",
       `${sender.name} may record only their own time off: ${employee.name}'s is theirs to ask for, or for a person on the company record to file. Nothing was recorded.`,
@@ -807,22 +841,28 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
   };
 
   /** Whose short-notice exception this is and what it works out to, or the refusal. */
-  const checkException = (input: TimeOffExceptionInput) => {
+  const checkException = (input: TimeOffExceptionInput, newAsk = false) => {
     const employee = timeOffFor(input);
-    const dates = checkDates(input);
+    const checked = checkDates(input);
     if (PROTECTED_REASONS.includes(input.reasonCategory)) {
       throw new PeopleOpsDeskError(
         "protected",
         `A ${input.reasonCategory.replaceAll("_", " ")} reason needs no exception: record it with record_time_off_request, which never refuses it for notice and sends it to ${personLabel(protectedOwner)}. Nothing was recorded.`,
       );
     }
-    if (dates.daysNotice >= staff.timeOffNoticeDays) {
+    // Enough notice today is enough notice: there is nothing to approve.
+    if (checked.daysNotice >= staff.timeOffNoticeDays) {
       throw new PeopleOpsDeskError(
         "not_late",
-        `${dates.start} is ${dates.daysNotice} days away, which is enough notice: record it with record_time_off_request. Nothing was recorded.`,
-        { daysNotice: dates.daysNotice },
+        `${checked.start} is ${checked.daysNotice} days away, which is enough notice: record it with record_time_off_request. Nothing was recorded.`,
+        { daysNotice: checked.daysNotice },
       );
     }
+    // The notice is the one given when the request was first made, never a figure recounted today.
+    const dates = {
+      ...checked,
+      daysNotice: noticeWhenAsked(employee, checked, input.reasonCategory, newAsk),
+    };
     // The person approves exactly the notice the desk worked out, never a figure of the caller's.
     if (!Number.isFinite(input.daysNotice) || input.daysNotice !== dates.daysNotice) {
       throw new PeopleOpsDeskError(
@@ -972,12 +1012,16 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
       if (prior !== undefined) return prior;
 
       const employee = timeOffFor(input);
-      const dates = checkDates(input);
-      refuseOverlap(employee, dates.start, dates.end);
+      const checked = checkDates(input);
+      refuseOverlap(employee, checked.start, checked.end);
       // Leave the law may protect goes to a person whatever the notice: the notice rule never refuses
       // it, because only a person can weigh it.
       const isProtected = PROTECTED_REASONS.includes(input.reasonCategory);
-      if (!isProtected && dates.daysNotice < staff.timeOffNoticeDays) {
+      const dates =
+        !isProtected && checked.daysNotice < staff.timeOffNoticeDays
+          ? { ...checked, daysNotice: noticeWhenAsked(employee, checked, input.reasonCategory) }
+          : checked;
+      if (!isProtected && checked.daysNotice < staff.timeOffNoticeDays) {
         const mayBeProtected = VAGUE_REASONS.includes(input.reasonCategory);
         throw new PeopleOpsDeskError(
           "late_notice",
@@ -991,7 +1035,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     },
 
     async timeOffExceptionFacts(input): Promise<TimeOffExceptionFacts> {
-      return checkException(input).facts;
+      return checkException(input, true).facts;
     },
 
     async requestTimeOffException(input, { requestId }): Promise<TimeOffRequest> {
@@ -1009,6 +1053,8 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
         );
       }
       const entry = record(employee, dates, input.reasonCategory, "approved");
+      // Decided: the pending ask is over.
+      askedOn.delete(askKey(employee, dates.start, dates.end, input.reasonCategory));
       requests.set(requestId, entry);
       return entry;
     },

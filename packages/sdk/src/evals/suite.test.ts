@@ -107,6 +107,22 @@ describe("validateSuite stubs", () => {
     for (const issue of issues) expect(issue.message).toMatch(/includes/);
   });
 
+  it("rejects an includes matcher at the top level of args, with its path", () => {
+    const suite = suiteWith({
+      get_invoice: { byArgs: [{ args: { includes: "1043" }, text: "{}" }] },
+      ...plain,
+    });
+    (suite.scenarios[0] as { expect: unknown }).expect = {
+      calls: [{ tool: "get_invoice", args: { includes: "1043" } }],
+    };
+    const issues = validateSuite(suite, manifest, "x").issues;
+    expect(issues.map((issue) => issue.path)).toEqual([
+      "scenarios[0].stubs.get_invoice.byArgs[0].args.includes",
+      "scenarios[0].expect.calls[0].args.includes",
+    ]);
+    for (const issue of issues) expect(issue.message).toMatch(/argument's value/);
+  });
+
   it("skips the argument-name check for a tool whose manifest names no parameters", () => {
     const result = validateSuite(
       suiteWith({ get_invoice: { byArgs: [{ args: { anything: "x" }, text: "{}" }] }, ...plain }),
@@ -114,5 +130,47 @@ describe("validateSuite stubs", () => {
       "x",
     );
     expect(result.issues).toEqual([]);
+  });
+});
+
+describe("validateSuite message origin", () => {
+  const withInput = (input: Record<string, unknown>) => ({
+    scenarios: [
+      {
+        id: "a-scenario",
+        description: "A scenario",
+        input: { kind: "message", text: "Go.", ...input },
+        stubs: { get_invoice: { text: "{}" }, ...plain },
+        expect: {},
+      },
+    ],
+  });
+
+  it("accepts an internal or external origin for a named sender", () => {
+    for (const origin of ["internal", "external"]) {
+      const result = validateSuite(withInput({ from: "dana@example.test", origin }), manifest, "x");
+      expect(result.issues, origin).toEqual([]);
+    }
+  });
+
+  it("reports an origin that is neither, with its path", () => {
+    const result = validateSuite(
+      withInput({ from: "dana@example.test", origin: "staff" }),
+      manifest,
+      "x",
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.path)).toEqual(["scenarios[0].input.origin"]);
+  });
+
+  it("reports an origin with no sender to give it to, with its path", () => {
+    const result = validateSuite(withInput({ origin: "internal" }), manifest, "x");
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        path: "scenarios[0].input.origin",
+        message: expect.stringContaining("from"),
+      }),
+    ]);
   });
 });

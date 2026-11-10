@@ -27,11 +27,11 @@ import {
   type ApprovalFactsReader,
   approvedFacts,
   approvedFactsParameter,
+  colleague,
   deskRefusal,
   refusal,
   requestId,
   type SenderResolver,
-  senderPerson,
   textResult,
 } from "@officehum/sdk";
 import { type CompanyFacts, money, person, personLabel, purchasingLead } from "./company.js";
@@ -263,9 +263,12 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
   const { company } = dependencies;
   const lead = personLabel(purchasingLead(company));
 
-  /** The person on the company record this call's work came from, read from the host, or nobody. */
+  /**
+   * The colleague this call's work came from, read from the host, or nobody: a person on the company
+   * record writing from inside the office. An outside email from a colleague's address is nobody.
+   */
   const asker = async (api: { readonly conversationId: unknown; readonly taskId: unknown }) =>
-    senderPerson(
+    colleague(
       company,
       await dependencies.sender?.({ conversationId: api.conversationId, taskId: api.taskId }),
     );

@@ -6,12 +6,13 @@
  * and this role is caught here.
  */
 
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { type AgentManifest, validateManifest, validatePackage } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
+import { companyFactLeaks } from "../../../scripts/company-fact-guard.js";
 import manifest from "../officehum.json" with { type: "json" };
 import { companyHead, escalationOwner, loadCompanyFacts, person } from "./company.js";
 import { demoCases, demoClients, demoCredits, demoInvoices } from "./desk.js";
@@ -120,6 +121,17 @@ describe("support package", () => {
       expect(escalationOwner(company, topic), topic).toBeDefined();
     }
     expect(companyHead(company)).toBeDefined();
+    // The head is the head title, never the first "director" in record order.
+    const retitled = {
+      ...company,
+      people: [
+        { ...company.people[1], id: "finance-director", title: "Finance Director" },
+        ...company.people,
+      ],
+    } as typeof company;
+    expect(companyHead(retitled)?.title).toMatch(
+      /managing director|owner|president|chief executive/i,
+    );
 
     const clients = new Set(demoClients().map((client) => client.id));
     const prices = new Set(company.priceBook.map((item) => item.id));
@@ -166,35 +178,8 @@ describe("support package", () => {
   });
 
   it("names no company fact outside the generated handbook, so another company can run it", () => {
-    const skipped = new Set(["dist", "node_modules", "evals", "evals.smoke.json", "README.md"]);
-    const files: string[] = [];
-    const walk = (directory: string): void => {
-      for (const entry of readdirSync(directory, { withFileTypes: true })) {
-        const path = join(directory, entry.name);
-        const local = relative(packageDirectory, path);
-        if (skipped.has(entry.name) || local === join("skills", "company-handbook")) continue;
-        if (entry.isDirectory()) walk(path);
-        else if (!entry.name.endsWith(".test.ts")) files.push(path);
-      }
-    };
-    walk(packageDirectory);
-    expect(files.length).toBeGreaterThan(10);
-
-    const facts = [
-      company.profile.legalName,
-      company.profile.tradingName,
-      company.profile.address.city,
-      ...company.people.flatMap((worker) => [worker.name, worker.name.split(" ")[0] ?? ""]),
-    ].filter((fact) => fact !== "");
-    const found: string[] = [];
-    for (const file of files) {
-      const text = readFileSync(file, "utf8");
-      for (const fact of facts) {
-        const pattern = new RegExp(`\\b${fact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
-        if (pattern.test(text)) found.push(`${relative(packageDirectory, file)}: ${fact}`);
-      }
-    }
-    expect(found).toEqual([]);
+    // The shared guard: company names, people, first names, titles and crew names.
+    expect(companyFactLeaks(packageDirectory)).toEqual([]);
   });
 });
 

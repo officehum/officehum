@@ -506,6 +506,7 @@ function ticketPlan(scenario: Scenario, type: string, options: PiDurableRunnerOp
   const inbound = options.office?.delivery === "inbound-email";
   const sender = scenario.input.kind === "message" ? scenario.input.from : undefined;
   const channel = scenario.input.kind === "message" ? scenario.input.channel : undefined;
+  const origin = scenario.input.kind === "message" ? scenario.input.origin : undefined;
   return {
     type,
     title: title.length === 0 ? `Eval ${scenario.id}` : title,
@@ -519,7 +520,8 @@ function ticketPlan(scenario: Scenario, type: string, options: PiDurableRunnerOp
           sourceContact: sender ?? "customer@example.test",
         }
       : {
-          origin: "internal",
+          // An internal message unless the scenario says its sender wrote from outside.
+          origin: origin ?? "internal",
           sourceChannel: channel ?? "chat",
           sourceContact: sender ?? "colleague",
         },
@@ -661,14 +663,20 @@ function openEvalOffice(
 }
 
 /**
- * Bare mode's sender: the scenario's `from`, on its channel, as an outside contact — there is no
- * board to have verified it, and an unverified asker is never a colleague. A scenario that names
- * nobody leaves the sender unknown, as a role given no resolver would see it.
+ * Bare mode's sender: the scenario's `from`, on its channel, as an outside contact unless the
+ * scenario's `origin` says it wrote from inside the office. There is no board to have verified it, so
+ * the scenario states it, as a host's gateway would. A scenario that names nobody leaves the sender
+ * unknown, as a role given no resolver would see it.
  */
 function bareSender(input: Scenario["input"]): SenderResolver {
+  // An outside contact unless the scenario says the sender wrote from inside the office.
   const sender =
     input.kind === "message" && input.from !== undefined
-      ? { origin: "external" as const, channel: input.channel ?? "chat", contact: input.from }
+      ? {
+          origin: input.origin ?? "external",
+          channel: input.channel ?? "chat",
+          contact: input.from,
+        }
       : undefined;
   return async () => sender;
 }

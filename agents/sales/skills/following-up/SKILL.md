@@ -44,7 +44,7 @@ to promise something to keep the conversation alive.
 
 - "Marisol — the scope for the two floors is attached, and I have priced the five-night option at the
   total in the quote. Two things you asked about: the restrooms are included, and the strip-and-wax is
-  not. The quote is with the Sales Manager, who decides it."
+  not. The quote is with [the person the handbook names for discounts, by name], who decides it."
 - "Dr. Osei — the walkthrough is booked for Tuesday at 08:00 with operations. After that I can quote the
   nightly clean and the supplies together, so you are not comparing two invoices."
 

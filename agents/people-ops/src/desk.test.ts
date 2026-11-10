@@ -35,6 +35,8 @@ const OWNER: VerifiedSender = {
   channel: "chat",
   contact: peopleOwner(company)?.id ?? "",
 };
+/** The People Ops owner's own address on the company record, which this role's types leave out. */
+const OWNER_EMAIL = (peopleOwner(company) as unknown as { readonly email: string }).email;
 /** A crew member writing in from the address the desk holds for her. */
 const ANA: VerifiedSender = {
   origin: "external",
@@ -816,6 +818,109 @@ describe("company data and the verified sender", () => {
     expect(recorded).toMatchObject({ employeeName: "Ana Lopez", status: "approved" });
   });
 
+  it("records an exception a person grants on a later day, with the notice given when it was asked", async () => {
+    // Asked on 9 November, decided on 10 November: the approval is bound to the request, not the clock.
+    let now = NOW;
+    const people = fakePeopleOpsDesk({ company, now: () => now });
+    const request = {
+      employee: "Ana Lopez",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      reasonCategory: "vacation" as const,
+      from: OWNER,
+    };
+    const input = { ...request, daysNotice: 11, why: "A wedding." };
+    const late = await refusal(people.recordTimeOffRequest(request, { requestId: "ask" }));
+    expect(late).toMatchObject({ code: "late_notice", daysNotice: 11 });
+    const facts = await people.timeOffExceptionFacts(input);
+    expect(facts.daysNotice).toBe(11);
+
+    now = new Date("2026-11-10T09:00:00.000Z");
+    // The grant on the next day still works out to what the person approved on the day it was asked.
+    const recorded = await people.requestTimeOffException(
+      { ...input, approved: facts },
+      { requestId: "ex-next-day" },
+    );
+    expect(recorded).toMatchObject({
+      status: "approved",
+      daysNotice: 11,
+      recordedOn: "2026-11-10",
+    });
+    expect(
+      await people.requestTimeOffException(
+        { ...input, approved: facts },
+        { requestId: "ex-next-day" },
+      ),
+    ).toEqual(recorded);
+    const balance = await people.leaveBalance({ from: ANA });
+    expect(balance.approved.filter((entry) => entry.startDate === "2026-11-20")).toHaveLength(1);
+
+    // A first day that has passed by the time the person decides is still refused.
+    now = new Date("2026-11-21T09:00:00.000Z");
+    const passed = await refusal(
+      people.requestTimeOffException({ ...input, approved: facts }, { requestId: "ex-too-late" }),
+    );
+    expect(passed.code).toBe("invalid");
+  });
+
+  it("starts a new asking day for a new ask once an earlier one was declined", async () => {
+    // Asked on 9 November and declined at the gate (the desk records nothing). Asked again on 12
+    // November: the facts reader runs once per ask, so the new ask shows the notice left then.
+    let now = NOW;
+    const people = fakePeopleOpsDesk({ company, now: () => now });
+    const request = {
+      employee: "Ana Lopez",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      reasonCategory: "vacation" as const,
+      from: OWNER,
+    };
+    const first = await people.timeOffExceptionFacts({
+      ...request,
+      daysNotice: 11,
+      why: "A wedding.",
+    });
+    expect(first.daysNotice).toBe(11);
+
+    now = new Date("2026-11-12T09:00:00.000Z");
+    // The old figure is no longer the notice of a pending ask.
+    const stale = await refusal(
+      people.timeOffExceptionFacts({ ...request, daysNotice: 11, why: "A wedding." }),
+    );
+    expect(stale).toMatchObject({ code: "notice_changed", daysNotice: 8 });
+    const again = { ...request, daysNotice: 8, why: "A wedding." };
+    const second = await people.timeOffExceptionFacts(again);
+    expect(second.daysNotice).toBe(8);
+    // Granted the next day, it records with the new ask's notice.
+    now = new Date("2026-11-13T09:00:00.000Z");
+    const recorded = await people.requestTimeOffException(
+      { ...again, approved: second },
+      { requestId: "re-ask" },
+    );
+    expect(recorded).toMatchObject({ status: "approved", daysNotice: 8 });
+  });
+
+  it("counts the notice from the day an exception was first put to the desk, even with no refusal first", async () => {
+    let now = NOW;
+    const people = fakePeopleOpsDesk({ company, now: () => now });
+    const input = {
+      employee: "Ana Lopez",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      reasonCategory: "vacation" as const,
+      daysNotice: 11,
+      why: "A wedding.",
+      from: OWNER,
+    };
+    const facts = await people.timeOffExceptionFacts(input);
+    now = new Date("2026-11-12T09:00:00.000Z");
+    const recorded = await people.requestTimeOffException(
+      { ...input, approved: facts },
+      { requestId: "ex-later" },
+    );
+    expect(recorded).toMatchObject({ status: "approved", daysNotice: 11 });
+  });
+
   it("counts leave in business days, Monday to Friday", async () => {
     // Ana's approved Friday-to-Monday absence is two working days, not four calendar days.
     const people = fakePeopleOpsDesk({
@@ -895,6 +1000,38 @@ describe("company data and the verified sender", () => {
     // A colleague's id typed by an outside sender is nobody.
     const spoofed = await refusal(people.leaveBalance({ from: { ...OWNER, origin: "external" } }));
     expect(spoofed.code).toBe("not_staff");
+    // An outside email from a colleague's own address is not a colleague.
+    const outsideEmail = await refusal(
+      people.leaveBalance({
+        from: { origin: "external", channel: "email", contact: OWNER_EMAIL },
+      }),
+    );
+    expect(outsideEmail.code).toBe("not_staff");
+  });
+
+  it("files time off for someone else only for an internal colleague, never an outside email from their address", async () => {
+    const people = fakePeopleOpsDesk({ company, now: () => NOW });
+    const request = {
+      employee: "Ana Lopez",
+      startDate: "2026-12-21",
+      endDate: "2026-12-21",
+      reasonCategory: "vacation" as const,
+    };
+    const outside = await refusal(
+      people.recordTimeOffRequest(
+        {
+          ...request,
+          from: { origin: "external", channel: "email", contact: OWNER_EMAIL },
+        },
+        { requestId: "outside-owner" },
+      ),
+    );
+    expect(outside.code).toBe("not_staff");
+    const inside = await people.recordTimeOffRequest(
+      { ...request, from: OWNER },
+      { requestId: "inside-owner" },
+    );
+    expect(inside.employeeName).toBe("Ana Lopez");
   });
 
   it("a staff sender cannot file time off for someone else", async () => {

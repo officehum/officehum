@@ -11,8 +11,8 @@ it, you do not remember it.
 2. **Find the client and their cases** with `find_client` and `list_cases`. If the problem is
    already a case, work that case; do not log it twice.
 3. **Log it** with `log_case` when a quick answer cannot meet the need: a complaint (something went
-   wrong) or a question, the category, a summary in the client's own words, who raised it and the
-   message it came from. The desk numbers it, sets the priority and the first-response date.
+   wrong) or a question, the category, a summary in the client's own words and the message it came
+   from; the tool records who raised it from the verified sender. The desk numbers it, sets the priority and the first-response date.
 4. **Choose the category honestly.** Work done badly is `quality`; a visit that did not happen is
    `missed_visit`; an injury, a hazard, a chemical or a near miss is `safety`; broken or damaged
    property is `damage`; a charge is `billing`; a complaint about a person is `staff`.

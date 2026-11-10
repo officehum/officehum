@@ -66,6 +66,20 @@ export function senderPerson<P extends CompanyPerson & { email?: string; phone?:
   );
 }
 
+/**
+ * The colleague a verified sender is: the person on the company record, and only when the work came
+ * from inside the office (`origin: "internal"`). Every role asks this one question before treating a
+ * sender as staff. An outside email or text is never a colleague, even from a colleague's own address
+ * or number: an outside channel does not prove who typed it, so it gets what any outside contact gets.
+ * Use `senderPerson` directly only to recognise an outside contact, never to trust one as staff.
+ */
+export function colleague<P extends CompanyPerson & { email?: string; phone?: string }>(
+  company: { readonly people: readonly P[] },
+  sender: VerifiedSender | undefined,
+): P | undefined {
+  return sender?.origin === "internal" ? senderPerson(company, sender) : undefined;
+}
+
 /** A phone number as a leading "+" and its digits; `undefined` when it holds no digit at all. */
 function phoneDigits(value: string): string | undefined {
   const digits = value.replace(/\D/g, "");
@@ -89,6 +103,31 @@ export function loadCompanyFacts<T extends object>(url: URL): T {
     throw new Error(`${path} must hold a JSON object.`);
   }
   return parsed as T;
+}
+
+/**
+ * A title that heads the company: it starts with managing director, owner, president or chief
+ * executive. Anchored, so "Vice President, Sales", "Product Owner" and "Co-owner" are not heads. The
+ * company validator allows one person to hold one.
+ */
+export const HEAD_TITLE = /^\s*(managing director|owner|president|chief executive)\b/i;
+/** A director's title, which heads the company only when nobody holds a head title. */
+const DIRECTOR_TITLE = /\bdirector\b/i;
+
+/**
+ * The person at the top of the company: whoever holds a head title (managing director, owner,
+ * president, chief executive), wherever they sit in the record. Only when nobody does, the first
+ * person whose title says director, in record order. `undefined` when neither exists. A complaint
+ * about the person who would normally take it goes here instead, so a "Finance Director" listed
+ * before the managing director must never be picked.
+ */
+export function companyHead<P extends CompanyPerson>(company: {
+  readonly people: readonly P[];
+}): P | undefined {
+  return (
+    company.people.find((candidate) => HEAD_TITLE.test(candidate.title)) ??
+    company.people.find((candidate) => DIRECTOR_TITLE.test(candidate.title))
+  );
 }
 
 /** "Name, Title", or the fallback when the company names nobody. */

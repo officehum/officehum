@@ -62,7 +62,7 @@ passed on to anyone.
 | --- | --- | --- | --- |
 | `find_client` | safe | — | A client by name, contact, email, contract or site, with its open cases |
 | `list_cases` | safe | — | The asking client's cases (a colleague may name any client) or one case: status, re-clean, credit, escalation; each invoice line with the credit the desk works out. An unknown sender gets no case data |
-| `log_case` | unsafe | `noApproval`; an internal record | Log a complaint or question: kind, category, summary, who raised it and where |
+| `log_case` | unsafe | `noApproval`; an internal record | Log a complaint or question: kind, category, summary and where; who raised it comes from the verified sender |
 | `book_reclean` | unsafe | `noApproval`; re-work is the standard remedy, inside the window the desk enforces | Book a return visit at no charge for work that fell short |
 | `propose_credit` | unsafe | `noApproval`; records a proposed credit for a person to decide, issues nothing | A credit on one invoice line for one complaint, for the desk's amount, recorded as pending |
 | `offer_credit` | unsafe | approval `any_credit`, every call | Put one proposal (`creditId`) to a person; on a yes the desk issues exactly what they saw |
@@ -89,14 +89,19 @@ otherwise; a host desk must refuse the same way). On a decline the role records 
 gets one credit: the same line again is `duplicate_credit`.
 
 **Who is asking** comes from the host's verified sender (`sender`), never from a tool argument or the
-message. A colleague on the company record (an internal sender) may read any client's cases; a sender
+message. A colleague (a person on the company record writing from inside the office, the SDK's
+`colleague`; an outside email from a colleague's address is not one) may read any client's cases; a sender
 whose address is a client's contact on the desk sees only that client's cases, and another client's
 case reads as one that does not exist; anyone else gets no case data, only "log it and a person will
 look". The same holds for `find_client` (a client finds only its own record) and for a credit put to
 a person (`offer_credit` and its facts reader answer another client's proposal as one that does not
 exist, and check again before issuing). `log_case` and `escalate_case` stay open to everyone, so an
 unknown sender's complaint still reaches a person, but a client logs only on its own account and an
-unknown sender's hand-off receipt and refusals say nothing about the case.
+unknown sender's hand-off receipt and refusals say nothing about the case. An unknown sender's case is
+logged on no client's account (`clientId: null`, whatever client the model names), with "an
+unverified sender" as who raised it, and its receipt names no client; a re-clean or a credit on it is
+refused with `no_account`, and the role hands it to a person instead. A host desk's `logCase` takes
+`clientId: null` for that case.
 
 **Refunds** have no tool. The manifest's `mayNot` and the prompt hand money back to the person the
 company record names for it (`policies.refunds.refundNeeds`) through `escalate_case` with reason
@@ -143,8 +148,11 @@ const root = await harness.root(context, { agent: role.agent });
 - **`desk`** — the support system. Omitted: the demonstration desk, on the company's own data.
 - **`company`** — a host's own company facts, in the shape of `references/facts.json`.
 - **`approve`** — decides the gated actions. Omitted: every credit is blocked.
-- **`sender`** — who each call's work came from, as the host verified it (Office Hum passes the
-  board's). Omitted: every sender is unknown, so no case data is given out.
+- **`sender`** — who each call's work came from, as the host verified it. A sender comes from one of
+  three places: the eval runner (the scenario's `from`, with its `origin`), `officehum run --as PERSON`
+  (the operator at the terminal, as an internal sender), or a board-backed host that passes
+  `boardSenderResolver(board)` (today that is only the eval runner's office mode). Omitted: every
+  sender is unknown, so no case data is given out.
 - **`overlays`** — the business's own `AGENTS.md`, skills and `settings.json`, lowest first.
 
 ## The files
