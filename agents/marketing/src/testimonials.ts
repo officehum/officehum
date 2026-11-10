@@ -15,9 +15,12 @@
  *   "— Tenants, Lloyd Tower", "- a client", "— our client at Harbor Dental"), a review site ("–
  *   Google review"), "That's from Name", a name on the next line ("Name, Company", "Title at
  *   Company"), on the same line with no dash, or in brackets ("(Name, Company)"), or a speech verb
- *   with its speaker ("says Name", "notes Name", "shares Name", "Name said", "she said");
+ *   with its speaker ("says Name", "notes Name", "explains Name", "recalled Name", "Name said",
+ *   "she said"); also a lowercase title after a dash, then the company ("— office manager at Harbor
+ *   Dental");
  * - before the quote, in the same sentence, a speech verb or "according to" (`Name wrote: "…"`,
- *   `Here's what Name had to say:`, `One customer put it best:`, but not "we put it"), "Hear it
+ *   `Here's what Name had to say:`, `One customer put it best:`, but not "we put it"), a named
+ *   speaker and "explained:", "commented:" or "recalled:", "Hear it
  *   from Name", or a lead-in with a colon: a name (`Name, Company:`, `Client Name:`, `Name from
  *   Company:`, `Name (Company):`), a client feature (`Client spotlight, Company:`) or a speaker by
  *   role ("From a client:", "A practice manager:").
@@ -35,6 +38,10 @@
  * - a line made only of heading, call-to-action and audience words, the company's first name word
  *   and its services ("Learn More", "What We Do", "Property Managers,", "Day Porter Service"); see
  *   `NOT_A_SPEAKER_WORDS`;
+ * - a bare capitalised line after the quote (no dash, no ", tail", no "at Company") of more than two
+ *   words, unless it is a first name, initial and last name ("Jordan M. Pike"): a heading such as
+ *   "Commercial Cleaning Experts". A bare three-word name ("Jordan Allen Pike") is therefore missed,
+ *   an accepted cost; two-word headings ("Spring Checklist") are still read as names (fail-safe);
  * - a line after the quote that opens with a question word or an imperative ("How It Works",
  *   "Schedule Yours Today"), or ends in a place word ("Denver Metro Area"); see `HEADING_FIRST`
  *   and `PLACE_LAST`;
@@ -78,8 +85,13 @@ const SOMEONE = String.raw`(?:[Aa]n?|[Tt]he|[Oo]ne\s+of\s+our)\s+[a-z][\w-]*(?:\
 /** Where a name or a speaker ends: a comma, a bracket, a full stop, the line or the text. */
 const NAME_END = String.raw`\s*(?:[,.)\]]|\n|$)`;
 const SPEECH = String.raw`(?:said|says|writes|wrote|adds|added|told\s+(?:us|me)|tells\s+us|(?:had|has)\s+to\s+say|put\s+it)`;
-/** Verbs that are speech only right after a quote: before one, "notes" and "shares" are nouns. */
-const SPEECH_AFTER = `(?:${SPEECH}|notes|noted|shares|shared)`;
+/**
+ * Verbs that are speech only after a quote: before one, "notes", "shares" and "reports" are nouns,
+ * and "our report explains" is a document talking.
+ */
+const SPEECH_AFTER = `(?:${SPEECH}|notes|noted|shares|shared|explains|explained|comments|commented|recalls|recalled|reports|reported|admits|admitted)`;
+/** Speech verbs that lead in with a colon after a named speaker: "Name explained:". */
+const SPEECH_COLON = "(?:explained|commented|recalled)";
 /** The company speaking for itself: "We put it simply:" is not a customer. */
 const NOT_US = String.raw`(?<!\b(?:[Ww]e|I|[Yy]ou)\s+)`;
 /** Where a client's title or name says where they work: "Office Manager at Harbor Dental". */
@@ -92,6 +104,8 @@ const MARK = String.raw`(?:\*{1,2}|_{1,2})?`;
 /** A speaker by role, leading in with a colon: "A practice manager:", "One of our clients:". */
 const ROLE =
   "(?:client|customer|manager|director|owner|tenant|administrator|coordinator|partner)s?";
+/** A person by role, for verbs a document can also take: "the practice manager", not "the report". */
+const BY_ROLE = String.raw`(?:[Aa]n?|[Tt]he|[Oo]ur|[Tt]heir|[Aa]nother|[Oo]ne\s+of\s+our)\s+(?:[\w'’-]+\s+){0,2}${ROLE}`;
 /** What may sit between the closing mark and an attribution on the same line. */
 const LEAD = String.raw`^[^\S\n]*[,.!?]?`;
 
@@ -122,6 +136,14 @@ const AFTER: readonly Rule[] = [
   {
     pattern: new RegExp(
       String.raw`${LEAD}\s*${DASH}\s*(?:[Aa]n?|[Tt]he|[Oo]ur|[Oo]ne\s+of\s+our)\s+(?:[\w'’-]+\s+){0,3}${ROLE}(?:\s+(?:at|from|of|in)\s+[^\n,.]{1,40})?${NAME_END}`,
+    ),
+  },
+  // A lowercase title, with or without "a"/"our", then the client's company: "— facilities manager,
+  // Lloyd Tower", "— office manager at Harbor Dental". A sentence after a dash ("— and we mean it,
+  // every night") does not end in a capitalised company.
+  {
+    pattern: new RegExp(
+      String.raw`${LEAD}\s*${DASH}\s*(?:(?:[Aa]n?|[Oo]ur)\s+)?(?!(?:and|but|or|so|that|this|which|we|you|it|as|plus|then)\b)[a-z][\w'’-]*(?:\s+[a-z][\w'’-]*){0,2}(?:,|\s+(?:at|of|from))\s+${ORG}`,
     ),
   },
   // A whole name or title and where they are from: "— Office Manager at Harbor Dental".
@@ -172,7 +194,13 @@ const AFTER: readonly Rule[] = [
   // A speech verb, then or after its speaker.
   { pattern: new RegExp(String.raw`${LEAD}\s*${SPEECH_AFTER}\b`) },
   { pattern: new RegExp(String.raw`${LEAD}\s*(?<who>${NAME})\s+${SPEECH_AFTER}\b`) },
-  { pattern: new RegExp(String.raw`${LEAD}\s*${SPEAKER}\s+${SPEECH_AFTER}\b`) },
+  { pattern: new RegExp(String.raw`${LEAD}\s*${SPEAKER}\s+${SPEECH}\b`) },
+  // The wider verbs need a person: "the practice manager recalled", not "our report explains".
+  {
+    pattern: new RegExp(
+      String.raw`${LEAD}\s*(?:[Ss]he|[Hh]e|[Tt]hey|${BY_ROLE})\s+${SPEECH_AFTER}\b`,
+    ),
+  },
 ];
 
 /** A sentence break before the quote ends the search; "Dr. Lee" is not a break. */
@@ -191,6 +219,12 @@ const BEFORE: readonly Rule[] = [
       String.raw`(?:^|[.!?]\s+|\n\s*)(?<who>${NAME})(?<tail>,(?:(?!\b(?:is|are|was|were)\b)[^:"“\n.]){1,60})?:\s*$`,
     ),
     leadIn: true,
+  },
+  // A named speaker and a speech verb, leading in with a colon: "Morgan Ellis explained:".
+  {
+    pattern: new RegExp(
+      String.raw`(?:^|[.!?]\s+|\n\s*)(?:(?<who>${NAME})|${BY_ROLE})\s+${SPEECH_COLON}:\s*$`,
+    ),
   },
   // A name and where they are from: "Morgan from Harbor Dental:", "Morgan Ellis (Harbor Dental):".
   {
@@ -273,6 +307,9 @@ const HEADING_FIRST = new Set(
     "reserve grab"
   ).split(" "),
 );
+
+/** A first name, a middle initial and a last name: "Jordan M. Pike". */
+const INITIAL_NAME = /^[*_]*[A-Z][\w'’-]+\s+[A-Z]\.\s+[A-Z][\w'’-]+[*_]*$/;
 
 /** The last word of a place line: "Denver Metro Area", "Clark County", "Pearl District". */
 const PLACE_LAST = new Set(
@@ -363,6 +400,11 @@ function isSpeaker(rule: Rule, match: RegExpExecArray, own: Own): boolean {
     if (plain) return false;
     if (rule.nameLine === true && tail === undefined && org === undefined) {
       if (HEADING_FIRST.has(words[0] ?? "") || PLACE_LAST.has(words.at(-1) ?? "")) return false;
+      // A bare line with nothing after it is a name only as two words ("Morgan Ellis") or a first
+      // name, an initial and a last name ("Jordan M. Pike"). Longer title-case lines are headings
+      // ("Commercial Cleaning Experts"). Accepted cost: a bare three-word name with no initial
+      // ("Jordan Allen Pike") is not caught.
+      if (words.length !== 2 && !INITIAL_NAME.test(who)) return false;
     }
     if (rule.leadIn === true && tail === undefined && LABEL_HEAD.has(words.at(-1) ?? "")) {
       return false;

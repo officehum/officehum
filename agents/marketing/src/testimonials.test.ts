@@ -192,6 +192,10 @@ describe("findUnrecordedTestimonials", () => {
     const S2 = '"Clean offices, happy teams, every single night of the week"';
     const Q = '"Northwind is the only vendor we never have to chase, honestly."';
     const Qc = Q.replace('."', ',"');
+    // Re-review 4's probes: S3 a slogan, Q4 an invented customer quote.
+    const S3 = '"Spotless desks and fresh air waiting for you every Monday"';
+    const Q4 = '"Since switching we have not had a single missed clean all year."';
+    const Q4c = Q4.replace('."', ',"');
 
     it.each([
       // Re-review 1: the company, greetings, lists, places, headings.
@@ -270,6 +274,46 @@ describe("findUnrecordedTestimonials", () => {
       // R5: "put it" by the company itself, and "notes" as a noun, are not a speaker.
       `We put it simply: ${S2}`,
       `Read our notes: ${S2}`,
+      // Re-review 4, honest probes.
+      `Big week for the night crew. ${S3}\n\n#CommercialCleaning #PortlandBusiness`,
+      `Subject line: Your spring deep clean is booked\n\nHi Leah,\n\nAs we like to say, ${S3}.\n\nBest,\nTom Becker\nOperations Lead`,
+      'Case study: Cascade Dental Group\nWhen Cascade asked for "a cleaner that works around patient hours, not against them", we built a split shift.\nResults: 0 missed visits in 12 months.',
+      'Why teams pick us:\n- "Same crew every night, so they know your building"\n- Fixed monthly pricing\n- Insured and bonded',
+      `${S3}\n\nOur Services\nRecurring janitorial · Window cleaning · Day porter`,
+      `${S3}\n\nMeet The Crew Behind Your Clean Office`,
+      `${S3}\nSpring Deep Clean Offer Ends Friday`,
+      '"Clean is not a look, it is a habit we keep" — and our crews prove it nightly.',
+      `${S3} — Northwind Facilities Ltd.`,
+      `${S3}\n\nCheers,\nDana`,
+      `${S3}\nCommercial Cleaning Experts`,
+      `${S3}\nServing Downtown Portland`,
+      `New tagline idea: ${S3}`,
+      `${S3}\n\nP.S. Book before May 1 and the first visit is 10% off.`,
+      `${S3}\nPearl District Offices`,
+      `${S3} (our crew motto since 2009)`,
+      `${S3}\n\nFor Facilities Managers Who Hate Chasing Vendors`,
+      `${S3}\nBook a Free Walkthrough → northwind.example/walkthrough`,
+      `${S3}\n— Dana Whitfield, Managing Director, Northwind Facilities`,
+      `${S3}\n\nSpring Cleaning Checklist\n1. Carpets\n2. Windows`,
+      `"${RECORD[0]?.quote}" — Leah Brandt, Cascade Dental Group`,
+      // F1: a bare heading of three words or more is not a name (re-review 4's sizing probes).
+      `${S3}\nGreen Cleaning Products`,
+      `${S3}\nTrusted Since 2009`,
+      `${S3}\nLocally Owned And Operated`,
+      `${S3}\nNightly Janitorial Plans`,
+      `${S3}\nOur Spring Checklist`,
+      `${S3}\n\nThe Northwind Difference`,
+      `${S3}\n\nCommercial Cleaning Experts\nWe clean 40 buildings nightly.`,
+      `${S3} Commercial Cleaning Experts`,
+      `${S3}\n**Commercial Cleaning Experts**`,
+      // F1: accepted residual, a bare three-word name with no initial.
+      `${Q4}\nJordan Allen Pike`,
+      // F2: ordinary uses of the new speech verbs.
+      `${S3} Our report explains the process.`,
+      `Our guide explained it best: ${S3}`,
+      `${S3}\nThe annual report explains how we hire.`,
+      // F3: a lowercase line after a dash that is a sentence, not a title.
+      `${S3} — and we mean it, every night.`,
     ])("leaves %j alone", (text) => {
       expect(refused(text)).toEqual([]);
     });
@@ -354,6 +398,44 @@ describe("findUnrecordedTestimonials", () => {
       `${Q} — Yelp review`,
       `${Q} — 5-star Facebook review`,
       `${Q} (Google review)`,
+      // Re-review 4, invented probes (I7, I8, I12 and I22 are the accepted F4 residuals).
+      `${Q4} — Jordan Pike | Lloyd Tower`,
+      `${Q4} — Jordan Pike, Facilities Coordinator`,
+      `${Q4} — facilities manager, Lloyd Tower`,
+      `Jordan Pike explained: ${Q4}`,
+      `${Q4}\nJordan P.`,
+      `${Q4}\n*Jordan Pike, Lloyd Tower*`,
+      `${Q4c} recalls Jordan Pike.`,
+      `Jordan Pike of Lloyd Tower says ${Q4}`,
+      `${Q4}\nJordan Pike, the GM at Lloyd Tower`,
+      `${Q4} — Dr. Alana Reyes, Reyes Family Dental`,
+      `Testimonial: ${Q4} — Lloyd Tower`,
+      `What Our Clients Say\n${Q4}\nJordan Pike`,
+      `${Q4} — Lloyd Tower`,
+      `${Q4} — Harbor Dental Group`,
+      `${Q4c} commented Jordan Pike.`,
+      `${Q4c} explains Jordan, GM at Lloyd Tower.`,
+      `${Q4} - Owner, Pike's Bakery`,
+      // F1: two-word names and first, initial, last stay names.
+      `${Q4}\nJordan Pike`,
+      `${Q4}\nJordan M. Pike`,
+      // F2: each new speech verb, after the quote and before a colon.
+      `${Q4c} explains Jordan Pike.`,
+      `${Q4c} explained Jordan Pike.`,
+      `${Q4c} comments Jordan Pike.`,
+      `${Q4c} recalled Jordan Pike.`,
+      `${Q4c} reports Jordan Pike.`,
+      `${Q4c} reported Jordan Pike.`,
+      `${Q4c} admits Jordan Pike.`,
+      `${Q4c} admitted Jordan Pike.`,
+      `${Q4c} Jordan Pike explains.`,
+      `${Q4c} the practice manager recalled.`,
+      `Jordan Pike commented: ${Q4}`,
+      `Jordan Pike recalled: ${Q4}`,
+      `The practice manager explained: ${Q4}`,
+      // F3: a lowercase title after a dash, then the client's company.
+      `${Q4} — office manager at Harbor Dental`,
+      `${Q4} — a facilities manager, Lloyd Tower`,
     ])("refuses %j", (text) => {
       expect(refused(text)).toHaveLength(1);
     });
