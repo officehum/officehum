@@ -356,6 +356,50 @@ describe("approval facts in office mode", () => {
   });
 });
 
+/**
+ * The call's identity reaches a facts reader in office mode (RASF-3489). Support's `any_credit` reader
+ * resolves the verified sender from the conversation and task it is handed, and puts a proposal to a
+ * person only when it is the sender's own. Without the identity the sender would be unknown, the
+ * reader would refuse, and no approval row would exist.
+ */
+describe("approval facts readers receive the call identity in office mode", () => {
+  const support = fileURLToPath(new URL("../../../../agents/support", import.meta.url));
+  const ISSUED = "Approved and issued: credit note CN-501 for $150.00.";
+
+  it("the runner and the office gate hand the reader the call's conversation and task", async () => {
+    const trace = await piDurableRunner({
+      dir: support,
+      mode: "office",
+      model: () =>
+        scriptedProvider([
+          { toolCalls: [{ name: "offer_credit", args: { creditId: "CR-401" } }] },
+          { text: ISSUED },
+        ]),
+      office: { ticketType: "support.request", roleGate: "omit" },
+    }).run(
+      {
+        id: "credit-from-the-senders-own-proposal",
+        description: "Grace's own proposal is put to a person, from the ticket's sender",
+        input: {
+          kind: "message",
+          channel: "email",
+          from: "grace@hawthornefamilydental.example",
+          text: "Please put my credit through.",
+        },
+        stubs: { offer_credit: { text: ISSUED } },
+        approvals: { any_credit: "approve" },
+        expect: {},
+      },
+      1,
+    );
+    expect(trace.error).toBeUndefined();
+    expect(trace.approvals).toEqual([
+      expect.objectContaining({ approvalId: "any_credit", status: "approved" }),
+    ]);
+    expect(executedOf(trace).map((call) => call.tool)).toEqual(["offer_credit"]);
+  });
+});
+
 /** The block text of the one refused call, for the sentences worth quoting in full elsewhere. */
 function blockTextOf(trace: Trace): string {
   return blockedOf(trace)[0]?.blockText ?? "";

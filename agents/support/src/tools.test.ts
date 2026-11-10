@@ -249,7 +249,6 @@ describe("list_cases", () => {
         ["bookReclean", { caseId: "C-301", date: "2026-11-11" }],
         ["proposeCredit", CREDIT],
         ["resolveCase", { caseId: "C-302", outcome: "Done." }],
-        ["withdrawCredit", { creditId: "CR-400", reason: "Not wanted." }],
       ] as const) {
         const refused = await support[tool].execute(
           args as never,
@@ -284,6 +283,40 @@ describe("list_cases", () => {
     }
   });
 
+  it("withdraw_credit answers a proposal out of reach exactly like one that does not exist", async () => {
+    const support = desk();
+    for (const sender of [GRACE, null]) {
+      const toolset = tools(support, sender);
+      const missing = await toolset.withdrawCredit.execute(
+        { creditId: "CR-999", reason: "Not wanted." },
+        call("w-missing"),
+        BACKGROUND_CONTEXT,
+      );
+      const other = await toolset.withdrawCredit.execute(
+        { creditId: "CR-400", reason: "Not wanted." },
+        call("w-other"),
+        BACKGROUND_CONTEXT,
+      );
+      // No case id, client or state: word for word the unknown-id text, with only the id changed.
+      expect(text(other)).toBe(text(missing).replace("CR-999", "CR-400"));
+      expect(text(other)).not.toMatch(/C-304|Burnside/);
+      expect(details(other).code).toBe(details(missing).code);
+    }
+    expect((await support.listCredits({ creditId: "CR-400" }))[0]?.status).toBe("pending");
+  });
+
+  it("gives an unknown sender the generic escalation text even when the note names the owner", async () => {
+    const owner = person(company, refunds.refundNeeds);
+    const result = await tools(desk(), null).escalateCase.execute(
+      { caseId: "C-301", reason: "refund", note: `For ${owner?.name} to decide.` },
+      call("u-note"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(result).code).toBe("unknown_sender");
+    expect(text(result)).toContain("a person will look at it");
+    expect(text(result)).not.toContain(owner?.name ?? "?");
+  });
+
   it("an internal ticket carrying a client's email counts as that client, never a colleague", async () => {
     // Office trials put a client's address on an internal ticket: it narrows to that client only.
     const internalGrace = tools(desk(), { ...GRACE, origin: "internal" });
@@ -311,7 +344,6 @@ describe("list_cases", () => {
       ["proposeCredit", { caseId: "C-304", invoiceId: "INV-2044", line: 2 }],
       ["escalateCase", { caseId: "C-304", reason: "unresolved", note: "x" }],
       ["resolveCase", { caseId: "C-302", outcome: "Done." }],
-      ["withdrawCredit", { creditId: "CR-400", reason: "Not wanted." }],
     ] as const) {
       const refused = await grace[tool].execute(
         args as never,

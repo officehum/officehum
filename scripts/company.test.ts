@@ -318,6 +318,19 @@ describe("the company package's own consistency", () => {
       expect(issues).not.toContain('alias "DW"');
     });
 
+    it("refuses an alias that is another person's title or a word of it", () => {
+      const issues = issuesAfter((c) => {
+        c.people[0].aliases = ["DW", "Operations Manager", "lead"];
+      });
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "Operations Manager" is already another person\'s title (priya-raman)',
+      );
+      expect(issues).toContain(
+        'people[0] (dana-whitfield) alias "lead" is already another person\'s title (tom-becker)',
+      );
+      expect(issues).not.toContain('alias "DW"');
+    });
+
     it("refuses aliases that are not a list", () => {
       const issues = issuesAfter((c) => {
         c.people[3].aliases = "TB";

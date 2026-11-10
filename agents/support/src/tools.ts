@@ -714,10 +714,13 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     replay: "unsafe",
     execute: async (args, api) => {
       const desk = requireDesk(dependencies);
-      const [credit] = await desk.listCredits({ creditId: args.creditId });
-      if (credit !== undefined) {
-        const blocked = await outOfReach(desk, await asker(desk, api), credit.caseId);
-        if (blocked !== undefined) return blocked;
+      // A proposal out of the sender's reach reads exactly like one that does not exist: no case
+      // id, client or state, so ids cannot be probed.
+      if ((await reachableCredit(desk, args.creditId, api)) === undefined) {
+        return refusal(
+          `No credit proposal has the id ${JSON.stringify(args.creditId)}. Nothing was withdrawn. Next: find the case's credit with list_cases.`,
+          { code: "not_found", creditId: args.creditId },
+        );
       }
       try {
         const withdrawn = await desk.withdrawCredit(
@@ -807,13 +810,9 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
           details: plain(receipt),
         };
       } catch (error) {
-        // An unknown sender learns nothing about the case from a refusal either, except when the
-        // desk asks for a note that addresses no one, which names only the company record.
-        if (
-          who.kind === "unknown" &&
-          error instanceof SupportDeskError &&
-          error.code !== "note_names_owner"
-        ) {
+        // An unknown sender learns nothing about the case from a refusal either, not even that the
+        // case exists.
+        if (who.kind === "unknown" && error instanceof SupportDeskError) {
           return refusal(`It was not handed on from here. ${generic}`, {
             caseId: args.caseId,
             code: "unknown_sender",

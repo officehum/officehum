@@ -225,7 +225,11 @@ resolve waits for a person, like any other error.
 An approval can also have a **facts reader** (`approvalFacts` in `defineRole`, keyed by approval
 id), so the person approves what the role's records hold rather than what the model typed. After
 applicability, and only when an approver is configured, the gate calls the reader with the call's
-arguments, memoises the result under `officehum.approval-facts.<callId>.<approvalId>` (first write
+arguments, the hook context, and the call's identity `{ conversationId, taskId }`
+(`ApprovalCallIdentity`). The ids come from the Pi Durable hook API, never from tool arguments, so a
+reader can scope what it reads to the call's verified sender by handing them to the role's
+`SenderResolver`; the SDK gate, the office gate and the eval runner all pass them. It memoises the
+result under `officehum.approval-facts.<callId>.<approvalId>` (first write
 wins) and asks with it as `ApprovalRequest.facts` (`{ summary, facts }`). A reader that throws blocks
 the call with its message and asks nobody. On a yes the gate returns the arguments with
 `officehumApprovedFacts` (`APPROVED_FACTS_ARG`) set to the memoised facts; it overwrites that key

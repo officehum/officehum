@@ -179,6 +179,21 @@ export function companyIssues(source: CompanySource): readonly string[] {
           "company.json",
           `people[${index}] (${id}) alias ${JSON.stringify(alias)} is already another person's name (${String(holder.id)})`,
         );
+        continue;
+      }
+      // findPeople matches a title too, so an alias that is a title or a word of one names that
+      // title's holder as well.
+      const titled = (people ?? []).map(asRecord).find((other) => {
+        const otherId = text(other?.id);
+        if (otherId === undefined || otherId === id) return false;
+        const title = text(other?.title)?.toLowerCase() ?? "";
+        return title === key || title.split(" ").includes(key);
+      });
+      if (titled !== undefined) {
+        add(
+          "company.json",
+          `people[${index}] (${id}) alias ${JSON.stringify(alias)} is already another person's title (${String(titled.id)})`,
+        );
       }
     }
   }
