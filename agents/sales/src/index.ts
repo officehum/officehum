@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
-import { fakeSalesDesk, type SalesDesk } from "./desk.js";
+import { DEMO_NOW, fakeSalesDesk, type SalesDesk } from "./desk.js";
 import { salesTools } from "./tools.js";
 
 export {
@@ -59,23 +59,37 @@ export {
   type Activity,
   type ActivityDraft,
   type ActivityKind,
+  DEMO_NOW,
   type FakeSalesDeskOptions,
+  type FollowUp,
+  type FollowUpDraft,
   fakeSalesDesk,
   LEAD_STAGES,
   type Lead,
   type LeadFilter,
   type LeadStage,
+  type PipelineQuoteSummary,
+  type PipelineReport,
+  type PipelineStageSummary,
+  QUOTE_OUTCOMES,
+  QUOTE_STATUSES,
   type Quote,
   type QuoteApprovalReason,
   type QuoteDraft,
   type QuoteLine,
   type QuoteLineDraft,
+  type QuoteOutcome,
+  type QuoteOutcomeDraft,
+  type QuoteOutcomeRecord,
   type QuoteStatus,
   quoteFacts,
   type RecurringCount,
   type SalesDesk,
   SalesDeskError,
   type SalesDeskRefusal,
+  type ScheduledFollowUp,
+  type StageChange,
+  type StageMove,
 } from "./desk.js";
 export {
   type CompanySection,
@@ -104,6 +118,12 @@ export interface SalesOptions {
    * awaiting approval, and its approval is refused.
    */
   readonly approve?: Approver;
+  /**
+   * The clock the demonstration desk dates against: today for a quote, an outcome and a follow-up.
+   * Omitted: the demonstration date (`DEMO_NOW`), so the demo pipeline's dates stay coherent. A host's
+   * own desk keeps its own clock and ignores this.
+   */
+  readonly now?: () => Date;
 }
 
 export default function sales(options: SalesOptions = {}): DefinedRole {
@@ -112,7 +132,11 @@ export default function sales(options: SalesOptions = {}): DefinedRole {
   // weeks, as this role reads, so a first run and a real one quote the same numbers.
   const desk =
     options.desk ??
-    fakeSalesDesk({ priceBook: company.priceBook, weeksPerMonth: company.quoting.weeksPerMonth });
+    fakeSalesDesk({
+      priceBook: company.priceBook,
+      weeksPerMonth: company.quoting.weeksPerMonth,
+      now: options.now ?? (() => new Date(DEMO_NOW)),
+    });
   // The quote limit is read from the role's own resolved limits at every call, so an overlay's value
   // is what a quote is judged against and a reload needs no rebuild. Before the role exists no limit
   // resolves, and the desk then holds every quote for a person rather than guessing one.
@@ -127,6 +151,12 @@ export default function sales(options: SalesOptions = {}): DefinedRole {
       tools.getQuote,
       tools.searchPriceBook,
       tools.logActivity,
+      // Not skill-scoped: a client's "we accepted", a closed deal or a pipeline review reaches these
+      // whether or not a skill was loaded first.
+      tools.updateLeadStage,
+      tools.recordQuoteOutcome,
+      tools.scheduleFollowUp,
+      tools.pipelineReport,
       tools.readCompany,
     ],
     // The quote belongs to the quoting skill, which is where its checklist lives. `officehum.json`
