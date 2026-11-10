@@ -67,8 +67,13 @@ interface RequestState {
   readonly principal: Principal;
   /** The client's own request id. */
   readonly requestId: string;
-  /** Events as clients see them: gateway-numbered, with the client's request id. */
+  /**
+   * Events as clients see them: gateway-numbered, with the client's request id. Only the latest
+   * `EVENT_LIMIT` are kept for replay (a long answer streams one `text_delta` per piece).
+   */
   readonly events: EventMessage[];
+  /** The next gateway `seq`; it keeps growing when old events are let go. */
+  nextSeq: number;
   settled: boolean;
   /** The last runtime `seq` taken in the current runtime generation. */
   runtimeSeen: number;
@@ -76,7 +81,10 @@ interface RequestState {
 }
 
 /** Settled requests nobody is watching are forgotten beyond this many known requests. */
-const REQUEST_LIMIT = 10_000;
+const REQUEST_LIMIT = 1_000;
+
+/** Events kept per request for replay; older ones are let go, and `settled` is always the last. */
+const EVENT_LIMIT = 2_000;
 
 export interface RouterOptions {
   readonly permissions: Permissions;
@@ -170,6 +178,12 @@ export class Router {
     this.#pending.delete(message.id);
     const { client, clientId } = pending;
 
+    // The gateway's own re-subscribe after a restart failed: its watchers would otherwise wait forever.
+    if (clientId === undefined && message.type === "error" && pending.requestId !== undefined) {
+      this.#lost(pending.principal, pending.requestId, `${message.code}: ${message.message}`);
+      return;
+    }
+
     if (message.type === "accepted") {
       const state = this.#state(message.requestId, pending.principal, pending.requestId);
       if (client === undefined || clientId === undefined || state === undefined) return;
@@ -243,6 +257,21 @@ export class Router {
       : { requestId: state.requestId, settled: state.settled, events: [...state.events] };
   }
 
+  #lost(principal: Principal, requestId: string, why: string): void {
+    const key = scopedRequestId(principal, requestId);
+    const state = this.#requests.get(key);
+    this.#options.log(`Lost track of ${key} after the runtime restarted (${why}).`);
+    if (state === undefined) return;
+    this.#requests.delete(key);
+    for (const client of state.subscribers) {
+      client.send({
+        type: "error",
+        code: "internal",
+        message: `The office lost track of request ${requestId} when its runtime restarted (${why}); subscribe again to check on it.`,
+      });
+    }
+  }
+
   #state(
     key: string,
     principal: Principal,
@@ -254,6 +283,7 @@ export class Router {
       principal,
       requestId,
       events: [],
+      nextSeq: 1,
       settled: false,
       runtimeSeen: 0,
       subscribers: new Set(),
@@ -278,10 +308,11 @@ export class Router {
     const event: EventMessage = {
       type: "event",
       requestId: state.requestId,
-      seq: state.events.length + 1,
+      seq: state.nextSeq++,
       event: message.event,
     };
     state.events.push(event);
+    if (state.events.length > EVENT_LIMIT) state.events.shift();
     for (const client of state.subscribers) client.send(event);
   }
 

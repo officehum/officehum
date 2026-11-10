@@ -110,7 +110,9 @@ export class RuntimeSupervisor {
         resolve();
         this.#ended(child, why);
       };
-      child.once("exit", (code, signal) =>
+      // `close`, not `exit`: it comes once stdout is fully read, so no frame of this runtime can
+      // arrive after the gateway has started counting the next one's.
+      child.once("close", (code, signal) =>
         ended(signal === null ? `exited with code ${code}` : `was killed by ${signal}`),
       );
       // A runtime that cannot start (no such command) reports `error` and may never `exit`.
@@ -118,6 +120,8 @@ export class RuntimeSupervisor {
     });
 
     child.stdout?.on("data", (chunk: Buffer) => {
+      // A runtime already replaced speaks for nobody.
+      if (this.#child !== child) return;
       for (const frame of decoder.push(chunk)) {
         if (!frame.ok) {
           log(`The runtime wrote a bad frame (${frame.code}): ${frame.message}`);

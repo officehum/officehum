@@ -151,6 +151,27 @@ describe("Router", () => {
     ]);
   });
 
+  it("tells subscribers when the runtime no longer knows a request after a restart", () => {
+    const { router, client } = setup();
+    const a = client();
+    router.handle(a.sink, ada, submit);
+    router.onRuntimeFrame({
+      type: "accepted",
+      id: "g1",
+      requestId: "ada/r1",
+      disposition: "started",
+    });
+    router.onRuntimeDown();
+    router.onRuntimeUp();
+    router.onRuntimeFrame({ type: "error", id: "g2", code: "not_found", message: "gone" });
+    expect(a.received.at(-1)).toMatchObject({
+      type: "error",
+      code: "internal",
+      message: expect.stringContaining("lost track of request r1"),
+    });
+    expect(router.snapshot(ada, "r1")).toBeUndefined();
+  });
+
   it("stops sending to a client that left", () => {
     const { router, client } = setup();
     const a = client();

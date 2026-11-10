@@ -96,10 +96,12 @@ Progress then arrives as `event` messages for `r-001`.
 
 Streams a request's events. `afterSeq` resumes after the last event the client saw; without it the
 server sends every event from the start. A client that reconnects uses this to catch up without gaps.
+`data.settled` says whether the request has already settled, in which case its `settled` event
+follows the result.
 
 ```json
 {"type":"subscribe","id":"c3","requestId":"r-001","afterSeq":4}
-{"type":"result","id":"c3","ok":true}
+{"type":"result","id":"c3","ok":true,"data":{"settled":false}}
 ```
 
 ### `get_state`
@@ -313,8 +315,20 @@ principal. Refused commands get `forbidden` (HTTP 403); a missing or bad token g
 (401).
 
 **Event numbers.** Clients see the gateway's `seq`, which only grows for a request, across runtime
-restarts; the gateway drops events it has already passed on and forwards `settled` once. It keeps
-events in memory, so they last as long as the gateway process.
+restarts. The gateway drops events the current runtime has already sent it and forwards `settled`
+once. A run resumed after a runtime restart does its unfinished steps again, so its `tool_start` for a
+step that was interrupted can appear twice; an unsafe tool is not run again. The gateway keeps the
+latest 2,000 events of a request in memory, so numbering and replay last as long as the gateway
+process: after a gateway restart, `Last-Event-ID` from before it does not apply (RASF-3106).
+
+**Restarts.** The gateway restarts the runtime after any exit it did not ask for, not only a failing
+one, and answers `busy` meanwhile. If the restarted runtime no longer knows a request, its
+subscribers get an `error` saying so.
+
+**Sessions.** A WebSocket that has not signed in within 30 seconds is closed. When a connection's
+token expires, its subscriptions stop and it gets `unauthorized` until it sends `hello` with a fresh
+token; an event stream ends with an `error` event. `GET /v1/requests/:id` asks the runtime whether the
+request has settled and, if so, waits for its `settled` event before answering.
 
 **Audit log.** One JSON line per command on stderr, `{ "audit": { at, principal, action, agent?,
 requestId?, outcome } }`, with no message bodies or tokens.

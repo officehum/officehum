@@ -516,7 +516,8 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
         }
         case "subscribe": {
           const request = await find(command.principal, (command as Subscribe).requestId);
-          send({ type: "result", id: command.id, ok: true });
+          // `settled` tells the caller a settled event is on its way, so it need not guess by timing.
+          send({ type: "result", id: command.id, ok: true, data: { settled: request.settling } });
           subscribe(request, command.afterSeq ?? 0);
           return;
         }

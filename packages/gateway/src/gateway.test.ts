@@ -1,4 +1,5 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { type AddressInfo, connect as connectRaw, createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -182,6 +183,40 @@ describe("gateway over WebSocket", () => {
     });
   }, 30_000);
 
+  it("stays up when a client resets the connection while being refused", async () => {
+    const { gateway } = await start();
+    const { port } = new URL(gateway.url);
+    for (const [path, authorization] of [
+      ["/v1/ws", "Bearer a.b.c"],
+      ["/elsewhere", undefined],
+    ] as const) {
+      const socket = connectRaw(Number(port));
+      socket.on("error", () => {});
+      socket.write(
+        `GET ${path} HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n` +
+          "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+          `${authorization === undefined ? "" : `Authorization: ${authorization}\r\n`}\r\n`,
+      );
+      socket.resetAndDestroy();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect((await fetch(`${gateway.url}/healthz`)).status).toBe(200);
+  }, 30_000);
+
+  it("ends a WebSocket's subscriptions when its token expires", async () => {
+    const { gateway } = await start();
+    const client = await connect(gateway, await token("ada", ["staff"], "3s"));
+    client.send(submit("c1", "r1", "hi"));
+    await client.find(settledOf("r1"));
+    const notice = await client.find(
+      (m) => m.type === "error" && m.code === "unauthorized" && m.id === undefined,
+      10_000,
+    );
+    expect(notice.message).toContain("expired");
+    client.send({ type: "ping", id: "p1" });
+    expect(await client.find((m) => m.id === "p1")).toMatchObject({ code: "unauthorized" });
+  }, 30_000);
+
   it("refuses a command the principal's roles do not allow", async () => {
     const { gateway, audit } = await start();
     const client = await connect(gateway, await token("vic", ["visitor"]));
@@ -261,6 +296,38 @@ describe("gateway over WebSocket", () => {
     for (let n = 0; n < 5; n++) fast.send(submit(`f${n}`, `fast-${n}`, `hello ${n}`));
     for (let n = 0; n < 5; n++) await fast.find(settledOf(`fast-${n}`));
   }, 30_000);
+});
+
+describe("gateway start-up", () => {
+  it("fails to start, and starts no runtime, when its port is taken", async () => {
+    const blocker = createNetServer();
+    await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
+    const { port } = blocker.address() as AddressInfo;
+    const directory = mkdtempSync(join(tmpdir(), "officehum-gateway-"));
+    temps.push(directory);
+    try {
+      await expect(
+        startGateway({
+          config: parseGatewayConfig(
+            {
+              version: 1,
+              listen: { host: "127.0.0.1", port },
+              runtime: { command: process.execPath, args: [fixture], cwd: repository },
+            },
+            repository,
+          ),
+          key,
+          runtimeEnv: { ...process.env, FIXTURE_DIR: directory },
+          log: () => {},
+          audit: () => {},
+        }),
+      ).rejects.toThrow(/EADDRINUSE/);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(existsSync(join(directory, "office.sqlite"))).toBe(false);
+    } finally {
+      blocker.close();
+    }
+  });
 });
 
 describe("gateway over HTTP", () => {

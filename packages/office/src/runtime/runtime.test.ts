@@ -349,7 +349,10 @@ describe("runtime commands", () => {
       afterSeq: settled.seq,
       principal: ada,
     });
-    expect(office.sent.slice(before)).toEqual([{ type: "result", id: "s1", ok: true }, settled]);
+    expect(office.sent.slice(before)).toEqual([
+      { type: "result", id: "s1", ok: true, data: { settled: true } },
+      settled,
+    ]);
 
     const again = office.sent.length;
     await office.runtime.handle({ type: "subscribe", id: "s2", requestId: "r1", principal: ada });
