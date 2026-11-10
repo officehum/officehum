@@ -28,8 +28,11 @@ const MessageInput = Type.Object(
     from: Type.Optional(Type.String({ minLength: 1 })),
     /**
      * Where `from` wrote from: `internal` (inside the office, so a colleague on the company record
-     * is one) or `external` (an outside channel, the default). In office mode it is the ticket's
-     * provenance origin.
+     * is one) or `external` (an outside channel). Bare mode defaults it to external. In office mode
+     * it is the ticket's provenance origin, and with none given office mode defaults to internal, so
+     * a staff `from` with no origin is a colleague in office mode and not in bare mode: a scenario
+     * that relies on a staff sender says `internal`. Under inbound-email delivery it is ignored: an
+     * inbound email is always external.
      */
     origin: Type.Optional(Type.Enum(["internal", "external"])),
   },
