@@ -411,7 +411,11 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
    * refused later for words the desk added.
    */
   const unrecordedQuotes = (draft: Pick<DraftState, "subject" | "text">): string[] =>
-    findUnrecordedTestimonials(written(draft), company.marketing.testimonials ?? []);
+    findUnrecordedTestimonials(written(draft), company.marketing.testimonials ?? [], [
+      company.profile.tradingName,
+      company.profile.legalName,
+      ...terms,
+    ]);
 
   /** `outcome` says what did not happen at this step: "Nothing was approved." */
   const quoteRefusal = (passages: readonly string[], outcome: string): MarketingDeskError =>

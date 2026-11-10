@@ -94,6 +94,62 @@ describe("findUnrecordedTestimonials", () => {
     expect(findUnrecordedTestimonials(text, RECORD)).toEqual([]);
   });
 
+  describe("the company's own names, greetings, places and headings are not speakers", () => {
+    const OWN = [
+      "Northwind Facilities",
+      "Northwind Facilities Ltd.",
+      "Day porter",
+      "Window cleaning",
+    ];
+    const SLOGAN = '"Clean offices make for happy teams every single day"';
+
+    it.each([
+      [`${SLOGAN}\nNorthwind Facilities`],
+      [`${SLOGAN}\nNorthwind Facility Services`],
+      [`${SLOGAN} — Northwind Facility Services`],
+      [`${SLOGAN} — Northwind`],
+      [`${SLOGAN}\nDear Office Managers,`],
+      [`${SLOGAN}\nHello Team,`],
+      [`${SLOGAN}\nHi Dana,\nWinter is here.`],
+      [`${SLOGAN}\nDay Porter. Window Cleaning. Floor Care.`],
+      [`${SLOGAN}\nSeattle, WA`],
+      [`${SLOGAN}\nPortland, Oregon`],
+      [`${SLOGAN}\nWinter Specials, now on.`],
+      [`${SLOGAN}\nOur Services Include Floor Care And Day Porters For Every Building Downtown`],
+      [`New Year Promise: ${SLOGAN}`],
+      [`${SLOGAN}\nGood Morning Portland, here is our winter news.`],
+    ])("leaves %j alone", (text) => {
+      expect(findUnrecordedTestimonials(text, RECORD, OWN)).toEqual([]);
+    });
+
+    it("still catches a person's name on the next line, and a name after a dash", () => {
+      const said = '"We could not be happier with the crew and the lobby."';
+      expect(
+        findUnrecordedTestimonials(`${said}\nMorgan Ellis, Harbor Dental`, RECORD, OWN),
+      ).toHaveLength(1);
+      expect(findUnrecordedTestimonials(`${said}\nMorgan Ellis`, RECORD, OWN)).toHaveLength(1);
+      expect(findUnrecordedTestimonials(`${said} — Morgan Ellis`, RECORD, OWN)).toHaveLength(1);
+      expect(
+        findUnrecordedTestimonials(
+          `${said}\nMorgan Ellis, office manager, Harbor Dental`,
+          RECORD,
+          OWN,
+        ),
+      ).toHaveLength(1);
+    });
+
+    it("does not read a running line of prose after the quote as a name line", () => {
+      const said = '"We could not be happier with the crew and the lobby."';
+      expect(
+        findUnrecordedTestimonials(
+          `${said}\nMorgan Ellis And The Whole Harbor Dental Front Desk Team Agree With Us`,
+          RECORD,
+          OWN,
+        ),
+      ).toEqual([]);
+    });
+  });
+
   it("refuses every quote when the company records none", () => {
     expect(findUnrecordedTestimonials(`"${RECORD[0]?.quote}" — Leah`, [])).toHaveLength(1);
   });

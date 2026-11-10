@@ -267,6 +267,27 @@ describe("fakeMarketingDesk: drafting a post", () => {
       expect(published.draftId).toBe(draft.id);
     });
 
+    it("saves an email whose quoted subject is followed by a greeting, and a post signed by the company", async () => {
+      const marketing = desk();
+      const email = await marketing.draftCampaignEmail(
+        {
+          subject: '"Clean offices make for happy teams every single day"',
+          body: "Hi Dana,\nWinter floor care is booked now. Reply to book a time.",
+          audienceId: "current-clients",
+        },
+        { requestId: "e3" },
+      );
+      expect(email.status).toBe("draft");
+      const post = await marketing.draftPost(
+        {
+          channel: "linkedin",
+          text: `"Clean offices make for happy teams every single day" — ${company.profile.tradingName}`,
+        },
+        { requestId: "s2" },
+      );
+      expect(post.status).toBe("draft");
+    });
+
     it("leaves a quoted slogan followed by a dash and ordinary words alone", async () => {
       const draft = await desk().draftPost(
         {
