@@ -163,15 +163,15 @@ describe("sales package", () => {
 
   it("names no company fact outside the generated handbook, so another company can run it", () => {
     // The shared guard: company names, people, first names, titles and crew names.
-    // The demo pipeline and its quotes are demonstration data. role.md is the cited research on the
+    // The demo pipeline and its quotes (src/demo.ts) are demonstration data, allowed in that file only. role.md is the cited research on the
     // job, where "a sales manager" is the occupation, not the company's title. read_company labels
     // the record's maintenance technicians field in plain words.
     expect(
       companyFactLeaks(packageDirectory, {
         allow: [
-          "src/desk.ts: Portland",
-          "src/desk.ts: Marcus Oyelaran",
-          "src/desk.ts: Marcus",
+          "src/demo.ts: Portland",
+          "src/demo.ts: Marcus Oyelaran",
+          "src/demo.ts: Marcus",
           "role.md: Sales Manager",
           "src/tools.ts: Maintenance technicians",
         ],
