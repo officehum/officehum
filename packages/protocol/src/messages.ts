@@ -46,7 +46,14 @@ export type Principal = Static<typeof PrincipalSchema>;
 export const HelloSchema = Type.Object(
   // Any version parses, so a client asking for one this server does not speak is told
   // `unsupported_version` by `handshake` rather than `invalid_message`.
-  { type: Type.Literal("hello"), version: Type.Unknown(), client: Name },
+  {
+    type: Type.Literal("hello"),
+    version: Type.Unknown(),
+    client: Name,
+    // A WebSocket client that cannot set an `Authorization` header (a browser) signs in with its
+    // bearer token here, in its first frame. The gateway reads it and never forwards it.
+    token: Type.Optional(Type.String({ minLength: 1 })),
+  },
   { additionalProperties: false },
 );
 export type Hello = Static<typeof HelloSchema>;
@@ -487,6 +494,15 @@ export function invalidMessage(problems: readonly Problem[], id?: string): Error
 export function replyId(json: unknown): string | undefined {
   if (!isObject(json)) return undefined;
   return Value.Check(Id, json.id) ? json.id : undefined;
+}
+
+/**
+ * The runtime's key for a principal's request: `<principal id, URI-encoded>/<request id>`. The runtime
+ * carries it in `accepted` and `event`, and the gateway maps it back to the client's own request id.
+ * Encoding keeps `a/b` + `c` apart from `a` + `b/c`.
+ */
+export function scopedRequestId(principal: Pick<Principal, "id">, requestId: string): string {
+  return `${encodeURIComponent(principal.id)}/${requestId}`;
 }
 
 /** Answers a client's `hello`: `welcome` for version 1, `unsupported_version` for any other. */

@@ -47,7 +47,15 @@ the connection).
 ```
 
 `client` names the client software. It is a label, not an identity: identity comes from the
-authenticated session.
+authenticated session. A WebSocket client that cannot send an `Authorization: Bearer` header on the
+upgrade (a browser) signs in by putting its token in `hello`:
+
+```json
+{"type":"hello","version":1,"client":"studio-web","token":"eyJhbGciOiJFUzI1NiJ9..."}
+```
+
+The gateway reads the token and never forwards it. Until a connection has signed in, every command on
+it gets `error unauthorized`.
 
 ## Commands
 
@@ -88,10 +96,12 @@ Progress then arrives as `event` messages for `r-001`.
 
 Streams a request's events. `afterSeq` resumes after the last event the client saw; without it the
 server sends every event from the start. A client that reconnects uses this to catch up without gaps.
+`data.settled` says whether the request has already settled, in which case its `settled` event
+follows the result.
 
 ```json
 {"type":"subscribe","id":"c3","requestId":"r-001","afterSeq":4}
-{"type":"result","id":"c3","ok":true}
+{"type":"result","id":"c3","ok":true,"data":{"settled":false}}
 ```
 
 ### `get_state`
@@ -272,6 +282,60 @@ The office file lists the roles, with paths relative to the file:
 ```json
 { "version": 1, "id": "office-7f3a", "roles": [{ "dir": "agents/sales", "overlays": ["overlays/sales"] }] }
 ```
+
+## The gateway
+
+`@officehum/gateway` (`officehum-gateway --config gateway.json`) is the office's network edge. It
+starts the runtime as a child process, signs clients in, checks what they may do, forwards their
+commands with their `principal`, and sends replies and events back. A runtime crash never closes a
+client's connection: the gateway restarts the runtime (after 1 s, 2 s, 4 s … up to 30 s), answers
+`busy` meanwhile, and carries on each running request's events once it is back.
+
+| Route | What it does |
+| --- | --- |
+| `GET /v1/ws` | A WebSocket speaking this protocol, one JSON message per WebSocket message. |
+| `POST /v1/submit` | The body is a `submit` without `type` or `id`; answers `202` with `accepted`. |
+| `GET /v1/requests/:requestId` | `{ requestId, status: "running" \| "settled", result?, events }`. |
+| `GET /v1/requests/:requestId/events` | The request's events as Server-Sent Events: `id` is the `seq`, `event` the kind, `data` the event message. Send `Last-Event-ID` to resume after it. The stream ends after `settled`. |
+| `GET /healthz` | `200 { status: "ok", runtime: "up" }`, or `503` while the runtime is down. No sign-in. |
+
+**Signing in.** Every route but `/healthz` needs a JWT: `Authorization: Bearer <token>` on HTTP and on
+the WebSocket upgrade, or `hello.token` as a WebSocket's first frame. The token is verified with the
+public key in `OFFICEHUM_GATEWAY_JWT_PUBLIC_KEY` (RSA → RS256, P-256 → ES256, Ed25519 → EdDSA). Its
+`sub` becomes the principal's `id`, `roles` its roles and `approvalLimit` its limit. `exp` is
+required, and `iss`/`aud` are checked when `gateway.json` names them. A WebSocket whose token expires
+gets `unauthorized` until it sends `hello` with a fresh one. Optional mutual TLS (`tls.clientCa`)
+adds a client-certificate check on top.
+
+**Permissions** (`gateway.json`) deny by default. `submit` needs a rule naming one of the caller's
+roles and the agent; `abort` a rule naming one of their roles; `approve` likewise, and the principal
+forwarded carries the lower of the token's and the rule's limit. `subscribe`, `get_state`,
+`list_agents` and `ping` need only a signed-in caller, since the runtime scopes requests to their
+principal. Refused commands get `forbidden` (HTTP 403); a missing or bad token gets `unauthorized`
+(401).
+
+**Event numbers.** Clients see the gateway's `seq`, which only grows for a request, across runtime
+restarts. The gateway drops events the current runtime has already sent it and forwards `settled`
+once. A run resumed after a runtime restart does its unfinished steps again, so its `tool_start` for a
+step that was interrupted can appear twice; an unsafe tool is not run again. The gateway keeps the
+latest 2,000 events of a request in memory; a client resuming from further back than that gets the
+kept ones, with a gap before them, and `settled`. Numbering and replay last as long as the gateway
+process: after a gateway restart, `Last-Event-ID` from before it does not apply (RASF-3106).
+
+**Restarts.** The gateway restarts the runtime after any exit it did not ask for, not only a failing
+one, and answers `busy` meanwhile. If the restarted runtime no longer knows a request, its
+subscribers get an `error` saying so.
+
+**Sessions.** A WebSocket that has not signed in within 30 seconds is closed. When a connection's
+token expires, its subscriptions stop and it gets `unauthorized` until it sends `hello` with a fresh
+token; an event stream ends with an `error` event. `GET /v1/requests/:id` asks the runtime whether the
+request has settled and, if so, waits for its `settled` event before answering.
+
+**Audit log.** One JSON line per command on stderr, `{ "audit": { at, principal, action, agent?,
+requestId?, outcome } }`, with no message bodies or tokens.
+
+**Slow clients.** A WebSocket or event stream that stops reading is closed once it has 8 MiB unsent
+(`clientBufferBytes`); nobody else waits for it, and the runtime's output is always read.
 
 ## Using the TypeScript package
 

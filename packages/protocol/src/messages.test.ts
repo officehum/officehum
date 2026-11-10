@@ -8,6 +8,7 @@ import {
   type Message,
   PROTOCOL_VERSION,
   replyId,
+  scopedRequestId,
   validateMessage,
 } from "./messages.js";
 
@@ -109,8 +110,14 @@ describe("validateMessage", () => {
     expect(result).toEqual({ ok: true, message: command });
   });
 
-  it("accepts a hello from a client", () => {
+  it("accepts a hello from a client, with or without a sign-in token", () => {
     expect(problems({ type: "hello", version: 1, client: "web" }, "client")).toEqual([]);
+    expect(problems({ type: "hello", version: 1, client: "web", token: "abc" }, "client")).toEqual(
+      [],
+    );
+    expect(problems({ type: "hello", version: 1, client: "web", token: "" }, "client")).toEqual([
+      { path: "token", message: "must not be empty" },
+    ]);
   });
 
   it.each(SERVER_MESSAGES)("accepts the server message $type", (message) => {
@@ -278,6 +285,13 @@ describe("invalidMessage", () => {
       message: "The message has 1 problem: must be an object (got 1)",
       problems: [{ path: "", message: "must be an object (got 1)" }],
     });
+  });
+});
+
+describe("scopedRequestId", () => {
+  it("scopes a request id to its principal, so a slash in an id cannot make two collide", () => {
+    expect(scopedRequestId({ id: "ada" }, "r1")).toBe("ada/r1");
+    expect(scopedRequestId({ id: "a/b" }, "c")).not.toBe(scopedRequestId({ id: "a" }, "b/c"));
   });
 });
 

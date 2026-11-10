@@ -48,6 +48,7 @@ import {
   type ServerMessage,
   type Submit,
   type Subscribe,
+  scopedRequestId,
   validateMessage,
 } from "@officehum/protocol";
 import { type Office, type OfficeEvent, type OfficeStorage, openOffice } from "../adapter/index.js";
@@ -155,10 +156,8 @@ interface Tracked {
 
 const TERMINAL = new Set(["done", "unanswered"]);
 
-/** `<principal id, URI-encoded>/<request id>`: encoding keeps `a/b`+`c` apart from `a`+`b/c`. */
-export function scopedRequestId(principal: Principal, requestId: string): string {
-  return `${encodeURIComponent(principal.id)}/${requestId}`;
-}
+/** Re-exported from the protocol, where the gateway reads the same rule. */
+export { scopedRequestId };
 
 /**
  * Each principal has its own conversations with an agent, so one person's transcript, queue and
@@ -517,7 +516,8 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
         }
         case "subscribe": {
           const request = await find(command.principal, (command as Subscribe).requestId);
-          send({ type: "result", id: command.id, ok: true });
+          // `settled` tells the caller a settled event is on its way, so it need not guess by timing.
+          send({ type: "result", id: command.id, ok: true, data: { settled: request.settling } });
           subscribe(request, command.afterSeq ?? 0);
           return;
         }
