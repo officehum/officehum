@@ -62,7 +62,10 @@ describe("frontdesk package", () => {
     for (const file of files) {
       const text = readFileSync(file, "utf8");
       for (const fact of new Set(facts)) {
-        const pattern = new RegExp(`\\b${fact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+        const pattern = new RegExp(
+          `(?<![\\w])${fact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w])`,
+          "i",
+        );
         if (pattern.test(text)) found.push(`${relative(packageDirectory, file)}: ${fact}`);
       }
     }
