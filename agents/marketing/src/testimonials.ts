@@ -18,9 +18,9 @@
  *   a name leading in with a colon (`Name, Company: "…"`).
  *
  * A name is a capitalised word or words. Not a speaker: the company's own names and its services
- * (a slogan signed "— Northwind" is the company talking), a greeting ("Hi Dana,", "Dear Office
- * Managers,"), and a line that is not a short name line: a place ("Seattle, WA"), a heading or a list
- * of services. A name alone on the next line is two to four capitalised words that end the line, with
+ * (a slogan signed with the company's name is the company talking), a greeting ("Hi Name,", "Dear
+ * Office Managers,"), and a line that is not a short name line: a place ("Seattle, WA"), a heading
+ * or a list of services. A name alone on the next line is two to four capitalised words that end the line, with
  * at most a short ", Company". A dash followed by ordinary words ("— and we mean it", "— Ask us how"),
  * and an unattributed or short quoted phrase ("always on time"), is ordinary writing and is left
  * alone.
