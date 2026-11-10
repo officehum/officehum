@@ -9,6 +9,7 @@ import {
   validatePackage,
 } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
+import { companyFactLeaks } from "../../../scripts/company-fact-guard.js";
 import manifest from "../officehum.json" with { type: "json" };
 
 const temps: string[] = [];
@@ -138,5 +139,10 @@ describe("office manager package (RASF-3131)", () => {
       ? readFileSync(join(packageDirectory, "AGENTS.md"), "utf8")
       : undefined;
     expect(realAgents).toBe(body);
+  });
+
+  it("names no company fact outside the generated handbook, so another company can run it", () => {
+    // The shared guard: company names, people, first names, titles and crew names.
+    expect(companyFactLeaks(packageDirectory)).toEqual([]);
   });
 });

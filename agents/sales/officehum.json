@@ -125,7 +125,7 @@
     },
     {
       "action": "Apply, agree or hold a discount",
-      "instead": "hand the request to the Sales Manager, and say the quote is with them"
+      "instead": "hand the request to the person the handbook names for discounts, and say by name that the quote is with them"
     },
     {
       "action": "Promise a start date, a crew size or a contract term",

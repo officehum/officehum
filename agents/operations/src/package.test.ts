@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { type AgentManifest, validateManifest, validatePackage } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
+import { companyFactLeaks } from "../../../scripts/company-fact-guard.js";
 import manifest from "../officehum.json" with { type: "json" };
 import { loadCompanyFacts, scheduleOwner } from "./company.js";
 import { operationsTools } from "./tools.js";
@@ -144,43 +145,13 @@ describe("operations package", () => {
   });
 
   it("names no company fact outside the generated handbook, so another company can run it", () => {
-    const skipped = new Set(["dist", "node_modules", "evals", "evals.smoke.json", "README.md"]);
-    const files: string[] = [];
-    const walk = (directory: string): void => {
-      for (const entry of readdirSync(directory, { withFileTypes: true })) {
-        const path = join(directory, entry.name);
-        const local = relative(packageDirectory, path);
-        if (skipped.has(entry.name) || local === join("skills", "company-handbook")) continue;
-        if (entry.isDirectory()) walk(path);
-        else if (!entry.name.endsWith(".test.ts")) files.push(path);
-      }
-    };
-    walk(packageDirectory);
-    expect(files.length).toBeGreaterThan(10);
-
-    const facts = [
-      company.profile.legalName,
-      company.profile.tradingName,
-      company.profile.address.city,
-      ...company.people.flatMap((worker) => [worker.name, worker.name.split(" ")[0] ?? ""]),
-    ].filter((fact) => fact !== "");
-    const found: string[] = [];
-    for (const file of files) {
-      let text = readFileSync(file, "utf8");
-      if (file.endsWith(join("src", "desk.ts"))) {
-        // The demonstration week is demo data; the desk's logic is not.
-        const start = text.indexOf("export function demoJobs");
-        const end = text.indexOf("const DAY_MS");
-        expect(start).toBeGreaterThan(0);
-        expect(end).toBeGreaterThan(start);
-        text = text.slice(0, start) + text.slice(end);
-      }
-      for (const fact of facts) {
-        const pattern = new RegExp(`\\b${fact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
-        if (pattern.test(text)) found.push(`${relative(packageDirectory, file)}: ${fact}`);
-      }
-    }
-    expect(found).toEqual([]);
+    // The shared guard: company names, people, first names, titles and crew names.
+    // "A repair goes to the maintenance technicians" is the plain words for the job, not a crew name.
+    expect(
+      companyFactLeaks(packageDirectory, {
+        allow: ["skills/dispatching-crews/SKILL.md: Maintenance technicians"],
+      }),
+    ).toEqual([]);
   });
 
   it("role files name no company person's title, so a retitled company still reads true", () => {
