@@ -432,8 +432,14 @@
             "diego's mobile number is",
             "diego's address is",
             "off sick with",
-            "he is off sick this week",
-            "he's off sick this week"
+            "yes, he is off sick",
+            "yes, he's off sick",
+            "he is off sick this week.",
+            "he's off sick this week.",
+            "diego is off sick",
+            "diego's off sick",
+            "he has been off sick",
+            "he's been off sick"
           ]
         }
       }
