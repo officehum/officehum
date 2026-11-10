@@ -25,7 +25,7 @@
       "name": "log_case",
       "replay": "unsafe",
       "noApproval": "An internal record of a complaint or question a client raised: who, what and from which message. The desk numbers it and sets its priority; it moves no money, books nothing and sends nothing to the client.",
-      "description": "Log a complaint or a question from a client as a case: the client, the kind, the category, a summary, who raised it and the message it came from."
+      "description": "Log a complaint or a question from a client as a case: the client, the kind, the category, a summary and the message it came from. Who raised it is recorded from the verified sender."
     },
     {
       "name": "book_reclean",

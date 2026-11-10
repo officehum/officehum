@@ -62,7 +62,7 @@ passed on to anyone.
 | --- | --- | --- | --- |
 | `find_client` | safe | — | A client by name, contact, email, contract or site, with its open cases |
 | `list_cases` | safe | — | The asking client's cases (a colleague may name any client) or one case: status, re-clean, credit, escalation; each invoice line with the credit the desk works out. An unknown sender gets no case data |
-| `log_case` | unsafe | `noApproval`; an internal record | Log a complaint or question: kind, category, summary, who raised it and where |
+| `log_case` | unsafe | `noApproval`; an internal record | Log a complaint or question: kind, category, summary and where; who raised it comes from the verified sender |
 | `book_reclean` | unsafe | `noApproval`; re-work is the standard remedy, inside the window the desk enforces | Book a return visit at no charge for work that fell short |
 | `propose_credit` | unsafe | `noApproval`; records a proposed credit for a person to decide, issues nothing | A credit on one invoice line for one complaint, for the desk's amount, recorded as pending |
 | `offer_credit` | unsafe | approval `any_credit`, every call | Put one proposal (`creditId`) to a person; on a yes the desk issues exactly what they saw |

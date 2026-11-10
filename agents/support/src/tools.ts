@@ -90,7 +90,13 @@ export interface SupportToolset {
  */
 type Asker =
   | { readonly kind: "colleague"; readonly person: Person }
-  | { readonly kind: "client"; readonly clientId: string; readonly clientName: string }
+  | {
+      readonly kind: "client";
+      readonly clientId: string;
+      readonly clientName: string;
+      /** The client's contact on the desk: who a case from this sender was raised by. */
+      readonly contactName: string;
+    }
   | { readonly kind: "unknown" };
 
 /** The company section `read_company` can answer for. */
@@ -266,7 +272,12 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     );
     return client === undefined
       ? { kind: "unknown" }
-      : { kind: "client", clientId: client.id, clientName: client.name };
+      : {
+          kind: "client",
+          clientId: client.id,
+          clientName: client.name,
+          contactName: client.contact,
+        };
   };
 
   /** What an unknown sender is told instead of any case data. */
@@ -492,7 +503,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
   const logCase = defineTool({
     name: "log_case",
     description:
-      "Log what a client raised as a case: a complaint (something went wrong) or a question, its category, a summary in the client's own terms, who raised it and the message it came from. The desk numbers it and sets its priority. An internal record: it sends nothing to the client.",
+      "Log what a client raised as a case: a complaint (something went wrong) or a question, its category, a summary in the client's own terms and the message it came from. Who raised it is recorded from the verified sender. The desk numbers it and sets its priority. An internal record: it sends nothing to the client.",
     parameters: Type.Object(
       {
         clientId: Type.String({ description: "The client's id from find_client, e.g. CL-101" }),
@@ -508,7 +519,6 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
           },
         ),
         summary: Type.String({ minLength: 1, description: "What the client raised, briefly" }),
-        reportedBy: Type.String({ minLength: 1, description: "Who raised it" }),
         source: Type.String({
           minLength: 1,
           description: "The message it came from: its channel, sender and when",
@@ -521,9 +531,9 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
       const desk = requireDesk(dependencies);
       try {
         // A client logs on its own account, whatever client the call names. Nobody verified an
-        // unknown sender, so their case goes on no client's account and the model's "who raised
-        // it" is not recorded as if it were known: an unverified complaint never lands on a real
-        // client's account.
+        // unknown sender, so their case goes on no client's account: an unverified complaint never
+        // lands on a real client's account. Who raised it always comes from the verified sender,
+        // never from the model: the client's contact on the desk, or the colleague on record.
         const who = await asker(desk, api);
         const unknown = who.kind === "unknown";
         const entry = await desk.logCase(
@@ -532,7 +542,12 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
             kind: args.kind as CaseKind,
             category: args.category as CaseCategory,
             summary: args.summary,
-            reportedBy: unknown ? UNVERIFIED_REPORTER : args.reportedBy,
+            reportedBy:
+              who.kind === "client"
+                ? who.contactName
+                : who.kind === "colleague"
+                  ? who.person.name
+                  : UNVERIFIED_REPORTER,
             source: args.source,
           },
           { requestId: requestId("log", api) },

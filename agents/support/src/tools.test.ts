@@ -92,7 +92,6 @@ const SAFETY = {
   kind: "complaint",
   category: "safety",
   summary: "An unlabelled bottle of bleach was left on a low shelf in the toddler room.",
-  reportedBy: "Megan Shaw",
   source: "email from Megan Shaw, Monday 9 November",
 };
 
@@ -439,7 +438,7 @@ describe("log_case", () => {
   it("logs an unknown sender's case on no client's account, with a receipt that names no client", async () => {
     const support = desk();
     const result = await tools(support, null).logCase.execute(
-      { ...SAFETY, reportedBy: "Megan Shaw, Little Acorns" },
+      SAFETY,
       call("u-log"),
       BACKGROUND_CONTEXT,
     );
@@ -484,6 +483,24 @@ describe("log_case", () => {
     expect(text(result)).toContain("Logged C-306 for Hawthorne Family Dental");
     expect(text(result)).not.toContain("Burnside");
     expect((await support.listCases({ caseId: "C-306" }))[0]?.clientId).toBe("CL-101");
+  });
+
+  it("records who raised it from the verified sender, never from the call", async () => {
+    // log_case takes no reportedBy: the model cannot name who raised a case.
+    expect(Object.keys(tools(desk()).logCase.parameters.properties)).not.toContain("reportedBy");
+    // A client: their contact's name on the desk.
+    const support = desk();
+    await tools(support, GRACE).logCase.execute(SAFETY, call("by-client"), BACKGROUND_CONTEXT);
+    expect((await support.listCases({ caseId: "C-306" }))[0]?.reportedBy).toBe("Grace Liu");
+    // A colleague: their name on the company record.
+    await tools(support, COLLEAGUE).logCase.execute(
+      SAFETY,
+      call("by-colleague"),
+      BACKGROUND_CONTEXT,
+    );
+    expect((await support.listCases({ caseId: "C-307" }))[0]?.reportedBy).toBe(
+      person(company, "noah-kim")?.name,
+    );
   });
 
   it("refuses an unknown client", async () => {
@@ -791,7 +808,7 @@ describe("resolve_case", () => {
   it("points an unescalated safety case at escalate_case", async () => {
     const support = desk();
     const logged = await support.logCase(
-      { ...SAFETY, kind: "complaint", category: "safety" },
+      { ...SAFETY, kind: "complaint", category: "safety", reportedBy: "Megan Shaw" },
       { requestId: "log" },
     );
     const result = await tools(support).resolveCase.execute(
