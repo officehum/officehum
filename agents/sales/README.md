@@ -45,8 +45,9 @@ officehum eval agents/sales --model scripted
 officehum eval agents/sales --model scripted --mode office   # the office's real approval gate
 ```
 
-Twelve scenarios, all deterministic: a quote inside the limit; a quote over it, waiting for a
-person and then created; a discount declined cleanly; a log receipt claiming Marcus decided,
+Thirteen scenarios, all deterministic: a quote inside the limit; a quote over it, saved awaiting a
+person and then approved; a quote whose lines are each raised to the book's minimum, so only the
+desk's total is over the limit, which must still wait for a person; a discount declined cleanly; a log receipt claiming Marcus decided,
 which the reply must not repeat because no approval answered; a lead with no budget that is
 qualified rather than quoted; a price question answered from the book; an instruction injected
 into a lead's message; a complaint handed to the two people who own it; a quiet quote closed as
@@ -68,27 +69,40 @@ office's real gate, so a refused call is refused by the gate production uses.
 | `list_leads` | safe | The pipeline, filtered by stage or by a search on the company, contact or site |
 | `get_quote` | safe | One existing quote by its id: lead, lines, subtotal, discount, total and validity |
 | `search_price_book` | safe | The price book item a quote line is built from, with its unit, price and minimum |
-| `create_quote` | unsafe | A draft quote the desk prices, one line per service (this one belongs to the quoting skill) |
+| `create_quote` | unsafe | A quote the desk prices from the book, one line per service: items and quantities, never prices. A discounted or over-limit quote is saved awaiting approval (quoting skill) |
+| `request_quote_approval` | unsafe | Asks a person to approve a quote the desk held, by its id; on a yes it is a draft ready to send (quoting skill) |
 | `log_activity` | unsafe | An internal note on a lead: what was decided and what happens next |
 | `read_company` | safe | One section of the company record: profile, hours, people, services, pricing, policies, tone, escalation, glossary |
 
 Every tool speaks in integer cents behind the money a person reads, and every figure comes from the
 company record or from the desk — never from the model, and never from a constant in the code.
 
-## The two approvals
+## The quote approval
 
-Both are declared in `officehum.json` and evaluated by the SDK's gate; the role's own gate and the
-office's gate read the same declaration, so there is no second copy of the policy in code.
+The model names price book items and quantities; the desk prices every line, applies the book's
+per-line minimums and works out the total. The desk then decides whether a person must approve the
+quote, on that total:
 
-- **`any_discount`** (`create_quote`) — a discount waits for a person whatever its size. The condition
-  is `discountPercent` present *and* above zero, so a quote with no discount is not gated at all.
-- **`quote_over_limit`** (`create_quote`) — the SDK sums each line's `unitPriceCents` times its
-  `quantity` and compares the total with the business's resolved `quote_limit_cents` limit. At the
-  limit passes; a cent over waits.
+- a quote with any discount, whatever its size, or
+- a quote whose subtotal — after minimums, before any discount — is above the business's resolved
+  `quote_limit_cents` limit (at the limit passes; a cent over waits). With no limit resolved, every
+  quote waits.
 
-`log_activity` states `noApproval`: it is an internal note with no effect outside the office. There is
-no tool that decides an approval, and none that changes the limit — the enforcement is by absence, as
-everywhere else in this repository.
+Such a quote is saved with the status `awaiting_approval`: it is in the CRM but not ready to send, and
+`create_quote`'s receipt says why and names the next call. The approval is two steps, the same as
+Purchasing's draft orders:
+
+1. `create_quote` saves the quote awaiting approval and returns `Next: call request_quote_approval
+   with quoteId Q-…, which asks <the person the company record names>`.
+2. `request_quote_approval` carries the one approval, **`quote_approval`**, declared in
+   `officehum.json` with no `when`, so every call waits for a person. The gate reads the quote from
+   the desk — lead, lines, discount, total and why it waits — shows it to the person, and on a yes
+   hands those facts to the tool. The desk makes the quote a draft ready to send only if it still
+   matches what the person saw (`quote_changed` otherwise).
+
+With no approver, the gate refuses `request_quote_approval` and the quote stays awaiting approval.
+`create_quote` and `log_activity` state `noApproval`: saving a quote sends nothing to the client, and
+a note has no effect outside the office.
 
 ### Changing the limit
 
@@ -155,14 +169,22 @@ The role ships no CRM connection. `fakeSalesDesk` is the demonstration one; a ho
 export interface SalesDesk {
   listLeads(filter?: { stage?: LeadStage; query?: string }): Promise<readonly Lead[]>;
   getQuote(id: string): Promise<Quote>;
-  createQuote(draft: QuoteDraft, options: { requestId: string }): Promise<Quote>;
+  createQuote(
+    draft: QuoteDraft,
+    options: { requestId: string; quoteLimitCents: number | undefined },
+  ): Promise<Quote>;
+  approveQuote(
+    input: { quoteId: string; approved: Record<string, unknown> },
+    options: { requestId: string },
+  ): Promise<Quote>;
   logActivity(entry: ActivityDraft, options: { requestId: string }): Promise<Activity>;
 }
 ```
 
-The desk owns the arithmetic and the price book: every quote line names a price book item and carries
-that item's own unit price, and a line with no item is refused, because work the book does not cover is
-priced by a person. A quote's line amounts, the price book's minimums, any discount and the
+The desk owns the arithmetic and the price book: every quote line names a price book item and a
+quantity, the desk prices it from the book, and a line with no item is refused, because work the book
+does not cover is priced by a person. The desk also decides which quotes wait for approval, and
+`approveQuote` refuses facts that no longer match the quote. A quote's line amounts, the price book's minimums, any discount and the
 total come back in the receipt, so the model never computes a figure. Every write carries a
 `requestId` derived from the durable call identity, so a retried call returns the quote it already
 made instead of a second draft.
@@ -199,35 +221,28 @@ const root = await harness.root(context, { agent: role.agent });
 ```
 
 - **`desk`** — the pipeline. Omitted: the demonstration desk, priced from the same book.
-- **`approve`** — decides the gated actions. Omitted: a discount and an over-limit quote are both
-  blocked, which is the safe direction.
+- **`approve`** — decides the gated actions. Omitted: a discounted or over-limit quote stays saved
+  awaiting approval and its approval is refused, which is the safe direction.
 - **`overlays`** — the business's own `AGENTS.md`, skills, `settings.json` and limits, lowest first.
 
 Office Hum's `officehum run` supplies a terminal approver and prints a gated action's description and
 arguments before it waits for `y`/`n`.
 
-## Known limits
-
-- The `quote_over_limit` approval sums quantity × unit price over a quote's lines, before the desk
-  applies the price book's per-line minimums. A quote made of several lines that the minimums raise
-  (each small job priced at its minimum) can come to more than the limit without asking for approval.
-  The receipt still shows the desk's true total.
-
 ## The files
 
 | Path | What it holds |
 | --- | --- |
-| `officehum.json` | The manifest: six tools, two approvals, one limit, dispatches, skills, evals |
+| `officehum.json` | The manifest: seven tools, one approval, one limit, dispatches, skills, evals |
 | `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
 | `role.md`, `role.sources.json` | The researched description of the job, every item cited; `officehum verify-role agents/sales --online` re-checks the sources |
 | `src/index.ts` | The factory: the tools, the skill placement, the desk and company defaults |
-| `src/tools.ts` | The six tools, and the receipts they return |
+| `src/tools.ts` | The seven tools, the receipts they return, and the quote approval's facts |
 | `src/company.ts` | The company facts as the role reads them, and the price book search |
 | `src/desk.ts` | The `SalesDesk` interface, `fakeSalesDesk`, the demo pipeline and the quote arithmetic |
 | `src/tools.test.ts` | One test per tool, on the fake desk and the real facts |
-| `src/index.test.ts` | The factory, both approval gates on a real harness, and twelve scenarios |
+| `src/index.test.ts` | The factory, the quote approval on a real harness, and thirteen scenarios |
 | `src/package.test.ts` | The package, the manifest, and the company's numbers against the role's |
-| `evals/situations.json` | The twelve eval scenarios |
+| `evals/situations.json` | The thirteen eval scenarios |
 | `evals.smoke.json` | The turns `--model scripted` plays back for them |
 | `skills/` | `qualifying-a-lead`, `quoting-from-the-price-book`, `following-up`, and the generated `company-handbook` |
 
