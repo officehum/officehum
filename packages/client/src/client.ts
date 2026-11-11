@@ -1,4 +1,4 @@
-import type { Approve, Result, Submit } from "@officehum/protocol";
+import type { ApprovalInfo, Approve, Result, Submit } from "@officehum/protocol";
 import { HttpTransport } from "./http-transport.js";
 import { Run } from "./run.js";
 import type { Transport, TransportOptions } from "./transport.js";
@@ -79,9 +79,25 @@ export class GatewayClient {
     }
   }
 
-  /** Decides an action waiting on approval, as the signed-in caller. */
-  async approve(options: ApproveOptions): Promise<void> {
-    await this.#transport.request({ type: "approve", ...options });
+  /**
+   * Decides an action waiting on approval, as the signed-in caller, and returns the approval as it
+   * now stands. Rejects with `conflict` when someone decided it first, and `forbidden` when it is
+   * outside what the caller may approve.
+   */
+  async approve(options: ApproveOptions): Promise<ApprovalInfo> {
+    const reply = await this.#transport.request({ type: "approve", ...options });
+    return ((reply as Result).data as { approval: ApprovalInfo }).approval;
+  }
+
+  /**
+   * The approvals waiting for someone like the caller, then each one asked for or decided as it
+   * happens, passed to `listener` (WebSocket only). After a reconnect the client watches again and
+   * passes on whatever is waiting then.
+   */
+  async watchApprovals(
+    listener: (approval: ApprovalInfo) => void,
+  ): Promise<readonly ApprovalInfo[]> {
+    return await this.#transport.watchApprovals(listener);
   }
 
   /** Stops a request; its run ends with `settled` and `status: "aborted"`. */

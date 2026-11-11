@@ -260,6 +260,44 @@ describe("GatewayClient when things go wrong", () => {
   });
 });
 
+describe("GatewayClient approvals", () => {
+  const waiting = {
+    approvalId: "t1:c1:big_payment",
+    agent: "payer",
+    tool: "pay",
+    summary: "Approve a payment",
+    status: "pending",
+    requestedAt: "2026-11-11T10:00:00.000Z",
+    expiresAt: "2026-11-11T14:00:00.000Z",
+  } as const;
+
+  it("lists what waits, passes on changes, watches again after a reconnect, and approves", async () => {
+    const { fake, client } = await setup();
+    fake.approvals.push(waiting);
+    const heard: string[] = [];
+    const listed = await client.watchApprovals((approval) =>
+      heard.push(`${approval.approvalId} ${approval.status}`),
+    );
+    expect(listed).toEqual([waiting]);
+    fake.broadcast({ type: "approval", approval: { ...waiting, approvalId: "t2:c1:x" } });
+    await until(() => expect(heard).toEqual(["t2:c1:x pending"]));
+
+    fake.drop();
+    await until(() =>
+      expect(fake.received.filter((m) => m.type === "watch_approvals")).toHaveLength(2),
+    );
+    await until(() => expect(heard).toContain("t1:c1:big_payment pending"));
+
+    const decided = await client.approve({ approvalId: waiting.approvalId, decision: "approve" });
+    expect(decided).toMatchObject({ status: "approved", by: "fake-approver" });
+  });
+
+  it("refuses to watch approvals over HTTP", async () => {
+    const { client } = await setup({ transport: "http" });
+    await expect(client.watchApprovals(() => {})).rejects.toThrow(/WebSocket transport/);
+  });
+});
+
 describe("GatewayClient over HTTP", () => {
   it("submits, streams over SSE and resumes after a drop with Last-Event-ID", async () => {
     const { fake, client } = await setup({ transport: "http" });

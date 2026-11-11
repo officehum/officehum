@@ -3,7 +3,7 @@ import { exportSPKI, generateKeyPair, SignJWT } from "jose";
 import { describe, expect, it } from "vitest";
 import { AuthError, bearerToken, tokenKey, tokenKeyFromEnvironment, verifyToken } from "./auth.js";
 import { parseGatewayConfig } from "./config.js";
-import { decide } from "./permissions.js";
+import { decide, mayApprove } from "./permissions.js";
 
 describe("parseGatewayConfig", () => {
   const minimal = {
@@ -116,7 +116,7 @@ describe("decide", () => {
       { roles: ["sales"], agents: ["sales"] },
       { roles: ["*"], agents: ["front-desk"] },
     ],
-    approve: [{ roles: ["manager"] }],
+    approve: [{ roles: ["manager"], agents: ["bookkeeper"] }],
     abort: [],
   };
   const sam = { id: "sam", roles: ["sales"] };
@@ -143,24 +143,41 @@ describe("decide", () => {
       false,
     );
     expect(
-      decide(permissions, sam, { type: "approve", id: "c", approvalId: "a", decision: "approve" })
-        .allowed,
+      decide(
+        permissions,
+        sam,
+        { type: "approve", id: "c", approvalId: "a", decision: "approve" },
+        "bookkeeper",
+      ).allowed,
     ).toBe(false);
+    expect(decide(permissions, sam, { type: "watch_approvals", id: "c" }).allowed).toBe(false);
     expect(decide(permissions, sam, { type: "list_agents", id: "c" }).allowed).toBe(true);
   });
 
   it("keeps the token's limit when the rule sets none", () => {
     const manager = { id: "m", roles: ["manager"], approvalLimit: 10 };
     expect(
-      decide(permissions, manager, {
-        type: "approve",
-        id: "c",
-        approvalId: "a",
-        decision: "approve",
-      }),
+      decide(
+        permissions,
+        manager,
+        { type: "approve", id: "c", approvalId: "a", decision: "approve" },
+        "bookkeeper",
+      ),
     ).toEqual({
       allowed: true,
       principal: manager,
     });
+  });
+
+  it("allows approve only for the agents a rule names", () => {
+    const manager = { id: "m", roles: ["manager"] };
+    const approve = { type: "approve", id: "c", approvalId: "a", decision: "approve" } as const;
+    expect(decide(permissions, manager, approve, "bookkeeper").allowed).toBe(true);
+    expect(decide(permissions, manager, approve, "sales")).toEqual({
+      allowed: false,
+      reason: "You may not approve actions for sales.",
+    });
+    expect(mayApprove(permissions, manager, "sales")).toBe(false);
+    expect(decide(permissions, manager, { type: "watch_approvals", id: "w" }).allowed).toBe(true);
   });
 });

@@ -63,19 +63,22 @@ const settings = {
   runtime: { command: process.execPath, args: [fixture], cwd: repository },
   permissions: {
     submit: [{ roles: ["staff"], agents: ["worker"] }],
-    approve: [{ roles: ["manager"], limit: 100 }],
+    approve: [{ roles: ["manager"], limit: 100 }, { roles: ["director"] }],
     abort: [{ roles: ["staff"] }],
   },
 };
 
 /** A gateway in this process over the fixture runtime, once its runtime is up. */
-export async function start(directory = workDirectory()) {
+export async function start(
+  directory = workDirectory(),
+  env: Readonly<Record<string, string>> = {},
+) {
   const audit: AuditEntry[] = [];
   const log: string[] = [];
   const gateway = await startGateway({
     config: parseGatewayConfig(settings, repository),
     key,
-    runtimeEnv: { ...process.env, FIXTURE_DIR: directory },
+    runtimeEnv: { ...process.env, ...env, FIXTURE_DIR: directory },
     backoff: { initialMs: 50, maxMs: 200, stableMs: 60_000 },
     log: (line) => log.push(line),
     audit: (entry) => audit.push(entry),

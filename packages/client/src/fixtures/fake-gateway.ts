@@ -5,6 +5,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type {
+  ApprovalInfo,
   ClientMessage,
   ErrorCode,
   EventMessage,
@@ -36,6 +37,8 @@ export interface FakeGateway {
   overlap: boolean;
   /** Commands of these types get no reply at all. */
   readonly silent: Set<string>;
+  /** What `watch_approvals` answers with. */
+  readonly approvals: ApprovalInfo[];
   /** Commands of these types are refused with the given code. */
   readonly refuse: Map<string, ErrorCode>;
   /** While true, `hello` gets no answer, so a handshake stays under way. */
@@ -153,6 +156,23 @@ export async function startFakeGateway(): Promise<FakeGateway> {
           watch(request, message.afterSeq ?? 0);
           return;
         }
+        case "watch_approvals":
+          send({ type: "result", id, ok: true, data: { approvals: fake.approvals } });
+          return;
+        case "approve": {
+          const known = fake.approvals.find((item) => item.approvalId === message.approvalId);
+          if (known === undefined) {
+            send({ type: "error", id, code: "not_found", message: "No such approval." });
+            return;
+          }
+          send({
+            type: "result",
+            id,
+            ok: true,
+            data: { approval: { ...known, status: "approved", by: "fake-approver" } },
+          });
+          return;
+        }
         case "list_agents":
           send({
             type: "result",
@@ -245,6 +265,7 @@ export async function startFakeGateway(): Promise<FakeGateway> {
     http,
     overlap: false,
     silent: new Set(),
+    approvals: [],
     refuse: new Map(),
     holdHello: false,
     broadcast(message) {

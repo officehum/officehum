@@ -6,7 +6,7 @@ import { type AuditEntry, type ClientSink, Router } from "./router.js";
 const ada = { id: "ada", roles: ["staff"] };
 const permissions: Permissions = {
   submit: [{ roles: ["staff"], agents: "*" }],
-  approve: [{ roles: ["staff"], limit: 50 }],
+  approve: [{ roles: ["staff"], agents: "*", limit: 50 }],
   abort: [{ roles: ["staff"] }],
 };
 
@@ -50,6 +50,138 @@ const event = (seq: number, kind: "text_delta" | "settled", requestId = "ada/r1"
   event: kind === "settled" ? { kind, status: "done", answer: "ok" } : { kind, text: `t${seq}` },
 });
 
+const approvalInfo = (approvalId: string, agent: string, status = "pending") => ({
+  approvalId,
+  agent,
+  tool: "pay",
+  summary: "Approve a payment",
+  status,
+  requestedAt: "2026-11-11T10:00:00.000Z",
+  expiresAt: "2026-11-11T14:00:00.000Z",
+});
+
+describe("Router approvals", () => {
+  const scoped: Permissions = {
+    submit: [{ roles: ["staff"], agents: "*" }],
+    approve: [
+      { roles: ["finance"], agents: ["bookkeeper"] },
+      { roles: ["sales-lead"], agents: ["sales"], limit: 500 },
+    ],
+    abort: [],
+  };
+  const fin = { id: "fin", roles: ["finance"] };
+  const lead = { id: "lead", roles: ["sales-lead"] };
+
+  function scopedSetup() {
+    const toRuntime: Record<string, unknown>[] = [];
+    const audit: AuditEntry[] = [];
+    const router = new Router({
+      permissions: scoped,
+      runtime: {
+        up: true,
+        send: (message: object) => toRuntime.push(message as Record<string, unknown>) > 0,
+      },
+      audit: (entry) => audit.push(entry),
+      log: () => {},
+    });
+    const client = () => {
+      const received: ServerMessage[] = [];
+      return { sink: { send: (message: ServerMessage) => received.push(message) }, received };
+    };
+    return { router, toRuntime, audit, client };
+  }
+
+  it("lists and sends each approval only to watchers who may decide it", () => {
+    const { router, toRuntime, client } = scopedSetup();
+    const finance = client();
+    const sales = client();
+    const staff = client();
+    router.handle(finance.sink, fin, { type: "watch_approvals", id: "w1" });
+    router.handle(sales.sink, lead, { type: "watch_approvals", id: "w2" });
+    router.handle(staff.sink, ada, { type: "watch_approvals", id: "w3" });
+    expect(staff.received).toEqual([
+      expect.objectContaining({ type: "error", id: "w3", code: "forbidden" }),
+    ]);
+    const [first, second] = toRuntime.map((message) => message.id);
+    const waiting = [approvalInfo("b1", "bookkeeper"), approvalInfo("s1", "sales")];
+    router.onRuntimeFrame({ type: "result", id: first, ok: true, data: { approvals: waiting } });
+    router.onRuntimeFrame({ type: "result", id: second, ok: true, data: { approvals: waiting } });
+    expect(finance.received).toEqual([
+      { type: "result", id: "w1", ok: true, data: { approvals: [waiting[0]] } },
+    ]);
+    expect(sales.received).toEqual([
+      { type: "result", id: "w2", ok: true, data: { approvals: [waiting[1]] } },
+    ]);
+
+    router.onRuntimeFrame({ type: "approval", approval: approvalInfo("b2", "bookkeeper") });
+    expect(finance.received.at(-1)).toEqual({
+      type: "approval",
+      approval: approvalInfo("b2", "bookkeeper"),
+    });
+    expect(sales.received).toHaveLength(1);
+    router.disconnect(finance.sink);
+    router.onRuntimeFrame({ type: "approval", approval: approvalInfo("b3", "bookkeeper") });
+    expect(finance.received).toHaveLength(2);
+  });
+
+  it("refuses approve for an unknown approval, or another agent's, and forwards the rest with the limit", () => {
+    const { router, toRuntime, audit, client } = scopedSetup();
+    router.onRuntimeFrame({ type: "approval", approval: approvalInfo("b1", "bookkeeper") });
+    router.onRuntimeFrame({ type: "approval", approval: approvalInfo("s1", "sales") });
+    const c = client();
+    const approve = (id: string, approvalId: string) =>
+      ({ type: "approve", id, approvalId, decision: "approve" }) as const;
+    router.handle(c.sink, lead, approve("a1", "nope"));
+    router.handle(c.sink, lead, approve("a2", "b1"));
+    router.handle(c.sink, lead, {
+      ...approve("a3", "s1"),
+      principal: { id: "x", roles: ["*"] },
+    } as never);
+    expect(c.received).toEqual([
+      expect.objectContaining({ id: "a1", code: "not_found" }),
+      expect.objectContaining({
+        id: "a2",
+        code: "forbidden",
+        message: "You may not approve actions for bookkeeper.",
+      }),
+    ]);
+    expect(toRuntime).toEqual([
+      {
+        type: "approve",
+        id: "g1",
+        approvalId: "s1",
+        decision: "approve",
+        principal: { ...lead, approvalLimit: 500 },
+      },
+    ]);
+    expect(audit.map((entry) => [entry.approvalId, entry.agent, entry.outcome])).toEqual([
+      ["nope", undefined, "not_found"],
+      ["b1", "bookkeeper", "forbidden"],
+      ["s1", "sales", "forwarded"],
+    ]);
+  });
+
+  it("asks the runtime what is waiting whenever it comes up", () => {
+    const { router, toRuntime } = scopedSetup();
+    router.onRuntimeUp();
+    expect(toRuntime[0]).toMatchObject({ type: "watch_approvals", principal: { id: "gateway" } });
+    router.onRuntimeFrame({
+      type: "result",
+      id: toRuntime[0]?.id,
+      ok: true,
+      data: { approvals: [approvalInfo("b1", "bookkeeper")] },
+    });
+    // Learned at start-up, so an approve for it is checked and forwarded, not refused as unknown.
+    router.handle({ send: () => {} }, fin, {
+      type: "approve",
+      id: "a1",
+      approvalId: "b1",
+      decision: "approve",
+    });
+    expect(toRuntime.at(-1)).toMatchObject({ type: "approve", approvalId: "b1", principal: fin });
+  });
+});
+
 describe("Router", () => {
   it("forwards with a gateway id and the signed-in principal, and maps the reply back", () => {
     const { router, toRuntime, client } = setup();
@@ -69,6 +201,7 @@ describe("Router", () => {
 
   it("caps an approver's limit at the lower of the token's and the rules'", () => {
     const { router, toRuntime, client } = setup();
+    router.onRuntimeFrame({ type: "approval", approval: approvalInfo("x", "worker") });
     router.handle(
       client().sink,
       { ...ada, approvalLimit: 500 },
@@ -99,7 +232,7 @@ describe("Router", () => {
     router.onRuntimeDown();
     router.onRuntimeUp();
     // The runtime is asked again for the unsettled request, as Ada.
-    expect(toRuntime.at(-1)).toEqual({
+    expect(toRuntime.filter((message) => message.type === "subscribe").at(-1)).toEqual({
       type: "subscribe",
       id: "g2",
       requestId: "r1",

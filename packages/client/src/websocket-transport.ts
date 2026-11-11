@@ -1,5 +1,6 @@
 import {
   type Accepted,
+  type ApprovalInfo,
   type ErrorMessage,
   PROTOCOL_VERSION,
   type Result,
@@ -53,6 +54,8 @@ export class WebSocketTransport implements Transport {
   readonly #waiting = new Map<Pending, ReturnType<typeof setTimeout>>();
   /** Unfinished runs, by request id, which this connection's events are delivered to. */
   readonly #runs = new Map<string, Run>();
+  /** Who hears of approvals asked for and decided; non-empty once `watchApprovals` was called. */
+  readonly #approvalListeners = new Set<(approval: ApprovalInfo) => void>();
 
   private constructor(options: TransportOptions) {
     this.#options = options;
@@ -202,6 +205,10 @@ export class WebSocketTransport implements Transport {
   }
 
   #onMessage(message: ServerMessage): void {
+    if (message.type === "approval") {
+      for (const listener of this.#approvalListeners) listener(message.approval);
+      return;
+    }
     if (message.type === "event") {
       const run = this.#runs.get(message.requestId);
       if (run === undefined) return;
@@ -300,6 +307,37 @@ export class WebSocketTransport implements Transport {
     this.#queue = [];
     for (const pending of waiting) this.#dispatch(pending);
     this.#resubscribe();
+    // Approvals asked for or decided while the socket was down: watch again, and pass on what waits.
+    if (this.#approvalListeners.size > 0) {
+      this.#dispatch({
+        command: { type: "watch_approvals" },
+        run: undefined,
+        added: false,
+        resolve: (reply) => this.#tellApprovals(reply),
+        reject: () => {},
+        attempts: 0,
+      });
+    }
+  }
+
+  async watchApprovals(
+    listener: (approval: ApprovalInfo) => void,
+  ): Promise<readonly ApprovalInfo[]> {
+    const first = this.#approvalListeners.size === 0;
+    this.#approvalListeners.add(listener);
+    try {
+      const reply = await this.request({ type: "watch_approvals" });
+      return approvalsOf(reply);
+    } catch (error) {
+      if (first) this.#approvalListeners.delete(listener);
+      throw error;
+    }
+  }
+
+  #tellApprovals(reply: Accepted | Result): void {
+    for (const approval of approvalsOf(reply)) {
+      for (const listener of this.#approvalListeners) listener(approval);
+    }
   }
 
   /** Subscribes each unfinished run again after its last `seq`, unless a command in flight covers it. */
@@ -323,6 +361,11 @@ export class WebSocketTransport implements Transport {
       });
     }
   }
+}
+
+function approvalsOf(reply: Accepted | Result): ApprovalInfo[] {
+  const data = (reply as Result).data as { approvals?: unknown } | undefined;
+  return Array.isArray(data?.approvals) ? (data.approvals as ApprovalInfo[]) : [];
 }
 
 /** A server message from a WebSocket frame, or undefined for anything else. */
