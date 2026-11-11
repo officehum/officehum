@@ -698,6 +698,7 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
       },
     };
   } catch (error) {
+    options.approvals?.close();
     await office.close();
     throw error;
   }
