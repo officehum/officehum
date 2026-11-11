@@ -9,7 +9,13 @@
 
 import type { Readable, Writable } from "node:stream";
 import type { ModelRef } from "@earendil-works/pi-durable";
-import { loadOfficeRoles, readOfficeFile, serveRuntime } from "@officehum/office";
+import {
+  approvalTimeoutsMs,
+  loadOfficeRoles,
+  RemoteApprovals,
+  readOfficeFile,
+  serveRuntime,
+} from "@officehum/office";
 import type { CliDependencies, CliIo } from "./cli.js";
 import { modelsFor, parseModelRef } from "./run.js";
 import { UsageError } from "./usage-error.js";
@@ -68,7 +74,12 @@ export async function runRuntimeCommand(
   const parsed = parseRuntimeArguments(args);
   const override = parsed.model === undefined ? undefined : parseModelRef(parsed.model);
   const file = await readOfficeFile(parsed.officeFile);
-  const roles = await loadOfficeRoles(file, parsed.demo ? { demo: true } : {});
+  // Every role's gate asks the runtime's remote approvals, which the gateway's approvers answer.
+  const approvals = new RemoteApprovals();
+  const roles = await loadOfficeRoles(file, {
+    approve: approvals.approve,
+    ...(parsed.demo ? { demo: true } : {}),
+  });
   const refs: ModelRef[] =
     override === undefined
       ? roles.map((role) => ({
@@ -96,6 +107,8 @@ export async function runRuntimeCommand(
       serverId: file.id,
       roles,
       storage: { sqlite: parsed.database },
+      approvals,
+      approvalTimeoutsMs: approvalTimeoutsMs(file, roles),
       models,
       ...(override === undefined ? {} : { model: override }),
       input: dependencies.stdio?.input ?? process.stdin,

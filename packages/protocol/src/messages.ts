@@ -131,6 +131,14 @@ export const ApproveSchema = Type.Object(
   },
   { additionalProperties: false },
 );
+/**
+ * Asks for the approvals the caller may decide: the reply's `data.approvals` lists those waiting, and
+ * the connection then receives an `approval` message each time one is asked for or decided.
+ */
+export const WatchApprovalsSchema = Type.Object(
+  { type: Type.Literal("watch_approvals"), id: Id, principal: Type.Optional(PrincipalSchema) },
+  { additionalProperties: false },
+);
 export const PingSchema = Type.Object(
   { type: Type.Literal("ping"), id: Id, principal: Type.Optional(PrincipalSchema) },
   { additionalProperties: false },
@@ -144,6 +152,7 @@ type Command =
   | Static<typeof ListAgentsSchema>
   | Static<typeof AbortSchema>
   | Static<typeof ApproveSchema>
+  | Static<typeof WatchApprovalsSchema>
   | Static<typeof PingSchema>;
 
 /** A command as a client sends it: never with a principal. */
@@ -156,6 +165,7 @@ export type GetState = Extract<ClientCommand, { type: "get_state" }>;
 export type ListAgents = Extract<ClientCommand, { type: "list_agents" }>;
 export type Abort = Extract<ClientCommand, { type: "abort" }>;
 export type Approve = Extract<ClientCommand, { type: "approve" }>;
+export type WatchApprovals = Extract<ClientCommand, { type: "watch_approvals" }>;
 export type Ping = Extract<ClientCommand, { type: "ping" }>;
 
 // Replies
@@ -223,6 +233,9 @@ const EVENT_SCHEMAS = {
       approvalId: Id,
       tool: Name,
       summary: Type.String(),
+      // The agent waiting, and when the request times out (declined), as an ISO 8601 time.
+      agent: Type.Optional(Name),
+      expiresAt: Type.Optional(Type.String()),
     },
     { additionalProperties: false },
   ),
@@ -267,11 +280,48 @@ export const EventSchema = Type.Object(
 );
 export type EventMessage = Static<typeof EventSchema>;
 
+// Approvals
+
+/** One approval as approvers see it: what is asked, of which agent, and how it stands. */
+export const ApprovalInfoSchema = Type.Object(
+  {
+    approvalId: Id,
+    agent: Name,
+    tool: Name,
+    /** What the person is asked to approve, in words. */
+    summary: Type.String(),
+    status: Type.Enum(["pending", "approved", "declined"]),
+    requestedAt: Type.String(),
+    expiresAt: Type.String(),
+    /** The number an approver's limit is checked against, when the approval declares one. */
+    amount: Type.Optional(Type.Number()),
+    /** Who decided: a principal id, absent for a timeout. */
+    by: Type.Optional(Id),
+    decidedAt: Type.Optional(Type.String()),
+    note: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+export type ApprovalInfo = Static<typeof ApprovalInfoSchema>;
+
+/** An approval asked for or decided, sent to the connections watching approvals. */
+export const ApprovalMessageSchema = Type.Object(
+  { type: Type.Literal("approval"), approval: ApprovalInfoSchema },
+  { additionalProperties: false },
+);
+export type ApprovalMessage = Static<typeof ApprovalMessageSchema>;
+
 // Directions
 
 export type ClientMessage = Hello | ClientCommand;
 export type ForwardedMessage = Hello | ForwardedCommand;
-export type ServerMessage = Welcome | Accepted | Result | ErrorMessage | EventMessage;
+export type ServerMessage =
+  | Welcome
+  | Accepted
+  | Result
+  | ErrorMessage
+  | EventMessage
+  | ApprovalMessage;
 export type Message = ClientMessage | ForwardedMessage | ServerMessage;
 
 /**
@@ -313,6 +363,7 @@ const COMMANDS: Readonly<Record<string, Shape>> = {
   list_agents: { schema: ListAgentsSchema },
   abort: { schema: AbortSchema },
   approve: { schema: ApproveSchema },
+  watch_approvals: { schema: WatchApprovalsSchema },
   ping: { schema: PingSchema },
 };
 
@@ -325,6 +376,7 @@ const SHAPES: Readonly<Record<Sender, Readonly<Record<string, Shape>>>> = {
     result: { schema: ResultSchema },
     error: { schema: ErrorSchema },
     event: { schema: EventSchema, variants: { field: "event", kinds: EVENT_SCHEMAS } },
+    approval: { schema: ApprovalMessageSchema },
   },
 };
 

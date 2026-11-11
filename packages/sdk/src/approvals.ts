@@ -444,6 +444,29 @@ function holds(
   }
 }
 
+/**
+ * The amount a call puts in front of a person: the number the declaration's first numeric condition
+ * (`gt`, `gte`, `lt` or `lte`) compares, read from the arguments exactly as `conditionsHold` reads it,
+ * a summed field included. `undefined` when the declaration compares no number, or the arguments do
+ * not give one, so whoever checks an approver's limit against it can tell "unknown" from "small".
+ */
+export function approvalAmount(
+  declaration: ApprovalDeclaration,
+  args: ToolArguments,
+): number | undefined {
+  const numeric = declaration.when?.find((condition) =>
+    ["gt", "gte", "lt", "lte"].includes(condition.op),
+  );
+  if (numeric === undefined) return undefined;
+  const actual = args[numeric.arg];
+  if (actual === undefined || actual === null) return undefined;
+  const amount =
+    numeric.field === undefined
+      ? asNumber(actual)
+      : summedField(actual, numeric.field, numeric.times);
+  return amount === undefined || !Number.isFinite(amount) ? undefined : amount;
+}
+
 /** One argument as the number to compare, or `undefined` when it is not one. */
 function asNumber(value: unknown): number | undefined {
   const number = typeof value === "number" ? value : Number(value);

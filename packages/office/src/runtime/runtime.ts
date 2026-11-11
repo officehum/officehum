@@ -53,6 +53,7 @@ import {
 import { type Office, type OfficeEvent, type OfficeStorage, openOffice } from "../adapter/index.js";
 import type { LoadedRole } from "../roles/load-role.js";
 import { answerText } from "../roles/run-role.js";
+import { DEFAULT_APPROVAL_TIMEOUT_MS, type RemoteApprovals } from "./approvals.js";
 import { RuntimeError } from "./errors.js";
 import { FrameWriter } from "./frame-writer.js";
 
@@ -69,6 +70,13 @@ export interface RuntimeOptions {
   readonly send: (message: ServerMessage) => void;
   /** Receives log lines. Never stdout: stdout carries protocol frames only. */
   readonly log?: (line: string) => void;
+  /**
+   * The remote approvals store whose `approve` the roles were loaded with. Omitted: no approvals can
+   * be decided here, so the roles' gates refuse gated actions.
+   */
+  readonly approvals?: RemoteApprovals;
+  /** How long each agent's approvals wait, by agent name; others wait the default 4 hours. */
+  readonly approvalTimeoutsMs?: Readonly<Record<string, number>>;
 }
 
 export interface Runtime {
@@ -172,7 +180,6 @@ function modelName(model: ModelRef): string {
   return `${model.provider}/${model.modelId}`;
 }
 
-
 /**
  * Opens the office, installs its roles, attaches to the work a previous run left unsettled, resumes
  * it, and sends `welcome`. Every Pi Durable call goes through the adapter.
@@ -180,6 +187,7 @@ function modelName(model: ModelRef): string {
 export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
   const log = options.log ?? (() => {});
   const send = options.send;
+  const { approvals } = options;
   const office: Office = await openOffice({
     storage: options.storage,
     models: options.models,
@@ -208,6 +216,8 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
     const tracked = new Map<string, Tracked>();
     const bySubmission = new Map<number, Tracked>();
     const conversations = new Map<string, Promise<OpenConversation>>();
+    /** Open conversations by Pi Durable conversation id, with their agent, for approvals. */
+    const byConversationId = new Map<string, { open: OpenConversation; agent: AgentEntry }>();
     const restoring = new Map<string, Promise<Tracked | undefined>>();
     const settlements = new Set<Promise<void>>();
     let closing: Promise<void> | undefined;
@@ -252,8 +262,13 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
         return;
       }
       const mapped = toRequestEvent(event);
+      if (mapped !== undefined) deliver(open, mapped);
+    };
+
+    /** Puts an event on the request the conversation's run is working on, or holds it until tracked. */
+    const deliver = (open: OpenConversation, mapped: RequestEvent) => {
       const current = open.placed[0];
-      if (mapped === undefined || current === undefined) return;
+      if (current === undefined) return;
       const request = bySubmission.get(current);
       if (request !== undefined) {
         emit(request, mapped);
@@ -280,6 +295,7 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
         opening = (async () => {
           const conversation = await office.conversation(key, { agent: agent.settings });
           const open: OpenConversation = { key, conversation, placed: [], pending: new Map() };
+          byConversationId.set(String(conversation.id), { open, agent });
           await office.listen(conversation, (event) => onEvent(open, event));
           return open;
         })();
@@ -542,11 +558,30 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
           });
           return;
         }
-        case "approve":
-          throw new RuntimeError(
-            "not_found",
-            `No approval ${command.approvalId} is waiting here: remote approvals are not built yet (RASF-3108), so gated actions are refused.`,
+        case "approve": {
+          if (approvals === undefined) {
+            throw new RuntimeError(
+              "not_found",
+              `No approval ${command.approvalId} is waiting here: this runtime takes no remote approvals.`,
+            );
+          }
+          const approval = await approvals.decide(
+            command.principal,
+            command.approvalId,
+            command.decision,
+            command.note,
           );
+          send({ type: "result", id: command.id, ok: true, data: { approval } });
+          return;
+        }
+        case "watch_approvals":
+          send({
+            type: "result",
+            id: command.id,
+            ok: true,
+            data: { approvals: approvals?.pending() ?? [] },
+          });
+          return;
         case "ping":
           send({ type: "result", id: command.id, ok: true });
           return;
@@ -584,6 +619,26 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
         );
       }
     }
+    // Bound before the office resumes, so a resumed run waiting on a person finds its request.
+    await approvals?.bind({
+      office,
+      callerOf: (conversationId) => {
+        const known = byConversationId.get(conversationId);
+        if (known === undefined) return undefined;
+        const { agent } = known;
+        return {
+          agent: agent.name,
+          declarations: agent.role.manifest.approvals,
+          timeoutMs: options.approvalTimeoutsMs?.[agent.name] ?? DEFAULT_APPROVAL_TIMEOUT_MS,
+        };
+      },
+      announce: (conversationId, event) => {
+        const known = byConversationId.get(conversationId);
+        if (known !== undefined) deliver(known.open, event);
+      },
+      broadcast: (approval) => send({ type: "approval", approval }),
+      log,
+    });
     office.resume();
     send({ type: "welcome", version: 1, serverId: options.serverId });
 
@@ -636,6 +691,7 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
         closing ??= (async () => {
           // Let settles already under way read their answer before the office goes.
           await Promise.allSettled([...settlements]);
+          approvals?.close();
           await office.close();
         })();
         return await closing;

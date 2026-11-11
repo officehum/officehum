@@ -10,6 +10,7 @@ import {
   type ApprovalGateOptions,
   type ApprovalRequest,
   type Approver,
+  approvalAmount,
   approvalGate,
   approvedFacts,
   conditionsHold,
@@ -18,7 +19,7 @@ import {
   sameFacts,
 } from "./approvals.js";
 import { stubEngine } from "./engine.js";
-import type { ConditionDeclaration } from "./manifest.js";
+import type { ApprovalDeclaration, ConditionDeclaration } from "./manifest.js";
 import { type DefinedRole, defineRole } from "./role.js";
 import { STOCKROOM_OVERLAY } from "./test-helpers.js";
 
@@ -801,5 +802,57 @@ describe("defineRole's approval facts", () => {
     );
     expect(approve.mock.calls[0]?.[0].facts).toEqual(facts);
     expect(approvedFacts(result?.arguments ?? {})).toEqual(facts.facts);
+  });
+});
+
+describe("approvalAmount", () => {
+  const invoice = {
+    id: "large_invoice",
+    tool: "create_invoice",
+    description: "Confirm a large invoice",
+    when: [
+      {
+        arg: "lines",
+        op: "gt",
+        field: "unitPriceCents",
+        times: "quantity",
+        value: { limit: "large_invoice" },
+      },
+    ],
+  } as const satisfies ApprovalDeclaration;
+
+  it("is the number the declaration's numeric condition compares, summed as conditionsHold sums it", () => {
+    const lines = [
+      { unitPriceCents: 1_250, quantity: 2 },
+      { unitPriceCents: 999, quantity: 1 },
+    ];
+    expect(approvalAmount(invoice, { lines })).toBe(3_499);
+    expect(
+      approvalAmount(
+        { id: "big", tool: "pay", description: "d", when: [{ arg: "total", op: "gte", value: 5 }] },
+        { total: "12.5" },
+      ),
+    ).toBe(12.5);
+  });
+
+  it("is undefined when nothing numeric is declared or the argument cannot be read", () => {
+    expect(approvalAmount({ id: "any", tool: "pay", description: "d" }, { total: 5 })).toBe(
+      undefined,
+    );
+    expect(
+      approvalAmount(
+        {
+          id: "final",
+          tool: "send",
+          description: "d",
+          when: [{ arg: "tone", op: "eq", value: "final" }],
+        },
+        { tone: "final" },
+      ),
+    ).toBe(undefined);
+    expect(approvalAmount(invoice, { lines: [{ unitPriceCents: -1, quantity: 1 }] })).toBe(
+      undefined,
+    );
+    expect(approvalAmount(invoice, {})).toBe(undefined);
   });
 });
