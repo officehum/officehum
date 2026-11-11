@@ -22,6 +22,7 @@ describe("parseGatewayConfig", () => {
       auth: {},
       permissions: { submit: [], approve: [], abort: [] },
       clientBufferBytes: 8 * 1024 * 1024,
+      limits: { perPrincipal: 32, perAddress: 64, total: 1024, expiredGraceSeconds: 60 },
     });
   });
 

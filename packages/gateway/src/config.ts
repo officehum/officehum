@@ -14,7 +14,8 @@
  *     "submit": [{ "roles": ["staff"], "agents": "*" }],
  *     "approve": [{ "roles": ["manager"], "agents": ["bookkeeper"], "limit": 5000 }],
  *     "abort": [{ "roles": ["staff"] }]
- *   }
+ *   },
+ *   "limits": { "perPrincipal": 32, "perAddress": 64, "total": 1024, "expiredGraceSeconds": 60 }
  * }
  * ```
  *
@@ -66,7 +67,27 @@ export interface GatewayConfig {
   readonly permissions: Permissions;
   /** A client whose unsent output passes this many bytes is disconnected. Default 8 MiB. */
   readonly clientBufferBytes: number;
+  readonly limits: ConnectionLimitsConfig;
 }
+
+/** How many connections the gateway holds at once, so one caller cannot exhaust it. */
+export interface ConnectionLimitsConfig {
+  /** WebSockets and event streams one principal may hold open. Default 32. */
+  readonly perPrincipal: number;
+  /** Connections of any kind from one remote address. Default 64. */
+  readonly perAddress: number;
+  /** Connections of any kind, from everyone. Default 1024. */
+  readonly total: number;
+  /** How long a WebSocket whose token expired may stay open without a fresh `hello`. Default 60. */
+  readonly expiredGraceSeconds: number;
+}
+
+export const DEFAULT_LIMITS: ConnectionLimitsConfig = {
+  perPrincipal: 32,
+  perAddress: 64,
+  total: 1024,
+  expiredGraceSeconds: 60,
+};
 
 const DEFAULT_CLIENT_BUFFER_BYTES = 8 * 1024 * 1024;
 
@@ -101,7 +122,7 @@ export function parseGatewayConfig(
 
   known(
     value,
-    ["version", "listen", "tls", "runtime", "auth", "permissions", "clientBufferBytes"],
+    ["version", "listen", "tls", "runtime", "auth", "permissions", "clientBufferBytes", "limits"],
     "",
     problem,
   );
@@ -181,6 +202,23 @@ export function parseGatewayConfig(
     );
   }
 
+  const limits: Record<string, number> = { ...DEFAULT_LIMITS };
+  if (value.limits !== undefined) {
+    const raw = objectAt(value, "limits", problem);
+    if (raw !== undefined) {
+      known(raw, Object.keys(DEFAULT_LIMITS), "limits", problem);
+      for (const field of Object.keys(DEFAULT_LIMITS)) {
+        const given = raw[field];
+        if (given === undefined) continue;
+        if (!Number.isInteger(given) || (given as number) <= 0) {
+          problem(`limits.${field}`, `must be a positive whole number (got ${show(given)})`);
+        } else {
+          limits[field] = given as number;
+        }
+      }
+    }
+  }
+
   if (problems.length > 0) {
     throw new Error(`The ${source} has ${problems.length} problem(s):\n  ${problems.join("\n  ")}`);
   }
@@ -200,6 +238,7 @@ export function parseGatewayConfig(
     permissions,
     clientBufferBytes:
       (value.clientBufferBytes as number | undefined) ?? DEFAULT_CLIENT_BUFFER_BYTES,
+    limits: limits as unknown as ConnectionLimitsConfig,
   };
 }
 
