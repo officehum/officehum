@@ -11,6 +11,11 @@
  *
  * Every other route needs a bearer token. A client never sets `principal`: one in a message is
  * stripped, and the token's is attached. Each command is written to the audit log.
+ *
+ * Connections are limited per principal, per remote address and in total (`limits` in
+ * `gateway.json`): one over a limit is refused with 429, or 503 for the total, and the refusal is
+ * audited. A WebSocket whose token expired is closed (1008) unless it sends a fresh `hello` within
+ * `limits.expiredGraceSeconds`.
  */
 
 import { readFileSync } from "node:fs";
@@ -37,6 +42,7 @@ import {
 import { type WebSocket, WebSocketServer } from "ws";
 import { AuthError, bearerToken, type TokenKey, type VerifiedToken, verifyToken } from "./auth.js";
 import type { GatewayConfig } from "./config.js";
+import { ConnectionLimits, type Lease, type Refusal } from "./connection-limits.js";
 import { type AuditEntry, type ClientSink, Router } from "./router.js";
 import { type Backoff, RuntimeSupervisor } from "./supervisor.js";
 
@@ -95,6 +101,16 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     log,
   });
   const router = new Router({ permissions: config.permissions, runtime: supervisor, audit, log });
+  const limits = new ConnectionLimits(config.limits);
+
+  /** Audits a connection refused for a limit. */
+  const auditRefusal = (action: string, refusal: Refusal, principal?: string) =>
+    audit({
+      at: new Date().toISOString(),
+      ...(principal === undefined ? {} : { principal }),
+      action,
+      outcome: `refused: ${refusal.scope} connection limit`,
+    });
 
   const signIn = async (token: string | undefined): Promise<VerifiedToken> => {
     if (token === undefined) throw new AuthError("Sign in: send Authorization: Bearer <token>.");
@@ -117,7 +133,19 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         });
 
   server.on("request", (request, response) => {
-    void serveHttp(request, response).catch((error: unknown) => {
+    let lease: Lease | undefined;
+    // `/healthz` takes no lease, so a load balancer can always ask.
+    if (!(request.method === "GET" && request.url === "/healthz")) {
+      const opened = limits.open(addressOf(request));
+      if ("refusal" in opened) {
+        auditRefusal(`http ${request.method} ${pathOf(request)}`, opened.refusal);
+        json(response, opened.refusal.status, errorBody("busy", opened.refusal.message));
+        return;
+      }
+      lease = opened.lease;
+      response.on("close", () => lease?.release());
+    }
+    void serveHttp(request, response, lease).catch((error: unknown) => {
       log(`HTTP ${request.method} ${request.url} failed: ${String(error)}`);
       if (!response.headersSent)
         json(response, 500, errorBody("internal", "The gateway failed; its log has the details."));
@@ -125,7 +153,11 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     });
   });
 
-  async function serveHttp(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  async function serveHttp(
+    request: IncomingMessage,
+    response: ServerResponse,
+    lease: Lease | undefined,
+  ): Promise<void> {
     const url = new URL(request.url ?? "/", "http://gateway");
     if (request.method === "GET" && url.pathname === "/healthz") {
       const up = supervisor.up;
@@ -194,6 +226,14 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       return;
     }
 
+    // An event stream stays open, so it counts against its principal's limit.
+    const refused = lease?.assign(principal.id);
+    if (refused !== undefined) {
+      auditRefusal("http events", refused, principal.id);
+      json(response, refused.status, errorBody("busy", refused.message));
+      return;
+    }
+
     // Server-Sent Events: each event's `id` is its seq, so a reconnect's Last-Event-ID resumes after it.
     const lastEventId = Number.parseInt(String(request.headers["last-event-id"] ?? ""), 10);
     const afterSeq = Number.isInteger(lastEventId) && lastEventId >= 0 ? lastEventId : 0;
@@ -242,18 +282,42 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     // Node drops its own error listener before `upgrade`: without one, a client that resets the
     // connection while being refused would crash the gateway with an unhandled EPIPE.
     socket.on("error", (error) => log(`A connection failed during upgrade: ${error.message}`));
+    let lease: Lease | undefined;
+    // A refused connection gives its room back at once, and is destroyed shortly after the answer:
+    // a client that never closes its own end must not hold a lease, or a socket, for ever.
     const refuse = (status: string) => {
-      if (socket.writable) socket.end(`HTTP/1.1 ${status}\r\n\r\n`);
-      else socket.destroy();
+      lease?.release();
+      if (!socket.writable) {
+        socket.destroy();
+        return;
+      }
+      socket.end(`HTTP/1.1 ${status}\r\n\r\n`);
+      setTimeout(() => socket.destroy(), REFUSED_LINGER_MS).unref();
     };
     const url = new URL(request.url ?? "/", "http://gateway");
     if (url.pathname !== "/v1/ws") {
       refuse("404 Not Found");
       return;
     }
+    const opened = limits.open(addressOf(request));
+    if ("refusal" in opened) {
+      auditRefusal("connect", opened.refusal);
+      refuse(statusLine(opened.refusal.status));
+      return;
+    }
+    const granted = opened.lease;
+    lease = granted;
+    socket.once("close", () => granted.release());
     const header = bearerToken(request.headers.authorization);
-    const accept = (signedIn: VerifiedToken | undefined) =>
-      sockets.handleUpgrade(request, socket, head, (ws) => session(ws, signedIn));
+    const accept = (signedIn: VerifiedToken | undefined) => {
+      const refused = signedIn === undefined ? undefined : granted.assign(signedIn.principal.id);
+      if (refused !== undefined) {
+        auditRefusal("connect", refused, signedIn?.principal.id);
+        refuse(statusLine(refused.status));
+        return;
+      }
+      sockets.handleUpgrade(request, socket, head, (ws) => session(ws, signedIn, granted));
+    };
     if (header === undefined) {
       accept(undefined);
       return;
@@ -265,7 +329,7 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     });
   });
 
-  function session(ws: WebSocket, signedIn: VerifiedToken | undefined): void {
+  function session(ws: WebSocket, signedIn: VerifiedToken | undefined, lease: Lease): void {
     let identity = signedIn;
     // A connection that never signs in is not kept open.
     const deadline =
@@ -277,13 +341,22 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     // When the token expires, the connection's subscriptions stop; a fresh hello signs in again.
     // Armed once `sink` exists, below.
     let expiry: { cancel(): void } | undefined;
+    // An expired connection that does not sign in again is closed after the grace period.
+    let grace: NodeJS.Timeout | undefined;
+    const graceSeconds = config.limits.expiredGraceSeconds;
     function expire() {
       router.disconnect(sink);
       sink.send({
         type: "error",
         code: "unauthorized",
-        message: "Your token has expired; send hello with a fresh one.",
+        message: `Your token has expired; send hello with a fresh one within ${graceSeconds} seconds, or this connection closes.`,
       });
+      clearTimeout(grace);
+      grace = setTimeout(() => {
+        if (identity !== undefined && identity.expiresAt > Date.now()) return;
+        log(`Closing a WebSocket of ${identity?.principal.id ?? "nobody"}: its token expired.`);
+        ws.close(1008, "Your token expired and no fresh one came.");
+      }, graceSeconds * 1000);
     }
     const sink: ClientSink = {
       send(message) {
@@ -309,8 +382,10 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     });
     ws.on("close", () => {
       clearTimeout(deadline);
+      clearTimeout(grace);
       expiry?.cancel();
       router.disconnect(sink);
+      lease.release();
     });
 
     async function receive(text: string, isBinary: boolean): Promise<void> {
@@ -338,12 +413,20 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
         if (message.token !== undefined) {
           try {
             const next = await signIn(message.token);
+            const refused = lease.assign(next.principal.id);
+            if (refused !== undefined) {
+              auditRefusal("hello", refused, next.principal.id);
+              sink.send({ type: "error", code: "busy", message: refused.message });
+              ws.close(1013, "Too many connections.");
+              return;
+            }
             // Signing in as someone else leaves nothing of the previous principal on this socket.
             if (identity !== undefined && identity.principal.id !== next.principal.id) {
               router.disconnect(sink);
             }
             identity = next;
             expiry?.cancel();
+            clearTimeout(grace);
             expiry = atTime(next.expiresAt, expire);
           } catch (error) {
             if (!(error instanceof AuthError)) throw error;
@@ -428,6 +511,21 @@ function matchRoute(method: string | undefined, path: string): Route | undefined
   }
   return { name: match[2] === undefined ? "status" : "events", requestId };
 }
+
+function addressOf(request: IncomingMessage): string {
+  return request.socket.remoteAddress ?? "unknown";
+}
+
+function pathOf(request: IncomingMessage): string {
+  return new URL(request.url ?? "/", "http://gateway").pathname;
+}
+
+function statusLine(status: 429 | 503): string {
+  return status === 429 ? "429 Too Many Requests" : "503 Service Unavailable";
+}
+
+/** How long a refused upgrade's socket may linger after its answer before it is destroyed. */
+const REFUSED_LINGER_MS = 1_000;
 
 /** How long an unsigned WebSocket may stay open without signing in. */
 const SIGN_IN_DEADLINE_MS = 30_000;

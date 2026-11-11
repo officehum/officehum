@@ -72,11 +72,12 @@ const settings = {
 export async function start(
   directory = workDirectory(),
   env: Readonly<Record<string, string>> = {},
+  overrides: Readonly<Record<string, unknown>> = {},
 ) {
   const audit: AuditEntry[] = [];
   const log: string[] = [];
   const gateway = await startGateway({
-    config: parseGatewayConfig(settings, repository),
+    config: parseGatewayConfig({ ...settings, ...overrides }, repository),
     key,
     runtimeEnv: { ...process.env, ...env, FIXTURE_DIR: directory },
     backoff: { initialMs: 50, maxMs: 200, stableMs: 60_000 },

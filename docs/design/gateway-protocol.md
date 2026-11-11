@@ -361,11 +361,27 @@ subscribers get an `error` saying so.
 
 **Sessions.** A WebSocket that has not signed in within 30 seconds is closed. When a connection's
 token expires, its subscriptions stop and it gets `unauthorized` until it sends `hello` with a fresh
-token; an event stream ends with an `error` event. `GET /v1/requests/:id` asks the runtime whether the
+token; if none comes within `limits.expiredGraceSeconds` (60 by default) it is closed with code 1008.
+An event stream ends with an `error` event. `GET /v1/requests/:id` asks the runtime whether the
 request has settled and, if so, waits for its `settled` event before answering.
 
+**Connection limits** (`limits` in `gateway.json`) bound what one caller can hold:
+
+| Limit | Default | Counts | Over it |
+| --- | --- | --- | --- |
+| `perPrincipal` | 32 | WebSockets and event streams of one signed-in principal | `429` |
+| `perAddress` | 64 | connections of any kind from one remote address | `429` |
+| `total` | 1024 | connections of any kind, from everyone | `503` |
+| `expiredGraceSeconds` | 60 (at most 86400) | how long an expired WebSocket may wait for a fresh `hello` | closed, 1008 |
+
+A WebSocket upgrade over a limit is answered with the status alone. An HTTP request over a limit gets
+the status with an `error busy` body. A WebSocket that signs in with `hello` as a principal already at
+their limit gets `error busy` and is closed with code 1013. `GET /healthz` is never limited. Every
+refusal is audited (`outcome: "refused: principal connection limit"`, and likewise for `address` and
+`total`).
+
 **Audit log.** One JSON line per command on stderr, `{ "audit": { at, principal, action, agent?,
-requestId?, outcome } }`, with no message bodies or tokens.
+requestId?, approvalId?, outcome } }`, with no message bodies or tokens.
 
 **Slow clients.** A WebSocket or event stream that stops reading is closed once it has 8 MiB unsent
 (`clientBufferBytes`); nobody else waits for it, and the runtime's output is always read.
