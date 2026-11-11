@@ -335,7 +335,7 @@ describe("the local board", () => {
     }
   });
 
-  it("refuses a dispatch it cannot deliver, naming why", async () => {
+  it("queues a dispatch it cannot deliver yet, and lists it in the assignee's inbox", async () => {
     const office = await openOffice("memory");
     try {
       office.conversations.delete(BOOK);
@@ -344,8 +344,13 @@ describe("the local board", () => {
         title: "Invoice job 42",
         detail: REQUEST,
       });
-      expect(result.isError).toBe(true);
+      expect(result.isError).toBeUndefined();
       expect(callText(result)).toContain(`${BOOK} has no conversation on this harness`);
+      expect(callText(result)).toContain("do not dispatch it again");
+      // Routed to the Bookkeeper and taken by nobody: it is waiting for the Bookkeeper.
+      const inbox = await call(office, office.book, "agent_inbox", {});
+      expect(callText(inbox)).toContain(`${detailsOf(result).ticketId} [open] ${TYPE}`);
+      expect(callText(inbox)).toContain("(assigned to you)");
     } finally {
       await office.close();
     }

@@ -39,12 +39,14 @@ tickets live in a document in your harness, and routing goes by ticket type, fro
 role's agent. A dispatched ticket is delivered into its assignee's conversation, once.
 
 ```ts
+import type { ConversationId } from "@earendil-works/pi-durable";
 import { localBoardExtension } from "@officehum/sdk";
 import bookkeeper from "@officehum/bookkeeper";
 import frontdesk from "@officehum/frontdesk";
+// frontdeskManifest and bookkeeperManifest: each package's officehum.json, read as JSON.
 
 const roles = { frontdesk: frontdesk({ calendar }), bookkeeper: bookkeeper({ quickbooks }) };
-// Each role's officehum.json, which ships in its package: the local board routes by their `accepts`.
+// The local board routes by each manifest's `accepts`.
 const manifests = [frontdeskManifest, bookkeeperManifest];
 const conversations = new Map<string, ConversationId>();
 
@@ -54,8 +56,10 @@ for (const [id, role] of Object.entries(roles)) {
     role: id,
     conversationOf: (roleId) => conversations.get(roleId),
   });
-  for (const extension of [...role.extensions, board]) registry.install(extension);
-  const agent = { ...role.agent, extensions: [...role.agent.extensions, board] };
+  const extensions = [...role.extensions, board];
+  for (const extension of extensions) registry.install(extension);
+  // Create each role's conversation once and keep its id: the next start reuses it.
+  const agent = { ...role.agent, extensions };
   const conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent }, context);
   conversations.set(id, conversation.id);
 }

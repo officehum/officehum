@@ -16,6 +16,12 @@
  *   stopped between committing and submitting is delivered by the next dispatch from any role.
  * - **Waiting.** `wait: true` waits for the assignee's turn on the ticket to settle, then returns the
  *   result it replied with.
+ * - **Inbox.** A role's inbox lists what it holds and what is routed to it that nobody has taken,
+ *   plus the tickets it opened with their results.
+ *
+ * Exactly once within the harness, with one gap: `agent_dispatch` is not safe to rerun, so a crash
+ * between committing a ticket and submitting it leaves the ticket for the next dispatch to deliver;
+ * if the model dispatches the same work again after the crash, it is delivered twice.
  *
  * Budgets, hop limits, provenance, person routes and approvals are Office Hum's, and are not here.
  * One conversation per role means a role waiting on a colleague that in turn waits on it deadlocks
@@ -134,7 +140,8 @@ export function localBoardExtension(options: LocalBoardOptions): Extension {
       {
         type: "input",
         content: ticketMessage(ticket),
-        requestId: ticket.id,
+        // Prefixed, so it never meets a request id the harness's owner chose for that conversation.
+        requestId: `local-board:${ticket.id}`,
         whenBusy: "followUp",
       },
       context,
@@ -207,7 +214,17 @@ export function localBoardExtension(options: LocalBoardOptions): Extension {
 
       const delivery = await deliver(api, ticket, context);
       if (typeof delivery === "string") {
-        return communicationError(notCompletedText(ticket.id, ticket.type, delivery));
+        // The ticket stays on the board and the next dispatch delivers it, so this is not a failure
+        // to report as one: a model told the work failed would dispatch it a second time.
+        return {
+          output: [
+            {
+              type: "text" as const,
+              text: `Queued ${ticket.id} (${ticket.type}) for ${target}, but it is not delivered yet: ${delivery}. It is delivered with the next dispatch once it can be; do not dispatch it again.`,
+            },
+          ],
+          details: { ticketId: ticket.id, type: ticket.type, status: ticket.status, role: target },
+        };
       }
       if (args.wait !== true) {
         return {
@@ -253,12 +270,14 @@ export function localBoardExtension(options: LocalBoardOptions): Extension {
       const tickets = Object.values((await read(api, context)).tickets).filter(
         (ticket) => args.status === undefined || ticket.status === args.status,
       );
+      // Waiting for this role: what it holds, and what is routed to it and nobody has taken yet, so
+      // a ticket its first turn did not finish can still be found.
+      const waiting = (ticket: LocalTicket) =>
+        ticket.assignee === role || (ticket.assignee === null && ticket.target === role);
       const entries = [
+        ...tickets.filter(waiting).map((ticket) => ({ ticket, assigned: true })),
         ...tickets
-          .filter((ticket) => ticket.assignee === role)
-          .map((ticket) => ({ ticket, assigned: true })),
-        ...tickets
-          .filter((ticket) => ticket.assignee !== role && ticket.createdBy === role)
+          .filter((ticket) => !waiting(ticket) && ticket.createdBy === role)
           .map((ticket) => ({ ticket, assigned: false })),
       ];
       if (entries.length === 0) {
