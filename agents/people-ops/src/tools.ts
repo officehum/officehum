@@ -119,12 +119,16 @@ function requireDesk(dependencies: PeopleOpsToolDependencies): PeopleOpsDesk {
 
 const reasonWords = (reason: ReasonCategory): string => reason.replaceAll("_", " ");
 
+/** Who decides hiring, as the hints and the tool descriptions name them. */
+const hiringOwner = (company: CompanyFacts): string =>
+  personLabel(peopleOwner(company), "the person who decides hiring");
+
 /**
  * The next step for every refusal the desk can give, keyed by its code and never by its message. A
  * `Record` over the whole union, so a new code does not compile until it has a hint.
  */
 export function HINTS(company: CompanyFacts): Record<DeskRefusal, string> {
-  const hiring = personLabel(peopleOwner(company), "the person who decides hiring");
+  const hiring = hiringOwner(company);
   return {
     not_found: " Check the id with list_candidates, or ask for the person's full name.",
     ambiguous: " Ask which of them it is, by full name.",
@@ -289,7 +293,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
   const from = (api: { readonly conversationId: unknown; readonly taskId: unknown }) =>
     dependencies.sender?.({ conversationId: api.conversationId, taskId: api.taskId }) ??
     Promise.resolve(undefined);
-  const hiring = personLabel(peopleOwner(company), "the person who decides hiring");
+  const hiring = hiringOwner(company);
 
   /** A desk refusal as the model reads it, with the next step its code names. */
   const refused = (error: unknown, extra: JsonObject) => {

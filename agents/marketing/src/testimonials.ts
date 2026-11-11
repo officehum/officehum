@@ -61,7 +61,7 @@
 import type { CompanyFacts, Testimonial } from "./company.js";
 
 /** A quoted passage this long, attributed to someone, has to be on record. */
-export const TESTIMONIAL_MIN_WORDS = 6;
+const TESTIMONIAL_MIN_WORDS = 6;
 
 /** Each alternative captures the passage in its own group. */
 const QUOTED = new RegExp(

@@ -17,6 +17,7 @@
     "officehum.json",
     "AGENTS.md",
     "APPEND_SYSTEM.md",
+    "skills",
     "evals"
   ],
   "engines": {

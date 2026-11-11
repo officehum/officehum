@@ -39,7 +39,8 @@ const role = bookkeeper({
 - **`demo`**, set by the host (`officehum run --demo`, the eval runner; `loadRole` reserves the name, so
   a client file can never set it): with no `desk`, the role runs its payables on
   `fakeAccountingDesk`: the company's own suppliers and catalogue, four
-  demonstration bills, October 2026's statement, a clock fixed at Monday 9 November 2026, and a
+  demonstration bills, October 2026's statement, a clock fixed at Monday 9 November 2026 (the real
+  clock once a QuickBooks client is bound, or the host's `now`), and a
   payment backend that records a payment in memory and **moves no money**. There is no real payment
   backend in this package.
 - **`company`** is the record the desk prices bills from and the hand-offs name people from. With
@@ -175,9 +176,9 @@ Creating an invoice, sending one, sending a reminder and paying a supplier bill 
   `bill_changed` when the bill no longer equals what was approved, so a grant covers exactly the bill
   the person saw. A retried call, or one recovered after a restart, pays once.
 
-Two clocks in the demonstration: the shipped desk's bills are aged against its fixed clock (Monday 9
-November 2026), while `list_invoices` ages QuickBooks invoices against today. A real desk uses the
-real clock.
+One clock: the prompt, the desk and the QuickBooks tools all read the same one. On the shipped desk
+with no QuickBooks client it is fixed at Monday 9 November 2026; a host that binds its own desk or a
+QuickBooks client gets the real clock, and a `now` the host passes wins either way.
 
 ### `new_recipient` over-blocks in Office Hum, on purpose
 
@@ -193,7 +194,7 @@ That is deliberate, and it is the safe direction: it over-asks, never over-sends
 gateway supplies a customer's address history that the office gate can read, at which point the rule
 becomes a condition the office can evaluate. Until then this section is the record.
 
-Every one of the three fails safe: a draft whose lines the SDK's sum cannot read (it refuses the whole
+Each condition fails safe: a draft whose lines the SDK's sum cannot read (it refuses the whole
 total rather than skipping an element), an invoice or customer the client cannot answer for, or a
 limit that did not resolve all wait for a person rather than passing silently. A device with no
 approver blocks every gated action.
@@ -290,18 +291,23 @@ calls for rather than starting the cadence over.
 import { CollectionsDoc, clearDispute, dispute } from "@officehum/bookkeeper";
 
 // A person has read the customer's message and decided invoice 1042 is disputed. The invoice is the
-// QuickBooks id `list_invoices` returns; `by` is required, and a blank one is refused.
+// QuickBooks id `list_invoices` returns; `by` is required, and a blank one is refused. `at` is the
+// moment of the decision, from the host's clock.
 await harness.commit(async (tx) => {
   dispute(await tx.doc(CollectionsDoc, conversationId), "1042", {
     reason: "The customer says the second visit was never agreed",
     by: "ada@example.com",
+    at: new Date(),
   });
 }, context);
 
 // Later, the same person settles it. The next collections run chases the invoice again, at the
 // stage its age calls for.
 await harness.commit(async (tx) => {
-  clearDispute(await tx.doc(CollectionsDoc, conversationId), "1042", { by: "ada@example.com" });
+  clearDispute(await tx.doc(CollectionsDoc, conversationId), "1042", {
+    by: "ada@example.com",
+    at: new Date(),
+  });
 }, context);
 ```
 

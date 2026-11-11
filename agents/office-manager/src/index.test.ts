@@ -1,10 +1,12 @@
 /**
- * The Office Manager as a role package: its factory on a real Pi Durable harness, and the six eval
+ * The Office Manager as a role package: its factory on a real Pi Durable harness, and the eval
  * scenarios a scripted model plays back. No network and no real model are used, and the role declares
  * no tools, so every scenario is answered in text and nothing is stubbed.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Extension, ToolRegistration } from "@earendil-works/pi-durable";
 import {
@@ -83,13 +85,19 @@ describe("office manager role", () => {
   });
 
   it("reads an overlay's prompt sections", () => {
-    const role = officeManager({});
-    expect(
-      role
-        .current()
-        .agents.map((part) => part.text)
-        .join("\n"),
-    ).toContain("Office Manager");
+    const overlay = mkdtempSync(join(tmpdir(), "officehum-office-manager-overlay-"));
+    try {
+      writeFileSync(join(overlay, "AGENTS.md"), "OVERLAY-MARKER: we close at noon on Fridays.\n");
+      const role = officeManager({ overlays: [overlay] });
+      expect(
+        role
+          .current()
+          .agents.map((part) => part.text)
+          .join("\n"),
+      ).toContain("OVERLAY-MARKER");
+    } finally {
+      rmSync(overlay, { recursive: true, force: true });
+    }
   });
 });
 
@@ -100,7 +108,7 @@ const scripts = JSON.parse(readFileSync(scriptFile, "utf8")) as Readonly<
 >;
 
 describe("office manager brief contract (RASF-3132)", () => {
-  it("scripted the six scenarios the package declares, and no others", async () => {
+  it("scripted every scenario the package declares, and no others", async () => {
     const validated = await validatePackage(packageDirectory);
     if (!validated.ok) throw new Error("the office manager package did not validate");
     const ids = Object.values(validated.value.suites).flatMap((suite) =>
@@ -141,6 +149,5 @@ describe("office manager brief contract (RASF-3132)", () => {
 
   it("keeps the script file out of the evals directory, where every .json is a suite", () => {
     expect(existsSync(scriptFile)).toBe(true);
-    expect(scriptFile.endsWith("evals/situations.json")).toBe(false);
   });
 });

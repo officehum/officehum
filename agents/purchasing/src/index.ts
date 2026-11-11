@@ -15,7 +15,7 @@
  * harness.
  *
  * With `demo: true` and no desk the role runs on `fakePurchasingDesk`: the company's own suppliers, catalogue and
- * spending limit, a stockroom and three orders in memory, and nothing sent anywhere. That is
+ * spending limit, a stockroom and four orders in memory, and nothing sent anywhere. That is
  * what `officehum run --demo` and the evals run on. With neither, the role still starts, and every
  * tool that reads or writes the desk refuses and says how to bind one.
  */
@@ -102,7 +102,7 @@ export interface PurchasingOptions {
    * passes its own, and nothing in `company/default/` is involved.
    */
   readonly company?: CompanyFacts;
-  /** Overlay directories, lowest first: the business's AGENTS.md, skills, settings and limits. */
+  /** Overlay directories, lowest first: the business's AGENTS.md, skills and settings. */
   readonly overlays?: readonly string[];
   /** Decides every gated action. Omitted: an order over the limit and a new supplier are both blocked. */
   readonly approve?: Approver;

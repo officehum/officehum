@@ -4,7 +4,7 @@
  *
  * A host binds its own — an ERP, inventory software, a spreadsheet with an API — and the role never
  * knows the difference. `fakePurchasingDesk` is what ships with the package: the company's own
- * suppliers and catalogue, a demonstration stockroom and three orders, and all the money arithmetic
+ * suppliers and catalogue, a demonstration stockroom and four orders, and all the money arithmetic
  * done here, so a test, an eval or a first run needs no network and no credential.
  *
  * The desk owns every number that matters. The model names a supplier, items and quantities; the desk
@@ -13,7 +13,7 @@
  * refusal carries a code, and the tools turn the code into the next step a person can take.
  */
 
-import { sameFacts } from "@officehum/sdk";
+import { isoDate, sameFacts } from "@officehum/sdk";
 import type { CompanyFacts, Supplier, SupplyItem } from "./company.js";
 import { loadCompanyFacts, money } from "./company.js";
 
@@ -443,16 +443,12 @@ export function demoOrders(
 
 const DAY_MS = 86_400_000;
 
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
 function addDays(date: string, days: number): string {
   return isoDate(new Date(new Date(`${date}T00:00:00.000Z`).getTime() + days * DAY_MS));
 }
 
 /** A supplier id, ignoring case and spaces, or its name. */
-function sameSupplier(supplier: { id: string; name: string }, query: string): boolean {
+export function sameSupplier(supplier: { id: string; name: string }, query: string): boolean {
   const wanted = query.trim().toLowerCase();
   return supplier.id.toLowerCase() === wanted || supplier.name.toLowerCase() === wanted;
 }

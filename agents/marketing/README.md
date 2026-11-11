@@ -168,6 +168,7 @@ const root = await harness.root(context, { agent: role.agent });
 | `src/index.ts` | The factory |
 | `src/tools.ts` | The seven tools, and the receipts they return |
 | `src/claims.ts` | What counts as a result claim |
+| `src/testimonials.ts` | Which quoted, attributed passages are testimonials on the company's record |
 | `src/company.ts` | The company facts as the role reads them |
 | `src/desk.ts` | The `MarketingDesk` interface, `fakeMarketingDesk` and the demonstration drafts |
 | `src/*.test.ts` | The claim detector, the desk's rules, each tool, the approval gates on a real harness, the package and the scenarios |

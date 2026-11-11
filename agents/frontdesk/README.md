@@ -136,12 +136,13 @@ Two transports, both optional and both injected by the host:
   envelope (`prepare(receiptId, conversationId)`) and sends it (`send({ target, text }, { requestId })`),
   so the reply can only leave to the authenticated inbound sender.
 
-Because a Messenger is optional, the role stays portable: a host with no transport simply leaves
-`send_message`/`reply_message` unavailable rather than the package reaching for one.
+Because a Messenger is optional, the role stays portable: with no transport `send_message` and
+`reply_message` are still registered and each refuses with a clear error, rather than the package
+reaching for one.
 
 ## Approval gates
 
-The manifest declares seven approvals; the ones that are conditional use code conditions that read
+The manifest declares eight approvals; the ones that are conditional use code conditions that read
 durable document state:
 
 - `confirm_contact_creation`, `confirm_contact_update`, `confirm_reschedule`, `confirm_cancellation`
@@ -172,7 +173,7 @@ an `approveReply` decision.
 | --- | --- |
 | `officehum.json` | The manifest: tools, approvals, the `booking_discount_percent` limit, skills, evals |
 | `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
-| `src/index.ts` | The factory, the calendar tools, and the discount condition |
+| `src/index.ts` | The factory and the calendar tools (the discount condition is manifest data) |
 | `src/contacts.ts` | The `frontdesk.contacts` document and the contact tools |
 | `src/messaging.ts` | Outbound messaging and the first-contact condition |
 | `src/replies.ts` | Inbound threaded replies and the inbound conversation guard |

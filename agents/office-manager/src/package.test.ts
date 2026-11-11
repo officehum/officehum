@@ -45,7 +45,7 @@ const tempCopy = (): string => {
 };
 
 describe("office manager package (RASF-3131)", () => {
-  it("validates strictly as a package under agents/, with the brief's four situations", async () => {
+  it("validates strictly as a package under agents/, with the brief's situations", async () => {
     const validated = await validatePackage(packageDirectory);
     expect(validated.issues).toEqual([]);
     expect(validated.ok).toBe(true);

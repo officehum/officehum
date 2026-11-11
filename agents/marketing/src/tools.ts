@@ -38,6 +38,7 @@ import {
   POST_CHANNELS,
   type PostChannel,
   type Publication,
+  quoteClaims,
   readyDraftFacts,
 } from "./desk.js";
 
@@ -115,7 +116,7 @@ function draftText(draft: Draft): string {
     draft.status === "published"
       ? `published ${draft.publishedOn ?? ""} (${draft.publicationId ?? "no record"})`
       : draft.status === "held"
-        ? `held: ${draft.heldClaims.map((entry) => `"${entry.claim}" (the phrase "${entry.phrase}")`).join("; ")} waiting for a person's approval`
+        ? `held: ${quoteClaims(draft.heldClaims)} waiting for a person's approval`
         : "draft, ready to publish with a person's approval";
   const granted =
     draft.grantedClaims.length === 0
@@ -354,9 +355,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
         `${draft.id} has no claim waiting for approval: it is ${draft.status}. Nothing was put to a person and nothing was approved.`,
       );
     }
-    const claims = draft.heldClaims
-      .map((entry) => `"${entry.claim}" (the phrase "${entry.phrase}")`)
-      .join("; ");
+    const claims = quoteClaims(draft.heldClaims);
     return {
       summary: `Approve for ${draft.id} only: ${claims}, in this ${where(draft)}:\n${draft.finalText}`,
       facts: heldDraftFacts(draft),
@@ -417,7 +416,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     }
     if (draft.status === "held") {
       throw new Error(
-        `${draft.id} is held: ${draft.heldClaims.map((entry) => `"${entry.claim}" (the phrase "${entry.phrase}")`).join("; ")} still needs a person's approval. Nothing was put to a person and nothing was published.${NOT_READY}`,
+        `${draft.id} is held: ${quoteClaims(draft.heldClaims)} still needs a person's approval. Nothing was put to a person and nothing was published.${NOT_READY}`,
       );
     }
     let summary = `Publish ${draft.id} on ${draft.channel}, exactly as below:\n${draft.finalText}`;

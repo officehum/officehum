@@ -44,6 +44,7 @@ import {
   type PurchaseOrder,
   type PurchasingDesk,
   PurchasingDeskError,
+  sameSupplier,
   supplierFacts,
 } from "./desk.js";
 
@@ -580,10 +581,8 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
    */
   const newSupplierApprovalFacts: ApprovalFactsReader = async (args) => {
     const desk = requireDesk(dependencies);
-    const wanted = String(args.supplierId).trim().toLowerCase();
-    const supplier = (await desk.listSuppliers()).find(
-      (candidate) =>
-        candidate.id.toLowerCase() === wanted || candidate.name.toLowerCase() === wanted,
+    const supplier = (await desk.listSuppliers()).find((candidate) =>
+      sameSupplier(candidate, String(args.supplierId)),
     );
     if (supplier === undefined) {
       throw new Error(

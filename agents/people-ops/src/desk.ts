@@ -16,7 +16,7 @@
  * code, and the tools turn the code into the next step.
  */
 
-import { colleague, sameFacts, senderPerson, type VerifiedSender } from "@officehum/sdk";
+import { colleague, isoDate, sameFacts, senderPerson, type VerifiedSender } from "@officehum/sdk";
 import {
   type CompanyFacts,
   companyHead,
@@ -487,10 +487,6 @@ export function demoTimeOff(): readonly BookedTimeOff[] {
 }
 
 const DAY_MS = 86_400_000;
-
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
 
 /** A real calendar date in `YYYY-MM-DD` form, or `undefined`. */
 function parseDate(value: string): Date | undefined {

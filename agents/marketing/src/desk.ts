@@ -14,7 +14,7 @@
  * carries a code, and the tools turn the code into the next step a person can take.
  */
 
-import { sameFacts } from "@officehum/sdk";
+import { isoDate, sameFacts } from "@officehum/sdk";
 import { findResultClaims, type ResultClaim } from "./claims.js";
 import { type CompanyFacts, loadCompanyFacts, money, postalAddress } from "./company.js";
 import { findUnrecordedTestimonials, ownNames } from "./testimonials.js";
@@ -336,11 +336,8 @@ function offerTerms(company: CompanyFacts): string[] {
   ];
 }
 
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function quoteClaims(claims: readonly ResultClaim[]): string {
+/** Held claims as a person reads them: each claim with the phrase that states it. */
+export function quoteClaims(claims: readonly ResultClaim[]): string {
   return claims.map((entry) => `"${entry.claim}" (the phrase "${entry.phrase}")`).join("; ");
 }
 

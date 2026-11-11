@@ -300,6 +300,19 @@ describe("requestOvertime", () => {
       { requestId: "to-north" },
     );
     expect((await crewWeek(operations, "cleaning-central")).overtimeHours).toBe(0);
+    // The approval was for Central: North gains no headroom from a job that arrived with one.
+    expect((await crewWeek(operations, "cleaning-north")).overtimeHours).toBe(0);
+  });
+
+  it("keeps a recurring contract's visit on its crew, as assignCrew does", async () => {
+    const operations = desk();
+    const refused = await refusalOf(
+      operations.requestOvertime(
+        { crewId: "cleaning-central", jobId: "J-1011", hours: 7 },
+        { requestId: "ot-contract" },
+      ),
+    );
+    expect(refused.code).toBe("contract_crew");
   });
 });
 

@@ -42,8 +42,10 @@ const TENS = "twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety";
 /** A number in digits or in words, up to a hundred: "30", "99.9", "thirty", "ninety-nine". */
 const NUMBER = String.raw`(?:\d+(?:[.,]\d+)?|(?:a\s+|one\s+)?hundred|(?:${TENS})(?:[- ](?:${UNITS}))?|${TEENS}|${UNITS})`;
 const PERCENT = String.raw`${NUMBER}(?:\s*|-)(?:%|percent\b|per[\s-]?cent\b|pc\b)`;
-const COMPARATIVE = String.raw`(?:cleaner|faster|better|healthier|safer|fresher|longer|cheaper|more|less|fewer)`;
-const RESULT_VERB = String.raw`(?:cuts?|reduces?|reduced|lowers|lowered|boosts?|boosted|increases?|increased|improves?|improved|halves?|halved|slash(?:es|ed)?|saves|saved|doubles?|doubled|triples?|tripled|eliminates|kills|removes|drops|dropped|fell|falls)`;
+const COMPARATIVE =
+  "(?:cleaner|faster|better|healthier|safer|fresher|longer|cheaper|more|less|fewer)";
+const RESULT_VERB =
+  "(?:cuts?|reduces?|reduced|lowers|lowered|boosts?|boosted|increases?|increased|improves?|improved|halves?|halved|slash(?:es|ed)?|saves|saved|doubles?|doubled|triples?|tripled|eliminates|kills|removes|drops|dropped|fell|falls)";
 
 /**
  * Words that make "N% off" an offer on a price: what the company sells is a clean, a visit, a
@@ -78,7 +80,7 @@ const PRICE_WORDS = [
  * An offer is masked only when none of them is in its phrase, or, for an offer with no object of its
  * own, just before it ("Sick days, 30% off.").
  */
-export const RESULT_NOUNS: readonly string[] = [
+const RESULT_NOUNS: readonly string[] = [
   "sick",
   "lost",
   "lose",
