@@ -30,7 +30,6 @@
  * several agents installs one instance per agent and gives each its own name through `settings.name`
  * (`office` by default).
  */
-import { Type } from "@earendil-works/pi-ai";
 import {
   defineExtension,
   defineTool,
@@ -39,7 +38,27 @@ import {
   section,
   type ToolExecutionApi,
 } from "@earendil-works/pi-durable";
-import type { AgentManifest, ApprovalFactsReader, Approver } from "@officehum/sdk";
+import {
+  AGENT_DISPATCH,
+  AGENT_INBOX,
+  AGENT_REPLY,
+  type AgentManifest,
+  type ApprovalFactsReader,
+  type Approver,
+  COMMUNICATION_TOOL_NAMES,
+  communicationError,
+  dispatchedText,
+  dispatchTargets,
+  emptyInboxText,
+  inboxLine,
+  noAnswerText,
+  noTicketText,
+  notCompletedText,
+  refusalText,
+  repliedText,
+  teamText as sharedTeamText,
+  unknownTypeText,
+} from "@officehum/sdk";
 import {
   type Board,
   BoardError,
@@ -71,11 +90,8 @@ export const OFFICE_EXTENSION_NAME = "office";
 /** The prompt section key: the team, one line per colleague, with the ticket types it accepts. */
 export const TEAM_SECTION_KEY = "team";
 
-/** The three tool names the extension adds. Reserved for the Office in `@officehum/sdk`. */
-export const OFFICE_TOOL_NAMES = ["agent_dispatch", "agent_inbox", "agent_reply"] as const;
-
-/** The `label` the inbox marks a ticket this agent opened with. */
-const OPENED = "opened";
+/** The three tool names the extension adds: `@officehum/sdk`'s shared communication tools. */
+export const OFFICE_TOOL_NAMES = COMMUNICATION_TOOL_NAMES;
 
 /**
  * The tool call's identity, as `settings.parentOf` reads it: the same three fields the dedupe key is
@@ -149,42 +165,12 @@ export interface OfficeExtensionOptions {
   readonly approvalFacts?: Readonly<Record<string, ApprovalFactsReader>>;
 }
 
-/** What the extension reports a refused tool call as. */
-function toolError(text: string): {
-  readonly isError: true;
-  readonly output: { readonly type: "text"; readonly text: string }[];
-} {
-  return { isError: true, output: [{ type: "text", text }] };
-}
+const toolError = communicationError;
 
 /** A board refusal is a tool error the agent can act on; anything else is a genuine fault. */
 function boardRefusal(error: unknown, action: string) {
-  if (error instanceof BoardError) {
-    return toolError(`The board refused the ${action} (${error.kind}): ${error.message}`);
-  }
+  if (error instanceof BoardError) return toolError(refusalText(action, error.kind, error.message));
   throw error;
-}
-
-/**
- * `ticket type → role key`, read from the installed manifests, this agent's own manifest excluded: a
- * role accepts a type or hands it off, never both, so the types worth dispatching belong to others.
- * Sorted by role, so the list in an error is the same on every run.
- */
-function dispatchable(people: readonly AgentManifest[], role: string): Map<string, string> {
-  const byType = new Map<string, string>();
-  for (const manifest of [...people].sort((left, right) => left.id.localeCompare(right.id))) {
-    if (manifest.id === role) continue;
-    for (const accept of manifest.accepts) {
-      if (!byType.has(accept.type)) byType.set(accept.type, manifest.id);
-    }
-  }
-  return byType;
-}
-
-/** `invoice.create — Invoice a completed job; …`, or a note when the role accepts nothing. */
-function acceptedList(manifest: AgentManifest): string {
-  if (manifest.accepts.length === 0) return "accepts nothing";
-  return manifest.accepts.map((accept) => `${accept.type} — ${accept.description}`).join("; ");
 }
 
 /**
@@ -205,12 +191,9 @@ function personRouted(
 }
 
 /**
- * The `team` section: the colleagues and the ticket types they accept, each with the description its
- * manifest gives, in a stable order, then a `People:` line for each type routed to a person. An agent
- * dispatches by type, so the types are the point of the line and the names are only there to be read.
- *
- * `@officehum/sdk`'s `formatCardLine` is the card's one-liner, but it lists type names without their
- * descriptions and this section has to carry them, so the line is written here.
+ * The `team` section: the shared colleague list (`@officehum/sdk`'s `teamText`), then a `People:`
+ * line for each type routed to a person. An agent dispatches by type, so the types are the point of
+ * the line and the names are only there to be read.
  */
 function teamText(
   people: readonly AgentManifest[],
@@ -218,22 +201,15 @@ function teamText(
   routed: ReadonlyMap<string, string>,
   boardPeople: readonly Person[],
 ): string | undefined {
-  const colleagues = [...people]
-    .filter((manifest) => manifest.id !== role)
-    .sort((left, right) => left.id.localeCompare(right.id));
-  if (colleagues.length === 0 && routed.size === 0) return undefined;
   const nameOf = (id: string): string => boardPeople.find((person) => person.id === id)?.name ?? id;
-  return [
-    "Your colleagues. Hand work on with agent_dispatch by ticket type, never by role name:",
-    "",
-    ...colleagues.map(
-      (manifest) => `- ${manifest.name} (${manifest.id}): ${acceptedList(manifest)}`,
-    ),
-    ...[...routed].map(
+  return sharedTeamText(
+    people,
+    role,
+    [...routed].map(
       ([type, personId]) =>
         `- People: ${type} goes to ${nameOf(personId)} (${personId}) on the board`,
     ),
-  ].join("\n");
+  );
 }
 
 /**
@@ -249,57 +225,18 @@ function deliveredAnswer(board: Board, ticket: Ticket): string | undefined {
   return settled.length === 0 ? undefined : (settled[settled.length - 1]?.outcome ?? undefined);
 }
 
-/** One line of the inbox: what the ticket is, whether it is yours or one you opened, and any result. */
-function inboxLine(ticket: Ticket, assigned: boolean, answer: string | undefined): string {
-  const marker = assigned ? "assigned to you" : OPENED;
-  const title = `${ticket.id} [${ticket.status}] ${ticket.type} — ${ticket.title} (${marker})`;
-  return answer === undefined ? title : `${title}\n    result: ${answer}`;
-}
-
 export function officeExtension(options: OfficeExtensionOptions): Extension {
   const { board, relay, role, settings } = options;
-  const accepted = dispatchable(options.people, role);
+  const accepted = dispatchTargets(options.people, role);
   const routed = personRouted(options.personRoutes ?? [], accepted);
 
   const agentDispatch = defineTool({
-    name: "agent_dispatch",
-    description:
-      "Hand a piece of work to the colleague who accepts its ticket type. Work goes by type, never by role name. Set wait to true to wait for the colleague's result and return it.",
-    parameters: Type.Object(
-      {
-        type: Type.String({
-          description:
-            "The ticket type to dispatch, e.g. invoice.create. The team section lists the ones this office accepts.",
-        }),
-        title: Type.String({ description: "One line naming the work." }),
-        detail: Type.String({ description: "What the colleague needs to know to do it." }),
-        payload: Type.Optional(
-          Type.Unknown({
-            description: "Structured data for the ticket, such as ids and amounts.",
-          }),
-        ),
-        wait: Type.Optional(
-          Type.Boolean({
-            description:
-              "Wait for the ticket to finish and return the colleague's result. Default false: dispatch and carry on.",
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
-    replay: "unsafe",
+    ...AGENT_DISPATCH,
     execute: async (args, api) => {
       const target = accepted.get(args.type);
       const personId = target === undefined ? routed.get(args.type) : undefined;
       if (target === undefined && personId === undefined) {
-        const roles =
-          accepted.size === 0
-            ? "no other role is installed, so no role takes any ticket type"
-            : `roles accept ${[...accepted.keys()].join(", ")}`;
-        const people = routed.size === 0 ? "" : `; people take ${[...routed.keys()].join(", ")}`;
-        return toolError(
-          `No role accepts ticket type "${args.type}" and no person route covers it, so nothing was dispatched. Work goes by type; ${roles}${people}.`,
-        );
+        return toolError(unknownTypeText(args.type, accepted, [...routed.keys()]));
       }
       // The person is read from the board at call time: people are the office's to manage, and a route
       // to someone the board does not know must refuse before any ticket exists.
@@ -371,7 +308,7 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
           output: [
             {
               type: "text" as const,
-              text: `Dispatched ${ticket.id} (${ticket.type}) to ${destination.role}. It runs without you; nothing comes back unless you wait for it.`,
+              text: dispatchedText(ticket.id, ticket.type, destination.role),
             },
           ],
           details: {
@@ -388,15 +325,13 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
         settings.waitTimeoutMs === undefined ? undefined : { timeoutMs: settings.waitTimeoutMs },
       );
       if (!result.ok) {
-        return toolError(
-          `Ticket ${ticket.id} (${ticket.type}) did not complete: ${result.reason}.`,
-        );
+        return toolError(notCompletedText(ticket.id, ticket.type, result.reason));
       }
       return {
         output: [
           {
             type: "text" as const,
-            text: result.answer ?? `Ticket ${ticket.id} (${ticket.type}) completed with no answer.`,
+            text: result.answer ?? noAnswerText(ticket.id, ticket.type),
           },
         ],
         details: {
@@ -410,21 +345,7 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
   });
 
   const agentInbox = defineTool({
-    name: "agent_inbox",
-    description:
-      "Read the tickets waiting for you, and the answers to the tickets you opened. Filter by status when you only care about one kind. This reads; it changes nothing.",
-    parameters: Type.Object(
-      {
-        status: Type.Optional(
-          Type.String({
-            description:
-              "Only tickets in this state: open, claimed, waiting, blocked, done or cancelled.",
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
-    replay: "safe",
+    ...AGENT_INBOX,
     execute: async (args) => {
       const filter = args.status === undefined ? {} : { status: args.status as TicketStatus };
       const entries: { ticket: Ticket; assigned: boolean }[] = [];
@@ -451,10 +372,7 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
           output: [
             {
               type: "text" as const,
-              text:
-                args.status === undefined
-                  ? "Nothing is waiting for you and nothing you opened has an answer."
-                  : `Nothing is ${args.status}.`,
+              text: emptyInboxText(args.status),
             },
           ],
           details: { tickets: [] },
@@ -485,21 +403,11 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
   });
 
   const agentReply = defineTool({
-    name: "agent_reply",
-    description:
-      "Finish a ticket you are working on and report the result. Use the ticket id from the message that delivered it.",
-    parameters: Type.Object(
-      {
-        ticketId: Type.String({ description: "The id of the ticket you are finishing." }),
-        result: Type.String({ description: "What you did, or what you found." }),
-      },
-      { additionalProperties: false },
-    ),
-    replay: "unsafe",
+    ...AGENT_REPLY,
     execute: async (args) => {
       const ticket = board.get(args.ticketId);
       if (ticket === undefined) {
-        return toolError(`No ticket ${args.ticketId} on this board.`);
+        return toolError(noTicketText(args.ticketId));
       }
       try {
         // A ticket the relay just delivered is `open` and unassigned: taking it is the claim the board
@@ -513,7 +421,7 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
         return boardRefusal(error, "reply");
       }
       return {
-        output: [{ type: "text" as const, text: `Completed ${args.ticketId}: ${args.result}` }],
+        output: [{ type: "text" as const, text: repliedText(args.ticketId, args.result) }],
         details: { ticketId: args.ticketId, result: args.result },
       };
     },
