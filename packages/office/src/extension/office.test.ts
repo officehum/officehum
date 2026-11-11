@@ -16,7 +16,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { JsonObject, Message } from "@earendil-works/pi-ai";
+import type { Message } from "@earendil-works/pi-ai";
 import { Type } from "@earendil-works/pi-ai";
 import {
   type AgentChange,
@@ -27,8 +27,26 @@ import {
   section,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
-import type { AgentManifest } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  BOOK,
+  BOOK_MANIFEST,
+  type CallResult,
+  type CommunicationSubject,
+  callText,
+  communicationCases,
+  DELEGATE_CHATTER,
+  DELEGATE_RESULT,
+  delegatingScript,
+  detailsOf,
+  FRONT,
+  FRONT_MANIFEST,
+  FRONT_TYPE,
+  REQUEST,
+  TYPE,
+  textOf,
+  UNKNOWN_TYPE,
+} from "../../../sdk/src/fixtures/communication-cases.js";
 import { type Office, openOffice } from "../adapter/index.js";
 import type { Board } from "../board/index.js";
 import { createWorkboard, seedPerson } from "../board/testing.js";
@@ -68,22 +86,10 @@ function DIRECTORY(): string {
   return directory;
 }
 
-/** The delegator: it accepts `booking.request` and hands `invoice.create` on. */
-const FRONT = "frontdesk";
-const FRONT_TYPE = "booking.request";
-/** The delegate: it accepts `invoice.create`. */
-const BOOK = "bookkeeper";
-const TYPE = "invoice.create";
-const UNKNOWN_TYPE = "mystery.thing";
 /** A type no role accepts, which this office routes to a person. */
 const REVIEW_TYPE = "finance.review";
 const EILEEN = { id: "eileen-hart", name: "Eileen Hart" };
 
-const REQUEST = "Please invoice job 42.";
-const DELEGATE_RESULT = "Invoice 42 is paid.";
-const DELEGATOR_FINAL = "Handed it on.";
-/** Deliberately NOT the result: what the delegate says in chat is not what it replied with. */
-const DELEGATE_CHATTER = "Replied on the ticket — see agent_reply for the answer.";
 const PROVENANCE: RelayProvenance = {
   origin: "internal",
   sourceChannel: "chat",
@@ -101,53 +107,6 @@ const OFFICE_CALL = {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** A minimal, valid `officehum.json`: only `id`, `name` and `accepts` are read by the extension. */
-function manifestOf(
-  id: string,
-  name: string,
-  accepts: readonly { readonly type: string; readonly description: string }[],
-): AgentManifest {
-  return {
-    schemaVersion: 1,
-    id,
-    name,
-    department: "finance",
-    role: `${name} does the work this office hands on.`,
-    defaultModel: { provider: "scripted", modelId: "scripted-1" },
-    tools: [],
-    connectors: [],
-    approvals: [],
-    channels: [],
-    accepts: accepts.map((accept) => ({ ...accept })),
-    skills: [],
-    evals: "evals",
-  };
-}
-
-const FRONT_MANIFEST = manifestOf(FRONT, "Front Desk", [
-  { type: FRONT_TYPE, description: "Take a booking request" },
-]);
-const BOOK_MANIFEST = manifestOf(BOOK, "Bookkeeper", [
-  { type: TYPE, description: "Invoice a completed job" },
-]);
-
-/** The text of one transcript message, whatever shape its content is. */
-function textOf(message: Message): string {
-  const content: unknown = message.content;
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter(
-      (block): block is { readonly type: "text"; readonly text: string } =>
-        typeof block === "object" &&
-        block !== null &&
-        (block as { type?: unknown }).type === "text" &&
-        typeof (block as { text?: unknown }).text === "string",
-    )
-    .map((block) => block.text)
-    .join("");
-}
-
 /** The text of every `toolName` result in a transcript. */
 function resultText(messages: readonly Message[], toolName: string): string {
   return messages
@@ -155,13 +114,6 @@ function resultText(messages: readonly Message[], toolName: string): string {
     .map(textOf)
     .join("\n");
 }
-
-/** What one direct tool call returned, narrowed enough to assert on. */
-type CallResult = {
-  readonly isError?: boolean | undefined;
-  readonly output?: readonly { readonly type: string; readonly text?: string }[] | undefined;
-  readonly details?: unknown;
-};
 
 /** The tool of one extension by name. */
 function toolOf(extension: Extension, name: string): ToolRegistration {
@@ -182,65 +134,6 @@ async function call(
     context: unknown,
   ) => Promise<CallResult>;
   return await execute(args, api, BACKGROUND_CONTEXT);
-}
-
-/** The tool result's own text, for asserting on what the model was told. */
-function callText(result: CallResult): string {
-  return (result.output ?? [])
-    .filter((block) => block.type === "text")
-    .map((block) => block.text ?? "")
-    .join("\n");
-}
-
-/** The `details` one tool call returned, as the object each tool documents. */
-function detailsOf(result: CallResult): Record<string, unknown> {
-  return (result.details ?? {}) as Record<string, unknown>;
-}
-
-/**
- * The script both fixture roles run. A relayed ticket means the delegate's conversation: it answers
- * with `agent_reply`. Otherwise the delegator asks for the work, then finishes its turn once the
- * dispatch's result comes back.
- */
-function delegatingScript(dispatch?: JsonObject): ScriptedScript {
-  return (messages) => {
-    const relayed = messages.find(
-      (message) => message.role === "user" && textOf(message).includes("TICKET "),
-    );
-    if (relayed !== undefined) {
-      if (
-        messages.some(
-          (message) => message.role === "toolResult" && message.toolName === "agent_reply",
-        )
-      ) {
-        return { text: DELEGATE_CHATTER };
-      }
-      const ticketId = /TICKET (\S+)/.exec(textOf(relayed))?.[1] ?? "";
-      return {
-        toolCalls: [{ name: "agent_reply", args: { ticketId, result: DELEGATE_RESULT } }],
-      };
-    }
-    if (
-      messages.some(
-        (message) => message.role === "toolResult" && message.toolName === "agent_dispatch",
-      )
-    ) {
-      return { text: DELEGATOR_FINAL };
-    }
-    return {
-      toolCalls: [
-        {
-          name: "agent_dispatch",
-          args: dispatch ?? {
-            type: TYPE,
-            title: "Invoice job 42",
-            detail: REQUEST,
-            wait: true,
-          },
-        },
-      ],
-    };
-  };
 }
 
 /** A role's own extension: one tool and one section naming the role, so it is visible in a request. */
@@ -1001,4 +894,62 @@ describe("a crash during the wait", () => {
       await reopened.close();
     }
   });
+});
+
+/**
+ * The shared communication cases (RASF-3112), run against the office extension over a real board
+ * and relay. The local board runs the same cases (`packages/sdk/src/local-board.test.ts`).
+ */
+function officeSubject(fixture: Fixture): CommunicationSubject {
+  let keys = 0;
+  const identity = (callId = "call-1") => ({ ...OFFICE_CALL, callId }) as unknown as OfficeToolCall;
+  return {
+    call: (as, tool, args, callId) =>
+      call(toolOf(as === FRONT ? fixture.front : fixture.book, tool), args, identity(callId)),
+    async createTicket(input) {
+      return fixture.board.create({ ...input, provenance: PROVENANCE }, `shared-${++keys}`).id;
+    },
+    async claim(id, role) {
+      fixture.board.claim(id, role);
+    },
+    async assign(id, role) {
+      fixture.board.assign(id, { kind: "agent", id: role }, "office");
+    },
+    async ticket(id) {
+      const ticket = fixture.board.get(id);
+      return ticket === undefined
+        ? undefined
+        : { status: ticket.status, assignee: ticket.assignee, result: ticket.result };
+    },
+    async ticketsOfType(type) {
+      return fixture.board.list({ type }).map((ticket) => ticket.id);
+    },
+    async fingerprint() {
+      return JSON.stringify([fixture.board.eventsAfter(0), fixture.board.list({})]);
+    },
+    async handOff() {
+      const submission = await fixture.office.submit(fixture.frontConversation, {
+        input: REQUEST,
+        requestId: "req-shared-hand-off",
+      });
+      const ticketId = await waitForTicket(fixture.board, TYPE);
+      await fixture.relay.pollOnce();
+      await submission.wait(BACKGROUND_CONTEXT);
+      const messages = (await fixture.frontConversation.context(BACKGROUND_CONTEXT)).messages;
+      return { ticketId, dispatchText: resultText(messages, "agent_dispatch") };
+    },
+    async dispatchAndWait(args) {
+      const waiting = call(toolOf(fixture.front, "agent_dispatch"), args, identity("call-wait"));
+      const ticketId = await waitForTicket(fixture.board, TYPE);
+      await deliverUntilDone(fixture, ticketId);
+      return await waiting;
+    },
+    close: () => fixture.close(),
+  };
+}
+
+describe("the shared communication cases", () => {
+  communicationCases(async () =>
+    officeSubject(await openFixture({ directory: DIRECTORY(), script: delegatingScript() })),
+  );
 });

@@ -169,6 +169,12 @@ export {
   GENERIC_TOOLS,
   HOST_FOLDERS,
 } from "./layers.js";
+export {
+  LOCAL_BOARD_DOC,
+  type LocalBoardOptions,
+  type LocalTicket,
+  localBoardExtension,
+} from "./local-board.js";
 export { localFileStore } from "./local-files.js";
 export { localVersionedFileStore } from "./local-versioned-files.js";
 export {

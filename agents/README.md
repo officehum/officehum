@@ -30,6 +30,44 @@ const root = await harness.root(context, { agent: role.agent });
 Customize a role without changing it with an **overlay**: a directory with your own `AGENTS.md`
 additions, `APPEND_SYSTEM.md`, skills and `settings.json` (model; skills and tools on or off).
 
+## Two roles on your own harness
+
+Inside Office Hum, roles hand work to each other with `agent_dispatch`, `agent_inbox` and
+`agent_reply`. On your own harness, the SDK's **local board** gives them the same three tools:
+tickets live in a document in your harness, and routing goes by ticket type, from each manifest's
+`accepts`. Install one local board per role, then create one conversation per role, each with that
+role's agent. A dispatched ticket is delivered into its assignee's conversation, once.
+
+```ts
+import { localBoardExtension } from "@officehum/sdk";
+import bookkeeper from "@officehum/bookkeeper";
+import frontdesk from "@officehum/frontdesk";
+
+const roles = { frontdesk: frontdesk({ calendar }), bookkeeper: bookkeeper({ quickbooks }) };
+// Each role's officehum.json, which ships in its package: the local board routes by their `accepts`.
+const manifests = [frontdeskManifest, bookkeeperManifest];
+const conversations = new Map<string, ConversationId>();
+
+for (const [id, role] of Object.entries(roles)) {
+  const board = localBoardExtension({
+    manifests,
+    role: id,
+    conversationOf: (roleId) => conversations.get(roleId),
+  });
+  for (const extension of [...role.extensions, board]) registry.install(extension);
+  const agent = { ...role.agent, extensions: [...role.agent.extensions, board] };
+  const conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent }, context);
+  conversations.set(id, conversation.id);
+}
+```
+
+Front Desk can now `agent_dispatch` an `invoice.create` ticket. It lands in the Bookkeeper's
+conversation, the Bookkeeper finishes it with `agent_reply`, and with `wait: true` Front Desk gets the
+result back. The tools match Office Hum's names, parameters and answers, so a role behaves the same
+either way. Office Hum adds what a local board does not have: budgets, hop limits, provenance,
+routing to people, and approvals. One conversation per role means two roles that each wait on the
+other deadlock, so wait in one direction only, or set `waitTimeoutMs`.
+
 ## The company every role works for
 
 `company/default/` at the root of the repository is the business the catalogue's roles work for:
