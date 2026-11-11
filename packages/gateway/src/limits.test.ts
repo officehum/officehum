@@ -3,6 +3,7 @@
  * address's and the total limit, and a WebSocket closed when its token expires and no fresh `hello`
  * comes within the grace period.
  */
+import { connect as connectRaw } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { parseGatewayConfig } from "./config.js";
@@ -85,6 +86,32 @@ describe("connection limits", () => {
     ).toHaveLength(2);
   }, 30_000);
 
+  it("frees a refused upgrade's room at once, even when the client never closes its end", async () => {
+    const { gateway } = await start(undefined, {}, { limits: { total: 1 } });
+    // A client that keeps its half of the connection open after being refused (allowHalfOpen).
+    const raw = connectRaw({ port: Number(new URL(gateway.url).port), allowHalfOpen: true });
+    raw.on("error", () => {});
+    const answer = new Promise<string>((resolve) =>
+      raw.once("data", (chunk) => resolve(String(chunk))),
+    );
+    raw.write(
+      "GET /v1/ws HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n" +
+        "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+        "Authorization: Bearer not.a.token\r\n\r\n",
+    );
+    expect(await answer).toMatch(/^HTTP\/1.1 401/);
+    expect(await upgradeStatus(gateway, await token("ada", ["staff"]))).toBe(101);
+    raw.destroy();
+  }, 30_000);
+
+  it("frees an HTTP request's room when it is answered", async () => {
+    const { gateway } = await start(undefined, {}, { limits: { perAddress: 1 } });
+    const headers = { authorization: `Bearer ${await token("ada", ["staff"])}` };
+    for (let n = 0; n < 3; n++) {
+      expect((await fetch(`${gateway.url}/v1/requests/r${n}`, { headers })).status).toBe(404);
+    }
+  }, 30_000);
+
   it("answers 503 once the gateway holds its total", async () => {
     const { gateway } = await start(undefined, {}, { limits: { total: 1 } });
     await connect(gateway, await token("ada", ["staff"]));
@@ -152,6 +179,10 @@ describe("ConnectionLimits", () => {
     const b = counter.open("1.1.1.1");
     if (!("lease" in b)) throw new Error("refused");
     expect(b.lease.assign("ada")).toBeUndefined();
+    expect(counter.counts()).toEqual({ total: 2, addresses: 1, principals: 2 });
+    a.lease.release();
+    b.lease.release();
+    expect(counter.counts()).toEqual({ total: 0, addresses: 0, principals: 0 });
   });
 });
 
@@ -177,9 +208,14 @@ describe("limits in gateway.json", () => {
   it("reports every bad limit with its path", () => {
     expect(() =>
       parseGatewayConfig(
-        { ...base, limits: { perPrincipal: 0, total: 1.5, other: 1 } },
+        {
+          ...base,
+          limits: { perPrincipal: 0, total: 1.5, expiredGraceSeconds: 10_000_000, other: 1 },
+        },
         repository,
       ),
-    ).toThrow(/limits.other: is not a known field[\s\S]*limits.perPrincipal[\s\S]*limits.total/);
+    ).toThrow(
+      /limits.other: is not a known field[\s\S]*limits.perPrincipal[\s\S]*limits.total[\s\S]*limits.expiredGraceSeconds: must be at most 86400/,
+    );
   });
 });

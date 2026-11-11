@@ -372,7 +372,7 @@ request has settled and, if so, waits for its `settled` event before answering.
 | `perPrincipal` | 32 | WebSockets and event streams of one signed-in principal | `429` |
 | `perAddress` | 64 | connections of any kind from one remote address | `429` |
 | `total` | 1024 | connections of any kind, from everyone | `503` |
-| `expiredGraceSeconds` | 60 | how long an expired WebSocket may wait for a fresh `hello` | closed, 1008 |
+| `expiredGraceSeconds` | 60 (at most 86400) | how long an expired WebSocket may wait for a fresh `hello` | closed, 1008 |
 
 A WebSocket upgrade over a limit is answered with the status alone. An HTTP request over a limit gets
 the status with an `error busy` body. A WebSocket that signs in with `hello` as a principal already at

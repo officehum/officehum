@@ -82,6 +82,9 @@ export interface ConnectionLimitsConfig {
   readonly expiredGraceSeconds: number;
 }
 
+/** The longest an expired WebSocket may wait for a fresh `hello`: a day. */
+const MAX_GRACE_SECONDS = 86_400;
+
 export const DEFAULT_LIMITS: ConnectionLimitsConfig = {
   perPrincipal: 32,
   perAddress: 64,
@@ -212,6 +215,11 @@ export function parseGatewayConfig(
         if (given === undefined) continue;
         if (!Number.isInteger(given) || (given as number) <= 0) {
           problem(`limits.${field}`, `must be a positive whole number (got ${show(given)})`);
+        } else if (field === "expiredGraceSeconds" && (given as number) > MAX_GRACE_SECONDS) {
+          problem(
+            "limits.expiredGraceSeconds",
+            `must be at most ${MAX_GRACE_SECONDS} (a day; got ${show(given)})`,
+          );
         } else {
           limits[field] = given as number;
         }

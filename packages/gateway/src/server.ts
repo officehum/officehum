@@ -282,9 +282,17 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
     // Node drops its own error listener before `upgrade`: without one, a client that resets the
     // connection while being refused would crash the gateway with an unhandled EPIPE.
     socket.on("error", (error) => log(`A connection failed during upgrade: ${error.message}`));
+    let lease: Lease | undefined;
+    // A refused connection gives its room back at once, and is destroyed shortly after the answer:
+    // a client that never closes its own end must not hold a lease, or a socket, for ever.
     const refuse = (status: string) => {
-      if (socket.writable) socket.end(`HTTP/1.1 ${status}\r\n\r\n`);
-      else socket.destroy();
+      lease?.release();
+      if (!socket.writable) {
+        socket.destroy();
+        return;
+      }
+      socket.end(`HTTP/1.1 ${status}\r\n\r\n`);
+      setTimeout(() => socket.destroy(), REFUSED_LINGER_MS).unref();
     };
     const url = new URL(request.url ?? "/", "http://gateway");
     if (url.pathname !== "/v1/ws") {
@@ -297,17 +305,18 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
       refuse(statusLine(opened.refusal.status));
       return;
     }
-    const { lease } = opened;
-    socket.once("close", () => lease.release());
+    const granted = opened.lease;
+    lease = granted;
+    socket.once("close", () => granted.release());
     const header = bearerToken(request.headers.authorization);
     const accept = (signedIn: VerifiedToken | undefined) => {
-      const refused = signedIn === undefined ? undefined : lease.assign(signedIn.principal.id);
+      const refused = signedIn === undefined ? undefined : granted.assign(signedIn.principal.id);
       if (refused !== undefined) {
         auditRefusal("connect", refused, signedIn?.principal.id);
         refuse(statusLine(refused.status));
         return;
       }
-      sockets.handleUpgrade(request, socket, head, (ws) => session(ws, signedIn, lease));
+      sockets.handleUpgrade(request, socket, head, (ws) => session(ws, signedIn, granted));
     };
     if (header === undefined) {
       accept(undefined);
@@ -514,6 +523,9 @@ function pathOf(request: IncomingMessage): string {
 function statusLine(status: 429 | 503): string {
   return status === 429 ? "429 Too Many Requests" : "503 Service Unavailable";
 }
+
+/** How long a refused upgrade's socket may linger after its answer before it is destroyed. */
+const REFUSED_LINGER_MS = 1_000;
 
 /** How long an unsigned WebSocket may stay open without signing in. */
 const SIGN_IN_DEADLINE_MS = 30_000;
