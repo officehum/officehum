@@ -7,7 +7,7 @@ import {
   validateMessage,
 } from "@officehum/protocol";
 import { backoffDelay, sleep } from "./backoff.js";
-import { GatewayError } from "./errors.js";
+import { GatewayError, isGatewayError } from "./errors.js";
 import type { Run } from "./run.js";
 import {
   type Outgoing,
@@ -39,6 +39,8 @@ interface Pending {
 export class WebSocketTransport implements Transport {
   readonly #options: TransportOptions;
   readonly #retries: number;
+  /** Aborted by `close()`: ends backoff waits and the reconnect loop. */
+  readonly #stop = new AbortController();
   #socket: WebSocket | undefined;
   #ready = false;
   #closed = false;
@@ -47,6 +49,8 @@ export class WebSocketTransport implements Transport {
   readonly #pending = new Map<string, Pending>();
   /** Commands waiting for a socket: never sent, or sent on one that dropped and safe to send again. */
   #queue: Pending[] = [];
+  /** Commands answered `busy`, waiting out their backoff before they are sent again. */
+  readonly #waiting = new Map<Pending, ReturnType<typeof setTimeout>>();
   /** Unfinished runs, by request id, which this connection's events are delivered to. */
   readonly #runs = new Map<string, Run>();
 
@@ -70,62 +74,97 @@ export class WebSocketTransport implements Transport {
   }
 
   async close(): Promise<void> {
+    this.#end(new Error("The gateway client is closed."));
+  }
+
+  /** Stops for good: every waiting command and unfinished run ends with `error`. */
+  #end(error: Error): void {
     if (this.#closed) return;
     this.#closed = true;
-    const closed = new Error("The gateway client is closed.");
-    for (const pending of [...this.#pending.values(), ...this.#queue]) pending.reject(closed);
+    this.#stop.abort();
+    for (const timer of this.#waiting.values()) clearTimeout(timer);
+    const waiting = [...this.#pending.values(), ...this.#queue, ...this.#waiting.keys()];
     this.#pending.clear();
     this.#queue = [];
-    for (const run of this.#runs.values()) run.fail(closed);
+    this.#waiting.clear();
+    for (const pending of waiting) pending.reject(error);
+    for (const run of this.#runs.values()) run.fail(error);
     this.#runs.clear();
     this.#socket?.close();
+    this.#socket = undefined;
+    this.#ready = false;
   }
 
   async #connect(): Promise<void> {
     const url = `${this.#options.url.replace(/^http/, "ws").replace(/\/$/, "")}/v1/ws`;
     const socket = new WebSocket(url);
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        socket.close();
-        reject(new GatewayError("busy", `The gateway at ${url} did not answer in time.`));
-      }, HANDSHAKE_TIMEOUT_MS);
-      const fail = (error: Error) => {
-        clearTimeout(timer);
-        socket.close();
-        reject(error);
-      };
-      socket.addEventListener("error", () =>
-        fail(new GatewayError("busy", `Could not connect to the gateway at ${url}.`)),
-      );
-      socket.addEventListener("close", () =>
-        fail(new GatewayError("busy", `The gateway at ${url} closed the connection.`)),
-      );
-      socket.addEventListener("open", async () => {
-        try {
-          const token = await tokenOf(this.#options.token);
-          socket.send(
-            JSON.stringify({
-              type: "hello",
-              version: PROTOCOL_VERSION,
-              client: this.#options.client ?? "officehum-client",
-              token,
-            }),
-          );
-        } catch (error) {
-          fail(error instanceof Error ? error : new Error(String(error)));
-        }
+    // The handshake's listeners go away with it, so later frames and closes are not mistaken for it.
+    const handshake = new AbortController();
+    const listen = { signal: handshake.signal };
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(
+          () => fail(new GatewayError("busy", `The gateway at ${url} did not answer in time.`)),
+          HANDSHAKE_TIMEOUT_MS,
+        );
+        handshake.signal.addEventListener("abort", () => clearTimeout(timer));
+        // close() during the handshake ends it now, socket and all.
+        this.#stop.signal.addEventListener(
+          "abort",
+          () => fail(new Error("The gateway client is closed.")),
+          listen,
+        );
+        const fail = (error: Error) => {
+          socket.close();
+          reject(error);
+        };
+        socket.addEventListener(
+          "error",
+          () => fail(new GatewayError("busy", `Could not connect to the gateway at ${url}.`)),
+          listen,
+        );
+        socket.addEventListener(
+          "close",
+          () => fail(new GatewayError("busy", `The gateway at ${url} closed the connection.`)),
+          listen,
+        );
+        socket.addEventListener(
+          "open",
+          async () => {
+            try {
+              const token = await tokenOf(this.#options.token);
+              socket.send(
+                JSON.stringify({
+                  type: "hello",
+                  version: PROTOCOL_VERSION,
+                  client: this.#options.client ?? "officehum-client",
+                  token,
+                }),
+              );
+            } catch (error) {
+              fail(error instanceof Error ? error : new Error(String(error)));
+            }
+          },
+          listen,
+        );
+        socket.addEventListener(
+          "message",
+          (event: MessageEvent) => {
+            const message = parse(event.data);
+            if (message?.type === "welcome") resolve();
+            else if (message?.type === "error") fail(GatewayError.from(message));
+          },
+          listen,
+        );
       });
-      socket.addEventListener("message", (event: MessageEvent) => {
-        const message = parse(event.data);
-        if (message?.type === "welcome") {
-          clearTimeout(timer);
-          resolve();
-        } else if (message?.type === "error") {
-          fail(GatewayError.from(message));
-        }
-      });
-    });
-    // Handshake done: from here the socket's own listeners take over.
+    } finally {
+      handshake.abort();
+    }
+    if (this.#closed) {
+      // close() ran while this handshake was under way.
+      socket.close();
+      throw new Error("The gateway client is closed.");
+    }
     this.#socket = socket;
     this.#ready = true;
     socket.addEventListener("message", (event: MessageEvent) => {
@@ -140,6 +179,10 @@ export class WebSocketTransport implements Transport {
   }
 
   #dispatch(pending: Pending): void {
+    if (this.#closed) {
+      pending.reject(new Error("The gateway client is closed."));
+      return;
+    }
     if (!this.#ready || this.#socket === undefined) {
       this.#queue.push(pending);
       return;
@@ -168,8 +211,13 @@ export class WebSocketTransport implements Transport {
     }
     if (message.type === "welcome") return;
     if (message.id === undefined) {
+      if (message.type !== "error") return;
       // The token expired: sign in again on a new socket, which also re-subscribes every run.
-      if (message.type === "error" && message.code === "unauthorized") this.#socket?.close();
+      if (message.code === "unauthorized") this.#socket?.close();
+      // The gateway lost track of a request when its runtime restarted, and cannot say which one in
+      // a way this client can route: subscribe every run again. A request still known carries on (its
+      // events deduplicated by seq); one that is gone fails with `not_found`.
+      else if (message.code === "internal") this.#resubscribe();
       return;
     }
     const pending = this.#pending.get(message.id);
@@ -185,12 +233,15 @@ export class WebSocketTransport implements Transport {
     const transient = error.code === "busy" || error.code === "unauthorized";
     if (transient && retryable(pending.command) && pending.attempts < this.#retries) {
       const delay = backoffDelay(pending.attempts++, this.#options.backoff);
-      setTimeout(() => {
-        if (!this.#closed) this.#dispatch(pending);
-      }, delay);
+      this.#waiting.set(
+        pending,
+        setTimeout(() => {
+          this.#waiting.delete(pending);
+          this.#dispatch(pending);
+        }, delay),
+      );
       return;
     }
-    const failure = GatewayError.from(error);
     const { run } = pending;
     if (
       run !== undefined &&
@@ -200,7 +251,7 @@ export class WebSocketTransport implements Transport {
     ) {
       this.#runs.delete(run.requestId);
     }
-    pending.reject(failure);
+    pending.reject(GatewayError.from(error));
   }
 
   #onClose(): void {
@@ -221,15 +272,24 @@ export class WebSocketTransport implements Transport {
     void this.#reconnect();
   }
 
+  /**
+   * Reconnects with backoff for as long as the gateway is unreachable. Sign-in refused `retries`
+   * times in a row is not going to get better, so it ends the client with that error instead of
+   * leaving every run waiting.
+   */
   async #reconnect(): Promise<void> {
+    let refused = 0;
     for (let attempt = 0; !this.#closed; attempt++) {
-      await sleep(backoffDelay(attempt, this.#options.backoff));
+      await sleep(backoffDelay(attempt, this.#options.backoff), this.#stop.signal);
       if (this.#closed) return;
       try {
         await this.#connect();
         return;
-      } catch {
-        // Try again after a longer wait; a failing token source gets the same patience.
+      } catch (error) {
+        if (isGatewayError(error, "unauthorized") && ++refused > this.#retries) {
+          this.#end(error);
+          return;
+        }
       }
     }
   }
@@ -239,9 +299,15 @@ export class WebSocketTransport implements Transport {
     const waiting = this.#queue;
     this.#queue = [];
     for (const pending of waiting) this.#dispatch(pending);
-    const covered = new Set(
-      [...this.#pending.values()].map((pending) => pending.run?.requestId).filter(Boolean),
-    );
+    this.#resubscribe();
+  }
+
+  /** Subscribes each unfinished run again after its last `seq`, unless a command in flight covers it. */
+  #resubscribe(): void {
+    const covered = new Set<string>();
+    for (const pending of [...this.#pending.values(), ...this.#waiting.keys()]) {
+      if (pending.run !== undefined) covered.add(pending.run.requestId);
+    }
     for (const run of this.#runs.values()) {
       if (run.done || covered.has(run.requestId)) continue;
       this.#dispatch({
@@ -251,7 +317,7 @@ export class WebSocketTransport implements Transport {
         resolve: () => {},
         reject: (error) => {
           run.fail(error);
-          this.#runs.delete(run.requestId);
+          if (this.#runs.get(run.requestId) === run) this.#runs.delete(run.requestId);
         },
         attempts: 0,
       });

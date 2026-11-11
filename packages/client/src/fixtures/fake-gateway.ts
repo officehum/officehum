@@ -4,7 +4,13 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { ClientMessage, EventMessage, RequestEvent, ServerMessage } from "@officehum/protocol";
+import type {
+  ClientMessage,
+  ErrorCode,
+  EventMessage,
+  RequestEvent,
+  ServerMessage,
+} from "@officehum/protocol";
 import { type WebSocket, WebSocketServer } from "ws";
 
 interface Request {
@@ -30,6 +36,16 @@ export interface FakeGateway {
   overlap: boolean;
   /** Commands of these types get no reply at all. */
   readonly silent: Set<string>;
+  /** Commands of these types are refused with the given code. */
+  readonly refuse: Map<string, ErrorCode>;
+  /** While true, `hello` gets no answer, so a handshake stays under way. */
+  holdHello: boolean;
+  /** Sends a message to every signed-in WebSocket. */
+  broadcast(message: ServerMessage): void;
+  /** Forgets a request, as a restarted runtime that lost it would. */
+  forget(requestId: string): void;
+  /** How many WebSockets are open. */
+  openSockets(): number;
   close(): Promise<void>;
 }
 
@@ -83,6 +99,7 @@ export async function startFakeGateway(): Promise<FakeGateway> {
       const message = JSON.parse(data.toString()) as ClientMessage;
       received.push(message);
       if (message.type === "hello") {
+        if (fake.holdHello) return;
         tokens.push(message.token ?? "");
         signedIn = GOOD_TOKENS.test(message.token ?? "");
         send(
@@ -93,6 +110,11 @@ export async function startFakeGateway(): Promise<FakeGateway> {
         return;
       }
       if (fake.silent.has(message.type)) return;
+      const refusal = fake.refuse.get(message.type);
+      if (refusal !== undefined) {
+        send({ type: "error", id: message.id, code: refusal, message: `Refused: ${refusal}.` });
+        return;
+      }
       const { id } = message;
       if (!signedIn) {
         send({ type: "error", id, code: "unauthorized", message: "Sign in first." });
@@ -223,6 +245,15 @@ export async function startFakeGateway(): Promise<FakeGateway> {
     http,
     overlap: false,
     silent: new Set(),
+    refuse: new Map(),
+    holdHello: false,
+    broadcast(message) {
+      for (const socket of sockets) socket.send(JSON.stringify(message));
+    },
+    forget(requestId) {
+      requests.delete(requestId);
+    },
+    openSockets: () => sockets.size,
     emit(requestId, event) {
       const request = requestOf(requestId);
       const message: EventMessage = {

@@ -56,25 +56,25 @@ export class GatewayClient {
 
   /** Gives an agent work. Submitting a `requestId` again returns that request, not a new run. */
   async submit(options: SubmitOptions): Promise<Run> {
-    const run = this.#runFor(options.requestId);
+    const { run, created } = this.#runFor(options.requestId);
     try {
       const accepted = await this.#transport.request({ type: "submit", ...options }, run);
       if (accepted.type === "accepted") run.disposition = accepted.disposition;
       return run;
     } catch (error) {
-      this.#drop(run);
+      if (created) this.#drop(run);
       throw error;
     }
   }
 
   /** Follows a request submitted earlier (by this caller, from anywhere). */
   async subscribe(requestId: string): Promise<Run> {
-    const run = this.#runFor(requestId);
+    const { run, created } = this.#runFor(requestId);
     try {
       await this.#transport.request({ type: "subscribe", requestId }, run);
       return run;
     } catch (error) {
-      this.#drop(run);
+      if (created) this.#drop(run);
       throw error;
     }
   }
@@ -112,16 +112,17 @@ export class GatewayClient {
     await this.#transport.close();
   }
 
-  #runFor(requestId: string): Run {
+  /** The run already following `requestId`, or a new one (`created`) this call may drop on failure. */
+  #runFor(requestId: string): { run: Run; created: boolean } {
     const known = this.#runs.get(requestId);
-    if (known !== undefined && !known.done) return known;
+    if (known !== undefined && !known.done) return { run: known, created: false };
     const run = new Run(requestId);
     this.#runs.set(requestId, run);
     void run.settled().then(
       () => this.#drop(run),
       () => this.#drop(run),
     );
-    return run;
+    return { run, created: true };
   }
 
   #drop(run: Run): void {

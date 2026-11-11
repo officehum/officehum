@@ -68,7 +68,7 @@ export class HttpTransport implements Transport {
         const transient =
           !(error instanceof GatewayError) || error.code === "busy" || error.code === "internal";
         if (!transient || attempt >= this.#retries || this.#stop.signal.aborted) throw error;
-        await sleep(backoffDelay(attempt, this.#options.backoff));
+        await sleep(backoffDelay(attempt, this.#options.backoff), this.#stop.signal);
       }
     }
   }
@@ -93,8 +93,12 @@ export class HttpTransport implements Transport {
     void this.#stream(run).finally(() => this.#following.delete(run));
   }
 
-  /** Reads a run's event stream, reconnecting after the last `seq` until it settles. */
+  /**
+   * Reads a run's event stream, reconnecting after the last `seq` until it settles. An unreachable
+   * gateway is waited out; a token refused `retries` times in a row fails the run instead.
+   */
   async #stream(run: Run): Promise<void> {
+    let refused = 0;
     for (let attempt = 0; !run.done && !this.#stop.signal.aborted; ) {
       try {
         const response = await fetch(
@@ -110,6 +114,7 @@ export class HttpTransport implements Transport {
         if (!response.ok || response.body === null) {
           throw errorFrom(await response.json().catch(() => undefined), response.status);
         }
+        refused = 0;
         for await (const block of sseBlocks(response.body)) {
           attempt = 0;
           const data = block.data === undefined ? undefined : safeJson(block.data);
@@ -124,16 +129,18 @@ export class HttpTransport implements Transport {
         }
       } catch (error) {
         if (this.#stop.signal.aborted) return;
-        if (
+        const giveUp =
           error instanceof GatewayError &&
-          !["busy", "internal", "unauthorized"].includes(error.code)
-        ) {
+          (error.code === "unauthorized"
+            ? ++refused > this.#retries
+            : !["busy", "internal"].includes(error.code));
+        if (giveUp) {
           run.fail(error);
           return;
         }
       }
       if (run.done) return;
-      await sleep(backoffDelay(attempt++, this.#options.backoff));
+      await sleep(backoffDelay(attempt++, this.#options.backoff), this.#stop.signal);
     }
   }
 }

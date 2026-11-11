@@ -165,6 +165,101 @@ describe("GatewayClient over WebSocket", () => {
   });
 });
 
+describe("GatewayClient when things go wrong", () => {
+  it("keeps the connection and other commands when one command is refused", async () => {
+    const { fake, client } = await setup();
+    fake.silent.add("ping");
+    fake.refuse.set("approve", "forbidden");
+    const pinged = client.ping();
+    await until(() => expect(fake.received.some((m) => m.type === "ping")).toBe(true));
+    const refused = await client
+      .approve({ approvalId: "a1", decision: "approve" })
+      .catch((e: unknown) => e);
+    expect(isGatewayError(refused, "forbidden")).toBe(true);
+    // The ping is still waiting on the same socket: nothing reconnected or failed it.
+    fake.silent.clear();
+    fake.broadcast({
+      type: "result",
+      id: (fake.received.find((m) => m.type === "ping") as { id: string }).id,
+      ok: true,
+    });
+    await pinged;
+    expect(fake.tokens).toHaveLength(1);
+  });
+
+  it("does not mistake a submit waiting out busy for a lost request when the socket drops", async () => {
+    const fake = await startFakeGateway();
+    fakes.push(fake);
+    const client = await GatewayClient.connect({
+      url: fake.url,
+      token: "good-1",
+      backoff: { initialMs: 300, maxMs: 300 },
+    });
+    clients.push(client);
+    fake.busyNext(1);
+    const submitted = client.submit({ agent: "frontdesk", requestId: "r1", input: message });
+    await until(() => expect(fake.received.filter((m) => m.type === "submit")).toHaveLength(1));
+    fake.drop(); // during the busy backoff
+    const run = await submitted;
+    // No subscribe for a request the gateway had not taken yet, so no false not_found.
+    expect(fake.received.filter((m) => m.type === "subscribe")).toHaveLength(0);
+    fake.emit("r1", done("ok"));
+    expect(await run.settled()).toEqual(done("ok"));
+  });
+
+  it("closing ends a submit waiting out busy, and every open run, instead of hanging", async () => {
+    const { fake, client } = await setup();
+    const open = await client.submit({ agent: "frontdesk", requestId: "r0", input: message });
+    fake.busyNext(1);
+    const submitted = client.submit({ agent: "frontdesk", requestId: "r1", input: message });
+    await until(() => expect(fake.received.filter((m) => m.type === "submit")).toHaveLength(2));
+    await client.close();
+    await expect(submitted).rejects.toThrow(/closed/);
+    await expect(open.settled()).rejects.toThrow(/closed/);
+  });
+
+  it("re-subscribes when the gateway says it lost track of a request, failing only the lost one", async () => {
+    const { fake, client } = await setup();
+    const kept = await client.submit({ agent: "frontdesk", requestId: "kept", input: message });
+    const lost = await client.submit({ agent: "frontdesk", requestId: "lost", input: message });
+    fake.forget("lost");
+    fake.broadcast({
+      type: "error",
+      code: "internal",
+      message: "The office lost track of request lost when its runtime restarted.",
+    });
+    expect(isGatewayError(await lost.settled().catch((e: unknown) => e), "not_found")).toBe(true);
+    fake.emit("kept", done("still here"));
+    expect(await kept.settled()).toEqual(done("still here"));
+  });
+
+  it("closes a socket whose handshake finishes after close()", async () => {
+    const { fake, client } = await setup();
+    fake.holdHello = true;
+    fake.drop();
+    await until(() => expect(fake.received.filter((m) => m.type === "hello")).toHaveLength(2));
+    await client.close();
+    await until(() => expect(fake.openSockets()).toBe(0));
+  });
+
+  it("gives up, failing open runs, once reconnecting is refused sign-in again and again", async () => {
+    let issued = 0;
+    const fake = await startFakeGateway();
+    fakes.push(fake);
+    const client = await GatewayClient.connect({
+      url: fake.url,
+      token: () => (++issued === 1 ? "good-1" : "revoked"),
+      backoff: fast,
+      retries: 2,
+    });
+    clients.push(client);
+    const run = await client.submit({ agent: "frontdesk", requestId: "r1", input: message });
+    fake.drop();
+    expect(isGatewayError(await run.settled().catch((e: unknown) => e), "unauthorized")).toBe(true);
+    expect(fake.tokens.filter((t) => t === "revoked")).toHaveLength(3);
+  });
+});
+
 describe("GatewayClient over HTTP", () => {
   it("submits, streams over SSE and resumes after a drop with Last-Event-ID", async () => {
     const { fake, client } = await setup({ transport: "http" });
@@ -179,6 +274,22 @@ describe("GatewayClient over HTTP", () => {
     fake.emit("a/b", done("123"));
     expect((await events).map((event) => event.seq)).toEqual([1, 2, 3, 4]);
     expect(fake.http.filter((r) => r.path.endsWith("/events")).at(-1)?.lastEventId).toBe("2");
+  });
+
+  it("fails a run once its event stream is refused sign-in again and again", async () => {
+    let issued = 0;
+    const fake = await startFakeGateway();
+    fakes.push(fake);
+    const client = await GatewayClient.connect({
+      url: fake.url,
+      token: () => (++issued === 1 ? "good-1" : "revoked"),
+      transport: "http",
+      backoff: fast,
+      retries: 2,
+    });
+    clients.push(client);
+    const run = await client.submit({ agent: "frontdesk", requestId: "r1", input: message });
+    expect(isGatewayError(await run.settled().catch((e: unknown) => e), "unauthorized")).toBe(true);
   });
 
   it("retries a busy submit, types errors, and refuses commands HTTP cannot carry", async () => {

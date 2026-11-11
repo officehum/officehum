@@ -41,9 +41,14 @@ const requestId = await makeRequestId("acme", "frontdesk", new Date(), JSON.stri
   for its reply when the connection dropped, or one the gateway answered `busy` (its runtime was
   restarting), up to `retries` times (default 8). Any other command that was waiting fails with
   `busy`, and you decide whether to send it again.
+- **Giving up.** An unreachable gateway is waited out for as long as the client is open. Sign-in
+  refused `retries` times in a row on reconnecting is not going to get better: the client then ends
+  every open run, and any command still waiting, with that `unauthorized` error. If the gateway
+  reports that it lost track of a request (its runtime restarted without it), the client subscribes
+  again, and that run fails with `not_found`.
 - **Results.** `run.settled()` resolves with the `settled` event for done, failed and aborted runs
-  alike; check `status`. It rejects only if the run cannot be followed (the client closed, or the
-  gateway no longer knows the request).
+  alike; check `status`. It rejects only if the run cannot be followed: the client closed, sign-in kept
+  failing, or the gateway no longer knows the request.
 
 ## Errors
 
