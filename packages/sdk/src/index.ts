@@ -32,6 +32,7 @@ export {
   type ApprovalGateOptions,
   type ApprovalRequest,
   type Approver,
+  approvalAmount,
   approvalGate,
   approvedFacts,
   approvedFactsParameter,

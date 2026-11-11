@@ -1,5 +1,6 @@
 import {
   type Accepted,
+  type ApprovalInfo,
   ERROR_CODES,
   type ErrorCode,
   type Result,
@@ -49,6 +50,12 @@ export class HttpTransport implements Transport {
     }
     throw new Error(
       `${command.type} needs the WebSocket transport: the gateway's HTTP API has no route for it.`,
+    );
+  }
+
+  async watchApprovals(): Promise<readonly ApprovalInfo[]> {
+    throw new Error(
+      "watch_approvals needs the WebSocket transport: the gateway's HTTP API has no route for it.",
     );
   }
 

@@ -15,11 +15,16 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { type LoadedRole, type LoadRoleOptions, loadRole } from "../roles/load-role.js";
 
+/** The longest an approval may wait: a year. */
+const MAX_APPROVAL_TIMEOUT_MINUTES = 525_600;
+
 export interface OfficeFileRole {
   /** The role package directory, absolute. */
   readonly dir: string;
   /** Overlay directories, lowest first, absolute. */
   readonly overlays: readonly string[];
+  /** How long this agent's approvals wait for a decision before they are declined. Default 240. */
+  readonly approvalTimeoutMinutes?: number;
 }
 
 export interface OfficeFile {
@@ -74,7 +79,9 @@ export function parseOfficeFile(value: unknown, base: string, source = "office f
         return;
       }
       for (const key of Object.keys(entry)) {
-        if (key !== "dir" && key !== "overlays") problem(`${at}.${key}`, "is not a known field");
+        if (!["dir", "overlays", "approvalTimeoutMinutes"].includes(key)) {
+          problem(`${at}.${key}`, "is not a known field");
+        }
       }
       if (typeof entry.dir !== "string" || entry.dir.length === 0) {
         problem(`${at}.dir`, "must be the role package's directory");
@@ -86,12 +93,26 @@ export function parseOfficeFile(value: unknown, base: string, source = "office f
       ) {
         problem(`${at}.overlays`, "must be a list of overlay directories");
       }
+      const timeout = entry.approvalTimeoutMinutes;
+      if (
+        timeout !== undefined &&
+        (typeof timeout !== "number" ||
+          !Number.isFinite(timeout) ||
+          timeout <= 0 ||
+          timeout > MAX_APPROVAL_TIMEOUT_MINUTES)
+      ) {
+        problem(
+          `${at}.approvalTimeoutMinutes`,
+          `must be a number of minutes above 0 and at most ${MAX_APPROVAL_TIMEOUT_MINUTES} (a year), e.g. 240`,
+        );
+      }
       if (typeof entry.dir === "string" && Array.isArray(overlays)) {
         roles.push({
           dir: resolve(base, entry.dir),
           overlays: overlays
             .filter((dir): dir is string => typeof dir === "string")
             .map((dir) => resolve(base, dir)),
+          ...(typeof timeout === "number" ? { approvalTimeoutMinutes: timeout } : {}),
         });
       }
     });
@@ -104,18 +125,20 @@ export function parseOfficeFile(value: unknown, base: string, source = "office f
 }
 
 /**
- * Loads every role the office file lists. Refuses two roles with the same manifest id, since a
- * command names its agent by that id.
+ * Loads every role the office file lists, in its order. Refuses two roles with the same manifest id,
+ * since a command names its agent by that id. `approve` is the approver every role's gate asks (the
+ * runtime's remote approvals); without one, gated actions are refused.
  */
 export async function loadOfficeRoles(
   file: OfficeFile,
-  options: Pick<LoadRoleOptions, "demo"> = {},
+  options: Pick<LoadRoleOptions, "demo" | "approve"> = {},
 ): Promise<LoadedRole[]> {
   const roles: LoadedRole[] = [];
   for (const entry of file.roles) {
     const role = await loadRole(entry.dir, {
       overlays: entry.overlays,
       ...(options.demo === true ? { demo: true } : {}),
+      ...(options.approve === undefined ? {} : { approve: options.approve }),
     });
     const clash = roles.find((loaded) => loaded.manifest.id === role.manifest.id);
     if (clash !== undefined) {
@@ -126,6 +149,24 @@ export async function loadOfficeRoles(
     roles.push(role);
   }
   return roles;
+}
+
+/**
+ * Each agent's approval timeout in milliseconds, by agent name, for the agents whose office-file entry
+ * sets one. `roles` is what `loadOfficeRoles` returned for this file, in the same order.
+ */
+export function approvalTimeoutsMs(
+  file: OfficeFile,
+  roles: readonly LoadedRole[],
+): Record<string, number> {
+  const timeouts: Record<string, number> = {};
+  file.roles.forEach((entry, index) => {
+    const role = roles[index];
+    if (role !== undefined && entry.approvalTimeoutMinutes !== undefined) {
+      timeouts[role.manifest.id] = entry.approvalTimeoutMinutes * 60_000;
+    }
+  });
+  return timeouts;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

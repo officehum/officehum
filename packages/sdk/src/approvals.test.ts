@@ -10,6 +10,7 @@ import {
   type ApprovalGateOptions,
   type ApprovalRequest,
   type Approver,
+  approvalAmount,
   approvalGate,
   approvedFacts,
   conditionsHold,
@@ -18,7 +19,7 @@ import {
   sameFacts,
 } from "./approvals.js";
 import { stubEngine } from "./engine.js";
-import type { ConditionDeclaration } from "./manifest.js";
+import type { ApprovalDeclaration, ConditionDeclaration } from "./manifest.js";
 import { type DefinedRole, defineRole } from "./role.js";
 import { STOCKROOM_OVERLAY } from "./test-helpers.js";
 
@@ -801,5 +802,62 @@ describe("defineRole's approval facts", () => {
     );
     expect(approve.mock.calls[0]?.[0].facts).toEqual(facts);
     expect(approvedFacts(result?.arguments ?? {})).toEqual(facts.facts);
+  });
+});
+
+describe("approvalAmount", () => {
+  const invoice = {
+    id: "large_invoice",
+    tool: "create_invoice",
+    description: "Confirm a large invoice",
+    when: [
+      {
+        arg: "lines",
+        op: "gt",
+        field: "unitPriceCents",
+        times: "quantity",
+        value: { limit: "large_invoice" },
+      },
+    ],
+    amount: { arg: "lines", field: "unitPriceCents", times: "quantity" },
+  } as const satisfies ApprovalDeclaration;
+
+  it("is the declared amount, summed as conditions sum it", () => {
+    const lines = [
+      { unitPriceCents: 1_250, quantity: 2 },
+      { unitPriceCents: 999, quantity: 1 },
+    ];
+    expect(approvalAmount(invoice, { lines })).toBe(3_499);
+    expect(
+      approvalAmount(
+        { id: "big", tool: "pay", description: "d", amount: { arg: "totalCents" } },
+        { totalCents: "1250" },
+      ),
+    ).toBe(1_250);
+  });
+
+  it("is undefined without a declared amount, even when a condition compares a number", () => {
+    // A discount percentage is a number, but not money: guessing it as the amount would let a
+    // limit written in cents approve any discount.
+    const discount = {
+      id: "discount_booking",
+      tool: "book_appointment",
+      description: "d",
+      when: [{ arg: "discountPercent", op: "gt", value: 20 }],
+    } as const satisfies ApprovalDeclaration;
+    expect(approvalAmount(discount, { discountPercent: 100 })).toBe(undefined);
+    expect(approvalAmount({ id: "any", tool: "pay", description: "d" }, { total: 5 })).toBe(
+      undefined,
+    );
+  });
+
+  it("is undefined when the arguments do not give a readable amount", () => {
+    expect(approvalAmount(invoice, { lines: [{ unitPriceCents: -1, quantity: 1 }] })).toBe(
+      undefined,
+    );
+    expect(approvalAmount(invoice, {})).toBe(undefined);
+    expect(
+      approvalAmount({ id: "x", tool: "pay", description: "d", amount: { arg: "n" } }, { n: -5 }),
+    ).toBe(undefined);
   });
 });

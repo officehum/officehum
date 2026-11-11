@@ -208,7 +208,15 @@ describe("GatewayClient when things go wrong", () => {
   });
 
   it("closing ends a submit waiting out busy, and every open run, instead of hanging", async () => {
-    const { fake, client } = await setup();
+    const fake = await startFakeGateway();
+    fakes.push(fake);
+    // A backoff long enough that the busy submit is still waiting when the client closes.
+    const client = await GatewayClient.connect({
+      url: fake.url,
+      token: "good-1",
+      backoff: { initialMs: 5_000, maxMs: 5_000 },
+    });
+    clients.push(client);
     const open = await client.submit({ agent: "frontdesk", requestId: "r0", input: message });
     fake.busyNext(1);
     const submitted = client.submit({ agent: "frontdesk", requestId: "r1", input: message });
@@ -257,6 +265,44 @@ describe("GatewayClient when things go wrong", () => {
     fake.drop();
     expect(isGatewayError(await run.settled().catch((e: unknown) => e), "unauthorized")).toBe(true);
     expect(fake.tokens.filter((t) => t === "revoked")).toHaveLength(3);
+  });
+});
+
+describe("GatewayClient approvals", () => {
+  const waiting = {
+    approvalId: "t1:c1:big_payment",
+    agent: "payer",
+    tool: "pay",
+    summary: "Approve a payment",
+    status: "pending",
+    requestedAt: "2026-11-11T10:00:00.000Z",
+    expiresAt: "2026-11-11T14:00:00.000Z",
+  } as const;
+
+  it("lists what waits, passes on changes, watches again after a reconnect, and approves", async () => {
+    const { fake, client } = await setup();
+    fake.approvals.push(waiting);
+    const heard: string[] = [];
+    const listed = await client.watchApprovals((approval) =>
+      heard.push(`${approval.approvalId} ${approval.status}`),
+    );
+    expect(listed).toEqual([waiting]);
+    fake.broadcast({ type: "approval", approval: { ...waiting, approvalId: "t2:c1:x" } });
+    await until(() => expect(heard).toEqual(["t2:c1:x pending"]));
+
+    fake.drop();
+    await until(() =>
+      expect(fake.received.filter((m) => m.type === "watch_approvals")).toHaveLength(2),
+    );
+    await until(() => expect(heard).toContain("t1:c1:big_payment pending"));
+
+    const decided = await client.approve({ approvalId: waiting.approvalId, decision: "approve" });
+    expect(decided).toMatchObject({ status: "approved", by: "fake-approver" });
+  });
+
+  it("refuses to watch approvals over HTTP", async () => {
+    const { client } = await setup({ transport: "http" });
+    await expect(client.watchApprovals(() => {})).rejects.toThrow(/WebSocket transport/);
   });
 });
 

@@ -12,7 +12,7 @@
  *   "auth": { "issuer": "https://login.example.com", "audience": "officehum" },
  *   "permissions": {
  *     "submit": [{ "roles": ["staff"], "agents": "*" }],
- *     "approve": [{ "roles": ["manager"], "limit": 5000 }],
+ *     "approve": [{ "roles": ["manager"], "agents": ["bookkeeper"], "limit": 5000 }],
  *     "abort": [{ "roles": ["staff"] }]
  *   }
  * }
@@ -35,6 +35,8 @@ export interface SubmitRule {
 
 export interface ApproveRule {
   readonly roles: RoleList;
+  /** The agents whose approvals these roles may decide; `"*"` (the default) is every agent. */
+  readonly agents: readonly string[] | "*";
   /** The most these roles may approve; omitted is no limit beyond the token's own. */
   readonly limit?: number;
 }
@@ -241,14 +243,20 @@ function parsePermissions(
     }
     return [{ roles: rule.roles as string[], agents: agents as string[] | "*" }];
   });
-  const approve = rules("approve", ["roles", "limit"]).flatMap((rule, index) => {
+  const approve = rules("approve", ["roles", "agents", "limit"]).flatMap((rule, index) => {
     if (rule.limit !== undefined && (typeof rule.limit !== "number" || rule.limit < 0)) {
       problem(`permissions.approve[${index}].limit`, "must be a number, 0 or more");
+      return [];
+    }
+    const agents = rule.agents ?? "*";
+    if (agents !== "*" && !(Array.isArray(agents) && agents.length > 0 && agents.every(isName))) {
+      problem(`permissions.approve[${index}].agents`, 'must be a list of agent ids, or "*"');
       return [];
     }
     return [
       {
         roles: rule.roles as string[],
+        agents: agents as string[] | "*",
         ...(rule.limit === undefined ? {} : { limit: rule.limit as number }),
       },
     ];

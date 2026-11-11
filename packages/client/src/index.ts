@@ -1,3 +1,4 @@
+export type { ApprovalInfo } from "@officehum/protocol";
 export type { BackoffOptions } from "./backoff.js";
 export {
   type AgentState,

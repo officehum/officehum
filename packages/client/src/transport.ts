@@ -1,4 +1,4 @@
-import type { Accepted, ClientCommand, Result } from "@officehum/protocol";
+import type { Accepted, ApprovalInfo, ClientCommand, Result } from "@officehum/protocol";
 import type { BackoffOptions } from "./backoff.js";
 import type { Run } from "./run.js";
 
@@ -30,6 +30,11 @@ export interface Transport {
    * also delivers that request's events to the run until it is done, across reconnects.
    */
   request(command: Outgoing, run?: Run): Promise<Accepted | Result>;
+  /**
+   * Starts hearing of approvals the caller may decide: resolves with those waiting now, then calls
+   * `listener` for each one asked for or decided, across reconnects.
+   */
+  watchApprovals(listener: (approval: ApprovalInfo) => void): Promise<readonly ApprovalInfo[]>;
   close(): Promise<void>;
 }
 

@@ -141,6 +141,17 @@ export {
 } from "./roles/run-role.js";
 export { boardSenderResolver } from "./roles/sender.js";
 export {
+  type ApprovalAuditRecord,
+  type ApprovalCaller,
+  type ApprovalsHost,
+  approvalAudit,
+  DEFAULT_APPROVAL_TIMEOUT_MS,
+  RemoteApprovals,
+  RUN_STOPPED,
+  TIMED_OUT,
+} from "./runtime/approvals.js";
+export {
+  approvalTimeoutsMs,
   loadOfficeRoles,
   type OfficeFile,
   type OfficeFileRole,

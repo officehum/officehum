@@ -9,7 +9,10 @@
  * - "lookup …": `safe_step`, then "Looked it up.".
  * - "gate …": `gate_step`, a safe tool that writes `gate-started` and waits until a `release` file
  *   exists, then "Through the gate.".
+ * - "pay N": `pay` with `{ amount: N }`, gated by the `big_payment` approval above 100 through the
+ *   runtime's remote approvals; then "Result: <what pay returned>".
  * - anything else: "Echo: <text>".
+ * `FIXTURE_APPROVAL_TIMEOUT_MS` sets how long an approval waits (default 4 hours).
  * Every tool call is appended to `calls.log` in `FIXTURE_DIR`, every model call to `model.log` (the
  * request's text and the tool results the model saw), and the process id to `runtime.pid`.
  */
@@ -17,8 +20,9 @@ import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
-import { serveRuntime } from "@officehum/office";
+import { RemoteApprovals, serveRuntime } from "@officehum/office";
 import { scriptedProvider } from "@officehum/office/testing";
+import { approvalGate } from "@officehum/sdk";
 
 const directory = process.env.FIXTURE_DIR;
 if (directory === undefined) throw new Error("FIXTURE_DIR is required");
@@ -60,9 +64,30 @@ const gateStep = defineTool({
     return { output: [{ type: "text", text: "gate passed" }] };
   },
 });
+const pay = defineTool({
+  name: "pay",
+  description: "Pays an amount: a side effect that waits for a person's approval above 100.",
+  parameters: Type.Object({ amount: Type.Number() }),
+  replay: "unsafe",
+  execute: async (args) => {
+    record("pay");
+    return { output: [{ type: "text", text: `paid ${args.amount}` }] };
+  },
+});
+const approvalDeclarations = [
+  {
+    id: "big_payment",
+    tool: "pay",
+    description: "Approve a payment above 100",
+    when: [{ arg: "amount", op: "gt", value: 100 }],
+    amount: { arg: "amount" },
+  },
+];
+const approvals = new RemoteApprovals();
 const extension = defineExtension({
   name: "gateway-fixture",
-  tools: [safeStep, unsafeStep, gateStep],
+  tools: [safeStep, unsafeStep, gateStep, pay],
+  hooks: [approvalGate({ approvals: approvalDeclarations, approve: approvals.approve })],
 });
 const role = {
   dir: directory,
@@ -73,7 +98,9 @@ const role = {
       { name: "safe_step", replay: "safe" },
       { name: "unsafe_step", replay: "unsafe" },
       { name: "gate_step", replay: "safe" },
+      { name: "pay", replay: "unsafe" },
     ],
+    approvals: approvalDeclarations,
   },
   bundle: { extensions: [extension], agent: { extensions: [extension] } },
   approvalFacts: {},
@@ -104,6 +131,12 @@ const script = (messages) => {
   if (request.startsWith("lookup")) {
     return last === undefined ? { toolCalls: [{ name: "safe_step" }] } : { text: "Looked it up." };
   }
+  if (request.startsWith("pay ")) {
+    if (last === undefined) {
+      return { toolCalls: [{ name: "pay", args: { amount: Number(request.slice(4)) } }] };
+    }
+    return { text: `Result: ${textOf(results.at(-1))}` };
+  }
   if (request.startsWith("gate")) {
     return last === undefined
       ? { toolCalls: [{ name: "gate_step" }] }
@@ -119,6 +152,10 @@ await serveRuntime({
   storage: { sqlite: join(directory, "office.sqlite") },
   models: scripted.models,
   model: scripted.model,
+  approvals,
+  ...(process.env.FIXTURE_APPROVAL_TIMEOUT_MS === undefined
+    ? {}
+    : { approvalTimeoutsMs: { worker: Number(process.env.FIXTURE_APPROVAL_TIMEOUT_MS) } }),
   input: process.stdin,
   output: process.stdout,
   log: (line) => process.stderr.write(`${line}\n`),

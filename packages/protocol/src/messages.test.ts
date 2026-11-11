@@ -152,12 +152,50 @@ describe("validateMessage", () => {
     ]);
   });
 
+  it("takes watch_approvals from a client and approval messages from a server", () => {
+    expect(problems({ type: "watch_approvals", id: "w1" }, "client")).toEqual([]);
+    const approval = {
+      approvalId: "t1:c1:large_invoice",
+      agent: "bookkeeper",
+      tool: "create_invoice",
+      summary: "Confirm a large invoice",
+      status: "approved",
+      requestedAt: "2026-11-11T10:00:00.000Z",
+      expiresAt: "2026-11-11T14:00:00.000Z",
+      amount: 3_499,
+      by: "maya",
+      decidedAt: "2026-11-11T10:05:00.000Z",
+    };
+    expect(problems({ type: "approval", approval }, "server")).toEqual([]);
+    expect(
+      problems({ type: "approval", approval: { ...approval, status: "maybe" } }, "server"),
+    ).not.toEqual([]);
+    expect(
+      problems(
+        {
+          type: "event",
+          requestId: "r1",
+          seq: 1,
+          event: {
+            kind: "approval_requested",
+            approvalId: "a1",
+            tool: "create_invoice",
+            summary: "s",
+            agent: "bookkeeper",
+            expiresAt: "2026-11-11T14:00:00.000Z",
+          },
+        },
+        "server",
+      ),
+    ).toEqual([]);
+  });
+
   it("refuses an unknown type, naming the types the sender may use", () => {
     expect(problems({ type: "shout", id: "c1" }, "client")).toEqual([
       {
         path: "type",
         message:
-          'must be one of "hello", "submit", "subscribe", "get_state", "list_agents", "abort", "approve", "ping" (got "shout")',
+          'must be one of "hello", "submit", "subscribe", "get_state", "list_agents", "abort", "approve", "watch_approvals", "ping" (got "shout")',
       },
     ]);
   });

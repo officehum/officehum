@@ -444,6 +444,27 @@ function holds(
   }
 }
 
+/**
+ * The amount a call puts in front of a person, in cents: what the declaration's `amount` names, read
+ * from the arguments the way conditions read them (a summed field included). `undefined` when the
+ * declaration names no amount or the arguments do not give a readable one, so a limit check can tell
+ * "unknown" from "small". It is never guessed from `when`, whose numbers may be percentages or counts.
+ */
+export function approvalAmount(
+  declaration: ApprovalDeclaration,
+  args: ToolArguments,
+): number | undefined {
+  const declared = declaration.amount;
+  if (declared === undefined) return undefined;
+  const actual = args[declared.arg];
+  if (actual === undefined || actual === null) return undefined;
+  const amount =
+    declared.field === undefined
+      ? asNumber(actual)
+      : summedField(actual, declared.field, declared.times);
+  return amount === undefined || !Number.isFinite(amount) || amount < 0 ? undefined : amount;
+}
+
 /** One argument as the number to compare, or `undefined` when it is not one. */
 function asNumber(value: unknown): number | undefined {
   const number = typeof value === "number" ? value : Number(value);

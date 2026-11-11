@@ -139,14 +139,38 @@ Stops a request. Its stream ends with `settled` and `status: "aborted"`.
 
 ### `approve`
 
-Decides an action waiting on a person's approval (see `approval_requested`). `decision` is `approve`
-or `decline`; `note` is optional. The approver is the authenticated caller, never a field in the
-message, and the gateway enforces the caller's approval limit.
+Decides an action waiting on a person's approval (see `approval_requested` and `watch_approvals`).
+`decision` is `approve` or `decline`; `note` is optional. The approver is the authenticated caller,
+never a field in the message. The first decision wins: a later one gets `conflict`. An approver with
+an `approvalLimit` may approve only an approval whose `amount` is known and within the limit, and
+gets `forbidden` otherwise (declining needs no limit). `data.approval` is the approval as it now
+stands.
 
 ```json
 {"type":"approve","id":"c7","approvalId":"a-9","decision":"decline","note":"Not this week"}
-{"type":"result","id":"c7","ok":true}
+{"type":"result","id":"c7","ok":true,"data":{"approval":{"approvalId":"a-9","agent":"bookkeeper","tool":"send_note","summary":"Send the note to the team","status":"declined","requestedAt":"2026-11-11T10:00:00.000Z","expiresAt":"2026-11-11T14:00:00.000Z","by":"user-7","decidedAt":"2026-11-11T10:05:00.000Z","note":"Not this week"}}}
 ```
+
+### `watch_approvals`
+
+Asks for the approvals the caller may decide. `data.approvals` lists those waiting, and from then on
+the connection receives an `approval` message each time one is asked for or decided. The gateway sends
+only approvals for agents the caller has an `approve` rule for.
+
+```json
+{"type":"watch_approvals","id":"c9"}
+{"type":"result","id":"c9","ok":true,"data":{"approvals":[{"approvalId":"a-9","agent":"bookkeeper","tool":"send_note","summary":"Send the note to the team","status":"pending","requestedAt":"2026-11-11T10:00:00.000Z","expiresAt":"2026-11-11T14:00:00.000Z"}]}}
+{"type":"approval","approval":{"approvalId":"a-10","agent":"bookkeeper","tool":"create_invoice","summary":"Confirm an invoice above the set amount","status":"pending","requestedAt":"2026-11-11T10:07:00.000Z","expiresAt":"2026-11-11T14:07:00.000Z","amount":740000}}
+```
+
+An approval has `approvalId`, `agent`, `tool`, `summary` (what is asked, in words), `status`
+(`pending`, `approved` or `declined`), `requestedAt` and `expiresAt` (ISO 8601). It also has `amount`
+when the role's approval declares one (`amount` in `officehum.json`, in cents, such as an invoice's
+line total), and once decided `decidedAt`, `by` (the approver's principal id; absent for a timeout or
+a stopped run) and `note`. An unanswered approval is declined at `expiresAt` with the note
+`timed out`; one whose run is aborted while it waits is declined with `the run was stopped`.
+Approval limits are in cents too, so an approval with no declared amount can be approved only by
+someone with no limit.
 
 ### `ping`
 
@@ -217,7 +241,7 @@ so a client can resume with `subscribe` and `afterSeq`. Every request's stream e
 | `text_delta` | `text` | The next piece of the agent's reply. |
 | `tool_start` | `toolCallId`, `tool` | The agent started a tool call. |
 | `tool_end` | `toolCallId`, `tool`, `ok` | The tool call finished. |
-| `approval_requested` | `approvalId`, `tool`, `summary` | An action waits on a person's approval. |
+| `approval_requested` | `approvalId`, `tool`, `summary`, optional `agent`, `expiresAt` | An action waits on a person's approval. |
 | `approval_decided` | `approvalId`, `decision`, optional `by` | The approval was decided. `by` is the approver's principal id; it is absent when the gate decided on its own, and a timeout always counts as `decline`. |
 | `settled` | `status` (`done`, `failed` or `aborted`), optional `answer` | The request finished. |
 
@@ -276,13 +300,17 @@ stderr. `docs/superpowers/plans/2026-11-10-runtime-process.md` records how it is
   tool that was interrupted is reported to the model as interrupted rather than run again.
 - **stdout** is a pipe the gateway reads; the runtime writes to it without blocking, so a gateway that
   stops reading costs memory, not progress.
-- **`approve`** answers `not_found` until remote approvals (RASF-3108); until then gated actions are
-  refused.
+- **Approvals.** Every role's approval gate asks the runtime's remote approvals store. A gated call is
+  recorded durably (its `approvalId` is `<task id>:<call id>:<approval id>`), announced as
+  `approval_requested` on its request's stream and as an `approval` message, and waits. A run resumed
+  after a restart asks again and finds the same approval. Each request and decision is appended to
+  the store's audit list with its time and, for a decision, the deciding principal. An approval
+  waits 4 hours unless the agent's office-file entry sets `approvalTimeoutMinutes`.
 
 The office file lists the roles, with paths relative to the file:
 
 ```json
-{ "version": 1, "id": "office-7f3a", "roles": [{ "dir": "agents/sales", "overlays": ["overlays/sales"] }] }
+{ "version": 1, "id": "office-7f3a", "roles": [{ "dir": "agents/sales", "overlays": ["overlays/sales"], "approvalTimeoutMinutes": 120 }] }
 ```
 
 ## The gateway
@@ -310,8 +338,11 @@ gets `unauthorized` until it sends `hello` with a fresh one. Optional mutual TLS
 adds a client-certificate check on top.
 
 **Permissions** (`gateway.json`) deny by default. `submit` needs a rule naming one of the caller's
-roles and the agent; `abort` a rule naming one of their roles; `approve` likewise, and the principal
-forwarded carries the lower of the token's and the rule's limit. `subscribe`, `get_state`,
+roles and the agent; `abort` a rule naming one of their roles; `approve` a rule naming one of their
+roles and the approval's agent (`agents` defaults to every agent), and the principal forwarded carries
+the lower of the token's and the rule's limit. The gateway knows each approval's agent from the
+runtime's `approval` messages; an `approve` for one it has never seen gets `not_found`.
+`watch_approvals` needs an `approve` rule for some agent. `subscribe`, `get_state`,
 `list_agents` and `ping` need only a signed-in caller, since the runtime scopes requests to their
 principal. Refused commands get `forbidden` (HTTP 403); a missing or bad token gets `unauthorized`
 (401).

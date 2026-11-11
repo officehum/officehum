@@ -11,9 +11,15 @@
  * request from 1 again after a restart, so the gateway keeps each request's events with its own `seq`
  * that only grows, drops runtime events it has already seen in the current runtime generation, and
  * forwards `settled` once. After a restart it re-subscribes every unsettled request it knows.
+ *
+ * Approvals (RASF-3108): the runtime announces each approval asked for or decided as an `approval`
+ * message. The router keeps them, with the agent each belongs to, and sends each to the connections
+ * watching approvals (`watch_approvals`) whose principal may approve for that agent. An `approve`
+ * names only the approval, so the router looks its agent up to check the rule before forwarding.
  */
 
 import {
+  type ApprovalInfo,
   type ClientCommand,
   type EventMessage,
   type Principal,
@@ -22,7 +28,7 @@ import {
   validateMessage,
 } from "@officehum/protocol";
 import type { Permissions } from "./config.js";
-import { decide } from "./permissions.js";
+import { covers, decide, mayApprove } from "./permissions.js";
 
 /** Somewhere to send a client its replies and events: a WebSocket, an HTTP response, an SSE stream. */
 export interface ClientSink {
@@ -43,6 +49,7 @@ export interface AuditEntry {
   readonly action: string;
   readonly agent?: string;
   readonly requestId?: string;
+  readonly approvalId?: string;
   readonly outcome: string;
 }
 
@@ -89,6 +96,12 @@ const REQUEST_LIMIT = 1_000;
 /** Events kept per request for replay; older ones are let go, and `settled` is always the last. */
 const EVENT_LIMIT = 2_000;
 
+/** Decided approvals kept (to answer a late decision with `conflict`); pending ones are all kept. */
+const DECIDED_APPROVAL_LIMIT = 1_000;
+
+/** Who the gateway's own commands act as, for the ones that need a principal but no permission. */
+const GATEWAY_PRINCIPAL: Principal = { id: "gateway", roles: [] };
+
 export interface RouterOptions {
   readonly permissions: Permissions;
   readonly runtime: RuntimeLink;
@@ -100,6 +113,10 @@ export class Router {
   readonly #options: RouterOptions;
   readonly #pending = new Map<string, Pending>();
   readonly #requests = new Map<string, RequestState>();
+  /** Approvals the runtime announced, by id: pending ones, and the latest decided. */
+  readonly #approvals = new Map<string, ApprovalInfo>();
+  /** Connections watching approvals, with who signed them in. */
+  readonly #watchers = new Map<ClientSink, Principal>();
   #nextId = 0;
   #serverId: string | undefined;
 
@@ -114,18 +131,42 @@ export class Router {
 
   /** Handles one validated command from a signed-in client. */
   handle(client: ClientSink, principal: Principal, command: ClientCommand): void {
+    const approval =
+      command.type === "approve" ? this.#approvals.get(command.approvalId) : undefined;
+    const agent =
+      "agent" in command && typeof command.agent === "string" ? command.agent : approval?.agent;
     const audit = (outcome: string) =>
       this.#options.audit({
         at: new Date().toISOString(),
         principal: principal.id,
         action: command.type,
-        ...("agent" in command && typeof command.agent === "string"
-          ? { agent: command.agent }
-          : {}),
+        ...(agent === undefined ? {} : { agent }),
         ...("requestId" in command ? { requestId: command.requestId } : {}),
+        ...(command.type === "approve" ? { approvalId: command.approvalId } : {}),
         outcome,
       });
-    const decision = decide(this.#options.permissions, principal, command);
+    if (command.type === "approve" && approval === undefined) {
+      // Someone with no approve rule at all learns nothing about which approvals exist.
+      if (!this.#options.permissions.approve.some((rule) => covers(rule.roles, principal))) {
+        audit("forbidden");
+        client.send({
+          type: "error",
+          id: command.id,
+          code: "forbidden",
+          message: "You may not approve actions.",
+        });
+        return;
+      }
+      audit("not_found");
+      client.send({
+        type: "error",
+        id: command.id,
+        code: "not_found",
+        message: `No approval ${command.approvalId} is known to this office.`,
+      });
+      return;
+    }
+    const decision = decide(this.#options.permissions, principal, command, approval?.agent);
     if (!decision.allowed) {
       audit("forbidden");
       client.send({ type: "error", id: command.id, code: "forbidden", message: decision.reason });
@@ -169,6 +210,9 @@ export class Router {
       case "event":
         this.#event(message);
         return;
+      case "approval":
+        this.#approval(message.approval);
+        return;
     }
     if (message.id === undefined) {
       if (message.type === "error") {
@@ -191,6 +235,17 @@ export class Router {
       const state = this.#state(message.requestId, pending.principal, pending.requestId);
       if (client === undefined || clientId === undefined || state === undefined) return;
       this.#join(state, client, { ...message, id: clientId, requestId: state.requestId }, 0);
+      return;
+    }
+    if (message.type === "result" && pending.type === "watch_approvals") {
+      const listed = (message.data as { approvals?: ApprovalInfo[] } | undefined)?.approvals ?? [];
+      for (const approval of listed) this.#remember(approval);
+      if (client === undefined || clientId === undefined) return;
+      this.#watchers.set(client, pending.principal);
+      const allowed = listed.filter((approval) =>
+        mayApprove(this.#options.permissions, pending.principal, approval.agent),
+      );
+      client.send({ ...message, id: clientId, data: { approvals: allowed } });
       return;
     }
     if (client === undefined || clientId === undefined) return;
@@ -223,7 +278,10 @@ export class Router {
     for (const state of this.#requests.values()) state.runtimeSeen = 0;
   }
 
-  /** The runtime is up again: re-subscribe every request still running, so its events keep coming. */
+  /**
+   * The runtime is up again: learn the approvals still waiting (a gateway that just started knows
+   * none), and re-subscribe every request still running, so its events keep coming.
+   */
   onRuntimeUp(): void {
     for (const state of this.#requests.values()) {
       if (state.settled) continue;
@@ -242,10 +300,23 @@ export class Router {
         principal: state.principal,
       });
     }
+    const watch = `g${++this.#nextId}`;
+    this.#pending.set(watch, {
+      client: undefined,
+      clientId: undefined,
+      type: "watch_approvals",
+      principal: GATEWAY_PRINCIPAL,
+    });
+    this.#options.runtime.send({
+      type: "watch_approvals",
+      id: watch,
+      principal: GATEWAY_PRINCIPAL,
+    });
   }
 
   /** A client went away: stop sending to it. */
   disconnect(client: ClientSink): void {
+    this.#watchers.delete(client);
     for (const state of this.#requests.values()) state.subscribers.delete(client);
     for (const pending of this.#pending.values()) {
       if (pending.client === client) pending.client = undefined;
@@ -344,6 +415,31 @@ export class Router {
   #replay(state: RequestState, client: ClientSink, afterSeq: number): void {
     for (const event of state.events) {
       if (event.seq > afterSeq || event.event.kind === "settled") client.send(event);
+    }
+  }
+
+  /** An approval asked for or decided: kept, and sent to each watcher who may decide it. */
+  #approval(approval: ApprovalInfo): void {
+    this.#remember(approval);
+    for (const [client, principal] of this.#watchers) {
+      if (mayApprove(this.#options.permissions, principal, approval.agent)) {
+        client.send({ type: "approval", approval });
+      }
+    }
+  }
+
+  #remember(approval: ApprovalInfo): void {
+    // Re-inserted, so the map's order is oldest change first and the oldest decided go first.
+    this.#approvals.delete(approval.approvalId);
+    this.#approvals.set(approval.approvalId, approval);
+    let decided = [...this.#approvals.values()].filter(
+      (known) => known.status !== "pending",
+    ).length;
+    for (const [id, known] of this.#approvals) {
+      if (decided <= DECIDED_APPROVAL_LIMIT) break;
+      if (known.status === "pending") continue;
+      this.#approvals.delete(id);
+      decided--;
     }
   }
 

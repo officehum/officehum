@@ -66,11 +66,27 @@ try {
 }
 ```
 
+## Approvals
+
+An approver watches the approvals they may decide, and decides them as themselves:
+
+```ts
+const waiting = await client.watchApprovals((approval) => {
+  // each approval asked for or decided from now on: status "pending", "approved" or "declined"
+});
+const decided = await client.approve({ approvalId: waiting[0].approvalId, decision: "approve" });
+```
+
+The first decision wins: deciding one already decided rejects with `conflict`. Approving above your
+limit, or one whose amount cannot be checked against it, rejects with `forbidden`. After a reconnect
+the client watches again and passes on whatever is waiting then.
+
 ## HTTP fallback
 
 Where a WebSocket cannot go, `GatewayClient.connect({ url, token, transport: "http" })` submits with
 `POST /v1/submit` and streams each run over Server-Sent Events, resuming with `Last-Event-ID`. The
-gateway's HTTP API has no routes for `approve`, `abort`, `list_agents` or `get_state`; over HTTP those
+gateway's HTTP API has no routes for `approve`, `watch_approvals`, `abort`, `list_agents` or
+`get_state`; over HTTP those
 throw and need the WebSocket transport.
 
 ## Other commands
