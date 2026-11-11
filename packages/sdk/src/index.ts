@@ -54,6 +54,26 @@ export {
   formatCardLine,
 } from "./card.js";
 export {
+  AGENT_DISPATCH,
+  AGENT_INBOX,
+  AGENT_REPLY,
+  COMMUNICATION_TOOL_NAMES,
+  communicationError,
+  dispatchedText,
+  dispatchTargets,
+  emptyInboxText,
+  type InboxTicket,
+  inboxLine,
+  noAnswerText,
+  noTicketText,
+  notCompletedText,
+  refusalText,
+  repliedText,
+  teamText,
+  ticketMessage,
+  unknownTypeText,
+} from "./communication.js";
+export {
   type CompanyPerson,
   colleague,
   companyHead,
