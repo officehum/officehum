@@ -44,5 +44,5 @@ built. Each implementation supplies a small adapter, and both test suites run th
   "nothing" when there is nothing;
 - `agent_inbox` changes nothing.
 
-The office runs them in `packages/office/src/extension/communication-cases.test.ts`. The local board
+The office runs them at the end of `packages/office/src/extension/office.test.ts`, over its real board and relay. The local board
 runs them, plus delivery and restart cases, in `packages/sdk/src/local-board.test.ts`.
