@@ -59,6 +59,8 @@ describe("exactly-once across the gateway", () => {
     });
     expect(settledEvents(client.received, "r1")[1]?.event).toEqual(first.event);
     expect(first.event).toEqual({ kind: "settled", status: "done", answer: "Looked it up." });
+    // Long enough for a wrongly repeated run to reach the model and show up in the counts.
+    await new Promise((resolve) => setTimeout(resolve, 500));
     expect(counts(directory)).toEqual(before);
   }, 60_000);
 
@@ -93,6 +95,8 @@ describe("exactly-once across the gateway", () => {
     await waitForFile(directory, "gate-started");
     const first = gateway.runtimePid() as number;
     process.kill(first, "SIGKILL");
+    // Released only once the killed process is gone, so its blocked tool cannot finish.
+    await vi.waitFor(() => expect(alive(first)).toBe(false), { timeout: 20_000, interval: 25 });
     writeFileSync(join(directory, "release"), "");
 
     const settled = await client.find(settledOf("g1"), 30_000);
@@ -183,6 +187,11 @@ describe("exactly-once across the gateway", () => {
       type: "error",
       code: "not_found",
     });
+    ada.send({ type: "subscribe", id: "s1", requestId: "bo/same" });
+    expect(await ada.find((m) => m.id === "s1")).toMatchObject({
+      type: "error",
+      code: "not_found",
+    });
     const asCarol = await fetch(`${gateway.url}/v1/requests/same`, {
       headers: { authorization: `Bearer ${await token("carol", ["staff"])}` },
     });
@@ -209,6 +218,8 @@ describe("exactly-once across the gateway", () => {
     for (const message of settled) {
       expect(message.event).toEqual({ kind: "settled", status: "done", answer: "Looked it up." });
     }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    for (const client of clients) expect(settledEvents(client.received, "dup")).toHaveLength(1);
     expect(counts(directory)).toEqual({
       tools: { safe_step: 1 },
       model: { "lookup in parallel": 2 },
