@@ -208,7 +208,15 @@ describe("GatewayClient when things go wrong", () => {
   });
 
   it("closing ends a submit waiting out busy, and every open run, instead of hanging", async () => {
-    const { fake, client } = await setup();
+    const fake = await startFakeGateway();
+    fakes.push(fake);
+    // A backoff long enough that the busy submit is still waiting when the client closes.
+    const client = await GatewayClient.connect({
+      url: fake.url,
+      token: "good-1",
+      backoff: { initialMs: 5_000, maxMs: 5_000 },
+    });
+    clients.push(client);
     const open = await client.submit({ agent: "frontdesk", requestId: "r0", input: message });
     fake.busyNext(1);
     const submitted = client.submit({ agent: "frontdesk", requestId: "r1", input: message });
