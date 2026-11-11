@@ -327,13 +327,17 @@ export class Router {
   /**
    * Subscribes a client and sends it `reply`, then the request's story so far (a repeated submit gets
    * it too, as a subscribe would). Subscribed first, so a client that leaves on the reply (a one-shot
-   * HTTP answer) has already been removed again by the time the replay would reach it.
+   * HTTP answer) has already been removed again by the time the replay would reach it. A client that
+   * was already watching has had every event on this connection, but asking again still gets it the
+   * settled result: a retried submit must always end with the answer.
    */
   #join(state: RequestState, client: ClientSink, reply: ServerMessage, afterSeq: number): void {
     const joined = !state.subscribers.has(client);
     state.subscribers.add(client);
     client.send(reply);
-    if (joined && state.subscribers.has(client)) this.#replay(state, client, afterSeq);
+    if (!state.subscribers.has(client)) return;
+    if (joined) this.#replay(state, client, afterSeq);
+    else this.#replay(state, client, Number.POSITIVE_INFINITY);
   }
 
   /** Sends a request's events after `afterSeq`, and its `settled` event always. */

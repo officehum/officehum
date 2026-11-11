@@ -90,7 +90,9 @@ will start it later), or `existing` (this `requestId` was already submitted):
 {"type":"accepted","id":"c1","requestId":"r-001","disposition":"started"}
 ```
 
-Progress then arrives as `event` messages for `r-001`.
+Progress then arrives as `event` messages for `r-001`. A repeated submit always ends with the
+request's `settled` event once it has one, even on a connection that has already seen it, so a client
+that retries gets the answer without having to remember it.
 
 ### `subscribe`
 

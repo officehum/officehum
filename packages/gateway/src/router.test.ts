@@ -117,6 +117,39 @@ describe("Router", () => {
     expect(a.received.at(-1)).toMatchObject({ requestId: "r1", event: { kind: "settled" } });
   });
 
+  it("sends a settled request's result again when a client already watching it re-submits", () => {
+    const { router, client } = setup();
+    const a = client();
+    router.handle(a.sink, ada, submit);
+    router.onRuntimeFrame({
+      type: "accepted",
+      id: "g1",
+      requestId: "ada/r1",
+      disposition: "started",
+    });
+    router.onRuntimeFrame(event(1, "text_delta"));
+    router.onRuntimeFrame(event(2, "settled"));
+    router.handle(a.sink, ada, { ...submit, id: "c2" });
+    router.onRuntimeFrame({
+      type: "accepted",
+      id: "g2",
+      requestId: "ada/r1",
+      disposition: "existing",
+    });
+    // The runtime's own replay of the story is already known, so it is not forwarded twice.
+    router.onRuntimeFrame(event(1, "text_delta"));
+    router.onRuntimeFrame(event(2, "settled"));
+    expect(a.received.slice(3)).toEqual([
+      { type: "accepted", id: "c2", requestId: "r1", disposition: "existing" },
+      {
+        type: "event",
+        requestId: "r1",
+        seq: 2,
+        event: { kind: "settled", status: "done", answer: "ok" },
+      },
+    ]);
+  });
+
   it("answers busy while the runtime is down, and to commands it never answered", () => {
     const { router, runtime, client } = setup();
     const a = client();
