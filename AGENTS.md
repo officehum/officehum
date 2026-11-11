@@ -41,9 +41,12 @@ files you changed.
 
 ## Hard rules
 
-- **Pi Durable runtime calls stay in `@officehum/office`.** `Harness.open`, storage, `submit`,
-  `resume` and relay code live only there. Other packages may import Pi Durable types. Role packages
-  author directly with `defineTool`, `hook` and `defineRole`.
+- **Pi Durable runtime calls stay in `@officehum/office`.** `Harness.open`, storage, harness-level
+  `submit`, `resume` and relay code live only there. Other packages may import Pi Durable types. Role
+  packages author directly with `defineTool`, `hook` and `defineRole`. One exception: the SDK's local
+  board (`packages/sdk/src/local-board.ts`) lets roles on a standalone harness hand work to each
+  other, so its tools submit a ticket into the assignee's conversation through their own tool API
+  (`api.conversation(id).submit`). No other SDK code submits.
 - **Roles are portable.** A role package never depends on `@officehum/office` or `@officehum/cli`.
   Pi Durable and pi-ai are peer dependencies (`1.3.x`). Its evals must pass in a bare Pi Durable
   harness.
