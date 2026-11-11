@@ -100,6 +100,17 @@ positive number, refuses the whole total rather than skipping that element — a
 a smaller total than the call's own numbers, which is the one direction that slips a call past a
 limit. An empty array is not a total of zero; there is nothing to compare.
 
+An approval can declare its **amount**, the money a call is about, which a remote approver's limit is
+checked against (RASF-3108). It names an argument, or a field totalled over one, the same way, and is
+in cents:
+
+```json
+"amount": { "arg": "lines", "field": "unitPriceCents", "times": "quantity" }
+```
+
+The amount is never taken from `when`, whose numbers can be percentages or counts. An approval with
+no amount can be approved only by someone with no approval limit.
+
 
 It guards against three habits:
 - pasting policy manuals into `AGENTS.md`

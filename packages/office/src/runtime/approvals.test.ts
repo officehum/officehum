@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type OfficeStorage, openOffice } from "../adapter/index.js";
 import type { LoadedRole } from "../roles/load-role.js";
 import { type ScriptedScript, scriptedProvider } from "../testing/scripted-model.js";
-import { approvalAudit, RemoteApprovals, TIMED_OUT } from "./approvals.js";
+import { approvalAudit, RemoteApprovals, RUN_STOPPED, TIMED_OUT } from "./approvals.js";
 import { openRuntime, type Runtime } from "./runtime.js";
 
 const ada: Principal = { id: "ada", roles: ["staff"] };
@@ -28,6 +28,7 @@ const declarations: ApprovalDeclaration[] = [
     tool: "pay",
     description: "Approve a payment above 100",
     when: [{ arg: "amount", op: "gt", value: 100 }],
+    amount: { arg: "amount" },
   },
   { id: "any_note", tool: "send_note", description: "Approve sending this note" },
 ];
@@ -293,6 +294,47 @@ describe("remote approvals", () => {
       id: "w1",
       ok: true,
       data: { approvals: [approval] },
+    });
+  });
+
+  it("closes the request when its run is aborted while waiting, so nobody can approve it after", async () => {
+    const office = await open();
+    await office.submit("r1", "pay 250");
+    const approval = await office.requested();
+    await office.runtime.handle({ type: "abort", id: "x1", requestId: "r1", principal: ada });
+    expect(await office.settled("r1")).toMatchObject({ status: "aborted" });
+    const closed = await office.find<ServerMessage & { type: "approval" }>(
+      (message) => message.type === "approval" && message.approval.status === "declined",
+    );
+    expect(closed.approval).toMatchObject({ approvalId: approval.approvalId, note: RUN_STOPPED });
+    expect(await office.decide("a1", maya, approval.approvalId, "approve")).toMatchObject({
+      code: "conflict",
+    });
+    expect(office.ran).toEqual([]);
+  });
+
+  it("declines on the next start a request that timed out while the runtime was down", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "officehum-approvals-"));
+    temps.push(directory);
+    const storage = { sqlite: join(directory, "office.sqlite") };
+    const ran: string[] = [];
+    const first = await open({ storage, ran, timeoutMs: 300 });
+    await first.submit("r1", "pay 250");
+    const approval = await first.requested();
+    await first.runtime.close();
+    runtimes.splice(runtimes.indexOf(first.runtime), 1);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    const second = await open({ storage, ran, timeoutMs: 300 });
+    await second.runtime.handle({ type: "subscribe", id: "sub", requestId: "r1", principal: ada });
+    expect((await second.settled("r1")) as { answer?: string }).toMatchObject({
+      answer: expect.stringContaining(TIMED_OUT),
+    });
+    expect(ran).toEqual([]);
+    expect(second.approvals.pending()).toEqual([]);
+    expect(await second.decide("a1", maya, approval.approvalId, "approve")).toMatchObject({
+      code: "conflict",
+      message: expect.stringContaining("timed out"),
     });
   });
 

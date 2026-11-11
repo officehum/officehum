@@ -819,9 +819,10 @@ describe("approvalAmount", () => {
         value: { limit: "large_invoice" },
       },
     ],
+    amount: { arg: "lines", field: "unitPriceCents", times: "quantity" },
   } as const satisfies ApprovalDeclaration;
 
-  it("is the number the declaration's numeric condition compares, summed as conditionsHold sums it", () => {
+  it("is the declared amount, summed as conditions sum it", () => {
     const lines = [
       { unitPriceCents: 1_250, quantity: 2 },
       { unitPriceCents: 999, quantity: 1 },
@@ -829,30 +830,34 @@ describe("approvalAmount", () => {
     expect(approvalAmount(invoice, { lines })).toBe(3_499);
     expect(
       approvalAmount(
-        { id: "big", tool: "pay", description: "d", when: [{ arg: "total", op: "gte", value: 5 }] },
-        { total: "12.5" },
+        { id: "big", tool: "pay", description: "d", amount: { arg: "totalCents" } },
+        { totalCents: "1250" },
       ),
-    ).toBe(12.5);
+    ).toBe(1_250);
   });
 
-  it("is undefined when nothing numeric is declared or the argument cannot be read", () => {
+  it("is undefined without a declared amount, even when a condition compares a number", () => {
+    // A discount percentage is a number, but not money: guessing it as the amount would let a
+    // limit written in cents approve any discount.
+    const discount = {
+      id: "discount_booking",
+      tool: "book_appointment",
+      description: "d",
+      when: [{ arg: "discountPercent", op: "gt", value: 20 }],
+    } as const satisfies ApprovalDeclaration;
+    expect(approvalAmount(discount, { discountPercent: 100 })).toBe(undefined);
     expect(approvalAmount({ id: "any", tool: "pay", description: "d" }, { total: 5 })).toBe(
       undefined,
     );
-    expect(
-      approvalAmount(
-        {
-          id: "final",
-          tool: "send",
-          description: "d",
-          when: [{ arg: "tone", op: "eq", value: "final" }],
-        },
-        { tone: "final" },
-      ),
-    ).toBe(undefined);
+  });
+
+  it("is undefined when the arguments do not give a readable amount", () => {
     expect(approvalAmount(invoice, { lines: [{ unitPriceCents: -1, quantity: 1 }] })).toBe(
       undefined,
     );
     expect(approvalAmount(invoice, {})).toBe(undefined);
+    expect(
+      approvalAmount({ id: "x", tool: "pay", description: "d", amount: { arg: "n" } }, { n: -5 }),
+    ).toBe(undefined);
   });
 });

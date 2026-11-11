@@ -165,9 +165,12 @@ only approvals for agents the caller has an `approve` rule for.
 
 An approval has `approvalId`, `agent`, `tool`, `summary` (what is asked, in words), `status`
 (`pending`, `approved` or `declined`), `requestedAt` and `expiresAt` (ISO 8601). It also has `amount`
-when the approval declares a number to compare (the one its `when` condition checks, such as an
-invoice's total in cents), and once decided `decidedAt`, `by` (the approver's principal id; absent for
-a timeout) and `note`. An unanswered approval is declined at `expiresAt` with the note `timed out`.
+when the role's approval declares one (`amount` in `officehum.json`, in cents, such as an invoice's
+line total), and once decided `decidedAt`, `by` (the approver's principal id; absent for a timeout or
+a stopped run) and `note`. An unanswered approval is declined at `expiresAt` with the note
+`timed out`; one whose run is aborted while it waits is declined with `the run was stopped`.
+Approval limits are in cents too, so an approval with no declared amount can be approved only by
+someone with no limit.
 
 ### `ping`
 

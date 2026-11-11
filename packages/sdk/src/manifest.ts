@@ -215,6 +215,21 @@ const ConditionDeclaration = Type.Object(
   { additionalProperties: false },
 );
 
+/**
+ * The money a call is about, which an approver's `approvalLimit` is checked against: an argument, or
+ * a field summed over an array argument (times another field per element, as conditions sum them).
+ * It is in the office's minor currency unit (cents), the unit approval limits are written in. Without
+ * it an approval has no amount, and only an approver with no limit may approve it.
+ */
+const ApprovalAmountDeclaration = Type.Object(
+  {
+    arg: Type.String({ minLength: 1 }),
+    field: Type.Optional(ElementField('a field of each element, like "amountCents"')),
+    times: Type.Optional(ElementField('the field to multiply it by, like "quantity"')),
+  },
+  { additionalProperties: false },
+);
+
 const ApprovalDeclaration = Type.Object(
   {
     id: SnakeName,
@@ -222,6 +237,8 @@ const ApprovalDeclaration = Type.Object(
     description: Text(200),
     /** The approval applies only when every condition holds. Omitted: every call of the tool. */
     when: Type.Optional(Type.Array(ConditionDeclaration, { minItems: 1 })),
+    /** The call's amount in cents, for approvers' limits. Omitted: no amount, so no limited approver. */
+    amount: Type.Optional(ApprovalAmountDeclaration),
   },
   { additionalProperties: false },
 );

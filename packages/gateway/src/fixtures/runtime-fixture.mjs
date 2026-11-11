@@ -80,6 +80,7 @@ const approvalDeclarations = [
     tool: "pay",
     description: "Approve a payment above 100",
     when: [{ arg: "amount", op: "gt", value: 100 }],
+    amount: { arg: "amount" },
   },
 ];
 const approvals = new RemoteApprovals();

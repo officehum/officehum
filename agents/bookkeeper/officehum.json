@@ -102,7 +102,12 @@
             "limit": "large_invoice"
           }
         }
-      ]
+      ],
+      "amount": {
+        "arg": "lines",
+        "field": "unitPriceCents",
+        "times": "quantity"
+      }
     },
     {
       "id": "new_recipient",

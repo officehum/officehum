@@ -28,7 +28,7 @@ import {
   validateMessage,
 } from "@officehum/protocol";
 import type { Permissions } from "./config.js";
-import { decide, mayApprove } from "./permissions.js";
+import { covers, decide, mayApprove } from "./permissions.js";
 
 /** Somewhere to send a client its replies and events: a WebSocket, an HTTP response, an SSE stream. */
 export interface ClientSink {
@@ -146,6 +146,17 @@ export class Router {
         outcome,
       });
     if (command.type === "approve" && approval === undefined) {
+      // Someone with no approve rule at all learns nothing about which approvals exist.
+      if (!this.#options.permissions.approve.some((rule) => covers(rule.roles, principal))) {
+        audit("forbidden");
+        client.send({
+          type: "error",
+          id: command.id,
+          code: "forbidden",
+          message: "You may not approve actions.",
+        });
+        return;
+      }
       audit("not_found");
       client.send({
         type: "error",

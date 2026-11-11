@@ -15,6 +15,9 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { type LoadedRole, type LoadRoleOptions, loadRole } from "../roles/load-role.js";
 
+/** The longest an approval may wait: a year. */
+const MAX_APPROVAL_TIMEOUT_MINUTES = 525_600;
+
 export interface OfficeFileRole {
   /** The role package directory, absolute. */
   readonly dir: string;
@@ -93,9 +96,15 @@ export function parseOfficeFile(value: unknown, base: string, source = "office f
       const timeout = entry.approvalTimeoutMinutes;
       if (
         timeout !== undefined &&
-        (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0)
+        (typeof timeout !== "number" ||
+          !Number.isFinite(timeout) ||
+          timeout <= 0 ||
+          timeout > MAX_APPROVAL_TIMEOUT_MINUTES)
       ) {
-        problem(`${at}.approvalTimeoutMinutes`, "must be a number of minutes above 0, e.g. 240");
+        problem(
+          `${at}.approvalTimeoutMinutes`,
+          `must be a number of minutes above 0 and at most ${MAX_APPROVAL_TIMEOUT_MINUTES} (a year), e.g. 240`,
+        );
       }
       if (typeof entry.dir === "string" && Array.isArray(overlays)) {
         roles.push({

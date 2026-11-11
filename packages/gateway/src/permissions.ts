@@ -12,7 +12,8 @@ export type Decision =
   | { readonly allowed: true; readonly principal: Principal }
   | { readonly allowed: false; readonly reason: string };
 
-function covers(roles: RoleList, principal: Principal): boolean {
+/** Whether a rule's roles include one of the principal's. */
+export function covers(roles: RoleList, principal: Principal): boolean {
   return roles.includes("*") || principal.roles.some((role) => roles.includes(role));
 }
 

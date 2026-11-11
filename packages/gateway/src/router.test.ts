@@ -161,6 +161,22 @@ describe("Router approvals", () => {
     ]);
   });
 
+  it("tells someone with no approve rule nothing about which approvals exist", () => {
+    const { router, client } = scopedSetup();
+    router.onRuntimeFrame({ type: "approval", approval: approvalInfo("b1", "bookkeeper") });
+    const c = client();
+    for (const [id, approvalId] of [
+      ["a1", "b1"],
+      ["a2", "nope"],
+    ] as const) {
+      router.handle(c.sink, ada, { type: "approve", id, approvalId, decision: "approve" });
+    }
+    expect(c.received.map((m) => (m.type === "error" ? m.code : m.type))).toEqual([
+      "forbidden",
+      "forbidden",
+    ]);
+  });
+
   it("asks the runtime what is waiting whenever it comes up", () => {
     const { router, toRuntime } = scopedSetup();
     router.onRuntimeUp();

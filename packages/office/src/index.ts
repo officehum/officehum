@@ -147,6 +147,7 @@ export {
   approvalAudit,
   DEFAULT_APPROVAL_TIMEOUT_MS,
   RemoteApprovals,
+  RUN_STOPPED,
   TIMED_OUT,
 } from "./runtime/approvals.js";
 export {

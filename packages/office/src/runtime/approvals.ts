@@ -21,6 +21,10 @@
  *   request (it waits on) or decision (it gets at once).
  * - **Audit.** Every request and decision is appended to the store's audit list, which is never
  *   rewritten.
+ *
+ * Trust: the store believes the principal on each `approve`. Checking that the principal may approve
+ * for the approval's agent is the gateway's job, as is everything else about who a caller is; the
+ * runtime takes commands only from its gateway on stdio.
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -43,6 +47,9 @@ export const DEFAULT_APPROVAL_TIMEOUT_MS = 4 * 60 * 60 * 1000;
 /** The note a timed-out request is declined with. */
 export const TIMED_OUT = "timed out";
 
+/** The note a request is closed with when its run is stopped while it waits. */
+export const RUN_STOPPED = "the run was stopped";
+
 type Stored = ApprovalInfo & {
   /** The Pi Durable conversation the call belongs to, so its events reach the right stream. */
   readonly conversationId: string;
@@ -56,7 +63,7 @@ export type ApprovalAuditRecord = {
   readonly approvalId: string;
   readonly agent: string;
   readonly tool: string;
-  readonly action: "requested" | "approved" | "declined" | "timed_out";
+  readonly action: "requested" | "approved" | "declined" | "timed_out" | "cancelled";
   /** The deciding principal; absent for a request and a timeout. */
   readonly by?: string;
   readonly note?: string;
@@ -121,6 +128,11 @@ export class RemoteApprovals {
       this.#store.set(id, approval);
     this.#host = host;
     this.#markBound();
+    // Every waiting request times out on schedule, including one whose run never comes back to ask
+    // (it was aborted, or its agent left the office file).
+    for (const approval of this.#store.values()) {
+      if (approval.status === "pending") this.#arm(host, approval);
+    }
   }
 
   /** Stops the timers; calls still waiting end with the office's own abort. */
@@ -130,10 +142,10 @@ export class RemoteApprovals {
     this.#timers.clear();
   }
 
-  /** Every approval still waiting for a decision, oldest first. */
+  /** Every approval still waiting for a decision and not past its deadline, oldest first. */
   pending(): ApprovalInfo[] {
     return [...this.#store.values()]
-      .filter((approval) => approval.status === "pending")
+      .filter((approval) => approval.status === "pending" && !this.#expired(approval))
       .sort((a, b) => a.requestedAt.localeCompare(b.requestedAt))
       .map(infoOf);
   }
@@ -245,6 +257,22 @@ export class RemoteApprovals {
       const signal = context.abortSignal;
       const onAbort = () => {
         waiters.delete(wake);
+        // The run was stopped (an abort), not the office closing (which resumes the run and asks
+        // again): close the request, so nobody can approve a call that is no longer waiting.
+        if (!this.#closed) {
+          void this.#serial(async () => {
+            const current = this.#store.get(approvalId);
+            if (current?.status !== "pending") return;
+            await this.#settle(
+              host,
+              current,
+              { status: "declined", note: RUN_STOPPED },
+              "cancelled",
+            );
+          }).catch((error: unknown) =>
+            host.log(`Could not close approval ${approvalId}: ${String(error)}`),
+          );
+        }
         reject(signal?.reason ?? new Error("The run was stopped while waiting for an approval."));
       };
       const wake = (decision: ApprovalDecision) => {

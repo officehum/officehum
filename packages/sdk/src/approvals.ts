@@ -445,26 +445,24 @@ function holds(
 }
 
 /**
- * The amount a call puts in front of a person: the number the declaration's first numeric condition
- * (`gt`, `gte`, `lt` or `lte`) compares, read from the arguments exactly as `conditionsHold` reads it,
- * a summed field included. `undefined` when the declaration compares no number, or the arguments do
- * not give one, so whoever checks an approver's limit against it can tell "unknown" from "small".
+ * The amount a call puts in front of a person, in cents: what the declaration's `amount` names, read
+ * from the arguments the way conditions read them (a summed field included). `undefined` when the
+ * declaration names no amount or the arguments do not give a readable one, so a limit check can tell
+ * "unknown" from "small". It is never guessed from `when`, whose numbers may be percentages or counts.
  */
 export function approvalAmount(
   declaration: ApprovalDeclaration,
   args: ToolArguments,
 ): number | undefined {
-  const numeric = declaration.when?.find((condition) =>
-    ["gt", "gte", "lt", "lte"].includes(condition.op),
-  );
-  if (numeric === undefined) return undefined;
-  const actual = args[numeric.arg];
+  const declared = declaration.amount;
+  if (declared === undefined) return undefined;
+  const actual = args[declared.arg];
   if (actual === undefined || actual === null) return undefined;
   const amount =
-    numeric.field === undefined
+    declared.field === undefined
       ? asNumber(actual)
-      : summedField(actual, numeric.field, numeric.times);
-  return amount === undefined || !Number.isFinite(amount) ? undefined : amount;
+      : summedField(actual, declared.field, declared.times);
+  return amount === undefined || !Number.isFinite(amount) || amount < 0 ? undefined : amount;
 }
 
 /** One argument as the number to compare, or `undefined` when it is not one. */
