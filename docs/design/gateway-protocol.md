@@ -369,3 +369,6 @@ for (const frame of decoder.push(chunk)) {
 
 `validateMessage(json, from)` takes who sent the message: `"client"`, `"gateway"` (a command forwarded
 to the runtime, which must carry `principal`), or `"server"` (`welcome`, replies and events).
+
+A TypeScript or browser client should use `@officehum/client` (`packages/client/README.md`), which
+adds the handshake, reconnecting, resuming with `afterSeq` and typed errors on top of these types.

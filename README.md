@@ -424,6 +424,7 @@ that must branch on what a tool returned cannot be written as JSON; use `piDurab
 | `@officehum/sdk` | `packages/sdk` | Manifest schema and helpers for building an agent package |
 | `@officehum/provider-paper` | `packages/provider-paper` | Portable Paper Instruments provider for `pi-ai` |
 | `@officehum/tools-paper-office` | `packages/tools-paper-office` | Task-leased Paper Office document worker and its `DocumentService` |
+| `@officehum/client` | `packages/client` | TypeScript client for a gateway (Node 22 and browsers): submit, stream, reconnect, approve ([README](packages/client/README.md)) |
 | `@officehum/gateway` | `packages/gateway` | The office's authenticated WebSocket and HTTP edge, supervising its runtime ([spec](docs/design/gateway-protocol.md#the-gateway)) |
 | `@officehum/protocol` | `packages/protocol` | Gateway Protocol v1: message schemas, validators and the JSONL codec ([spec](docs/design/gateway-protocol.md)) |
 | `@officehum/google-calendar` | `packages/google-calendar` | Portable REST and fake Google Calendar scheduling client |
