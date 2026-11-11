@@ -1,117 +1,23 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { type AddressInfo, connect as connectRaw, createServer as createNetServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { exportSPKI, generateKeyPair, SignJWT } from "jose";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { generateKeyPair } from "jose";
+import { describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
-import { type TokenKey, tokenKey } from "./auth.js";
 import { parseGatewayConfig } from "./config.js";
-import type { AuditEntry } from "./router.js";
+import {
+  connect,
+  fixture,
+  key,
+  repository,
+  settledOf,
+  sockets,
+  start,
+  submit,
+  token,
+  workDirectory,
+} from "./fixtures/harness.js";
 import { type Gateway, startGateway } from "./server.js";
-
-const fixture = fileURLToPath(new URL("./fixtures/runtime-fixture.mjs", import.meta.url));
-const repository = fileURLToPath(new URL("../../..", import.meta.url));
-
-let key: TokenKey;
-/** jose's signing key type, without relying on the DOM's global CryptoKey. */
-type SigningKey = Awaited<ReturnType<typeof generateKeyPair>>["privateKey"];
-let privateKey: SigningKey;
-beforeAll(async () => {
-  const pair = await generateKeyPair("ES256", { extractable: true });
-  privateKey = pair.privateKey;
-  key = tokenKey(await exportSPKI(pair.publicKey));
-});
-
-async function token(sub: string, roles: string[], expiresIn = "1h", signer?: SigningKey) {
-  return await new SignJWT({ roles })
-    .setProtectedHeader({ alg: "ES256" })
-    .setSubject(sub)
-    .setExpirationTime(expiresIn)
-    .sign(signer ?? privateKey);
-}
-
-const temps: string[] = [];
-const gateways: Gateway[] = [];
-const sockets: WebSocket[] = [];
-afterEach(async () => {
-  for (const socket of sockets.splice(0)) socket.terminate();
-  for (const gateway of gateways.splice(0)) await gateway.close();
-  for (const directory of temps.splice(0)) rmSync(directory, { recursive: true, force: true });
-});
-
-async function start() {
-  const directory = mkdtempSync(join(tmpdir(), "officehum-gateway-"));
-  temps.push(directory);
-  const audit: AuditEntry[] = [];
-  const log: string[] = [];
-  const config = parseGatewayConfig(
-    {
-      version: 1,
-      listen: { host: "127.0.0.1", port: 0 },
-      runtime: { command: process.execPath, args: [fixture], cwd: repository },
-      permissions: {
-        submit: [{ roles: ["staff"], agents: ["worker"] }],
-        approve: [{ roles: ["manager"], limit: 100 }],
-        abort: [{ roles: ["staff"] }],
-      },
-    },
-    repository,
-  );
-  const gateway = await startGateway({
-    config,
-    key,
-    runtimeEnv: { ...process.env, FIXTURE_DIR: directory },
-    backoff: { initialMs: 50, maxMs: 200, stableMs: 60_000 },
-    log: (line) => log.push(line),
-    audit: (entry) => audit.push(entry),
-  });
-  gateways.push(gateway);
-  await vi.waitFor(() => expect(gateway.runtimeUp()).toBe(true), { timeout: 20_000, interval: 25 });
-  return { gateway, directory, audit, log };
-}
-
-/** A WebSocket client that collects every message it receives. */
-async function connect(gateway: Gateway, bearer?: string) {
-  const socket = new WebSocket(`${gateway.url.replace(/^http/, "ws")}/v1/ws`, {
-    ...(bearer === undefined ? {} : { headers: { authorization: `Bearer ${bearer}` } }),
-  });
-  sockets.push(socket);
-  const received: Record<string, unknown>[] = [];
-  socket.on("message", (data) =>
-    received.push(JSON.parse(data.toString()) as Record<string, unknown>),
-  );
-  await new Promise<void>((resolve, reject) => {
-    socket.once("open", () => resolve());
-    socket.once("error", reject);
-  });
-  const send = (message: object) => socket.send(JSON.stringify(message));
-  const find = (predicate: (message: Record<string, unknown>) => boolean, timeout = 20_000) =>
-    vi.waitFor(
-      () => {
-        const found = received.find(predicate);
-        if (found === undefined) throw new Error(`not yet; received ${JSON.stringify(received)}`);
-        return found;
-      },
-      { timeout, interval: 20 },
-    );
-  return { socket, received, send, find };
-}
-
-const settledOf = (requestId: string) => (message: Record<string, unknown>) =>
-  message.type === "event" &&
-  message.requestId === requestId &&
-  (message.event as { kind?: string }).kind === "settled";
-
-const submit = (id: string, requestId: string, text: string, extra: object = {}) => ({
-  type: "submit",
-  id,
-  agent: "worker",
-  requestId,
-  input: { kind: "message", text },
-  ...extra,
-});
 
 describe("gateway over WebSocket", () => {
   it("lets a signed-in client submit to a role and stream to settled", async () => {
@@ -303,8 +209,7 @@ describe("gateway start-up", () => {
     const blocker = createNetServer();
     await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
     const { port } = blocker.address() as AddressInfo;
-    const directory = mkdtempSync(join(tmpdir(), "officehum-gateway-"));
-    temps.push(directory);
+    const directory = workDirectory();
     try {
       await expect(
         startGateway({

@@ -7,10 +7,13 @@
  * - "unsafe …": `safe_step`, then `unsafe_step`, which writes `unsafe-started` and blocks until the
  *   process is killed; once the model sees the interrupted unsafe call it answers "resumed and finished".
  * - "lookup …": `safe_step`, then "Looked it up.".
+ * - "gate …": `gate_step`, a safe tool that writes `gate-started` and waits until a `release` file
+ *   exists, then "Through the gate.".
  * - anything else: "Echo: <text>".
- * Every tool call is appended to `calls.log` in `FIXTURE_DIR`.
+ * Every tool call is appended to `calls.log` in `FIXTURE_DIR`, every model call to `model.log` (the
+ * request's text and the tool results the model saw), and the process id to `runtime.pid`.
  */
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
@@ -20,6 +23,7 @@ import { scriptedProvider } from "@officehum/office/testing";
 const directory = process.env.FIXTURE_DIR;
 if (directory === undefined) throw new Error("FIXTURE_DIR is required");
 const record = (name) => appendFileSync(join(directory, "calls.log"), `${name}\n`);
+appendFileSync(join(directory, "runtime.pid"), `${process.pid}\n`);
 
 const safeStep = defineTool({
   name: "safe_step",
@@ -42,7 +46,24 @@ const unsafeStep = defineTool({
     await new Promise(() => {});
   },
 });
-const extension = defineExtension({ name: "gateway-fixture", tools: [safeStep, unsafeStep] });
+const gateStep = defineTool({
+  name: "gate_step",
+  description: "A read-only step that waits for the test to let it through.",
+  parameters: Type.Object({}),
+  replay: "safe",
+  execute: async () => {
+    record("gate_step");
+    writeFileSync(join(directory, "gate-started"), "");
+    while (!existsSync(join(directory, "release"))) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return { output: [{ type: "text", text: "gate passed" }] };
+  },
+});
+const extension = defineExtension({
+  name: "gateway-fixture",
+  tools: [safeStep, unsafeStep, gateStep],
+});
 const role = {
   dir: directory,
   manifest: {
@@ -51,6 +72,7 @@ const role = {
     tools: [
       { name: "safe_step", replay: "safe" },
       { name: "unsafe_step", replay: "unsafe" },
+      { name: "gate_step", replay: "safe" },
     ],
   },
   bundle: { extensions: [extension], agent: { extensions: [extension] } },
@@ -70,6 +92,8 @@ const script = (messages) => {
   const request = lastUser === -1 ? "" : textOf(messages[lastUser]);
   const results = messages.slice(lastUser + 1).filter((message) => message.role === "toolResult");
   const last = results.at(-1)?.toolName;
+  const seen = results.map((result) => `${result.toolName}: ${textOf(result)}`).join(" | ");
+  appendFileSync(join(directory, "model.log"), `${JSON.stringify({ request, seen })}\n`);
   if (request.startsWith("unsafe")) {
     if (last === undefined) return { toolCalls: [{ name: "safe_step" }] };
     if (last === "safe_step" && !results.some((result) => result.toolName === "unsafe_step")) {
@@ -79,6 +103,11 @@ const script = (messages) => {
   }
   if (request.startsWith("lookup")) {
     return last === undefined ? { toolCalls: [{ name: "safe_step" }] } : { text: "Looked it up." };
+  }
+  if (request.startsWith("gate")) {
+    return last === undefined
+      ? { toolCalls: [{ name: "gate_step" }] }
+      : { text: "Through the gate." };
   }
   return { text: `Echo: ${request}` };
 };
