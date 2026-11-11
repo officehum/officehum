@@ -95,7 +95,8 @@ export class HttpTransport implements Transport {
 
   /**
    * Reads a run's event stream, reconnecting after the last `seq` until it settles. An unreachable
-   * gateway is waited out; a token refused `retries` times in a row fails the run instead.
+   * gateway is waited out; a token refused more than `retries` times, with no successful response
+   * between, fails the run instead.
    */
   async #stream(run: Run): Promise<void> {
     let refused = 0;

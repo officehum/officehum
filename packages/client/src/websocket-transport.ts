@@ -273,9 +273,9 @@ export class WebSocketTransport implements Transport {
   }
 
   /**
-   * Reconnects with backoff for as long as the gateway is unreachable. Sign-in refused `retries`
-   * times in a row is not going to get better, so it ends the client with that error instead of
-   * leaving every run waiting.
+   * Reconnects with backoff for as long as the gateway is unreachable. Sign-in refused more than
+   * `retries` times, with no successful sign-in between, is not going to get better, so it ends the
+   * client with that error instead of leaving every run waiting.
    */
   async #reconnect(): Promise<void> {
     let refused = 0;
