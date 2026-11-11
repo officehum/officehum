@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { type AddressInfo, connect as connectRaw, createServer as createNetServer } from "node:net";
 import { join } from "node:path";
+import { MAX_FRAME_BYTES } from "@officehum/protocol";
 import { generateKeyPair } from "jose";
 import { describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
@@ -87,6 +88,17 @@ describe("gateway over WebSocket", () => {
       code: "unauthorized",
       message: expect.stringContaining("expired"),
     });
+  }, 30_000);
+
+  it("stays up when a client that has not signed in sends an oversized frame", async () => {
+    const { gateway } = await start();
+    const client = await connect(gateway);
+    client.socket.on("error", () => {});
+    const closed = new Promise<number>((resolve) => client.socket.once("close", resolve));
+    client.socket.send("x".repeat(MAX_FRAME_BYTES + 1));
+    // 1009: the message is too big. The socket's own failure must not take the gateway down.
+    expect(await closed).toBe(1009);
+    expect((await fetch(`${gateway.url}/healthz`)).status).toBe(200);
   }, 30_000);
 
   it("stays up when a client resets the connection while being refused", async () => {

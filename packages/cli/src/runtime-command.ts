@@ -99,7 +99,8 @@ export async function runRuntimeCommand(
 
   const stop = new AbortController();
   const unregister = register({ close: async () => stop.abort() });
-  // The gateway stops its runtime with SIGTERM: close the office cleanly rather than die mid-commit.
+  // An operator or process manager stops a runtime with SIGTERM (the gateway closes stdin instead):
+  // close the office cleanly rather than die mid-commit.
   const terminate = () => stop.abort();
   process.once("SIGTERM", terminate);
   try {

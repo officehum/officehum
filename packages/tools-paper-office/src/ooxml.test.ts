@@ -131,6 +131,31 @@ describe("Office package inspection", () => {
     expect(refusalOf(external)).toBe("external-relationship");
   });
 
+  it("refuses an external link however its XML is spelled", () => {
+    const withRels = (relationship: string) =>
+      buildZip([
+        { name: "[Content_Types].xml", data: "<Types/>" },
+        { name: "xl/workbook.xml", data: "<workbook/>" },
+        {
+          name: "xl/_rels/workbook.xml.rels",
+          data: `<Relationships>${relationship}</Relationships>`,
+        },
+      ]);
+    // Each is the same link to an XML parser; the gate must read them the way the parser will.
+    for (const relationship of [
+      "<Relationship Id='rId1' Target='http://evil.example/x' TargetMode='External'/>",
+      '<Relationship Id="rId1" Type="a>b" Target="http://evil.example/x" TargetMode="External"/>',
+      '<Relationship Id="rId1" Target="&#104;ttp://evil.example/x" TargetMode="&#x45;xternal"/>',
+      '<Relationship Id="rId1" Target="&#46;&#46;/&#46;&#46;/&#46;&#46;/etc/hosts"/>',
+      '<!DOCTYPE r [<!ENTITY m "External">]><Relationship Id="rId1" Target="x" TargetMode="&m;"/>',
+    ]) {
+      expect([relationship, refusalOf(withRels(relationship))]).toEqual([
+        relationship,
+        "external-relationship",
+      ]);
+    }
+  });
+
   it("refuses a pptx relationship pointing outside the package", () => {
     const escaping = buildZip([
       { name: "[Content_Types].xml", data: "<Types/>" },

@@ -4,7 +4,7 @@
  * registered so a SIGINT closes it; everything here is pure enough to test without a TTY.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { dirname, isAbsolute, resolve } from "node:path";
@@ -329,23 +329,24 @@ function clientEntry(name: string, raw: unknown, file: string): ClientEntry {
   };
 }
 
-/** The idempotency key for a submitted line: a hash of the line and its position in the session. */
-export function requestIdFor(line: string, position: number): string {
-  return createHash("sha256").update(`${position}\u0000${line}`).digest("hex");
+/**
+ * The idempotency key for a submitted line: a hash of the session, the line and its position. The
+ * session is part of it because positions restart with every process: without it, the first line of
+ * a later session on the same database would name the first line of an earlier one and be answered
+ * with that stored result, with nothing run.
+ */
+export function requestIdFor(session: string, line: string, position: number): string {
+  return createHash("sha256").update(`${session}\u0000${position}\u0000${line}`).digest("hex");
 }
 
-function printResult(result: Awaited<ReturnType<RoleRun["submit"]>>, io: CliIo): void {
+/** Prints a role-run result the way `resume` and each submitted line do. */
+export function printRunResult(result: Awaited<ReturnType<RoleRun["submit"]>>, io: CliIo): void {
   io.output(`Submission: ${result.submissionId}`);
   io.output(`Outcome: ${result.settlement.status}`);
   if (result.text !== undefined && result.text.length > 0) io.output(result.text);
   if (result.settlement.status === "unanswered") {
     io.error(`Unanswered: ${result.settlement.reason}`);
   }
-}
-
-/** Prints a role-run result the way `resume` and each submitted line do. */
-export function printRunResult(result: Awaited<ReturnType<RoleRun["submit"]>>, io: CliIo): void {
-  printResult(result, io);
 }
 
 async function handleSlashCommand(session: RoleRun, line: string, io: CliIo): Promise<void> {
@@ -389,6 +390,7 @@ export async function runInteractive(session: RoleRun, io: CliIo): Promise<numbe
     io.error("The run command needs a terminal to read input from.");
     return 1;
   }
+  const sessionId = randomUUID();
   let position = 0;
   for (;;) {
     const line = await io.readLine("> ");
@@ -401,9 +403,9 @@ export async function runInteractive(session: RoleRun, io: CliIo): Promise<numbe
         await handleSlashCommand(session, trimmed, io);
         continue;
       }
-      const result = await session.submit(trimmed, requestIdFor(trimmed, position));
+      const result = await session.submit(trimmed, requestIdFor(sessionId, trimmed, position));
       position += 1;
-      printResult(result, io);
+      printRunResult(result, io);
     } catch (error) {
       io.error(error instanceof Error ? error.message : String(error));
     }

@@ -267,37 +267,39 @@ function parsePermissions(
       problem(`permissions.${name}`, "must be a list of rules");
       return [];
     }
-    return list.filter((rule: unknown, index) => {
+    // Each rule keeps its place in the file: a later problem must name the rule the operator wrote,
+    // not its position among the rules that survived this pass.
+    return list.flatMap((rule: unknown, index) => {
       const at = `permissions.${name}[${index}]`;
       if (!isObject(rule)) {
         problem(at, "must be an object with roles");
-        return false;
+        return [];
       }
       known(rule, fields, at, problem);
       if (!isRoleList(rule.roles)) {
         problem(`${at}.roles`, 'must be a non-empty list of role names, or ["*"]');
-        return false;
+        return [];
       }
-      return true;
-    }) as Record<string, unknown>[];
+      return [{ rule, at }];
+    });
   };
 
-  const submit = rules("submit", ["roles", "agents"]).flatMap((rule, index) => {
+  const submit = rules("submit", ["roles", "agents"]).flatMap(({ rule, at }) => {
     const agents = rule.agents;
     if (agents !== "*" && !(Array.isArray(agents) && agents.length > 0 && agents.every(isName))) {
-      problem(`permissions.submit[${index}].agents`, 'must be a list of agent ids, or "*"');
+      problem(`${at}.agents`, 'must be a list of agent ids, or "*"');
       return [];
     }
     return [{ roles: rule.roles as string[], agents: agents as string[] | "*" }];
   });
-  const approve = rules("approve", ["roles", "agents", "limit"]).flatMap((rule, index) => {
+  const approve = rules("approve", ["roles", "agents", "limit"]).flatMap(({ rule, at }) => {
     if (rule.limit !== undefined && (typeof rule.limit !== "number" || rule.limit < 0)) {
-      problem(`permissions.approve[${index}].limit`, "must be a number, 0 or more");
+      problem(`${at}.limit`, "must be a number, 0 or more");
       return [];
     }
     const agents = rule.agents ?? "*";
     if (agents !== "*" && !(Array.isArray(agents) && agents.length > 0 && agents.every(isName))) {
-      problem(`permissions.approve[${index}].agents`, 'must be a list of agent ids, or "*"');
+      problem(`${at}.agents`, 'must be a list of agent ids, or "*"');
       return [];
     }
     return [
@@ -308,7 +310,7 @@ function parsePermissions(
       },
     ];
   });
-  const abort = rules("abort", ["roles"]).map((rule) => ({ roles: rule.roles as string[] }));
+  const abort = rules("abort", ["roles"]).map(({ rule }) => ({ roles: rule.roles as string[] }));
   return { submit, approve, abort };
 }
 

@@ -43,9 +43,6 @@ import { readSkillFile } from "./skills.js";
 import { todaySection } from "./today.js";
 import { guardToolResult } from "./tool-result.js";
 
-/** The section keys a role's prompt renders under, in order. */
-export const ROLE_SECTION_KEYS = ["agents_md", "skills", "append_system"] as const;
-
 export interface DefineRoleOptions {
   /** The role package's root, e.g. `fileURLToPath(new URL("..", import.meta.url))`. */
   readonly packageDir: string;

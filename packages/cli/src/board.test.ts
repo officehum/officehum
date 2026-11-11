@@ -428,7 +428,7 @@ describe("officehum board", () => {
     expect(await runCli(["board", "--office", directory], capture.io, clock)).toBe(0);
     const text = capture.output.join("\n");
     expect(text).toContain("  spend     2 calls · 1200 tokens · $0.01");
-    expect(text).toContain("  ceiling   4 calls · $100.00 ($88.00 left) · uncapped");
+    expect(text).toContain("  ceiling   4 calls · 10000 tokens (8800 tokens left) · uncapped");
     expect(text).toContain("  hops      0/4");
   });
 

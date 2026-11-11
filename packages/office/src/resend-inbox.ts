@@ -659,8 +659,9 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
         throw new Error("Malformed inbound event binding.");
       }
     }
+    const eventEmailIds = new Set(events.map((event) => event.emailId));
     for (const receipt of all) {
-      if (!events.some((event) => event.emailId === receipt.email_id)) {
+      if (!eventEmailIds.has(receipt.email_id)) {
         throw new Error("Malformed inbound event binding.");
       }
     }
@@ -680,11 +681,9 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
         throw new Error("Malformed inbound reply operation binding.");
       }
     }
+    const operationRequestIds = new Set(operations.map((row) => row.request_id));
     for (const receipt of all) {
-      if (
-        receipt.reply_request_id !== null &&
-        !operations.some((row) => row.request_id === receipt.reply_request_id)
-      ) {
+      if (receipt.reply_request_id !== null && !operationRequestIds.has(receipt.reply_request_id)) {
         throw new Error("Malformed inbound reply operation binding.");
       }
     }

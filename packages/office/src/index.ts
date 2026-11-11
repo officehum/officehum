@@ -1,8 +1,8 @@
 /**
  * @officehum/office — the runtime that hosts many agents in one Pi Durable harness.
  *
- * `./adapter/` is the only code here that calls Pi Durable's runtime API (RASF-3120). The workboard,
- * relay and office extension land in M2 (RASF-3066, RASF-3067, RASF-3133), not M1.
+ * `./adapter/` opens and owns the Pi Durable harness (RASF-3120). The workboard (`./board/`), relay
+ * (`./relay/`), office extension (`./extension/`) and runtime process (`./runtime/`) build on it.
  */
 
 export type { AgentManifest, Department } from "@officehum/sdk";

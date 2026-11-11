@@ -42,7 +42,6 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
 import type { Models } from "@earendil-works/pi-ai/models";
 import {
-  AssistantEntry,
   type Conversation,
   defineExtension,
   type Extension,
@@ -81,6 +80,7 @@ import { InboundConversationDoc } from "../inbound-session.js";
 import { type RelayMessage, type RelayProvenance, relayMessage } from "../relay/message.js";
 import type { LoadedRole } from "../roles/load-role.js";
 import { loadRole } from "../roles/load-role.js";
+import { answerText } from "../roles/run-role.js";
 import { boardSenderResolver } from "../roles/sender.js";
 import { budgetHooks } from "../spend/budget.js";
 
@@ -442,8 +442,7 @@ function unrunTrace(error: string): Trace {
  * inventing a type the role never declared.
  */
 function ticketTypeFor(options: PiDurableRunnerOptions, role: LoadedRole): string | undefined {
-  const declared = options.office?.ticketType ?? role.manifest.accepts[0]?.type;
-  return declared;
+  return options.office?.ticketType ?? role.manifest.accepts[0]?.type;
 }
 
 /**
@@ -1138,24 +1137,6 @@ function ticketSummaries(board: Board): readonly TicketSummary[] {
 /** The role's selected extensions, falling back to all of them when the bundle does not list names. */
 function selectedExtensions(selected: unknown, all: readonly Extension[]): readonly Extension[] {
   return Array.isArray(selected) ? (selected as readonly Extension[]) : all;
-}
-
-/** The final answer text, read the way `openRoleRun` reads it: through the committed assistant entry. */
-async function answerText(
-  conversation: Conversation,
-  settlement: SettledSubmissionRecord,
-): Promise<string | undefined> {
-  if (settlement.status !== "done" || settlement.type !== "input") return undefined;
-  const entry = await conversation.commit(
-    (transaction) => transaction.entry(AssistantEntry, settlement.answer),
-    BACKGROUND_CONTEXT,
-  );
-  const message = entry?.model?.find((item) => item.role === "assistant");
-  const text = message?.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("");
-  return text === undefined ? undefined : text;
 }
 
 /**

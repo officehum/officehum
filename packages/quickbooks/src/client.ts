@@ -49,6 +49,8 @@ const BASES = {
  */
 const MINOR_VERSION = "75";
 const REQUEST_TIMEOUT_MS = 30_000;
+/** The most rows QuickBooks returns for one query. */
+const QUERY_PAGE_SIZE = 1_000;
 /** QuickBooks omits `CurrencyRef` unless the company turns multicurrency on; USD is then assumed. */
 const DEFAULT_CURRENCY = "USD";
 
@@ -284,7 +286,9 @@ export function quickbooksClient(options: QuickBooksOptions): QuickBooks {
   }
   const transport = options.fetch ?? globalThis.fetch;
   if (typeof transport !== "function") {
-    throw new Error("A fetch implementation is required; pass one, or run on Node 18 or newer.");
+    throw new Error(
+      "A fetch implementation is required; pass one, or run on a Node that has a global fetch.",
+    );
   }
   if (typeof options.getAccessToken !== "function") {
     throw new Error("A getAccessToken callback is required; the host owns the OAuth token.");
@@ -365,6 +369,28 @@ export function quickbooksClient(options: QuickBooksOptions): QuickBooks {
     return `select * from ${entity}${conditions.length === 0 ? "" : ` where ${conditions.join(" and ")}`}`;
   }
 
+  /**
+   * Every row a query matches. QuickBooks answers one page at a time (100 rows unless asked for more,
+   * 1,000 at most), so a single request silently drops the rest: a listing is read page by page until
+   * a short one.
+   */
+  async function queryAll(
+    operation: string,
+    entity: string,
+    conditions: readonly string[],
+  ): Promise<unknown[]> {
+    const rows: unknown[] = [];
+    for (;;) {
+      const statement = `${statementFor(entity, conditions)} startposition ${rows.length + 1} maxresults ${QUERY_PAGE_SIZE}`;
+      const page = entityList(
+        await request(operation, endpoint("/query", { query: statement })),
+        entity,
+      );
+      rows.push(...page);
+      if (page.length < QUERY_PAGE_SIZE) return rows;
+    }
+  }
+
   const compareInvoices = (left: Invoice, right: Invoice): number =>
     left.issuedOn.localeCompare(right.issuedOn) || left.id.localeCompare(right.id);
 
@@ -377,12 +403,9 @@ export function quickbooksClient(options: QuickBooksOptions): QuickBooks {
         throw new Error('A customer search query is required; pass "" to list every customer.');
       }
       const trimmed = query.trim();
-      const statement =
-        trimmed.length === 0
-          ? statementFor("Customer", [])
-          : statementFor("Customer", [`DisplayName like '%${queryLiteral(trimmed)}%'`]);
-      const body = await request("customer search", endpoint("/query", { query: statement }));
-      return entityList(body, "Customer").map(customerOf);
+      const conditions =
+        trimmed.length === 0 ? [] : [`DisplayName like '%${queryLiteral(trimmed)}%'`];
+      return (await queryAll("customer search", "Customer", conditions)).map(customerOf);
     },
 
     async getCustomer(id) {
@@ -401,11 +424,9 @@ export function quickbooksClient(options: QuickBooksOptions): QuickBooks {
       const conditions: string[] = [];
       if (customerId !== undefined) conditions.push(`CustomerRef = '${queryLiteral(customerId)}'`);
       if (since !== undefined) conditions.push(`TxnDate >= '${since}'`);
-      const body = await request(
-        "invoice listing",
-        endpoint("/query", { query: statementFor("Invoice", conditions) }),
-      );
-      const invoices = entityList(body, "Invoice").map(invoiceOf).sort(compareInvoices);
+      const invoices = (await queryAll("invoice listing", "Invoice", conditions))
+        .map(invoiceOf)
+        .sort(compareInvoices);
       return filter.status === undefined
         ? invoices
         : invoices.filter((invoice) => invoice.status === filter.status);
@@ -475,11 +496,9 @@ export function quickbooksClient(options: QuickBooksOptions): QuickBooks {
       const conditions: string[] = [];
       if (customerId !== undefined) conditions.push(`CustomerRef = '${queryLiteral(customerId)}'`);
       if (since !== undefined) conditions.push(`TxnDate >= '${since}'`);
-      const body = await request(
-        "payment listing",
-        endpoint("/query", { query: statementFor("Payment", conditions) }),
-      );
-      return entityList(body, "Payment").map(paymentOf).sort(comparePayments);
+      return (await queryAll("payment listing", "Payment", conditions))
+        .map(paymentOf)
+        .sort(comparePayments);
     },
   };
 }

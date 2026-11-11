@@ -12,7 +12,8 @@
  * - It reads and writes only the host's directories, given in `OFFICEHUM_DATA_DIR` and
  *   `OFFICEHUM_WORK_DIR`, never the package. Each call carries `OFFICEHUM_IDEMPOTENCY_KEY`, so a write
  *   repeated by the host is not applied twice.
- * - It sees no other environment except `PATH`, `HOME`, `LANG` and what the host passes explicitly:
+ * - It sees no other environment except `PATH`, `HOME`, `LANG`, `LC_ALL`, `SYSTEMROOT`, `TMPDIR` and
+ *   what the host passes explicitly:
  *   model keys and other secrets never reach it.
  */
 

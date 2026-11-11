@@ -26,8 +26,7 @@ export interface NumberSink {
 }
 
 /**
- * Twilio's documented "magic" US number, from 555-0100–555-0199 — the range reserved for fiction, which
- * Twilio routes but no person receives. It is a real, valid E.164 number, so a fake-provisioned office
+ * Twilio's documented "magic" test-credential number, which Twilio accepts but no person receives. It is a real, valid E.164 number, so a fake-provisioned office
  * behaves like a provisioned one; it is nobody's number, so a mistake in a test cannot text a stranger.
  */
 export const FAKE_NUMBER = "+15005550006";

@@ -70,8 +70,8 @@ import {
 
 /**
  * The reply budget. An Excel result is dense — every changed cell carries its before and after, and
- * every numeric check carries an exact sum — so the budget is smaller than the PowerPoint tools' 32 KB
- * rather than larger: less survives trimming here, and anything above this is trimmed by
+ * every numeric check carries an exact sum — so the budget stays at the PowerPoint tools' 32 KB rather
+ * than growing: less survives trimming here, and anything above this is trimmed by
  * `boundedBody`, which names what it left out. The whole result is always in the receipt.
  */
 const MAX_TOOL_TEXT = 32_000;

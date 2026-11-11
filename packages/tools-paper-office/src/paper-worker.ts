@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type DocumentRefusalCode, refusal, refusalCodeFromWorker } from "./errors.js";
-import { type DocumentFormat, isDocumentFormat } from "./formats.js";
+import { type DocumentFormat, isDocumentFormat, PAPER_LIBRARY_PINS } from "./formats.js";
 import type { ResourceLimits } from "./lease.js";
 import { validateWorkerIdentity, type WorkerIdentity } from "./operation.js";
 import { assertHash, assertPathSegment, assertSize, hasCode, messageOf } from "./validate.js";
@@ -196,7 +196,7 @@ export function subprocessPaperWorker(options: SubprocessPaperWorkerOptions): Pa
         operationId: request.operationId,
         code: request.code,
         arguments: request.arguments,
-        libraries: { "paper-docx": "0.2.0", "paper-pptx": "0.2.0", "paper-xlsx": "0.2.1" },
+        libraries: PAPER_LIBRARY_PINS,
         inputs: request.inputs.map((input) => ({
           versionId: input.versionId,
           fileId: input.fileId,

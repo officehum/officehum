@@ -236,7 +236,6 @@ export {
   type DefinedRole,
   type DefineRoleOptions,
   defineRole,
-  ROLE_SECTION_KEYS,
   RoleFilesError,
 } from "./role.js";
 export {

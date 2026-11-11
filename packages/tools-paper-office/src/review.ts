@@ -189,29 +189,30 @@ export function reviewLedger(dir: string): ReviewLedger {
   const root = resolve(dir);
   const reviewsDir = join(root, "reviews");
 
+  /** One entry, read with every check: `read` and `list` must not differ in what they trust. */
+  const readEntry = async (path: string): Promise<ReviewRecord | undefined> => {
+    let info: Awaited<ReturnType<typeof lstat>>;
+    try {
+      info = await lstat(path);
+    } catch (error) {
+      if (isNotFound(error)) return undefined;
+      throw refusal("ledger-integrity", `the review ledger could not be read: ${messageOf(error)}`);
+    }
+    if (info.isSymbolicLink() || !info.isFile()) {
+      throw refusal("ledger-integrity", "a review ledger entry is not a regular file");
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+    } catch (error) {
+      throw refusal("ledger-integrity", `a review ledger entry is corrupt: ${messageOf(error)}`);
+    }
+    return validateRecord(parsed);
+  };
+
   return {
-    async read(reviewId) {
-      const path = join(reviewsDir, `${digest(reviewId)}.json`);
-      let info: Awaited<ReturnType<typeof lstat>>;
-      try {
-        info = await lstat(path);
-      } catch (error) {
-        if (isNotFound(error)) return undefined;
-        throw refusal(
-          "ledger-integrity",
-          `the review ledger could not be read: ${messageOf(error)}`,
-        );
-      }
-      if (info.isSymbolicLink() || !info.isFile()) {
-        throw refusal("ledger-integrity", "a review ledger entry is not a regular file");
-      }
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
-      } catch (error) {
-        throw refusal("ledger-integrity", `a review ledger entry is corrupt: ${messageOf(error)}`);
-      }
-      return validateRecord(parsed);
+    read(reviewId) {
+      return readEntry(join(reviewsDir, `${digest(reviewId)}.json`));
     },
     async list() {
       let names: string[];
@@ -227,8 +228,8 @@ export function reviewLedger(dir: string): ReviewLedger {
       const records: ReviewRecord[] = [];
       for (const name of names.sort()) {
         if (!name.endsWith(".json")) continue;
-        const parsed = JSON.parse(await readFile(join(reviewsDir, name), "utf8")) as unknown;
-        records.push(validateRecord(parsed));
+        const record = await readEntry(join(reviewsDir, name));
+        if (record !== undefined) records.push(record);
       }
       return records;
     },
