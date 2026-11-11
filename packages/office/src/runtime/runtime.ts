@@ -36,7 +36,6 @@ import {
 } from "@earendil-works/pi-durable";
 import {
   type Abort,
-  type ErrorCode,
   type EventMessage,
   type ForwardedCommand,
   handshake,
@@ -54,6 +53,7 @@ import {
 import { type Office, type OfficeEvent, type OfficeStorage, openOffice } from "../adapter/index.js";
 import type { LoadedRole } from "../roles/load-role.js";
 import { answerText } from "../roles/run-role.js";
+import { RuntimeError } from "./errors.js";
 import { FrameWriter } from "./frame-writer.js";
 
 export interface RuntimeOptions {
@@ -172,14 +172,6 @@ function modelName(model: ModelRef): string {
   return `${model.provider}/${model.modelId}`;
 }
 
-class RuntimeError extends Error {
-  constructor(
-    readonly code: ErrorCode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 /**
  * Opens the office, installs its roles, attaches to the work a previous run left unsettled, resumes
