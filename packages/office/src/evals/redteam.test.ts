@@ -28,7 +28,8 @@
  * Not in this file: RT-H1 (hand-off laundering) and RT-L1 (a hand-off loop) need `agent_dispatch` and
  * the board's hop limit driven through a real relay. The office-mode runner has no relay and hardcodes
  * `Trace.delegated` empty, so a scenario row for either would be a test of a stub. They run over a
- * real board, relay and office extension in `redteam-handoff.test.ts` instead.
+ * real board, relay and office extension in `redteam-handoff.test.ts` instead, where RT-L1 has its
+ * own guard-off control.
  */
 
 import { fileURLToPath } from "node:url";

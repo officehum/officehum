@@ -520,7 +520,9 @@ export function createRelay(options: RelayOptions): Relay {
   const handToPerson = (event: TicketEvent, ticket: Ticket, personId: string): void => {
     const assignee: Assignee = { kind: "person", id: personId };
     try {
-      board.assign(ticket.id, assignee, event.actor ?? "relay");
+      // In the name of whoever opened the ticket: the relay is routing their request, and the event
+      // that brought it here may be anyone's comment.
+      board.assign(ticket.id, assignee, ticket.createdBy);
     } catch (error) {
       // A ticket that already moved on (closed before the relay got to it) is not a failure: the row
       // records the attempt either way. Anything else is a real fault, and it propagates before the

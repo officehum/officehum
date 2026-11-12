@@ -653,6 +653,35 @@ describe("workboard", () => {
     board.close();
   });
 
+  it("lets only the assignee, whoever opened the ticket, or a person reassign it", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    seedPerson(file, "owner");
+
+    // Nobody holds it yet: a bystander cannot route someone else's ticket to itself or anyone else.
+    const ticket = root(board);
+    expect(kindOf(() => board.assign(ticket.id, { kind: "agent", id: "agent-b" }, "agent-b"))).toBe(
+      "unauthorized",
+    );
+    expect(board.get(ticket.id)).toMatchObject({ status: "open", assignee: null });
+
+    // Whoever opened it may route it, and from then on so may the role that holds it.
+    board.assign(ticket.id, { kind: "agent", id: "agent-a" }, "front-desk");
+    expect(kindOf(() => board.assign(ticket.id, { kind: "agent", id: "agent-b" }, "agent-b"))).toBe(
+      "unauthorized",
+    );
+    expect(board.events(ticket.id).filter((event) => event.kind === "assigned")).toHaveLength(1);
+    expect(board.assign(ticket.id, { kind: "agent", id: "agent-b" }, "agent-a").assignee).toBe(
+      "agent-b",
+    );
+
+    // A person may always step in.
+    expect(board.assign(ticket.id, { kind: "agent", id: "agent-a" }, "owner").assignee).toBe(
+      "agent-a",
+    );
+    board.close();
+  });
+
   it("rejects an assign to an unknown person id", () => {
     const file = boardFile();
     const board = openBoard(file);

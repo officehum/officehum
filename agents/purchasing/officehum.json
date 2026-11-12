@@ -77,7 +77,7 @@
     {
       "type": "purchasing.request",
       "description": "Someone in the company needs supplies or equipment bought, or a different product or supplier",
-      "done": [{ "tool": "list_stock", "args": {}, "expect": "found" }, { "person": true }]
+      "done": [{ "person": true }]
     }
   ],
   "dispatches": [

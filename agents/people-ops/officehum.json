@@ -74,7 +74,7 @@
     {
       "type": "people.request",
       "description": "An employee, candidate or manager has a question or request about hiring, onboarding, time off, availability, pay, discipline or how someone is treated at work",
-      "done": [{ "tool": "list_availability", "args": {}, "expect": "found" }, { "person": true }]
+      "done": [{ "person": true }]
     }
   ],
   "dispatches": [

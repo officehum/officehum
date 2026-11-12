@@ -289,7 +289,7 @@ export class WebSocketTransport implements Transport {
   /**
    * Reconnects with backoff for as long as the gateway is unreachable. Sign-in refused more than
    * `retries` times, with no successful sign-in between, is not going to get better, so it ends the
-   * client with that error instead of leaving every run waiting.
+   * client with that error instead of leaving every run and every approvals watch waiting.
    */
   async #reconnect(): Promise<void> {
     let refused = 0;
@@ -301,6 +301,8 @@ export class WebSocketTransport implements Transport {
         return;
       } catch (error) {
         if (isGatewayError(error, "unauthorized") && ++refused > this.#retries) {
+          // A caller that only watches approvals has no run to fail, so this is how it hears.
+          this.#loseApprovals(error);
           this.#end(error);
           return;
         }

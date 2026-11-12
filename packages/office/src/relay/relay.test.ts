@@ -401,7 +401,7 @@ describe("relay delivery", () => {
       const ticket = await fixture.relay.dispatch(TYPE, dispatch("Invoice 42"));
       await fixture.relay.pollOnce();
       fixture.board.claim(ticket.id, ROLE);
-      fixture.board.assign(ticket.id, { kind: "agent", id: ROLE }, TRIAGE_ROLE);
+      fixture.board.assign(ticket.id, { kind: "agent", id: ROLE }, ROLE);
       fixture.board.comment(ticket.id, TRIAGE_ROLE, "Please hurry.");
       await fixture.relay.pollOnce();
 

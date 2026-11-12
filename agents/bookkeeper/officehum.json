@@ -173,11 +173,6 @@
       "description": "Record a supplier's bill, or pay one with a person's approval",
       "done": [
         {
-          "tool": "list_vendor_bills",
-          "args": {},
-          "expect": "found"
-        },
-        {
           "person": true
         }
       ]
