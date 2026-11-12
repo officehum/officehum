@@ -255,7 +255,10 @@ Every figure a tool speaks — an invoice number, a total, a balance, a due date
 returned, in cents. `create_invoice` takes each line's unit price in **integer cents** and never a
 total: QuickBooks works out each line amount and the invoice's total, and the receipt quotes them.
 A `jobReference` becomes the invoice's document number, which is the one place this client's
-`InvoiceDraft` can keep it, so an invoice can be found again by job.
+`InvoiceDraft` can keep it, so an invoice can be found again by job. That is also how an office
+knows an `invoice.create` ticket is done: the ticket's payload names the job (`{ "jobReference":
+"JOB-1042" }`), and the office runs `get_invoice` for that number before a person is asked to
+confirm. The customer's older invoices do not satisfy it.
 
 Every write carries a `requestId`, hashed into QuickBooks' 50-character cap. `create_invoice` and
 `send_invoice` derive it from the durable call identity (`conversationId:taskId:callId`), so a retried

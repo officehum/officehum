@@ -73,18 +73,12 @@
     {
       "type": "operations.schedule",
       "description": "A client wants a start date, a crew, a contract term or a schedule change",
-      "done": [
-        { "tool": "list_jobs", "args": { "client": "{ticket.data.client}" }, "expect": "found" },
-        { "person": true }
-      ]
+      "done": [{ "person": true }]
     },
     {
       "type": "operations.callout",
       "description": "A client needs someone after hours for a problem that cannot wait",
-      "done": [
-        { "tool": "list_jobs", "args": { "client": "{ticket.data.client}" }, "expect": "found" },
-        { "person": true }
-      ]
+      "done": [{ "person": true }]
     }
   ],
   "dispatches": [

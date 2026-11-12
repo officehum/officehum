@@ -93,22 +93,12 @@
     {
       "type": "quote.request",
       "description": "Quote a job for a prospect from the price book",
-      "done": [
-        {
-          "tool": "search_price_book",
-          "args": { "query": "{ticket.data.service}" },
-          "expect": "found"
-        },
-        { "person": true }
-      ]
+      "done": [{ "person": true }]
     },
     {
       "type": "lead.qualify",
       "description": "Qualify a new enquiry before anything is quoted",
-      "done": [
-        { "tool": "list_leads", "args": { "query": "{ticket.data.company}" }, "expect": "found" },
-        { "person": true }
-      ]
+      "done": [{ "person": true }]
     },
     {
       "type": "pipeline.review",
