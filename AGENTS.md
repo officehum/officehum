@@ -16,10 +16,20 @@ building Office Hum, including what it may do without asking).
 | Path | What it is |
 | --- | --- |
 | `packages/sdk` | `@officehum/sdk`: manifest schema, `defineRole`, overlays, approval gate, engines, evals, file stores. Portable: depends only on Pi Durable and pi-ai (peers), typebox, semver, yaml. |
-| `packages/office` | `@officehum/office`: the host runtime. The only package that opens and drives a Pi Durable `Harness`. Calendar, messaging and email adapters, solo mode. |
-| `packages/cli` | `@officehum/cli`: operator commands and the Paper Ultramarine model provider. |
+| `packages/office` | `@officehum/office`: the host runtime. The only package that opens and drives a Pi Durable `Harness`. Workboard, relay, office extension, approvals, budgets, the runtime process, calendar, messaging, email and SMS adapters, solo mode. |
+| `packages/cli` | `@officehum/cli`: operator commands (`run`, `runtime`, `eval`, `board`, `review`, `verify-role` and the Front Desk solo commands). |
+| `packages/protocol` | `@officehum/protocol`: Gateway Protocol v1 message schemas, validators and the JSONL codec. |
+| `packages/gateway` | `@officehum/gateway`: the authenticated WebSocket and HTTP edge that supervises a runtime process. |
+| `packages/client` | `@officehum/client`: TypeScript client for a gateway (Node and browsers). |
+| `packages/channels` | `@officehum/channels`: the channel plugin contract and the SMS (Twilio) channel. |
+| `packages/role-factory` | `@officehum/role-factory`: `ROLE_SPEC.md` parser, interview and `officehum-role generate`. |
+| `packages/provider-paper` | `@officehum/provider-paper`: the portable Paper Ultramarine model provider for pi-ai. |
+| `packages/tools-paper-office` | `@officehum/tools-paper-office`: the task-leased Paper Office document worker (TypeScript host, Python worker). |
 | `packages/google-calendar` | Portable Google Calendar client and fake. |
+| `packages/quickbooks` | Portable QuickBooks Online client and fake. |
 | `agents/<role>` | One role package each; the catalog is in `agents/README.md`. |
+| `company/default` | The fictitious company every catalog role works for; `npm run sync-company` copies it into each role's `skills/company-handbook`. |
+| `scripts/` | The company sync and its guards. `evals/red-team/` holds the cross-role red-team scenarios. |
 | `docs/design/` | Accepted designs. `docs/superpowers/specs/` and `plans/` hold per-feature specs and plans. |
 
 ## Commands
@@ -33,7 +43,9 @@ npm run build && node packages/cli/dist/index.js demo --state "$(mktemp -d)/demo
 ```
 
 Engine-backed role tests run `python3`, so it must be on the path (CI uses Python 3.12). The CLI runs
-from `dist/`, so build before using it.
+from `dist/`, so build before using it. The Paper Office suites need the worker interpreter in
+`OFFICEHUM_PAPER_PYTHON` (see `packages/tools-paper-office/scripts/provision-worker.sh`); without it
+they skip locally, and only CI runs them.
 
 CI runs the same `check` job on every pull request, and `main` requires it to pass. Biome ignores
 paths under `.claude/worktrees`, so from inside such a worktree run `npx biome check <files>` on the
@@ -61,7 +73,7 @@ files you changed.
   workspace described in `docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md`.
 - **Numbers come from code.** Figures come from engines, connected systems or tools, never model
   arithmetic.
-- **Pi Durable is pinned exactly** (`PI_DURABLE_VERSION` in `packages/office/src/index.ts`). Never bump
+- **Pi Durable is pinned exactly** (`PI_DURABLE_VERSION` in `packages/office/src/version.ts`). Never bump
   it in a feature PR; upgrades are their own issue (RASF-3237) or a Dependabot PR.
 - **Models.** New role conversations default to `paper/ultramarine-1-flash`. A saved conversation keeps
   the provider and model it started with. A provider failure is surfaced; never fall back to another

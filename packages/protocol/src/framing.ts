@@ -69,8 +69,9 @@ export class LineDecoder {
           this.#reset();
           this.#discarding = true;
         } else {
-          // Copy: the caller may reuse its buffer before the line completes.
-          this.#parts.push(data.slice(start, end));
+          // Copy: the caller may reuse its buffer before the line completes. `Buffer#slice` returns
+          // a view, so the typed array's own `slice` is named explicitly.
+          this.#parts.push(Uint8Array.prototype.slice.call(data, start, end));
           this.#size += end - start;
         }
       }

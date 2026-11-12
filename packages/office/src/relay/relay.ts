@@ -238,6 +238,8 @@ export function createRelay(options: RelayOptions): Relay {
     const roleKey = roleKeyOfConversationKey(key);
     const agent = roleKey === undefined ? {} : (routing.role(roleKey)?.agent ?? {});
     const pending = office.conversation(key, { agent });
+    // A failed open is not cached, so the next delivery tries again (as the runtime does).
+    pending.catch(() => conversationCache.delete(key));
     conversationCache.set(key, pending);
     return pending;
   };

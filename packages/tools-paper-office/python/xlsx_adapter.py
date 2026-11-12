@@ -439,6 +439,26 @@ def _optional_sheet(wb: Any, value: Any, what: str) -> Optional[Any]:
     return None if value is None else _sheet(wb, value, what)
 
 
+def _range_sheet(wb: Any, spec: Dict[str, Any], what: str) -> Any:
+    """The sheet a step's range is on: its sheet prefix, its `sheet` field, or the first sheet.
+
+    A range may carry a prefix (`Revenue!A1:C10`). Dropping it would write to whichever sheet the
+    step fell back to, so the prefix decides, and a prefix that disagrees with `sheet` is refused.
+    """
+    sheet = _optional_sheet(wb, spec.get("sheet"), f"{what} sheet")
+    prefix, _core = _split_sheet_prefix(_string(spec["range"], f"{what} range", 128).replace("$", ""))
+    if prefix is None:
+        return sheet or wb.worksheets[0]
+    named_sheet = _sheet(wb, prefix, f"{what} range's sheet")
+    if sheet is not None and named_sheet.title != sheet.title:
+        _fail(
+            "ambiguous-target",
+            f"the range names sheet {named_sheet.title!r} and the step names {sheet.title!r}; "
+            "name one of them",
+        )
+    return named_sheet
+
+
 def _coordinate(value: Any, what: str) -> str:
     """One A1 coordinate, normalized. Absolute markers are accepted and dropped."""
     text = _string(value, what, 32).replace("$", "").upper()
@@ -2439,7 +2459,7 @@ def _set_cell(wb: Any, spec: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _set_range(wb: Any, spec: Dict[str, Any]) -> Dict[str, Any]:
-    sheet = _optional_sheet(wb, spec.get("sheet"), "the setRange sheet") or wb.worksheets[0]
+    sheet = _range_sheet(wb, spec, "the setRange")
     core, _prefix, bounds = _bounded_range(spec["range"], "the setRange range")
     rows = spec["rows"]
     if not isinstance(rows, list) or not rows:
@@ -2492,7 +2512,7 @@ def _set_range(wb: Any, spec: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _clear_cells(wb: Any, spec: Dict[str, Any]) -> Dict[str, Any]:
-    sheet = _optional_sheet(wb, spec.get("sheet"), "the clearCells sheet") or wb.worksheets[0]
+    sheet = _range_sheet(wb, spec, "the clearCells")
     core, _prefix, bounds = _bounded_range(spec["range"], "the clearCells range")
     min_col, min_row, max_col, max_row = bounds
     cleared: List[str] = []
@@ -2531,7 +2551,7 @@ def _apply_edit_step(wb: Any, spec: Any) -> Dict[str, Any]:
     if kind == "clearCells":
         return _clear_cells(wb, block)
     if kind == "setStyle":
-        sheet = _optional_sheet(wb, block.get("sheet"), "the setStyle sheet") or wb.worksheets[0]
+        sheet = _range_sheet(wb, block, "the setStyle")
         style_spec = _style_spec({"range": block["range"], "style": block["style"]}, "the setStyle")
         touched = _apply_style(wb, sheet, style_spec, "the setStyle")
         return {

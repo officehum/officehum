@@ -546,8 +546,6 @@ describe("frontdesk role", () => {
 });
 
 describe("frontdesk discount gate", () => {
-  const environment = (limits: Readonly<Record<string, number>>) => ({ read: {}, limits }) as never;
-
   it("reads the discount rate from the manifest's named limit", () => {
     const calendar = tempCalendar();
     expect(frontdesk({ calendar }).current().limits).toEqual({ booking_discount_percent: 0 });

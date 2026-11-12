@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { type Harness, InboxDoc, UserEntry } from "@earendil-works/pi-durable";
+import { canonicalJson } from "./resend-inbound.js";
 import type {
   InboundAuthority,
   InternalResendInbox,
@@ -99,21 +100,6 @@ function validateRow(
     throw new Error("Malformed inbound reply operation.");
   }
   return row;
-}
-
-function canonicalJson(value: unknown): string {
-  const canonical = (item: unknown): unknown => {
-    if (Array.isArray(item)) return item.map(canonical);
-    if (item !== null && typeof item === "object") {
-      return Object.fromEntries(
-        Object.entries(item as Record<string, unknown>)
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([key, child]) => [key, canonical(child)]),
-      );
-    }
-    return item;
-  };
-  return JSON.stringify(canonical(value));
 }
 
 function targetFrom(

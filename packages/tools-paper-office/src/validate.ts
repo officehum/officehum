@@ -4,7 +4,7 @@
  * subprocess — so every shape is checked with exact keys and explicit types rather than trusted.
  */
 
-import { DocumentError, type DocumentRefusalCode, refusal } from "./errors.js";
+import { type DocumentRefusalCode, refusal } from "./errors.js";
 
 const FILE_ID = /^file_[0-9A-HJKMNP-TV-Z]{26}$/u;
 const HASH = /^[0-9a-f]{64}$/u;
@@ -118,9 +118,4 @@ export function hasCode(error: unknown, code: string): boolean {
 
 export function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-export function asDocumentError(error: unknown): DocumentError {
-  if (error instanceof DocumentError) return error;
-  return new DocumentError("invalid-request", messageOf(error));
 }

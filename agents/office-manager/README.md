@@ -79,11 +79,11 @@ uses the manifest's default model and needs a live key in the environment.
 
 | Path | What it holds |
 | --- | --- |
-| `officehum.json` | The manifest: no tools, no approvals, two accepted types with completion evidence, both skills, the evals |
+| `officehum.json` | The manifest: no tools, no approvals, two accepted types with completion evidence, three skills, the evals |
 | `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
 | `src/index.ts` | The factory: `defineRole` with the manifest and the overlays, and nothing else |
 | `src/index.test.ts` | The package checks and the eight scripted eval scenarios |
 | `src/package.test.ts` | The strict four-layer manifest and prompt checks |
 | `evals/situations.json` | The eight eval scenarios |
 | `evals.smoke.json` | The turns `--model scripted` plays back for them |
-| `skills/` | `triage` and `daily-digest`, with their references |
+| `skills/` | `triage` and `daily-digest`, with their references, and the generated `company-handbook` |

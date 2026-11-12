@@ -344,7 +344,7 @@ export function indexTs(spec: RoleSpec): string {
           "    skillTools: {",
           ...[...skillStubs].map(
             ([skill, tools]) =>
-              `      ${skill}: [${tools.map((tool) => factoryName(tool.name)).join(", ")}],`,
+              `      ${JSON.stringify(skill)}: [${tools.map((tool) => factoryName(tool.name)).join(", ")}],`,
           ),
           "    },",
         ]),
@@ -411,8 +411,9 @@ export function roleTestTs(spec: RoleSpec): string {
     lines.push(
       "",
       `  it("leaves ${tool.name} unimplemented, with a TODO in its place", async () => {`,
-      "    const [roleExtension] = role(options).extensions;",
-      `    const tool = roleExtension?.tools?.find((candidate) => candidate.name === ${JSON.stringify(tool.name)});`,
+      "    // A skill's tool lives in the skill's own extension, so every extension is searched.",
+      "    const tools = role(options).extensions.flatMap((extension) => extension.tools ?? []);",
+      `    const tool = tools.find((candidate) => candidate.name === ${JSON.stringify(tool.name)});`,
       "    expect(tool).toBeDefined();",
       "    if (tool === undefined) return;",
       '    await expect(tool.execute({} as never, {} as never, {} as never)).rejects.toThrow("not implemented");',

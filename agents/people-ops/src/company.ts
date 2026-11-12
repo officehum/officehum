@@ -12,10 +12,10 @@
  */
 
 import {
+  companyHead,
   findPeople,
   loadCompanyFacts as loadFacts,
   personLabel,
-  companyHead as sdkCompanyHead,
 } from "@officehum/sdk";
 
 /** Where the generated facts live, from either `src/company.ts` or `dist/company.js`. */
@@ -130,12 +130,7 @@ export function peopleOwner(
   return escalationOwner(company, "hiring-and-onboarding");
 }
 
-/**
- * The person at the top of the company, by the SDK's one rule: a head title first, a bare director
- * only when nobody holds one. A complaint about the person who would normally take it goes here.
- */
-export function companyHead(company: Pick<CompanyFacts, "people">): Person | undefined {
-  return sdkCompanyHead(company);
-}
-
-export { findPeople, personLabel };
+// `companyHead` is the SDK's one rule for the person at the top of the company: a head title first,
+// a bare director only when nobody holds one. A complaint about the person who would normally take
+// it goes there.
+export { companyHead, findPeople, personLabel };

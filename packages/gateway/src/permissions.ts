@@ -17,11 +17,6 @@ export function covers(roles: RoleList, principal: Principal): boolean {
   return roles.includes("*") || principal.roles.some((role) => roles.includes(role));
 }
 
-/**
- * Decides one command for one principal. The principal it returns is the one to forward: for
- * `approve`, its `approvalLimit` is the lower of the token's and the rules', so the runtime enforces
- * the tighter of the two.
- */
 /** The approve rules that let this principal decide this agent's approvals. */
 function approveRules(permissions: Permissions, principal: Principal, agent: string) {
   return permissions.approve.filter(

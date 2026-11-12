@@ -40,7 +40,7 @@ export const FREE: ModelPrice = { input: 0, output: 0, cacheRead: 0, cacheWrite:
  * The table this repository can stand behind. Only one model has a rate written down in this repo —
  * `@officehum/provider-paper`'s catalog entry for `paper/ultramarine-1-flash`, whose dollar cost per
  * million tokens is `{ input: 0.15, output: 0.5, cacheRead: 0.03, cacheWrite: 0.15 }` — and these are
- * that figure in cents, doubled-checked by hand rather than converted at run time so no float ever
+ * that figure in cents, double-checked by hand rather than converted at run time so no float ever
  * reaches the ledger.
  *
  * There is no office-level config file in this repository to hold an operator's own table (the office's

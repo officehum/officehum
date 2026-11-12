@@ -1,6 +1,7 @@
 /**
  * The Bookkeeper's six tools over the host's `@officehum/quickbooks` client, and the two approval
- * conditions that `officehum.json` cannot express as conditions on a tool's arguments.
+ * conditions the role's own gate runs as code. `officehum.json` states `large_invoice` too; only
+ * `new_recipient` is one it cannot express as a condition on a tool's arguments.
  *
  * The client is whoever the host binds — Office Hum the REST client, a test or an eval
  * `fakeQuickBooks` — and every figure these tools speak comes back from it as integer cents. No tool
@@ -28,6 +29,7 @@ import {
   type ReminderTone,
   sentStage,
 } from "./collections.js";
+import { same } from "./desk.js";
 
 /** The durable identity of one tool call, as Pi Durable hands it to a tool's `execute`. */
 export interface CallIdentity {
@@ -239,11 +241,6 @@ function invoiceJson(invoice: Invoice): InvoiceDetails {
   };
 }
 
-/** Two addresses that differ only in surrounding whitespace or case are the same address. */
-function sameAddress(left: string, right: string): boolean {
-  return left.trim().toLowerCase() === right.trim().toLowerCase();
-}
-
 /**
  * The result for a stage the ledger already holds. It reports what the record says and reaches for
  * neither QuickBooks nor the clock: a repeat of a sent stage is answered from durable state alone,
@@ -371,8 +368,7 @@ export function bookkeeperTools(
       const wanted = args.email?.trim().toLowerCase();
       const customers = candidates.filter(
         (candidate) =>
-          wanted === undefined ||
-          (candidate.email !== undefined && sameAddress(candidate.email, wanted)),
+          wanted === undefined || (candidate.email !== undefined && same(candidate.email, wanted)),
       );
       // One details shape for a match and a miss, so a UI reads `found` and `customers` either way.
       const details: FoundCustomersDetails = {
@@ -883,7 +879,7 @@ export function newRecipientCondition(quickbooks: QuickBooks | undefined): Appro
       if (invoice === undefined) return true;
       const customer = await quickbooks.getCustomer(invoice.customerId);
       if (customer.email === undefined) return true;
-      return !sameAddress(to, customer.email);
+      return !same(to, customer.email);
     } catch {
       context.abortSignal?.throwIfAborted();
       return true;

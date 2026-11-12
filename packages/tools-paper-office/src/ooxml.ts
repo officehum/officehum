@@ -239,17 +239,47 @@ function readEntry(
   return decodeUtf8(raw, what);
 }
 
-const RELATIONSHIP = /<(?:[A-Za-z0-9_.-]+:)?Relationship\b([^>]*?)\/?>/gu;
-const ATTRIBUTE = /([A-Za-z0-9_.-]+)\s*=\s*"([^"]*)"/gu;
+// This gate runs before any XML parser, so it has to read a relationship the way a parser will: a
+// value may be quoted either way, may hold a `>`, and may spell any character as a reference. Reading
+// only the common spelling would let the same link through in another one.
+const RELATIONSHIP = /<(?:[A-Za-z0-9_.-]+:)?Relationship\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gu;
+const ATTRIBUTE = /([A-Za-z0-9_.:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/gu;
+const CHARACTER_REFERENCE = /&(?:#x([0-9A-Fa-f]{1,6})|#([0-9]{1,7})|(amp|lt|gt|quot|apos));/gu;
+const NAMED_REFERENCES: Readonly<Record<string, string>> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+};
+
+/** An attribute value with its character references resolved, as a parser would hand it on. */
+function attributeValue(raw: string): string {
+  return raw.replace(
+    CHARACTER_REFERENCE,
+    (whole, hex?: string, decimal?: string, name?: string) => {
+      if (name !== undefined) return NAMED_REFERENCES[name] ?? whole;
+      const code =
+        hex !== undefined ? Number.parseInt(hex, 16) : Number.parseInt(decimal ?? "", 10);
+      return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+    },
+  );
+}
 
 function checkRelationships(entry: Entry, xml: string, what: string): void {
+  // A relationships part has no use for a DTD, and a declared entity is a value this gate cannot read.
+  if (/<!(?:DOCTYPE|ENTITY)/iu.test(xml)) {
+    throw refusal("external-relationship", `${what} declares entities in a relationships part`);
+  }
   const base = posix.dirname(posix.dirname(entry.name));
   for (const match of xml.matchAll(RELATIONSHIP)) {
     const attributes = new Map<string, string>();
     for (const attribute of (match[1] ?? "").matchAll(ATTRIBUTE)) {
       const key = attribute[1];
-      const value = attribute[2];
-      if (key !== undefined && value !== undefined) attributes.set(key.toLowerCase(), value);
+      const value = attribute[2] ?? attribute[3];
+      if (key !== undefined && value !== undefined) {
+        attributes.set(key.toLowerCase(), attributeValue(value));
+      }
     }
     if ((attributes.get("targetmode") ?? "").toLowerCase() === "external") {
       throw refusal("external-relationship", `${what} links to an external resource`);

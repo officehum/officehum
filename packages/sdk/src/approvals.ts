@@ -465,9 +465,15 @@ export function approvalAmount(
   return amount === undefined || !Number.isFinite(amount) || amount < 0 ? undefined : amount;
 }
 
-/** One argument as the number to compare, or `undefined` when it is not one. */
+/**
+ * One argument as the number to compare, or `undefined` when it is not one. Only a number, or text
+ * that spells one, is read: `Number` turns a blank string, an empty array and `false` into 0, and a
+ * zero the call never stated is the one reading that slips a call past a limit.
+ */
 function asNumber(value: unknown): number | undefined {
-  const number = typeof value === "number" ? value : Number(value);
+  if (typeof value === "number") return Number.isNaN(value) ? undefined : value;
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const number = Number(value);
   return Number.isNaN(number) ? undefined : number;
 }
 

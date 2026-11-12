@@ -4,12 +4,9 @@ Open-source multi-agent office for medium-sized businesses, built on [Pi Durable
 
 Each specialized role inside a department, such as accounts payable in finance, a campaign manager in marketing, or a dispatcher in operations, is its own Pi Durable agent with its own instructions, tools, skills and eval suite. The design lets agents run alone or together on one machine, sharing work through a durable workboard and relay.
 
-> Status: the local Front Desk solo workflow is available but unpublished. The shared workboard,
-> relay, and multi-role team runtime remain planned.
+> Status: nothing is published or deployed yet. Nine roles, the workboard, relay, runtime process,
+> gateway and client are built and run locally.
 
-The [visual system guide](docs/visualizations/officehum-built.html) is a standalone HTML map of the
-repository, its current and planned interfaces, and the distinct roles of Office Hum, Pi Durable,
-and Paper Instruments. Download or open the file locally to use its interactive workflow view.
 The [owner's manual](docs/visualizations/officehum-owners-manual.html) explains the boundaries
 between Office Hum, Pi Durable, role packages, and Paper Instruments, how several roles are designed
 to work together, and what is built versus planned.
@@ -196,8 +193,7 @@ node packages/cli/dist/index.js start \
   --calendar google \
   --state .officehum/frontdesk-google \
   --message "Book Demo Guest on 2030-01-15" \
-  --request-id booking-1 \
-  --model gpt-6-sol
+  --request-id booking-1
 node packages/cli/dist/index.js resume --state .officehum/frontdesk-google
 node packages/cli/dist/index.js bookings --state .officehum/frontdesk-google
 ```
@@ -254,8 +250,8 @@ Malformed markers are left in place for inspection.
 
 `officehum run ROLE_DIR` runs a single role package on its own: it loads the package from its
 directory, opens an office on one SQLite file, prints anything a previous run left unfinished, and
-then reads lines from the terminal. Each line becomes one durable submission, so re-running the same
-line is idempotent. Gated actions print their description and arguments and wait for a `y`/`n` answer;
+then reads lines from the terminal. Each line becomes one durable submission; a line typed again,
+in this session or a later one, runs again. Gated actions print their description and arguments and wait for a `y`/`n` answer;
 anything other than `y`/`yes` declines, and the decision is recorded with the OS user as `by`.
 
 ```sh
@@ -378,9 +374,7 @@ so the model is offered the tools a live run would offer while no real system is
 runs for real, and an approval a scenario does not script stops the trial rather than being guessed.
 
 ```sh
-officehum eval packages/sdk/fixtures/sample-stockroom \
-  --model scripted \
-  --script evals.smoke.json
+officehum eval agents/frontdesk --model scripted
 ```
 
 Flags:
@@ -390,7 +384,7 @@ Flags:
 | `--model provider/model` | The model to run; `scripted` reads a script file so CI needs no key; default is the manifest's `defaultModel` |
 | `--tag TAG` | Run only the scenarios tagged `TAG` |
 | `--trials N` | Trials per scenario, overriding each scenario's own `trials` |
-| `--script FILE` | The script file `--model scripted` plays back |
+| `--script FILE` | The script file `--model scripted` plays back; default is the role's own `evals.smoke.json` |
 | `--report FILE` | Write the SDK's full report as JSON, with every trial's tool calls and arguments, approvals and reply; a failing trial also prints one line with its calls and the first 200 characters of its reply |
 | `--mode bare\|office` | Which harness a trial runs on; `bare` (the default) is the portability check above, `office` binds a board and a ticket and installs the office's real approval gate |
 
@@ -428,8 +422,10 @@ that must branch on what a tool returned cannot be written as JSON; use `piDurab
 | `@officehum/gateway` | `packages/gateway` | The office's authenticated WebSocket and HTTP edge, supervising its runtime ([spec](docs/design/gateway-protocol.md#the-gateway)) |
 | `@officehum/protocol` | `packages/protocol` | Gateway Protocol v1: message schemas, validators and the JSONL codec ([spec](docs/design/gateway-protocol.md)) |
 | `@officehum/google-calendar` | `packages/google-calendar` | Portable REST and fake Google Calendar scheduling client |
-| `@officehum/office` | `packages/office` | Runtime: Pi Durable harness, workboard, relay, workflow engine |
-| `@officehum/cli` | `packages/cli` | Run an office, watch the board, steer a live agent |
+| `@officehum/quickbooks` | `packages/quickbooks` | Portable QuickBooks client and fake for the Bookkeeper |
+| `@officehum/channels` | `packages/channels` | Channel plugin contract and the SMS channel |
+| `@officehum/office` | `packages/office` | Runtime: Pi Durable adapter, workboard, relay, approvals, budgets, runtime process |
+| `@officehum/cli` | `packages/cli` | Run a role or an office runtime, grade evals, watch the board, review and publish documents |
 | `@officehum/role-factory` | `packages/role-factory` | `ROLE_SPEC.md`: the four-layer spec a role is generated from, its parser, and `officehum-role generate` |
 | `@officehum/<role>` | `agents/<role>` | One role agent each: Front Desk, Bookkeeper (Accounting), Office Manager, Sales, Operations, Purchasing, Marketing, Support, People Ops (catalog in `agents/README.md`) |
 

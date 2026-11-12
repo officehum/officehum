@@ -759,6 +759,26 @@ suite("the Excel adapter drafts and proposes", () => {
     expect(ragged.code).toBe("invalid-request");
   });
 
+  itSlow("writes a range to the sheet its prefix names, not the first sheet", async () => {
+    const { store, service } = harness();
+    const source = await fixture(store, service, { operationId: "conv:prefix-fixture" });
+    const lease = leaseOf([source.ref]);
+    const answer = await body<XlsxEdit>(toolOf(service, EDIT_WORKBOOK, lease), {
+      ref: refOf(source.ref),
+      output: "prefixed.xlsx",
+      steps: [
+        { kind: "setRange", range: "Notes!A3:B3", rows: [[1, 2]] },
+        { kind: "setStyle", range: "Notes!A3", style: { italic: true } },
+        { kind: "clearCells", range: "Notes!A4" },
+      ],
+    });
+    expect(answer.result.changes.map((change) => change.evidence.sheet)).toEqual([
+      "Notes",
+      "Notes",
+      "Notes",
+    ]);
+  });
+
   itSlow(
     "edits cells and formulas into an immutable proposal, preserving untouched parts byte for byte",
     async () => {

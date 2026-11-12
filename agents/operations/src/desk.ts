@@ -424,19 +424,36 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
     );
 
   /**
-   * Overtime a person approved for a crew in a week: the grants whose job is still on that crew in that
-   * week. An approval is for one crew and one job, so when the job moves or changes crew, its overtime
-   * goes with it and never pays for other work.
+   * Overtime a person approved for a crew in a week: the grants made for that crew and week whose job
+   * is still there. An approval is for one crew, one week and one job, so when the job moves or changes
+   * crew its overtime stops counting: it pays for no other work, and it is no headroom for the crew or
+   * week the job went to.
    */
   const overtimeFor = (crewId: string, weekStart: string): number =>
     round(
       [...grants.values()]
         .filter((grant) => {
           const job = jobs.find((candidate) => candidate.id === grant.jobId);
-          return job !== undefined && job.crewId === crewId && weekOf(job.date).start === weekStart;
+          return (
+            grant.crewId === crewId &&
+            grant.weekStart === weekStart &&
+            job !== undefined &&
+            job.crewId === crewId &&
+            weekOf(job.date).start === weekStart
+          );
         })
         .reduce((total, grant) => total + grant.hours, 0),
     );
+
+  /** A recurring contract promises the same crew each visit, so a different one is a person's call. */
+  const refuseContractCrew = (job: Job, crew: Crew): void => {
+    if (job.contractId !== null && job.crewId !== null && job.crewId !== crew.id) {
+      throw new OperationsDeskError(
+        "contract_crew",
+        `${job.id} is a visit on recurring contract ${job.contractId}, which keeps its crew (${job.crewId}). A different crew on a contract visit is the decision of the person who owns the schedule: hand it to them. Nothing was assigned.`,
+      );
+    }
+  };
 
   const refuseTimeOff = (crew: Crew, date: string, job: Job): void => {
     const off = timeOff.find((entry) => entry.crewId === crew.id && entry.date === date);
@@ -574,13 +591,7 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
 
       const job = findJob(input.jobId);
       const crew = findCrew(input.crewId);
-      // A recurring contract promises the same crew each visit, so a different one is a person's call.
-      if (job.contractId !== null && job.crewId !== null && job.crewId !== crew.id) {
-        throw new OperationsDeskError(
-          "contract_crew",
-          `${job.id} is a visit on recurring contract ${job.contractId}, which keeps its crew (${job.crewId}). A different crew on a contract visit is the decision of the person who owns the schedule: hand it to them. Nothing was assigned.`,
-        );
-      }
+      refuseContractCrew(job, crew);
       refuseTimeOff(crew, job.date, job);
       const over = overage(crew, job, job.date);
       if (over > 0) {
@@ -604,6 +615,8 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
 
       const job = findJob(input.jobId);
       const crew = findCrew(input.crewId);
+      // Overtime assigns the job too, so it keeps the rule an assignment keeps.
+      refuseContractCrew(job, crew);
       refuseTimeOff(crew, job.date, job);
       const needed = overage(crew, job, job.date);
       if (needed === 0) {

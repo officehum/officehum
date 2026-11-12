@@ -147,7 +147,7 @@ export async function openRoleRun(options: RoleRunOptions): Promise<RoleRun> {
         return await resultFor(conversation, submission.id, settlement);
       },
       async resume() {
-        // `openOffice` resumed scheduling on open; `openSubmissions` returns the submissions still in
+        // The office was opened with `resume: false`; `openSubmissions` returns the submissions still in
         // flight, so a reacquired submission settles here exactly as an original one would.
         const pending = await office.openSubmissions();
         const results: RoleRunResult[] = [];

@@ -14,7 +14,7 @@
  * carries a code, and the tools turn the code into the next step.
  */
 
-import { sameFacts } from "@officehum/sdk";
+import { isoDate, sameFacts } from "@officehum/sdk";
 import {
   type CompanyFacts,
   companyHead,
@@ -641,10 +641,6 @@ function priorityOf(kind: CaseKind, category: CaseCategory): Priority {
 const RECLEAN_CATEGORIES: ReadonlySet<CaseCategory> = new Set(["quality", "missed_visit"]);
 
 const DAY_MS = 86_400_000;
-
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
 
 function parseDate(value: string): Date | undefined {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;

@@ -113,8 +113,6 @@ function testMessenger(): { messenger: Messenger; effects: MessageIntent[] } {
   return { messenger, effects };
 }
 
-type Turn = readonly { readonly text: string }[];
-
 interface Office {
   readonly board: Board;
   readonly solo: SoloSession;

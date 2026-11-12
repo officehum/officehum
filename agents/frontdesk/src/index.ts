@@ -1,12 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-durable";
-import {
-  type ApprovalCondition,
-  type Approver,
-  type DefinedRole,
-  defineRole,
-} from "@officehum/sdk";
+import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { contactTools, linkBookingContact, pinBookingContact } from "./contacts.js";
 import { firstContactCondition, type Messenger, messagingTools } from "./messaging.js";

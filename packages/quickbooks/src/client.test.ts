@@ -113,6 +113,10 @@ function fixture(environment: "sandbox" | "production" = "sandbox") {
 
     if (url.pathname === `${COMPANY}/query`) {
       const statement = url.searchParams.get("query") ?? "";
+      // QuickBooks answers a query one page at a time: 100 rows unless `maxresults` asks for more.
+      const start = Number(/ startposition (\d+)/.exec(statement)?.[1] ?? 1);
+      const size = Number(/ maxresults (\d+)/.exec(statement)?.[1] ?? 100);
+      const page = (rows: Json[]) => rows.slice(start - 1, start - 1 + size);
       if (statement.includes("from Customer")) {
         const needle = /DisplayName like '%([^'%]*)%'/.exec(statement)?.[1];
         const list = [...customers.values()].filter(
@@ -120,13 +124,14 @@ function fixture(environment: "sandbox" | "production" = "sandbox") {
             needle === undefined ||
             String(customer.DisplayName).toLowerCase().includes(needle.toLowerCase()),
         );
-        return json(200, { QueryResponse: list.length === 0 ? {} : { Customer: list } });
+        const rows = page(list);
+        return json(200, { QueryResponse: rows.length === 0 ? {} : { Customer: rows } });
       }
       if (statement.includes("from Invoice")) {
-        return json(200, { QueryResponse: { Invoice: [...invoices.values()] } });
+        return json(200, { QueryResponse: { Invoice: page([...invoices.values()]) } });
       }
       if (statement.includes("from Payment")) {
-        return json(200, { QueryResponse: { Payment: [...payments.values()] } });
+        return json(200, { QueryResponse: { Payment: page([...payments.values()]) } });
       }
       return json(400, {
         Fault: { type: "ValidationFault", Error: [{ Message: `Unsupported query: ${statement}` }] },
@@ -190,7 +195,7 @@ function fixture(environment: "sandbox" | "production" = "sandbox") {
     environment,
     fetch: transport,
   });
-  return { client, calls };
+  return { client, calls, invoices };
 }
 
 const draft = {
@@ -217,11 +222,28 @@ describe("QuickBooks REST client against recorded fixtures", () => {
 
     expect((await client.findCustomers("bravo")).map((c) => c.id)).toEqual(["59"]);
     expect(calls.at(-1)?.url.searchParams.get("query")).toBe(
-      "select * from Customer where DisplayName like '%bravo%'",
+      "select * from Customer where DisplayName like '%bravo%' startposition 1 maxresults 1000",
     );
     // An empty query lists every customer rather than building a `like '%%'`.
     expect((await client.findCustomers("")).map((c) => c.id)).toEqual(["58", "59"]);
-    expect(calls.at(-1)?.url.searchParams.get("query")).toBe("select * from Customer");
+    expect(calls.at(-1)?.url.searchParams.get("query")).toBe(
+      "select * from Customer startposition 1 maxresults 1000",
+    );
+  });
+
+  it("reads every page of a listing, not only the first", async () => {
+    const { client, calls, invoices } = fixture();
+    for (let index = 0; index < 1_500; index += 1) {
+      const id = String(2_000 + index);
+      invoices.set(id, invoiceRecord({ Id: id, DocNumber: id }));
+    }
+    const before = calls.length;
+    // A listing cut at one page would drop overdue invoices without saying so.
+    expect(await client.listInvoices()).toHaveLength(1_501);
+    expect(calls.slice(before).map((call) => call.url.searchParams.get("query"))).toEqual([
+      "select * from Invoice startposition 1 maxresults 1000",
+      "select * from Invoice startposition 1001 maxresults 1000",
+    ]);
   });
 
   it("builds the invoice and payment query filter and derives the overdue status", async () => {
@@ -233,7 +255,7 @@ describe("QuickBooks REST client against recorded fixtures", () => {
       since: "2026-01-01",
     });
     expect(calls.at(-1)?.url.searchParams.get("query")).toBe(
-      "select * from Invoice where CustomerRef = '58' and TxnDate >= '2026-01-01'",
+      "select * from Invoice where CustomerRef = '58' and TxnDate >= '2026-01-01' startposition 1 maxresults 1000",
     );
     expect(invoices.map((invoice) => invoice.id)).toEqual(["130"]);
     expect(invoices[0]).toMatchObject({
@@ -255,7 +277,7 @@ describe("QuickBooks REST client against recorded fixtures", () => {
 
     const payments = await client.listPayments({ customerId: "58" });
     expect(calls.at(-1)?.url.searchParams.get("query")).toBe(
-      "select * from Payment where CustomerRef = '58'",
+      "select * from Payment where CustomerRef = '58' startposition 1 maxresults 1000",
     );
     expect(payments).toEqual([
       {

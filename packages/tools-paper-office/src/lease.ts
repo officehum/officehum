@@ -36,7 +36,7 @@ export interface ResourceLimits {
   readonly cpuSeconds: number;
   /** Address space the interpreter may map; the kernel enforces this with `RLIMIT_AS`. */
   readonly memoryBytes: number;
-  /** Wall clock for the whole run; the host enforces this by killing the process group. */
+  /** Wall clock for the whole run; the host enforces this by killing the interpreter. */
   readonly wallSeconds: number;
   /** Total bytes all declared outputs may hold; the host checks this before any commit. */
   readonly outputBytes: number;

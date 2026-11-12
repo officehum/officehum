@@ -109,7 +109,7 @@ export interface SupportOptions {
    * company passes its own, and nothing in `company/default/` is involved.
    */
   readonly company?: CompanyFacts;
-  /** Overlay directories, lowest first: the business's AGENTS.md, skills, settings and limits. */
+  /** Overlay directories, lowest first: the business's AGENTS.md, skills and settings. */
   readonly overlays?: readonly string[];
   /** Decides every gated action. Omitted: every credit is blocked. */
   readonly approve?: Approver;

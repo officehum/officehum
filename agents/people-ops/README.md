@@ -138,8 +138,9 @@ answer it.
 
 The role ships no HRIS or applicant tracker connection. `fakePeopleOpsDesk` is the demonstration one;
 a host binds a `PeopleOpsDesk` (`src/desk.ts`): `listCandidates`, `updateCandidateStage`,
-`createOnboardingChecklist`, `recordTimeOffRequest`, `requestTimeOffException`, `leaveBalance`,
-`listAvailability` and `referToPerson`. Every write carries a `requestId` derived from the durable call identity, so a
+`createOnboardingChecklist`, `recordTimeOffRequest`, `timeOffExceptionFacts`,
+`requestTimeOffException`, `leaveBalance`, `listAvailability` and `referToPerson`. Every write
+carries a `requestId` derived from the durable call identity, so a
 retried call returns what it already did. The desk owns the notice, the routes and the refusals; a
 refusal is a `PeopleOpsDeskError` with a `code` the tools turn into the next step. A host desk must
 return no contact or personal details to these calls.

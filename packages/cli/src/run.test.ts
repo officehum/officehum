@@ -255,10 +255,30 @@ describe("officehum run", () => {
     await expect(readClientConfig(file)).rejects.toThrow(/only "module" and "export" are allowed/);
   });
 
-  it("hashes the line and its position into the request id", () => {
-    expect(requestIdFor("hello", 0)).toBe(requestIdFor("hello", 0));
-    expect(requestIdFor("hello", 0)).not.toBe(requestIdFor("hello", 1));
-    expect(requestIdFor("hello", 0)).not.toBe(requestIdFor("other", 0));
+  it("runs the same first line again in a later session on the same database", async () => {
+    const directory = temporary();
+    const session = async (reply: string) => {
+      const terminal = scripted(["hello", undefined]);
+      const code = await runCli(
+        ["run", sampleDesk, "--model", "scripted/scripted-1", "--db", join(directory, "o.sqlite")],
+        terminal.io,
+        runDeps(scriptedProvider([{ text: reply }])),
+      );
+      return { code, errors: terminal.errors, output: terminal.output.join("\n") };
+    };
+    const first = await session("first answer");
+    const second = await session("second answer");
+    expect([first.code, second.code, first.errors, second.errors]).toEqual([0, 0, [], []]);
+    expect(first.output).toContain("first answer");
+    // A stored result replayed here would read as the role answering without having run.
+    expect(second.output).toContain("second answer");
+  });
+
+  it("hashes the session, the line and its position into the request id", () => {
+    expect(requestIdFor("s", "hello", 0)).toBe(requestIdFor("s", "hello", 0));
+    expect(requestIdFor("s", "hello", 0)).not.toBe(requestIdFor("s", "hello", 1));
+    expect(requestIdFor("s", "hello", 0)).not.toBe(requestIdFor("s", "other", 0));
+    expect(requestIdFor("s", "hello", 0)).not.toBe(requestIdFor("t", "hello", 0));
   });
 });
 

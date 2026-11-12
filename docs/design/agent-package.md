@@ -498,6 +498,8 @@ roles carry almost no code.
 
 ## Memory: what agents learn on the job
 
+> Status: designed, not built. There is no `@officehum/memory` package yet.
+
 Agents remember what they pick up while working, for example "Acme's AP contact is Jane; she prefers
 email" or "Smith & Co is on a payment plan until March". Memory is not company knowledge search
 (documents the business hands over) and it is not a skill: skills are fixed instruction files, while
@@ -599,6 +601,8 @@ prefix is identical across turns, cited ids survive filtering, and sub-agents re
 | Sub-agents | Task-owned child conversations with only safe tools, a small model and an output schema; fan-out survives restarts |
 
 ## The open-source distribution
+
+> Status: planned. No container image or Docker setup is in the repository yet.
 
 All role packages also ship as a free Docker setup that anyone can run and modify: one container
 running every role on Pi Durable, with each agent's overlay directory mounted from the host so

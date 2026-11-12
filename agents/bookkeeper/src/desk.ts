@@ -15,7 +15,7 @@
  * Paying is a demonstration backend only: the fake records a payment in memory and moves no money.
  */
 
-import { sameFacts } from "@officehum/sdk";
+import { isoDate, sameFacts } from "@officehum/sdk";
 import type { CompanyFacts, Supplier, SupplyItem } from "./company.js";
 import { loadCompanyFacts, money } from "./company.js";
 
@@ -191,20 +191,8 @@ export interface AccountingDesk {
   }): Promise<Reconciliation>;
 }
 
-/** Why the desk refused, so a tool can say what to do next without parsing the message. */
-export type DeskRefusal =
-  | "not_found"
-  | "invalid"
-  | "unknown_supplier"
-  | "unapproved_supplier"
-  | "not_supplied"
-  | "duplicate_bill"
-  | "already_paid"
-  | "bill_changed"
-  | "no_statement";
-
 /** Every refusal code, so a test can hold the tools to a next step for each. */
-export const DESK_REFUSALS: readonly DeskRefusal[] = [
+export const DESK_REFUSALS = [
   "not_found",
   "invalid",
   "unknown_supplier",
@@ -214,7 +202,10 @@ export const DESK_REFUSALS: readonly DeskRefusal[] = [
   "already_paid",
   "bill_changed",
   "no_statement",
-];
+] as const;
+
+/** Why the desk refused, so a tool can say what to do next without parsing the message. */
+export type DeskRefusal = (typeof DESK_REFUSALS)[number];
 
 /** A refusal the model reads: an unknown supplier, a bill already paid, a bill that changed. */
 export class AccountingDeskError extends Error {
@@ -400,10 +391,6 @@ export function demoBooks(): readonly BankEntry[] {
 
 const DAY_MS = 86_400_000;
 
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
 function addDays(date: string, days: number): string {
   return isoDate(new Date(Date.parse(`${date}T00:00:00.000Z`) + days * DAY_MS));
 }
@@ -415,7 +402,7 @@ function daysBetween(from: string, to: string): number {
 }
 
 /** Text compared the way a person would: case and surrounding space do not matter. */
-function same(left: string, right: string): boolean {
+export function same(left: string, right: string): boolean {
   return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
 

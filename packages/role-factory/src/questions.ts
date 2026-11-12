@@ -243,7 +243,7 @@ const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 const SNAKE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
 /** A job's name: lowercase words with dots between them, like `note.add` (`TicketType`). */
-const DOTTED = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]+)+$/;
+const DOTTED = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 
 /** A model, as `provider/model-id`, which the mapping splits into the spec's two fields. */
 const MODEL = /^[^\s/]+\/[^\s/]+$/;
@@ -757,7 +757,7 @@ export const INTERVIEW_STEPS: readonly InterviewStep[] = [
         entry: [
           {
             id: "does",
-            path: "does",
+            path: "description",
             type: "text",
             prompt: "What does it do, in one or two sentences?",
             help:
@@ -908,6 +908,7 @@ export const INTERVIEW_STEPS: readonly InterviewStep[] = [
             path: "done[0].engine",
             type: "text",
             when: (answers, at) => answers.text(`${at.entryKey}.done`) === DONE_ENGINE,
+            optional: true,
             prompt:
               "What does the program run to show it is done? Give the words, or leave it blank.",
             help: 'For example "levels": it is expected to answer with what the work had to change.',
@@ -1382,9 +1383,6 @@ export function problemWith(asked: Asked, answers: Answers): string | undefined 
         : `must be text (got "${String(value)}")`;
     case "list": {
       if (!Array.isArray(value)) return `must be a list of lines (got "${String(value)}")`;
-      if (place.entry !== undefined) {
-        return question.validateEntry?.(answers.text(place.key), place, answers);
-      }
       return question.validateList?.(value, place, answers);
     }
   }

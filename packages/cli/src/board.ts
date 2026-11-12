@@ -453,17 +453,21 @@ function show(board: Board, ticketId: string | undefined, io: CliIo, now: () => 
   // "why did this stop" is a question about the ceiling, not about what was spent.
   const budget = board.budget(ticket.id);
   if (budget !== undefined) {
-    const money = (limit: number | null, remaining: number | null): string =>
+    const ceiling = (
+      limit: number | null,
+      remaining: number | null,
+      format: (amount: number) => string,
+    ): string =>
       limit === null || remaining === null
         ? "uncapped"
-        : `${formatCents(limit)} (${formatCents(remaining)} left)`;
+        : `${format(limit)} (${format(remaining)} left)`;
     io.output(
       `  spend     ${budget.usedCalls} calls · ${budget.usedTokens} tokens · ${formatCents(budget.usedUsdCents)}`,
     );
     io.output(
       `  ceiling   ${budget.maxCalls === null ? "no call cap" : `${budget.maxCalls} calls`} · ` +
-        `${money(budget.maxTokens, budget.remainingTokens)} · ` +
-        `${money(budget.maxUsdCents, budget.remainingUsdCents)}`,
+        `${ceiling(budget.maxTokens, budget.remainingTokens, (tokens) => `${tokens} tokens`)} · ` +
+        `${ceiling(budget.maxUsdCents, budget.remainingUsdCents, formatCents)}`,
     );
     io.output(`  hops      ${budget.hopCount}/${budget.maxHops}`);
   }

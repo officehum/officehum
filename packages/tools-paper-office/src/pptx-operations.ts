@@ -33,7 +33,6 @@ import { type DocumentLease, findLeasedInput, type LeasedInput, permitsFormat } 
 import {
   assertFileId,
   assertHash,
-  assertLabel,
   assertPathSegment,
   assertSize,
   exactKeys,
@@ -1744,7 +1743,6 @@ function asWarnings(value: unknown, what: string): readonly string[] {
 function asProposalReport(entry: Record<string, unknown>, what: string): PptxProposalReport {
   const source = asSourceRef(entry.source, what);
   const patch = asRecord(entry.patch, what);
-  const overflow = asRecord(entry.overflow, what);
   return {
     source,
     proposal: asProposal(entry.proposal, `${what} proposal`),

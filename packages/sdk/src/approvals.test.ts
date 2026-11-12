@@ -560,6 +560,32 @@ describe("approval conditions from officehum.json", () => {
     ]).toEqual([false, true, false, false]);
   });
 
+  it("holds when a compared argument is not a number, rather than reading it as zero", () => {
+    const above = (actual: unknown) =>
+      conditionsHold([{ arg: "x", op: "gt", value: 2500 }], { x: actual });
+    // `Number("")`, `Number([])` and `Number(false)` are 0: read that way, a blank amount skips the gate.
+    expect([above(""), above("  "), above([]), above(false), above(true), above("abc")]).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
+    expect([above("3000"), above("100"), above(100)]).toEqual([true, false, false]);
+    const amount = (actual: unknown) =>
+      approvalAmount({ id: "a", tool: "t", description: "d", amount: { arg: "x" } } as never, {
+        x: actual,
+      });
+    expect([amount(""), amount([]), amount(true), amount("12"), amount(12)]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      12,
+      12,
+    ]);
+  });
+
   it("treats an absent optional argument as not applicable only when a condition says so", () => {
     const when = [
       { arg: "discountPercent", op: "present" as const },

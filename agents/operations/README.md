@@ -85,7 +85,7 @@ for the person the handbook names for scheduling, and the manifest's `mayNot` sa
 
 The company records `staffPolicies.overtimeNeedsApproval`. It is `true` here, and `request_overtime`
 asks a person on every call. The approval is unconditional in `officehum.json`;
-`src/package.test.ts` fails if the company setting changes, so the two are revisited together.
+`src/index.test.ts` fails if the company setting changes, so the two are revisited together.
 
 ## Bind it to a real schedule
 

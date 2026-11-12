@@ -437,5 +437,5 @@ Tool results contain refs. Optional inline image previews may contain at most 10
 
 Next slices add explicit document version IDs, canonical operation receipts and replay lookup, task leases, Office quotas/backups, and conditional publication with exact-hash approval. This base implementation does not enable document Python or publication.
 
-See the [approved Paper Office design](../superpowers/specs/2026-10-14-paper-instruments-integration-design.md) and [RASF-3192](https://linear.app/riseandshinefutures/issue/RASF-3192).
+See the [approved Paper Office design](../specs/2026-10-14-paper-instruments-integration-design.md) and [RASF-3192](https://linear.app/riseandshinefutures/issue/RASF-3192).
 ````

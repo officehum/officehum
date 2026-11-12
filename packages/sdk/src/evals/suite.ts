@@ -5,7 +5,7 @@
 
 import { type Static, Type } from "typebox";
 import { type Issue, joinPath, schemaIssues, show, type Validation } from "../issues.js";
-import type { AgentManifest } from "../manifest.js";
+import { type AgentManifest, CHANNELS } from "../manifest.js";
 
 /** Pass rate the `normal` scenarios of a suite must reach, across all their trials. */
 export const DEFAULT_PASS_THRESHOLD = 0.9;
@@ -24,7 +24,7 @@ const MessageInput = Type.Object(
   {
     kind: Type.Literal("message"),
     text: Type.String({ minLength: 1 }),
-    channel: Type.Optional(Type.Enum(["email", "sms", "chat"])),
+    channel: Type.Optional(Type.Enum([...CHANNELS])),
     from: Type.Optional(Type.String({ minLength: 1 })),
     /**
      * Where `from` wrote from: `internal` (inside the office, so a colleague on the company record

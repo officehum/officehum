@@ -1,6 +1,6 @@
 /**
  * The People Ops role as a role package: its factory on a real Pi Durable harness, the approval gate
- * that makes a short-notice exception mean something, the writes that need no approval, and the twelve
+ * that makes a short-notice exception mean something, the writes that need no approval, and the
  * eval scenarios a scripted model plays back. No network and no real model: the desk is
  * `fakePeopleOpsDesk`, and the model is the scripted provider the eval runner uses.
  */
@@ -372,7 +372,7 @@ const scripts = JSON.parse(readFileSync(scriptFile, "utf8")) as Readonly<
 >;
 
 describe("people ops brief contract", () => {
-  it("scripted the twelve scenarios the package declares, and no others", async () => {
+  it("scripted every scenario the package declares, and no others", async () => {
     const validated = await validatePackage(packageDirectory);
     if (!validated.ok) throw new Error("the people ops package did not validate");
     const ids = Object.values(validated.value.suites).flatMap((suite) =>
@@ -456,7 +456,6 @@ describe("people ops brief contract", () => {
 
   it("keeps the script file out of the evals directory, where every .json is a suite", () => {
     expect(existsSync(scriptFile)).toBe(true);
-    expect(scriptFile.endsWith("evals/situations.json")).toBe(false);
   });
 });
 

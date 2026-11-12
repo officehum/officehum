@@ -23,7 +23,7 @@
  * The desk also counts the pipeline (`pipelineReport`), so a review's figures come from code.
  */
 
-import { sameFacts } from "@officehum/sdk";
+import { isoDate, sameFacts } from "@officehum/sdk";
 import type { PriceBookItem } from "./company.js";
 import { loadCompanyFacts, money } from "./company.js";
 import { demoLeads, demoQuotes } from "./demo.js";
@@ -409,10 +409,6 @@ function monthlyQuantity(count: RecurringCount): number {
 }
 
 /** `YYYY-MM-DD` of a date, in UTC: the only date form a receipt carries. */
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
 /** A `YYYY-MM-DD` the caller gave, checked to be a real day, or a refusal saying what was wrong. */
 function calendarDay(value: string, what: string): string {
   const day = value.trim();

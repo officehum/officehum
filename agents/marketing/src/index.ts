@@ -15,7 +15,7 @@
  * Durable harness.
  *
  * With `demo: true` and no desk the role runs on `fakeMarketingDesk`: the company's own claims, prices and address,
- * three demonstration drafts in memory, and nothing published anywhere. That is
+ * five demonstration drafts in memory, and nothing published anywhere. That is
  * what `officehum run --demo` and the evals run on. With neither, the role still starts, and every
  * tool that reads or writes the desk refuses and says how to bind one.
  */

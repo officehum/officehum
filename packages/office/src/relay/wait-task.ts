@@ -76,14 +76,17 @@ async function answerText(
   context: Context,
 ): Promise<string | undefined> {
   const view = await runtime.context(conversationId, context);
-  const text = view.messages
-    .flatMap((message) =>
-      message.role === "assistant"
-        ? message.content.filter((block) => block.type === "text").map((block) => block.text)
-        : [],
-    )
-    .join("");
-  return text.length === 0 ? undefined : text;
+  // The last message that says something: a ticket's conversation holds every turn it took (text
+  // before a tool call, an earlier delivery's reply), and those are not part of the answer.
+  for (const message of view.messages.toReversed()) {
+    if (message.role !== "assistant") continue;
+    const text = message.content
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("");
+    if (text.length > 0) return text;
+  }
+  return undefined;
 }
 
 /** The settled result a terminal commit leaves behind, whichever way it settled. */

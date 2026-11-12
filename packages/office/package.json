@@ -1,7 +1,7 @@
 {
   "name": "@officehum/office",
   "version": "0.0.0",
-  "description": "The Office: workboard, relay and workflow engine that let Office Hum agents work together on one machine.",
+  "description": "The Office: workboard, relay and runtime that let Office Hum agents work together on one machine.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -47,6 +47,7 @@
     "html-to-text": "10.0.1"
   },
   "devDependencies": {
+    "@officehum/frontdesk": "0.0.0",
     "@types/html-to-text": "9.0.4"
   }
 }

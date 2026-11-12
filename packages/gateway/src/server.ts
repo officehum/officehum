@@ -380,6 +380,12 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           log(`A WebSocket message failed: ${String(error)}`);
         });
     });
+    // `ws` reports a frame it refuses (too large, unmasked, bad UTF-8) as an `error` on the socket and
+    // closes it with the right code. Unheard, that event is an uncaught exception that ends the
+    // gateway for every client, and it can be sent before signing in.
+    ws.on("error", (error) => {
+      log(`A WebSocket of ${identity?.principal.id ?? "nobody"} failed: ${error.message}`);
+    });
     ws.on("close", () => {
       clearTimeout(deadline);
       clearTimeout(grace);

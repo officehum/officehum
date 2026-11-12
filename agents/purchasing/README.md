@@ -25,8 +25,9 @@ Without `--demo`, and with no desk bound in `--clients`, the role starts but eve
 or writes its desk refuses and says how to bind one, so a forgotten connection never shows made-up
 records. With `--demo` the role runs on a **demonstration desk**: the company's six suppliers and
 thirteen stocked items, a stockroom on the morning of Monday 9 November 2026 with six items at their
-reorder point, three purchase orders (floor pads on order, microfiber delivered, glass cleaner due
-today), and nothing sent anywhere. Ask it to restock the paper goods from Cascade at their reorder
+reorder point, four purchase orders (floor pads on order, microfiber delivered, glass cleaner due
+today, a Cascade paper restock held as a draft), and nothing sent anywhere. Ask it to restock the
+paper goods from Cascade at their reorder
 quantities and the desk will price the order at $2,172.00, over the $1,500.00 limit, save it as a
 draft, and the role will ask Rosa Martinez to approve it. It needs a model key in the environment
 (`PAPERINSTRUMENTS_API_KEY` for Paper) for that conversation, like every role.
