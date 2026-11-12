@@ -244,6 +244,25 @@ describe("officehum runtime", () => {
         principal,
       })}\n`,
     );
+    // The catalog's `triage.request` asks for a person's confirmation, so the Office Manager's reply
+    // does not finish the ticket: it waits for the office's first person, who confirms it from a
+    // second handle on the board file, the way `officehum board` in another terminal does.
+    const operator = openOfficeBoard(boardFile);
+    try {
+      await vi.waitFor(
+        () => {
+          expect(operator.list({ status: "awaiting_confirmation" })).toHaveLength(1);
+        },
+        { timeout: 20_000 },
+      );
+      const [waiting] = operator.list({ status: "awaiting_confirmation" });
+      expect(frames).not.toContainEqual(
+        expect.objectContaining({ event: expect.objectContaining({ kind: "settled" }) }),
+      );
+      operator.confirm(waiting?.id ?? "", "dana-whitfield", { confirmed: true });
+    } finally {
+      operator.close();
+    }
     await vi.waitFor(
       () => {
         expect(frames).toContainEqual(

@@ -50,7 +50,7 @@ export const AGENT_INBOX = {
       status: Type.Optional(
         Type.String({
           description:
-            "Only tickets in this state: open, claimed, waiting, blocked, done or cancelled.",
+            "Only tickets in this state: open, claimed, waiting, awaiting_confirmation, blocked, done or cancelled.",
         }),
       ),
     },
@@ -67,6 +67,12 @@ export const AGENT_REPLY = {
     {
       ticketId: Type.String({ description: "The id of the ticket you are finishing." }),
       result: Type.String({ description: "What you did, or what you found." }),
+      files: Type.Optional(
+        Type.Record(Type.String(), Type.String(), {
+          description:
+            "Files this kind of ticket asks for before it is done, as name → file id. Leave out when it asks for none.",
+        }),
+      ),
     },
     { additionalProperties: false },
   ),

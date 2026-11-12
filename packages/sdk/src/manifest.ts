@@ -723,7 +723,7 @@ export function subagentIssues(
 }
 
 /** `{ticket.id}` and `{ticket.data.<path>}` are the only interpolation a completion argument may use. */
-const INTERPOLATION =
+export const EVIDENCE_PLACEHOLDER =
   /^\{ticket\.(?:id|data\.[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\}$/;
 
 /**
@@ -758,7 +758,7 @@ function doneIssues(manifest: AgentManifest, add: (path: string, message: string
       for (const [flag, value] of Object.entries(entry.args)) {
         if (typeof value !== "string") continue;
         for (const placeholder of value.match(/\{[^{}]*\}/g) ?? []) {
-          if (INTERPOLATION.test(placeholder)) continue;
+          if (EVIDENCE_PLACEHOLDER.test(placeholder)) continue;
           add(
             `${at}.args.${flag}`,
             `${show(placeholder)} is not an interpolation; the only two are {ticket.id} and {ticket.data.<path>}`,

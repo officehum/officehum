@@ -113,6 +113,8 @@ export function openTeamwork(options: TeamworkOptions): Teamwork {
       people: manifests,
       ...(options.personRoutes === undefined ? {} : { personRoutes: options.personRoutes }),
       hooks: budgetHooks({ board }),
+      // What the agent's completion evidence is checked with when it replies to a ticket.
+      ...(agent.role.engine === undefined ? {} : { evidence: { engine: agent.role.engine } }),
       // The runtime's approvals are decided through its gateway (`./approvals.ts`), for direct
       // requests and ticket work alike, so the board's gate is not installed beside the role's own.
       approvals: "role",

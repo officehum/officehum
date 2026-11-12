@@ -118,9 +118,10 @@ It guards against three habits:
 - letting the model declare work finished
 
 Each layer is files or manifest data, never generated code: `@officehum/sdk` enforces wisdom, and
-Office Hum enforces workflow (hand-offs are host tools; the board checking completion evidence is
-designed, and nothing runs `done` evidence yet (RASF-3230): today the SDK validates that it is
-declared, that a tool it names changes nothing, and that it passes only arguments the tool takes).
+Office Hum enforces workflow: hand-offs are host tools, and a ticket is done only when the office
+has run the `done` evidence its type declares (see "Completion evidence" below). The SDK validates
+that the evidence is declared, that a tool it names changes nothing, and that it passes only
+arguments the tool takes.
 
 `checkFourLayers()` checks a package, and `validatePackage()` runs it:
 - **Context:** the word budget, no amounts, percentages or thresholds in context files, and a "You may not" section
@@ -718,7 +719,7 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
 | `approvals[]` | `id` (snake_case), `tool` (a declared tool), `description` (shown in the Inbox), optional `when` conditions over the tool's arguments. A numeric comparison may take a named limit as its value, `{ "limit": "large_invoice" }`, instead of a number. `field` names a numeric field of each element of an array argument, so the comparison is against their sum; `times` multiplies it by a second field per element. Conditions too complex to declare go in the entry point's `when`, keyed by `id` — but the office gate cannot see those, and takes such an approval as unconditional. |
 | `limits` | Named amounts the business sets, e.g. `large_invoice`: each has a `description` and a `default`. An approval compares against a limit with `{ "limit": "NAME" }` for `gt`, `gte`, `lt` or `lte`. An overlay changes a value, never removes it. |
 | `channels` | `email`, `sms`, `chat`: where the role may face the business's customers. A name alone means both directions. An object `{ "channel", "direction", "replyBy"?, "note"? }` declares one that does not run both ways — `direction` is `inbound`, `outbound` or `both`, and `replyBy` names a channel the role also declares. The Front Desk receives texts and answers them by email: `{ "channel": "sms", "direction": "inbound", "replyBy": "email" }`. |
-| `accepts[]` | Dotted ticket types (`invoice.create`) with a description shown to delegating agents, and `done`: the completion evidence for that type (validated today; no host runs it yet). As designed, every entry must pass, and the host runs it, never the model: `{ "engine": ["subcommand", …], "args": {…} }` (the engine answers `ok` with at least one finding), `{ "tool": "NAME", "args": {…}, "expect": "found" }` (a declared tool that is safe to re-run and does not write, whose result reports `found`), `{ "file": "NAME" }` (the result attaches a file), or `{ "person": true }`. Args may interpolate `{ticket.id}` and `{ticket.data.<path>}`, and nothing else; a `tool` entry passes only arguments its tool takes, and should ask about the ticket's own work (a check that is true before the work starts proves nothing, so where no tool can show the work, declare the person alone). |
+| `accepts[]` | Dotted ticket types (`invoice.create`) with a description shown to delegating agents, and `done`: the completion evidence for that type. Every entry must pass, and the host runs it when the agent replies, never the model: `{ "engine": ["subcommand", …], "args": {…} }` (the engine answers `ok` with at least one finding), `{ "tool": "NAME", "args": {…}, "expect": "found" }` (a declared tool that is safe to re-run and does not write, whose result reports `found`), `{ "file": "NAME" }` (the reply attaches a file id under that name, in `agent_reply`'s `files`, and the office's file store holds it), or `{ "person": true }` (the ticket waits, `awaiting_confirmation`, until a person confirms it). Args may interpolate `{ticket.id}` and `{ticket.data.<path>}`, and nothing else; a `tool` entry passes only arguments its tool takes, and should ask about the ticket's own work (a check that is true before the work starts proves nothing, so where no tool can show the work, declare the person alone). |
 | `dispatches[]` | Ticket types this role hands to other roles, and when: `type` (a dotted ticket type) and `when` (one line about the trigger). A type the role also `accepts` is an error: a role accepts a type or hands it off, never both. A card carries them, so an agent can choose whom to ask. |
 | `mayNot[]` | What the role never does, and what it does instead: `action` and `instead`. Wisdom data: it appears on the role's agent card, never as a tool. |
 | `contextPlan` | How the role decides what each request sees. Every part is optional. Only `promptBudgetTokens` and the sub-agent reference rules are enforced today; the rest is schema only (see "Context engineering"). `promptBudgetTokens` (default 4,000) caps the stable prompt. `retrieval.sources[]` (`id`, `description`) are business documents the role searches instead of pasting them in. `subagents[]` are narrow workers: `id`, `purpose`, `model` (`"small"` or `"default"`), `tools` (declared tools of this role that are safe to re-run and do not write), optional `skills` (declared skills), `output` (a JSON Schema) and optional `maxParallel`. `historyFilter` (`keepRecentRounds`, `keepCitedIds`, `maxToolResultTokens`). `maskAmounts` (default true when the role has an engine). `modelTiers.small[]` are purposes that may run on the office's small model. `memorySubjects[]` are subject kinds to remember (`business`, `customer`, `vendor`, `person`, `agent`, `topic`). `toolGroups[]` (`id`, `tools`, `forTicketTypes`) offer only the group for the current ticket type. |
@@ -759,6 +760,48 @@ the single approval decision every writing tool states, limits and tools that a 
 entry refers to — cannot be written in JSON Schema, and stay in `validateManifest`, which reports them
 with a path and a plain message. Role packages the Role Factory generates declare no `$schema`: they are
 written to whatever directory the generator is given, so no relative path is right for them.
+
+
+## Completion evidence
+
+Nobody talks a status into existence. When an agent calls `agent_reply`, the office looks up the
+`done` entries its manifest declares for the ticket's type and runs every one of them itself
+(`packages/office/src/board/evidence.ts`). The model does not run the checks and has no way round
+them: `agent_reply` is the only tool that finishes a ticket.
+
+| Entry | How the office checks it | Passes when |
+| --- | --- | --- |
+| `engine` | Runs the role's engine with the entry's subcommand and arguments | The engine answers `ok` with at least one finding; the finding ids are kept |
+| `tool` | Runs the role's tool as a nested call of `agent_reply`, through the role's extension and its hooks | The result's `details.found` is `true`; the details are kept |
+| `file` | Looks up the file id the reply attached under that name | The office's file store holds it |
+| `person` | Moves the ticket to `awaiting_confirmation` and files a request in the Inbox for the office's first person | That person confirms it |
+
+Arguments are filled from the ticket: `{ticket.id}`, and `{ticket.data.<path>}` from the data the
+ticket was opened with (`agent_dispatch`'s `payload`). A placeholder the ticket cannot fill fails
+the check; the office never runs a check half-addressed. A check the office has no means to run
+(no engine, no file store) fails too. It is never skipped.
+
+What happens next:
+
+- **Every check passes, no person asked:** the ticket is `done`, and the `completed` event carries
+  the evidence.
+- **Every check passes, a person is asked:** the ticket waits. The person answers in
+  `officehum board` (`y <ticket>`, or `n <ticket> <why>`), or through anything else that decides
+  the Inbox request. A yes completes the ticket, with their confirmation beside the other evidence.
+  A no returns it to the agent with their reason, and counts as a failed attempt.
+- **A check fails:** the reply is a tool error naming each failed check and what it found, an
+  `evidence_failed` event is recorded, and the ticket stays with the agent.
+- **Three failed attempts:** the ticket is `blocked` and assigned to the office's first person. The
+  block reason lists the failed checks, what each found, and the role that owned the work.
+- **The type declares no `done`:** the ticket completes as before, and the `completed` event carries
+  a warning. This keeps a role written before evidence existed working; a catalog role cannot be in
+  this state, because the four-layer check requires `done` on every accepted type.
+
+A ticket an agent dispatched with `wait: true` returns to it only once the ticket is `done`, so the
+asker waits for the person too.
+
+The runtime passes each role's engine to the checker. It has no file store yet, so `file` evidence
+cannot pass there.
 
 ## Validation
 

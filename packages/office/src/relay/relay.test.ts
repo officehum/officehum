@@ -422,6 +422,52 @@ describe("relay delivery", () => {
     }
   });
 
+  it("delivers a person's refusal to confirm to the agent, and not the agent's own failed check", async () => {
+    const directory = DIRECTORY();
+    seedPerson(join(directory, "office.sqlite"), "eileen-hart", "Eileen Hart");
+    const fixture = await openFixture({
+      directory,
+      script: [{ text: "first" }, { text: "reworked" }],
+      roles: (model) => [{ roleKey: ROLE, accepts: [TYPE], model }],
+    });
+    try {
+      const ticket = await fixture.relay.dispatch(TYPE, dispatch("Invoice 42"));
+      await fixture.relay.pollOnce();
+      fixture.board.claim(ticket.id, ROLE);
+      // The agent's own reply failed a check: it was told in that reply, so nothing is delivered.
+      fixture.board.evidenceFailed(ticket.id, ROLE, {
+        failures: [{ kind: "tool", check: "list_invoices", passed: false, reason: "no record" }],
+      });
+      // Its next reply passed, a person was asked, and said no.
+      fixture.board.awaitConfirmation(ticket.id, ROLE, {
+        result: "Invoiced.",
+        evidence: [],
+        person: "eileen-hart",
+      });
+      fixture.board.confirm(ticket.id, "eileen-hart", {
+        confirmed: false,
+        note: "The total is wrong.",
+      });
+      await fixture.relay.pollOnce();
+
+      const rows = fixture.board.relay.deliveriesForTicket(ticket.id);
+      expect(rows.map((row) => [row.kind, row.state])).toEqual([
+        ["created", "settled"],
+        ["claimed", "skipped"],
+        ["evidence_failed", "skipped"],
+        ["awaiting_confirmation", "skipped"],
+        ["evidence_failed", "settled"],
+      ]);
+      expect(rows[4]?.targetKey).toBe(relayTicketKey(ROLE, ticket.id));
+      expect(fixture.scripted.calls).toBe(2);
+      expect(relayedText(fixture.scripted)).toContain(
+        "eileen-hart did not confirm this ticket is done: The total is wrong. Do what is missing, then reply to the ticket again.",
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("the wait settles once and a second wait returns the same result", async () => {
     const fixture = await openFixture({
       directory: DIRECTORY(),

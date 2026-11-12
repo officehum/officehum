@@ -23,16 +23,29 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { canonicalJson, sameCanonical } from "@officehum/sdk";
+import { AGENT_REPLY, canonicalJson, sameCanonical } from "@officehum/sdk";
 import { transact as inTransaction } from "../shared/transact.js";
 import { MICROS_PER_CENT } from "../spend/prices.js";
-import { type ApprovalStore, openApprovalStore } from "./approvals.js";
+import {
+  type Approval,
+  type ApprovalDecisionInput,
+  type ApprovalStore,
+  openApprovalStore,
+} from "./approvals.js";
 import { BoardError, type BoardErrorKind, fail } from "./errors.js";
 import { applyMigrations } from "./migrations.js";
 import { openRelayLedger, type RelayLedger } from "./relay-ledger.js";
 import { openSmsStore, type SmsStore } from "./sms.js";
 
-export type TicketStatus = "open" | "claimed" | "waiting" | "blocked" | "done" | "cancelled";
+export type TicketStatus =
+  | "open"
+  | "claimed"
+  | "waiting"
+  /** The agent's work checked out and a person has been asked to confirm it (RASF-3230). */
+  | "awaiting_confirmation"
+  | "blocked"
+  | "done"
+  | "cancelled";
 export type Origin = "internal" | "external";
 export type Assignee = { readonly kind: "agent" | "person"; readonly id: string };
 
@@ -80,9 +93,70 @@ export interface NewTicket {
   readonly assignee?: Assignee;
 }
 
+/**
+ * One completion check's outcome, as a ticket's events record it (RASF-3230). The checks are the
+ * ticket type's `accepts[].done` in the role's `officehum.json`; `./evidence.ts` runs them.
+ */
+export interface EvidenceResult {
+  readonly kind: "engine" | "tool" | "file" | "person";
+  /** The check as declared: the engine subcommand, the tool or file name, or `person`. */
+  readonly check: string;
+  readonly passed: boolean;
+  /** Why it failed, in words the agent and a person can act on. Absent on a pass. */
+  readonly reason?: string;
+  /** What the check found: finding ids, the tool's details, the file, who confirmed. Plain JSON. */
+  readonly found?: unknown;
+}
+
 export interface CompleteOptions {
   readonly result?: string;
+  /** The checks that passed, recorded on the `completed` event. */
+  readonly evidence?: readonly EvidenceResult[];
+  /** Why no evidence was checked, recorded on the `completed` event for a reader of the board. */
+  readonly warning?: string;
 }
+
+/** A failed attempt at completing a ticket: what did not check out, and who gets it if it blocks. */
+export interface EvidenceFailureOptions {
+  readonly failures: readonly EvidenceResult[];
+  /** The person a ticket that has now failed `MAX_EVIDENCE_ATTEMPTS` times is handed to. */
+  readonly blockTo?: Assignee;
+}
+
+/** What a failed attempt left behind. */
+export interface EvidenceFailureOutcome {
+  readonly ticket: Ticket;
+  /** How many attempts have failed on this ticket, this one included. */
+  readonly attempt: number;
+  /** Whether this attempt was the last allowed, so the ticket is now `blocked`. */
+  readonly blocked: boolean;
+}
+
+/** What `awaitConfirmation` records: the work as it stands, and the person asked to confirm it. */
+export interface ConfirmationRequest {
+  readonly result: string;
+  /** The checks that already passed; the person's confirmation is added when they give it. */
+  readonly evidence: readonly EvidenceResult[];
+  /** The `people.id` asked. */
+  readonly person: string;
+}
+
+/** A person's answer to a confirmation request. A refusal should say why: the agent is told. */
+export interface ConfirmationDecision {
+  readonly confirmed: boolean;
+  readonly note?: string;
+}
+
+/** How many times a ticket's evidence may fail before the ticket is blocked and handed to a person. */
+export const MAX_EVIDENCE_ATTEMPTS = 3;
+
+/**
+ * The approval id of a confirmation request in the Inbox. A request to confirm a ticket is an
+ * approval of the exact `agent_reply` that finished it, so it lives in the approvals store with every
+ * other question a person is asked; this id is how the board tells it from a tool's approval. A role
+ * cannot declare it: manifest approval ids carry no dot.
+ */
+export const COMPLETION_APPROVAL_ID = "ticket.completion";
 
 export interface Ticket {
   readonly id: string;
@@ -233,6 +307,33 @@ export interface Board {
    * report whatever the model happened to write last.
    */
   complete(ticketId: string, actor: string, options?: CompleteOptions): Ticket;
+  /**
+   * The ticket, if `actor` may complete it now; otherwise the refusal `complete` would give. It
+   * changes nothing: a host asks before running completion checks, so nobody can make it run them
+   * against a ticket that is not theirs to finish.
+   */
+  completable(ticketId: string, actor: string): Ticket;
+  /**
+   * Records a failed attempt at completing a ticket as one `evidence_failed` event, leaving the ticket
+   * with whoever holds it. The attempt that reaches `MAX_EVIDENCE_ATTEMPTS` also blocks the ticket and
+   * hands it to `blockTo`, with the failed checks, what they found and the owner in the block reason.
+   */
+  evidenceFailed(
+    ticketId: string,
+    actor: string,
+    options: EvidenceFailureOptions,
+  ): EvidenceFailureOutcome;
+  /**
+   * Moves a ticket to `awaiting_confirmation` and asks a person, in the Inbox, to confirm it is done.
+   * The move and the request are one commit, so a ticket never waits on a question nobody was asked.
+   */
+  awaitConfirmation(ticketId: string, actor: string, request: ConfirmationRequest): Ticket;
+  /**
+   * A person's answer for a ticket that is `awaiting_confirmation`: yes completes it, with their
+   * confirmation beside the evidence on the `completed` event; no returns it to the agent as a failed
+   * attempt. Deciding the same request through `approvals.decideApproval` does exactly the same.
+   */
+  confirm(ticketId: string, person: string, decision: ConfirmationDecision): Ticket;
   cancel(ticketId: string, actor: string): Ticket;
   /**
    * Hands a ticket to a role or a person. Only the ticket's assignee, whoever opened it, or a person
@@ -321,6 +422,7 @@ const STATUSES: readonly TicketStatus[] = [
   "open",
   "claimed",
   "waiting",
+  "awaiting_confirmation",
   "blocked",
   "done",
   "cancelled",
@@ -472,6 +574,75 @@ function toEvent(row: EventRow): TicketEvent {
     payload: payloadOf(row.payload),
     at: row.at,
   };
+}
+
+/** The Inbox line asking for a confirmation is cut to this, within the approvals store's own bound. */
+const CONFIRMATION_SUMMARY_MAX = 1000;
+/** Longest a check's findings run in a block reason before they are cut: a reason is read, not parsed. */
+const FOUND_MAX = 400;
+
+function storable(value: unknown, label: string): void {
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(value);
+  } catch {
+    json = undefined;
+  }
+  if (json === undefined)
+    throw fail("invalid_argument", `${label} must be JSON that can be stored.`);
+}
+
+function evidenceOf(value: unknown, label: string): EvidenceResult[] {
+  if (!Array.isArray(value)) throw fail("invalid_argument", `${label} must be a list of checks.`);
+  storable(value, label);
+  return value.map((entry: unknown) => {
+    const record = objectOf(entry);
+    const kind = record?.kind;
+    if (
+      record === undefined ||
+      (kind !== "engine" && kind !== "tool" && kind !== "file" && kind !== "person") ||
+      typeof record.passed !== "boolean"
+    ) {
+      throw fail("invalid_argument", `${label} must hold { kind, check, passed } entries.`);
+    }
+    return {
+      kind,
+      check: bounded(record.check, "An evidence check"),
+      passed: record.passed,
+      ...(record.reason === undefined
+        ? {}
+        : { reason: bounded(record.reason, "An evidence reason", NOTE_MAX) }),
+      ...(record.found === undefined ? {} : { found: record.found }),
+    };
+  });
+}
+
+/** One check as a line of text: the check, how it went, and what it found, cut to fit. */
+export function evidenceLine(entry: EvidenceResult): string {
+  const found =
+    entry.found === undefined ? "" : ` Found: ${JSON.stringify(entry.found).slice(0, FOUND_MAX)}`;
+  // A person's own words may already end the sentence; one full stop either way.
+  const outcome = entry.passed
+    ? "passed"
+    : (entry.reason ?? "did not pass").replace(/[.\s]+$/u, "");
+  return `- ${entry.kind} ${entry.check}: ${outcome}.${found}`;
+}
+
+/**
+ * Why a ticket whose evidence kept failing is blocked: how often, who owns the work, and each failed
+ * check with what it found, so the person it lands with reads the figures without opening the events.
+ */
+function evidenceBlockReason(
+  owner: string | null,
+  attempts: number,
+  failures: readonly EvidenceResult[],
+): string {
+  const reason = [
+    `Completion evidence failed ${attempts} times. Owner: ${owner ?? "nobody"}.`,
+    "The last attempt failed these checks:",
+    ...failures.map(evidenceLine),
+  ].join("\n");
+  return reason.length > NOTE_MAX ? `${reason.slice(0, NOTE_MAX - 1)}…` : reason;
 }
 
 /** A create request with everything validated, and the canonical form the caller key dedupes on. */
@@ -695,6 +866,9 @@ export function openBoard(file: string): Board {
   const upsertPerson = database.prepare(
     "INSERT INTO people (id, name) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET name = excluded.name",
   );
+  const countFailures = database.prepare(
+    "SELECT COUNT(*) AS count FROM ticket_events WHERE ticket_id = ? AND kind = 'evidence_failed'",
+  );
   const findKey = database.prepare(
     "SELECT caller_key, ticket_id, request_json FROM ticket_keys WHERE caller_key = ?",
   );
@@ -706,7 +880,7 @@ export function openBoard(file: string): Board {
   const ledger = openRelayLedger(database);
   // The approvals store shares this handle, so a decision and the ticket it is about are one history:
   // the gate that reads a decision sees the row the person's screen committed.
-  const approvals = openApprovalStore(database);
+  const approvalStore = openApprovalStore(database);
   // The SMS intake tables share the handle for the same reason: a text that was accepted and the
   // board's record of it are one history, and a second connection would be a second writer.
   const sms = openSmsStore(database);
@@ -903,45 +1077,136 @@ export function openBoard(file: string): Board {
   const authorized = (row: TicketRow, actor: string): boolean =>
     row.assignee !== null && row.assignee === actor ? true : isPerson(actor);
 
+  /** Refuses unless `actor` may move this ticket to `to` now. The one statement of that rule. */
+  const requireClosable = (row: TicketRow, actor: string, to: "done" | "cancelled"): void => {
+    const status = statusOf(row.status);
+    if (TERMINAL.includes(status)) {
+      throw fail("invalid_status", `Ticket ${row.id} is already ${status}.`, { from: status, to });
+    }
+    if (to === "done" && !COMPLETABLE.includes(status)) {
+      throw fail(
+        "invalid_status",
+        status === "awaiting_confirmation"
+          ? `Ticket ${row.id} is awaiting a person's confirmation; it is done when they confirm it.`
+          : `Ticket ${row.id} is ${status}; only a claimed, waiting or blocked ticket can be completed.`,
+        { from: status, to },
+      );
+    }
+    if (!authorized(row, actor)) {
+      throw fail(
+        "unauthorized",
+        `Ticket ${row.id} is assigned to ${row.assignee ?? "nobody"}; only the assignee or a person can ${to === "done" ? "complete" : "cancel"} it.`,
+        { assignee: row.assignee, actor },
+      );
+    }
+  };
+
   const closeOut = (
     ticketId: string,
     actor: string,
-    to: TicketStatus,
+    to: "done" | "cancelled",
     kind: string,
-    result?: string,
+    payload: Record<string, unknown> = {},
   ): Ticket => {
     const id = bounded(ticketId, "Ticket id");
     const closer = bounded(actor, "Actor");
     return transact(() => {
       const row = requireTicket(id);
-      const status = statusOf(row.status);
-      if (TERMINAL.includes(status)) {
-        throw fail("invalid_status", `Ticket ${id} is already ${status}.`, { from: status, to });
-      }
-      if (to === "done" && !COMPLETABLE.includes(status)) {
-        throw fail(
-          "invalid_status",
-          `Ticket ${id} is ${status}; only a claimed, waiting or blocked ticket can be completed.`,
-          { from: status, to },
-        );
-      }
-      if (!authorized(row, closer)) {
-        throw fail(
-          "unauthorized",
-          `Ticket ${id} is assigned to ${row.assignee ?? "nobody"}; only the assignee or a person can ${to === "done" ? "complete" : "cancel"} it.`,
-          { assignee: row.assignee, actor: closer },
-        );
-      }
+      requireClosable(row, closer, to);
       moveTicket.run(to, row.assignee, now(), id);
-      if (result !== undefined) setResult.run(result, id);
+      if (typeof payload.result === "string") setResult.run(payload.result, id);
       // A cancelled ticket takes its waiting approvals with it: nobody should be asked to decide a
       // request for work that has already been called off. Decided ones are untouched — a person's
       // answer is a fact even when the ticket it was about went away.
-      if (to === "cancelled") approvals.cancelWaitingApprovals(id, closer);
-      appendEvent(id, kind, closer, result === undefined ? {} : { result });
+      if (to === "cancelled") approvalStore.cancelWaitingApprovals(id, closer);
+      appendEvent(id, kind, closer, payload);
       return toTicket(requireTicket(id));
     });
   };
+
+  /**
+   * One failed attempt, inside the caller's transaction: the `evidence_failed` event, and on the
+   * attempt that reaches the limit the block as well. The count is the ticket's own event log, so it
+   * survives a restart and nobody keeps a second tally.
+   */
+  const recordFailure = (
+    row: TicketRow,
+    actor: string,
+    failures: readonly EvidenceResult[],
+    blockTo: Assignee | null,
+  ): { readonly attempt: number; readonly blocked: boolean } => {
+    const attempt = (countFailures.get(row.id) as { count: number }).count + 1;
+    appendEvent(row.id, "evidence_failed", actor, { attempt, failures });
+    if (attempt < MAX_EVIDENCE_ATTEMPTS) {
+      touchTicket.run(now(), row.id);
+      return { attempt, blocked: false };
+    }
+    if (blockTo?.kind === "person" && !isPerson(blockTo.id)) {
+      throw fail("invalid_person", `No person ${blockTo.id} on this board.`, { id: blockTo.id });
+    }
+    const reason = evidenceBlockReason(row.assignee, attempt, failures);
+    moveTicket.run("blocked", blockTo?.id ?? row.assignee, now(), row.id);
+    appendEvent(
+      row.id,
+      "blocked",
+      actor,
+      blockTo === null ? { reason } : { reason, assignee: blockTo },
+    );
+    return { attempt, blocked: true };
+  };
+
+  /**
+   * A decided confirmation request, applied to its ticket in the decision's own transaction. Anything
+   * else — a tool's approval, or a request whose ticket has since moved on — is left as decided.
+   */
+  const settleConfirmation = (decided: Approval): void => {
+    if (decided.approvalId !== COMPLETION_APPROVAL_ID || decided.decidedBy === null) return;
+    const row = ticketRow(decided.ticketId);
+    if (row === undefined || row.status !== "awaiting_confirmation") return;
+    const by = decided.decidedBy;
+    if (decided.status === "approved") {
+      const result = objectOf(decided.args)?.result;
+      const evidence: EvidenceResult[] = [
+        ...evidenceOf(decided.facts?.facts.evidence ?? [], "Recorded evidence"),
+        { kind: "person", check: "person", passed: true, found: { confirmedBy: by } },
+      ];
+      moveTicket.run("done", row.assignee, now(), row.id);
+      if (typeof result === "string") setResult.run(result, row.id);
+      appendEvent(
+        row.id,
+        "completed",
+        by,
+        typeof result === "string" ? { result, evidence } : { evidence },
+      );
+      return;
+    }
+    if (decided.status !== "declined") return;
+    // Back to the agent that holds it, as a failed attempt: a person saying "not done" is evidence.
+    moveTicket.run("claimed", row.assignee, now(), row.id);
+    recordFailure(
+      row,
+      by,
+      [
+        {
+          kind: "person",
+          check: "person",
+          passed: false,
+          reason: decided.decidedNote ?? "the person asked did not confirm the work is done",
+        },
+      ],
+      isPerson(by) ? { kind: "person", id: by } : null,
+    );
+  };
+
+  const decideApproval = (id: string, decision: ApprovalDecisionInput): Approval =>
+    transact(() => {
+      const decided = approvalStore.decideApproval(id, decision);
+      settleConfirmation(decided);
+      return decided;
+    });
+  // The store as the board publishes it: a decision that answers a confirmation request moves its
+  // ticket in the same commit, whichever screen the person decided on.
+  const approvals: ApprovalStore = { ...approvalStore, decideApproval };
 
   return {
     create(input, callerKey) {
@@ -1096,7 +1361,105 @@ export function openBoard(file: string): Board {
       });
     },
     complete(ticketId, actor, options = {}) {
-      return closeOut(ticketId, actor, "done", "completed", options.result);
+      const evidence =
+        options.evidence === undefined
+          ? undefined
+          : evidenceOf(options.evidence, "Completion evidence");
+      const warning =
+        options.warning === undefined
+          ? undefined
+          : bounded(options.warning, "Completion warning", NOTE_MAX);
+      return closeOut(ticketId, actor, "done", "completed", {
+        ...(options.result === undefined ? {} : { result: options.result }),
+        ...(evidence === undefined ? {} : { evidence }),
+        ...(warning === undefined ? {} : { warning }),
+      });
+    },
+    completable(ticketId, actor) {
+      const row = requireTicket(bounded(ticketId, "Ticket id"));
+      requireClosable(row, bounded(actor, "Actor"), "done");
+      return toTicket(row);
+    },
+    evidenceFailed(ticketId, actor, options) {
+      const id = bounded(ticketId, "Ticket id");
+      const by = bounded(actor, "Actor");
+      const failures = evidenceOf(options.failures, "Failed evidence");
+      if (failures.length === 0 || failures.some((failure) => failure.passed)) {
+        throw fail("invalid_argument", "A failed attempt must name at least one failed check.");
+      }
+      const blockTo = assigneeOf(options.blockTo);
+      return transact(() => {
+        const row = requireTicket(id);
+        requireClosable(row, by, "done");
+        const { attempt, blocked } = recordFailure(row, by, failures, blockTo);
+        return { ticket: toTicket(requireTicket(id)), attempt, blocked };
+      });
+    },
+    awaitConfirmation(ticketId, actor, request) {
+      const id = bounded(ticketId, "Ticket id");
+      const by = bounded(actor, "Actor");
+      if (typeof request.result !== "string") {
+        throw fail("invalid_argument", "Ticket result must be a string.");
+      }
+      const { result } = request;
+      const person = bounded(request.person, "Confirming person");
+      const evidence = evidenceOf(request.evidence, "Completion evidence");
+      return transact(() => {
+        const row = requireTicket(id);
+        requireClosable(row, by, "done");
+        const asked = approvalStore.requestApproval(id, {
+          tool: AGENT_REPLY.name,
+          approvalId: COMPLETION_APPROVAL_ID,
+          args: { ticketId: id, result },
+          requestedBy: by,
+          assignee: person,
+          facts: {
+            summary: `Confirm "${row.title}" (${row.type}) is done: ${result}`.slice(
+              0,
+              CONFIRMATION_SUMMARY_MAX,
+            ),
+            facts: { evidence },
+          },
+        });
+        moveTicket.run("awaiting_confirmation", row.assignee, now(), id);
+        appendEvent(id, "awaiting_confirmation", by, {
+          approvalId: asked.id,
+          person,
+          result,
+          evidence,
+        });
+        return toTicket(requireTicket(id));
+      });
+    },
+    confirm(ticketId, person, decision) {
+      const id = bounded(ticketId, "Ticket id");
+      const by = bounded(person, "Confirming person");
+      return transact(() => {
+        const row = requireTicket(id);
+        if (!isPerson(by)) {
+          throw fail("unauthorized", `Only a person can confirm a ticket; ${by} is not one here.`, {
+            actor: by,
+          });
+        }
+        const asked = approvalStore
+          .pendingApprovals({ ticketId: id, tool: AGENT_REPLY.name })
+          .find((approval) => approval.approvalId === COMPLETION_APPROVAL_ID);
+        if (row.status !== "awaiting_confirmation" || asked === undefined) {
+          throw fail(
+            "invalid_status",
+            `Ticket ${id} is ${row.status}; only a ticket awaiting confirmation can be confirmed.`,
+            { from: row.status },
+          );
+        }
+        settleConfirmation(
+          approvalStore.decideApproval(asked.id, {
+            by,
+            decision: decision.confirmed ? "approved" : "declined",
+            ...(decision.note === undefined ? {} : { note: decision.note }),
+          }),
+        );
+        return toTicket(requireTicket(id));
+      });
     },
     cancel(ticketId, actor) {
       return closeOut(ticketId, actor, "cancelled", "cancelled");
@@ -1112,6 +1475,15 @@ export function openBoard(file: string): Board {
         const to: TicketStatus = target.kind === "person" ? "waiting" : "claimed";
         if (TERMINAL.includes(status)) {
           throw fail("invalid_status", `Ticket ${id} is already ${status}.`, { from: status, to });
+        }
+        if (status === "awaiting_confirmation") {
+          // The question in the Inbox is about this assignee's work; moving the ticket would leave a
+          // person answering for work that is no longer where they were told it was.
+          throw fail(
+            "invalid_status",
+            `Ticket ${id} is awaiting a person's confirmation; confirm or decline it, or cancel it, before assigning it.`,
+            { from: status, to },
+          );
         }
         // Routing a ticket decides who may finish it, so it is held to the same rule plus one: the
         // role that opened a ticket may say where it goes.

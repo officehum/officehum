@@ -6,7 +6,7 @@
  * long since anything moved it. `done` and `cancelled` are deliberately not columns — a kanban you
  * cannot finish scrolling is not a board — so they are counted under it.
  *
- * Every write goes through the board's own API (`comment`, `assign`, `cancel`), so the board's rules
+ * Every write goes through the board's own API (`comment`, `assign`, `cancel`, `confirm`), so the board's rules
  * apply instead of being re-implemented here: only the assignee or a person may cancel, and a person
  * the office does not know is refused by the board, with its refusal surfaced rather than swallowed.
  * This command never touches SQLite itself; it opens the board through the one door the office
@@ -30,6 +30,8 @@ import {
   type Board,
   BoardError,
   type Budget,
+  type EvidenceResult,
+  evidenceLine,
   formatMicros,
   openOfficeBoard,
   type Person,
@@ -71,8 +73,19 @@ const ELLIPSIS = "…";
  * reaches the cap is headed with a `+` instead of being passed off as complete.
  */
 const LIST_CAP = 500;
-/** The columns, in board order. Terminal statuses are counted in the footer instead. */
-const STATUS_COLUMNS: readonly TicketStatus[] = ["open", "claimed", "waiting", "blocked"];
+/**
+ * The columns, in board order. Terminal statuses are counted in the footer instead. A ticket awaiting
+ * a person's confirmation sits in `waiting` with its own line on the card: it is waiting on a person,
+ * like everything else in that column, and a fifth column would not fit the board's width.
+ */
+const STATUS_COLUMNS: readonly { readonly name: string; readonly statuses: TicketStatus[] }[] = [
+  { name: "open", statuses: ["open"] },
+  { name: "claimed", statuses: ["claimed"] },
+  { name: "waiting", statuses: ["waiting", "awaiting_confirmation"] },
+  { name: "blocked", statuses: ["blocked"] },
+];
+/** What a card says when its ticket's work checked out and a person has yet to confirm it. */
+export const CONFIRM_CARD_LABEL = "confirm? y/n";
 /** How many of a ticket's most recent events its detail shows. */
 const DETAIL_EVENTS = 10;
 
@@ -163,6 +176,7 @@ function cardLines(
   const owner = ticket.assignee ?? "unassigned";
   const lines = [`${formatAge(now, ticket.updatedAt)}  ${owner}`, `${ticket.type} ${ticket.title}`];
   if (provenance?.origin === "external") lines.push(EXTERNAL_CARD_LABEL);
+  if (ticket.status === "awaiting_confirmation") lines.push(CONFIRM_CARD_LABEL);
   const spend = spendLine(budget);
   if (spend !== undefined) lines.push(spend);
   return lines;
@@ -248,8 +262,8 @@ export function spendFooter(spend: readonly AgentSpend[]): string[] {
  * writes its own timestamps, and this command never reads the wall clock it was not handed.
  */
 export function renderBoard(board: Board, now: Date): string[] {
-  const columns = STATUS_COLUMNS.map((status) => {
-    const tickets = board.list({ status, limit: LIST_CAP });
+  const columns = STATUS_COLUMNS.map(({ name, statuses }) => {
+    const tickets = board.list({ status: statuses, limit: LIST_CAP });
     const shown = tickets.length === LIST_CAP ? `${LIST_CAP}+` : String(tickets.length);
     const body = tickets.flatMap((ticket) => [
       ...cardLines(ticket, now, board.budget(ticket.id), board.provenance(ticket.id)),
@@ -257,7 +271,7 @@ export function renderBoard(board: Board, now: Date): string[] {
     ]);
     // The blank is a separator between cards, and there is no card after the last one.
     if (body[body.length - 1] === "") body.pop();
-    return { header: `${status} (${shown})`, body };
+    return { header: `${name} (${shown})`, body };
   });
 
   const row = (text: (column: (typeof columns)[number], index: number) => string): string =>
@@ -315,6 +329,8 @@ const BOARD_HELP = [
   "  c <ticket> <text>     comment on a ticket",
   "  a <ticket> <person>   assign a ticket to a person the office knows",
   "  x <ticket>            cancel a ticket",
+  "  y <ticket>            confirm a ticket that is waiting for you is done",
+  "  n <ticket> <why>      say it is not done; it goes back to the agent with your reason",
   "  q                     quit",
 ].join("\n");
 
@@ -416,6 +432,26 @@ function act(
     io.output(`Cancelled ${ticket} as ${actor}.`);
     return;
   }
+  if (verb === "y") {
+    const [ticket] = rest;
+    if (ticket === undefined) throw new UsageError("y needs a ticket.");
+    board.confirm(ticket, actor, { confirmed: true });
+    io.output(`Confirmed ${ticket} is done, as ${actor}.`);
+    return;
+  }
+  if (verb === "n") {
+    const [ticket, ...words] = rest;
+    if (ticket === undefined || words.length === 0) {
+      throw new UsageError("n needs a ticket and the reason it is not done.");
+    }
+    const after = board.confirm(ticket, actor, { confirmed: false, note: words.join(" ") });
+    io.output(
+      after.status === "blocked"
+        ? `Sent ${ticket} back as ${actor}; that was its last attempt, so it is blocked and with you.`
+        : `Sent ${ticket} back to ${after.assignee ?? "its agent"}, as ${actor}.`,
+    );
+    return;
+  }
   throw new UsageError(`Unknown command: ${verb ?? ""}. ${BOARD_HELP}`);
 }
 
@@ -469,5 +505,25 @@ function show(board: Board, ticketId: string | undefined, io: CliIo, now: () => 
   for (const event of events.slice(-DETAIL_EVENTS)) {
     const by = event.actor === null ? "" : ` by ${event.actor}`;
     io.output(`    ${event.seq}  ${event.kind}${by}  ${event.at}`);
+    for (const line of eventNotes(event.payload)) io.output(`        ${line}`);
   }
+}
+
+/**
+ * What an event says beyond its kind: why a ticket stopped, the answer a person is asked to confirm,
+ * and each completion check with what it found. This is where a person reads what `y` would confirm.
+ */
+function eventNotes(payload: unknown): string[] {
+  if (payload === null || typeof payload !== "object") return [];
+  const { reason, result, warning, evidence, failures } = payload as Record<string, unknown>;
+  const checks = [evidence, failures].flatMap((list) =>
+    Array.isArray(list) ? (list as EvidenceResult[]).map(evidenceLine) : [],
+  );
+  return [
+    ...(typeof reason === "string" ? reason.split("\n") : []),
+    ...(typeof result === "string" ? [`result: ${result}`] : []),
+    ...(typeof warning === "string" ? [`warning: ${warning}`] : []),
+    // A block reason already lists its failed checks; the lists are for the events that carry them.
+    ...(typeof reason === "string" ? [] : checks),
+  ];
 }

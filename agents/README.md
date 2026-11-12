@@ -105,8 +105,9 @@ Rules, enforced by `@officehum/sdk` (`validatePackage`, `checkAgent`, `checkFour
 - Every tool that **writes** states exactly one approval decision: an approval in `approvals`, or a
   `noApproval` note (at most 300 characters) saying why it needs none. Never both, never neither; a
   tool that changes nothing states neither. The rule holds whichever way the role was written.
-- Every accepted ticket type declares `done` completion evidence, which the **host** runs, never the
-  model: an engine check that returns findings, a declared tool that is safe to re-run and does not write, whose result reports
+- Every accepted ticket type declares `done` completion evidence, which the **host** runs when the
+  agent replies to a ticket, never the model (a failed check keeps the ticket open; see "Completion
+  evidence" in `docs/design/agent-package.md`): an engine check that returns findings, a declared tool that is safe to re-run and does not write, whose result reports
   `found`, a file the result attaches, or `{ "person": true }`. All entries must pass.
   `{ticket.id}` and `{ticket.data.<path>}` are the only interpolation. A tool entry passes only
   arguments its tool takes (`checkAgent` refuses the others), and it should ask about this ticket's
