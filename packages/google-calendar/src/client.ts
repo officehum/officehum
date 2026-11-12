@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 import {
+  bookingWindow,
   canonicalSlot,
   createSchedule,
   overlaps,
@@ -325,9 +326,12 @@ export function createGoogleCalendar(options: GoogleCalendarOptions): CalendarCl
       const busy = await freeBusy(window);
       return candidates.filter((slot) => !busy.some((item) => overlaps(item, slot)));
     },
-    async listBookings() {
+    async listBookings(window) {
+      bookingWindow(window);
       const url = new URL(`${calendarPath}/events`);
       url.searchParams.set("privateExtendedProperty", `${OWNER_KEY}=${OWNER}`);
+      url.searchParams.set("timeMin", window.timeMin);
+      if (window.timeMax !== undefined) url.searchParams.set("timeMax", window.timeMax);
       url.searchParams.set("showDeleted", "false");
       url.searchParams.set("singleEvents", "true");
       const result: CalendarBooking[] = [];

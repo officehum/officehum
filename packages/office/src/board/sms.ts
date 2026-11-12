@@ -17,6 +17,7 @@
  * ceiling, which is what lets a person looking at the row tell three messages from three hundred.
  */
 import type { DatabaseSync } from "node:sqlite";
+import { transact } from "../shared/transact.js";
 import { fail } from "./errors.js";
 import { type InboundStore, openInboundStore } from "./inbound.js";
 
@@ -79,18 +80,6 @@ export function openSmsStore(database: DatabaseSync): SmsStore {
     "SELECT count FROM sms_rate WHERE number = ? AND window_start = ?",
   );
 
-  const transact = <T>(work: () => T): T => {
-    database.exec("BEGIN IMMEDIATE");
-    try {
-      const value = work();
-      database.exec("COMMIT");
-      return value;
-    } catch (error) {
-      if (database.isTransaction) database.exec("ROLLBACK");
-      throw error;
-    }
-  };
-
   return {
     inbound,
     recordInboundOnce(messageSid, at) {
@@ -108,7 +97,7 @@ export function openSmsStore(database: DatabaseSync): SmsStore {
       if (state !== "stop" && state !== "start") {
         throw fail("invalid_argument", `An opt-out state is 'stop' or 'start', not '${state}'.`);
       }
-      transact(() => {
+      transact(database, () => {
         upsertOptOut.run(who, state, when);
       });
     },
@@ -126,7 +115,7 @@ export function openSmsStore(database: DatabaseSync): SmsStore {
       if (!Number.isSafeInteger(limit) || limit < 0) {
         throw fail("invalid_argument", "A rate limit is a whole number of 0 or more.");
       }
-      return transact(() => {
+      return transact(database, () => {
         bumpRate.run(who, window);
         const row = readCount.get(who, window) as CountRow | undefined;
         const count = row?.count ?? 0;

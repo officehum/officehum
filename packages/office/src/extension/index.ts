@@ -355,10 +355,10 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
           entries.push({ ticket, assigned: true });
           seen.add(ticket.id);
         }
-        // The answers come back on the tickets this agent opened: `list` has no creator filter, so the
-        // board's rows are filtered here by `created_by`.
-        for (const ticket of board.list(filter)) {
-          if (ticket.createdBy === role && !seen.has(ticket.id)) {
+        // The answers come back on the tickets this agent opened. The board filters by creator, so
+        // its list limit counts this agent's tickets and not everybody's.
+        for (const ticket of board.list({ ...filter, createdBy: role })) {
+          if (!seen.has(ticket.id)) {
             entries.push({ ticket, assigned: false });
             seen.add(ticket.id);
           }

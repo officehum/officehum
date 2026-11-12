@@ -19,6 +19,7 @@
  * did.
  */
 import type { DatabaseSync } from "node:sqlite";
+import { transact } from "../shared/transact.js";
 import { fail } from "./errors.js";
 
 export interface InboundStore {
@@ -50,29 +51,17 @@ export function openInboundStore(database: DatabaseSync): InboundStore {
     "DELETE FROM channel_inbound WHERE channel = ? AND external_id = ?",
   );
 
-  const transact = <T>(work: () => T): T => {
-    database.exec("BEGIN IMMEDIATE");
-    try {
-      const value = work();
-      database.exec("COMMIT");
-      return value;
-    } catch (error) {
-      if (database.isTransaction) database.exec("ROLLBACK");
-      throw error;
-    }
-  };
-
   return {
     recordInboundOnce(channel, externalId, receivedAt) {
       const name = text(channel, "A channel");
       const id = text(externalId, "A provider message id");
       const at = text(receivedAt, "A receive time");
-      return transact(() => Number(insert.run(name, id, at).changes) > 0);
+      return transact(database, () => Number(insert.run(name, id, at).changes) > 0);
     },
     forgetInbound(channel, externalId) {
       const name = text(channel, "A channel");
       const id = text(externalId, "A provider message id");
-      transact(() => {
+      transact(database, () => {
         remove.run(name, id);
       });
     },

@@ -45,7 +45,7 @@ import {
   scriptedProvider,
 } from "../testing/scripted-model.js";
 import { budgetHooks } from "./budget.js";
-import { centsFor, type PriceTable } from "./prices.js";
+import { MICROS_PER_CENT, microsFor, type PriceTable } from "./prices.js";
 
 const temps: string[] = [];
 afterEach(() => {
@@ -72,6 +72,15 @@ const PROVENANCE: RelayProvenance = {
  */
 const CENTS_PER_MILLION: PriceTable = {
   prices: { "scripted/scripted-1": { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 } },
+  fallback: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+};
+
+/**
+ * A rate at which one scripted turn costs a fraction of a cent: 2,500¢ per million input tokens is a
+ * quarter of a thousandth of a cent a token, and a scripted turn is at most some 1,400 estimated tokens.
+ */
+const SUB_CENT_TURNS: PriceTable = {
+  prices: { "scripted/scripted-1": { input: 2500, output: 0, cacheRead: 0, cacheWrite: 0 } },
   fallback: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 };
 
@@ -343,7 +352,7 @@ describe("budget enforcement", () => {
     }
   });
 
-  it("converts the session's usage to cents with the office's table and refuses at the dollar ceiling", async () => {
+  it("converts the session's usage to dollars with the office's table and refuses at the dollar ceiling", async () => {
     const fixture = await openFixture({
       script: stubbornScript(2),
       prices: CENTS_PER_MILLION,
@@ -355,20 +364,20 @@ describe("budget enforcement", () => {
       expect(fixture.board.get(ticket.id)?.status).toBe("blocked");
 
       // What the harness recorded for the model, converted with the office's table, is what the board
-      // charged — cents were converted from tokens, not taken from the provider's own (zero) cost.
+      // charged — the cost was converted from tokens, not taken from the provider's own (zero) cost.
       const usage = await fixture.office.harness.usage(BACKGROUND_CONTEXT);
       const recorded = usage.models["scripted/scripted-1"];
       expect(recorded).toBeDefined();
-      const expected = centsFor(
+      const expected = microsFor(
         CENTS_PER_MILLION,
         { provider: "scripted", modelId: "scripted-1" },
         recorded as Usage,
       );
-      expect(expected).toBeGreaterThan(1);
+      expect(expected).toBeGreaterThan(MICROS_PER_CENT);
       expect(fixture.board.budget(ticket.id)).toMatchObject({
-        usedUsdCents: expected,
-        maxUsdCents: 1,
-        remainingUsdCents: 0,
+        usedUsdMicros: expected,
+        maxUsdMicros: MICROS_PER_CENT,
+        remainingUsdMicros: 0,
       });
       const blocked = fixture.board.events(ticket.id).filter((event) => event.kind === "blocked");
       // The reason records the spend at the moment work stopped — the first refusal — so it names a
@@ -378,6 +387,61 @@ describe("budget enforcement", () => {
       });
       expect(blocked[0]?.payload).toMatchObject({
         reason: expect.stringMatching(/\$\d+\.\d{2}/),
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("refuses at a small dollar ceiling after turns that each cost less than a cent", async () => {
+    // The bug this pins: a turn's cost was rounded to whole cents, a cheap turn rounded to zero, and a
+    // dollar ceiling never moved however many turns ran. At this rate every scripted turn costs a
+    // fraction of a cent, so only a ledger finer than cents can add them up to the ceiling.
+    // One tool call a turn until refused. The stop at 40 is far past the turns the ceiling allows, so
+    // a ceiling that never binds fails the assertions below instead of hanging.
+    const manySmallTurns: ScriptedScript = (messages) => {
+      const results = toolResults(messages);
+      if (results.some((line) => line.includes("Tool call blocked"))) return { text: "Blocked." };
+      if (results.length >= 40) return { text: "Never refused." };
+      return { toolCalls: [{ name: "record_note", args: { n: results.length + 1 } }] };
+    };
+    const fixture = await openFixture({
+      script: manySmallTurns,
+      prices: SUB_CENT_TURNS,
+      person: "Pat Owner",
+    });
+    try {
+      const ticket = await fixture.dispatch({ maxUsdCents: 1 });
+
+      const database = new DatabaseSync(fixture.file, { readOnly: true });
+      let turns: number[];
+      try {
+        turns = (
+          database
+            .prepare("SELECT usd_micros FROM spend_ledger WHERE kind = 'usage' ORDER BY rowid")
+            .all() as Array<{ usd_micros: number }>
+        ).map((row) => row.usd_micros);
+      } finally {
+        database.close();
+      }
+      // Several turns ran, and every one of them is under half a cent: in whole cents each is $0.00.
+      expect(turns.length).toBeGreaterThan(2);
+      for (const micros of turns) {
+        expect(micros).toBeGreaterThan(0);
+        expect(Math.round(micros / MICROS_PER_CENT)).toBe(0);
+      }
+      // Work happened before the ceiling was reached, and then the ceiling closed it.
+      expect(fixture.executions()).toBeGreaterThan(0);
+      expect(fixture.executions()).toBeLessThan(40);
+      const budget = fixture.board.budget(ticket.id);
+      expect(budget?.usedUsdMicros).toBe(turns.reduce((sum, micros) => sum + micros, 0));
+      expect(budget?.usedUsdMicros).toBeGreaterThanOrEqual(MICROS_PER_CENT);
+      expect(budget).toMatchObject({ maxUsdMicros: MICROS_PER_CENT, remainingUsdMicros: 0 });
+      expect(fixture.board.get(ticket.id)).toMatchObject({ status: "blocked", assignee: "owner" });
+      const blocked = fixture.board.events(ticket.id).filter((event) => event.kind === "blocked");
+      expect(blocked).toHaveLength(1);
+      expect(blocked[0]?.payload).toMatchObject({
+        reason: expect.stringMatching(/\$0\.01 against the usd ceiling/),
       });
     } finally {
       await fixture.close();
@@ -459,7 +523,7 @@ describe("budget enforcement", () => {
 
     const charged = board.chargeUsage(ticket.id, "conv:task:call-1", {
       tokens: 900,
-      usdCents: 4,
+      usdMicros: 4,
       agent: "agent:desk",
     });
     expect(charged.charged).toBe(true);
@@ -467,11 +531,11 @@ describe("budget enforcement", () => {
     const budget = board.budget(ticket.id);
     expect(budget?.usedCalls).toBe(1);
     expect(budget?.usedTokens).toBe(900);
-    expect(budget?.usedUsdCents).toBe(4);
+    expect(budget?.usedUsdMicros).toBe(4);
 
     // And each observation is still deduped on its own: replaying either adds nothing.
     expect(
-      board.chargeUsage(ticket.id, "conv:task:call-1", { tokens: 900, usdCents: 4 }).charged,
+      board.chargeUsage(ticket.id, "conv:task:call-1", { tokens: 900, usdMicros: 4 }).charged,
     ).toBe(false);
     expect(board.admitCall(ticket.id, "conv:task:call-1", "agent:desk").charged).toBe(false);
     expect(board.budget(ticket.id)?.usedCalls).toBe(1);

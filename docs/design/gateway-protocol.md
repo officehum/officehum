@@ -268,10 +268,10 @@ reports a `principal` as a problem; the gateway strips it before validating.)
 
 ## The runtime process
 
-`officehum runtime --db FILE --office FILE` is the runtime: one office's Pi Durable harness, every role
-in one SQLite file, speaking this protocol on stdin/stdout. The gateway starts and supervises it; a
-developer can also run it directly and type frames at it. stdout carries frames only; logs go to
-stderr. `docs/superpowers/plans/2026-11-10-runtime-process.md` records how it is built.
+`officehum runtime --db FILE --office FILE [--board FILE]` is the runtime: one office's Pi Durable
+harness, every role in one SQLite file, speaking this protocol on stdin/stdout. The gateway starts and
+supervises it; a developer can also run it directly and type frames at it. stdout carries frames only;
+logs go to stderr. `docs/superpowers/plans/2026-11-10-runtime-process.md` records how it is built.
 
 - **Start-up.** It opens the office, loads the roles the office file lists, attaches to the work a
   previous run left unsettled, resumes it, and sends `welcome` unprompted once it is ready. It also
@@ -310,6 +310,24 @@ stderr. `docs/superpowers/plans/2026-11-10-runtime-process.md` records how it is
   after a restart asks again and finds the same approval. Each request and decision is appended to
   the store's audit list with its time and, for a decision, the deciding principal. An approval
   waits 4 hours unless the agent's office-file entry sets `approvalTimeoutMinutes`.
+- **The workboard (`--board FILE`).** Given a board file, the runtime adds the people on its roles'
+  company records to the board at start (an upsert: nobody is added twice or removed), gives every
+  agent the office extension (`agent_dispatch`, `agent_inbox`, `agent_reply`, the board's budget
+  hooks), and runs the relay for as long as it is open: it recovers unfinished deliveries at start,
+  then polls the board, and stops with the office. A ticket goes to the agent whose manifest accepts
+  its type, in a conversation of that agent's for that ticket; a type the company record's
+  `ticketRoutes` gives to a person goes to them on the board. Without `--board` each agent works
+  alone, as before. The board is a second SQLite file, never the `--db` file. None of this adds a
+  protocol message.
+
+  Status of what the board does not reach yet:
+  - A gated call made while an agent works a ticket is recorded on the board by the office's
+    approval gate, addressed to the office's first person, and blocked. Nothing in this protocol
+    lists or decides a board approval (`approve` and `watch_approvals` are the remote approvals
+    store's), and no command or screen opens the board's approval inbox, so such a call cannot be
+    approved today. Gated calls in a request a principal submitted are unchanged.
+  - A ticket an agent opens carries the provenance `internal`, `gateway`: it does not name the
+    principal, so a role cannot yet tell which person a handed-on ticket came from.
 
 The office file lists the roles, with paths relative to the file:
 

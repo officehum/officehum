@@ -2,6 +2,7 @@ import type { CalendarBooking, CalendarClient } from "@officehum/google-calendar
 import type { ApprovalDecision, ApprovalRequest } from "@officehum/sdk";
 import type { Booking, CalendarOperation, CalendarStore, Cancellation } from "./calendar-store.js";
 import { canonicalAppointmentStart } from "./local-calendar.js";
+import { bounded } from "./shared/validation.js";
 
 export interface DecisionStore extends CalendarStore {
   decision(key: string): ApprovalDecision | undefined;
@@ -20,14 +21,6 @@ export interface GoogleCalendarHost extends DecisionStore {
   reschedule(id: string, start: string, idempotencyKey: string): Promise<Booking>;
   cancel(id: string, idempotencyKey: string): Promise<Cancellation>;
   bookings(): Promise<Booking[]>;
-}
-
-function bounded(value: string, label: string, maximum = 500): string {
-  const normalized = value.trim();
-  if (normalized.length === 0 || normalized.length > maximum) {
-    throw new Error(`${label} must be between 1 and ${maximum} characters.`);
-  }
-  return normalized;
 }
 
 function portableBooking(value: {
@@ -85,9 +78,23 @@ export function createGoogleCalendarHost(options: {
     throw new Error("Google Calendar host duration must be a positive whole number of minutes.");
   }
 
-  const rawList = (): Promise<CalendarBooking[]> => options.client.listBookings();
+  // A listing asks the provider for what is still to come, never for the calendar's whole past.
+  const upcoming = (): Promise<CalendarBooking[]> =>
+    options.client.listBookings({ timeMin: new Date().toISOString() });
+  // A completed operation names its booking's slot, so checking it reads that slot alone.
+  const completed = async (operation: CalendarOperation): Promise<Booking> => {
+    const result = operation.result;
+    const active =
+      result === undefined || "status" in result
+        ? []
+        : await options.client.listBookings({
+            timeMin: result.start,
+            timeMax: expectedEnd(result.start, options.durationMinutes),
+          });
+    return completedBooking(operation, active, options.durationMinutes);
+  };
   const list = async (): Promise<Booking[]> =>
-    (await rawList())
+    (await upcoming())
       .map(portableBooking)
       .sort(
         (left, right) => left.start.localeCompare(right.start) || left.id.localeCompare(right.id),
@@ -120,8 +127,7 @@ export function createGoogleCalendarHost(options: {
       const argsJson = JSON.stringify({ kind: "book", start, customer });
       return enqueue(async () => {
         const operation = options.decisions.bindOperation(key, "book", argsJson);
-        if (operation.result !== undefined)
-          return completedBooking(operation, await rawList(), options.durationMinutes);
+        if (operation.result !== undefined) return await completed(operation);
         const result = portableBooking(
           await options.client.book({ ...slot(start), customer, requestId: key }),
         );
@@ -136,8 +142,7 @@ export function createGoogleCalendarHost(options: {
       const argsJson = JSON.stringify({ kind: "reschedule", id, start });
       return enqueue(async () => {
         let operation = options.decisions.bindOperation(key, "reschedule", argsJson);
-        if (operation.result !== undefined)
-          return completedBooking(operation, await rawList(), options.durationMinutes);
+        if (operation.result !== undefined) return await completed(operation);
         if (operation.booking === undefined) {
           const current = (await list()).find((booking) => booking.id === id);
           if (current === undefined) throw new Error("Managed booking was not found.");

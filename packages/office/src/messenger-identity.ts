@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { exact } from "./shared/validation.js";
 
 export type ConsoleMessengerIdentity = { readonly version: 1; readonly backend: "console" };
 export type ResendMessengerIdentity = {
@@ -21,23 +22,6 @@ export const CONSOLE_MESSENGER_IDENTITY: ConsoleMessengerIdentity = {
 const EMAIL =
   /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u;
 
-function hasControl(value: string): boolean {
-  return [...value].some((character) => {
-    const code = character.codePointAt(0) ?? 0;
-    return code <= 31 || (code >= 127 && code <= 159);
-  });
-}
-
-function exactString(value: unknown, maximum: number): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= maximum &&
-    value.trim() === value &&
-    !hasControl(value)
-  );
-}
-
 export function parseMessengerIdentity(value: unknown): MessengerIdentity {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Malformed Front Desk Messenger identity.");
@@ -54,11 +38,11 @@ export function parseMessengerIdentity(value: unknown): MessengerIdentity {
     record.version !== 1 ||
     record.backend !== "resend" ||
     Object.keys(record).sort().join(",") !== "accountId,backend,fromEmail,subject,version" ||
-    !exactString(record.accountId, 100) ||
-    !exactString(record.fromEmail, 254) ||
+    !exact(record.accountId, 100) ||
+    !exact(record.fromEmail, 254) ||
     record.fromEmail !== record.fromEmail.toLowerCase() ||
     !EMAIL.test(record.fromEmail) ||
-    !exactString(record.subject, 200)
+    !exact(record.subject, 200)
   ) {
     throw new Error("Malformed Front Desk Messenger identity.");
   }

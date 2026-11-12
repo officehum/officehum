@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { convert } from "html-to-text";
+import { controls, exact } from "./shared/validation.js";
 
 export type SignedWebhookHeaders = { id: string; timestamp: string; signature: string };
 
@@ -44,24 +45,6 @@ const EMAIL =
   /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u;
 const MESSAGE_ID = /^<[\x21-\x3b\x3d\x3f\x41-\x7e]+@[\x21-\x3b\x3d\x3f\x41-\x7e]+>$/u;
 const OMITTED = "[content omitted by parser limits]";
-
-function controls(value: string, message = false): boolean {
-  return [...value].some((character) => {
-    const code = character.codePointAt(0) ?? 0;
-    if (message && (code === 9 || code === 10 || code === 13)) return false;
-    return code <= 31 || (code >= 127 && code <= 159);
-  });
-}
-
-function exact(value: unknown, maximum: number): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= maximum &&
-    value.trim() === value &&
-    !controls(value)
-  );
-}
 
 function strictBase64(value: string): Buffer {
   if (value.length === 0 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(value)) {
@@ -319,6 +302,31 @@ function loopBlocked(
     values["return-path"]?.trim() === "<>" ||
     /multipart\/report|message\/delivery-status/iu.test(values["content-type"] ?? "")
   );
+}
+
+/**
+ * The reasons `normalizeReceivedEmail` refuses a message for good.
+ *
+ * Each is a fact about the message itself (an auto-reply, a DMARC failure, a body past the limit), so
+ * fetching it again gets the same message and the same refusal. Anything else that fails on the way to
+ * a normalized email is transient and worth a retry.
+ */
+const TERMINAL_REJECTIONS: ReadonlySet<string> = new Set([
+  "authentication_failed",
+  "reply_to_mismatch",
+  "auto_message",
+  "invalid_thread_headers",
+  "subject_too_long",
+  "empty_body",
+  "body_too_large",
+  "binding_mismatch",
+]);
+
+/** The terminal rejection an error carries, or `undefined` when the failure is transient. */
+export function terminalRejection(error: unknown): string | undefined {
+  return error instanceof Error && TERMINAL_REJECTIONS.has(error.message)
+    ? error.message
+    : undefined;
 }
 
 export function normalizeReceivedEmail(

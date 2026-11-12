@@ -23,6 +23,13 @@
  * same submission id, one ledger row, and two model calls. The guarantee is on the work being
  * admitted and recorded once, never on a turn being immune to re-execution, and nothing downstream
  * may assume a side effect inside a turn is idempotent by itself.
+ *
+ * Why admitting and settling are separate steps: a delegate's turn may itself dispatch and wait
+ * (`agent_dispatch` with `wait: true`), and the child's `created` event is only delivered by this
+ * poller. A poller that awaited each turn before reading the next event would wait on a turn that is
+ * waiting on it. So a poll admits every event it finds, in order, lets the settlements run side by
+ * side, and keeps looking for new events until the last of them is recorded. Two events for one
+ * conversation stay in order because Pi Durable queues the second as a follow-up to the first.
  */
 import { randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -34,7 +41,14 @@ import {
   type TaskId,
 } from "@earendil-works/pi-durable";
 import type { Office } from "../adapter/index.js";
-import type { Assignee, Board, Ticket, TicketEvent } from "../board/index.js";
+import {
+  type Assignee,
+  type Board,
+  BoardError,
+  type Ticket,
+  type TicketEvent,
+} from "../board/index.js";
+import type { DeliveryRecord } from "../board/relay-ledger.js";
 import type {
   DeliveryGuards,
   GuardContext,
@@ -43,8 +57,20 @@ import type {
   GuardTicket,
 } from "./guards.js";
 import { type RelayMessage, type RelayProvenance, relayMessage } from "./message.js";
-import type { DeliveryOutcome, DeliveryTarget, RelayTransport } from "./transport.js";
+import type {
+  DeliveryHandle,
+  DeliveryOutcome,
+  DeliveryTarget,
+  RelayTransport,
+} from "./transport.js";
 import { createWaitTask, type WaitTaskResult } from "./wait-task.js";
+
+/**
+ * How often a poll that is waiting on settlements looks at the board for new events, in wall-clock
+ * milliseconds. The board has no notification, and the event a running turn is waiting for (its
+ * child's `created`) can only be found by looking.
+ */
+const ADMIT_POLL_MS = 25;
 
 /** The name of the extension the relay installs. Installing it is what registers the wait task. */
 export const RELAY_EXTENSION_NAME = "officehum.relay";
@@ -83,9 +109,17 @@ export type RelayOptions = {
 };
 
 export interface Relay {
-  /** Deliver every event after the cursor once. Idempotent: a second call with no new events does nothing. */
+  /**
+   * Deliver every event after the cursor once, and resolve when each delivery has settled. Events that
+   * appear while those turns run (a turn dispatching to a colleague) are delivered by the same call.
+   * Idempotent: a second call with no new events does nothing. One call at a time: the relay is the
+   * office's single poller.
+   */
   pollOnce(): Promise<void>;
-  /** Re-submit and re-await every delivery a crash left non-terminal. */
+  /**
+   * Re-admit every delivery a crash left non-terminal, then settle them as `pollOnce` does. A row
+   * Pi Durable never admitted passes the guards again first, and is refused if they now say no.
+   */
   recover(): Promise<void>;
   /** Post work of one type onto the board; the next poll routes and delivers it. */
   dispatch(type: string, request: DispatchRequest): Promise<Ticket>;
@@ -411,32 +445,40 @@ export function createRelay(options: RelayOptions): Relay {
     if (state !== "skipped") board.relay.settle(event.id, state, reason);
   };
 
-  /** Submit one wrapped message and record the admission, then await and record the settlement. */
-  const submitDelivery = async (
+  /**
+   * The conversation a delivery goes to, bound to its ticket. The binding is what the mid-turn hooks
+   * need: they see a conversation id and nothing else, and it is resolved here, by the party that
+   * knows both ids. It is written before the delivery so a turn that starts immediately already has a
+   * ticket to charge, and writing it again for a recovered delivery is idempotent.
+   */
+  const targetFor = async (
+    eventId: string,
+    ticketId: string,
+    key: string,
+  ): Promise<DeliveryTarget> => {
+    const conversation = await conversationFor(key);
+    const roleKey = roleKeyOfConversationKey(key);
+    if (roleKey !== undefined) {
+      board.bindConversation(conversation.id, { ticketId, agent: roleKey });
+    }
+    return { requestId: eventId, conversationKey: key, conversation };
+  };
+
+  /**
+   * Admit one delivery whose `pending` row already exists: wrap, run the guards, submit, record the
+   * admission. Fresh deliveries and recovered ones both come through here, so neither can reach
+   * `submit` unwrapped or unguarded. Returns the admitted handle, or `undefined` when the row was made
+   * terminal instead.
+   */
+  const admit = async (
     event: TicketEvent,
     ticket: Ticket,
-    roleKey: string,
+    key: string,
     note: string | undefined,
-  ): Promise<void> => {
-    const key = relayTicketKey(roleKey, ticket.id);
-    const guardContext: GuardContext = { hop: hopOf(board, ticket), conversationKey: key };
-
-    // The ledger row and the cursor move together, before anything is submitted. If the relay dies
-    // after this point, the row is still `pending` and `recover` re-submits the same requestId.
-    board.relay.begin({
-      eventId: event.id,
-      seq: event.seq,
-      ticketId: ticket.id,
-      kind: event.kind,
-      targetKey: key,
-      state: "pending",
-      at: new Date(now()).toISOString(),
-    });
-
-    // The wrap happens before the guards and the transport, so no delivery path can reach `submit`
-    // without it. A ticket with no provenance row is unwrappable, which is an invariant violation
-    // rather than a crash: it is recorded `failed` so the row is terminal and `recover` does not
-    // retry a delivery that can never be built.
+  ): Promise<DeliveryHandle | undefined> => {
+    // The wrap happens before the guards and the transport. A ticket with no provenance row is
+    // unwrappable, which is an invariant violation rather than a crash: it is recorded `failed` so
+    // the row is terminal and `recover` does not retry a delivery that can never be built.
     let message: RelayMessage;
     try {
       message = messageFor(event, ticket, note);
@@ -446,10 +488,13 @@ export function createRelay(options: RelayOptions): Relay {
         "failed",
         error instanceof Error ? error.message : String(error),
       );
-      return;
+      return undefined;
     }
 
-    const decision = await runGuards(event, ticket, guardContext);
+    const decision = await runGuards(event, ticket, {
+      hop: hopOf(board, ticket),
+      conversationKey: key,
+    });
     if (!decision.allowed) {
       // A refused delivery is a stopped chain, and a stopped chain is a person's problem. The guard
       // has already blocked the ticket when the refusal is exhaustion; the `stalled` event is what
@@ -457,21 +502,18 @@ export function createRelay(options: RelayOptions): Relay {
       // refusal is not just a `failed` row in a ledger nobody reads.
       board.stall(ticket.id, "relay", decision.reason);
       board.relay.settle(event.id, "failed", decision.reason);
-      return;
+      return undefined;
     }
 
-    const conversation = await conversationFor(key);
-    // The binding the mid-turn hooks need: they see a conversation id and nothing else, and the
-    // conversation is resolved here, by the party that knows both ids. It is written before the
-    // delivery so a turn that starts immediately already has a ticket to charge.
-    board.bindConversation(conversation.id, { ticketId: ticket.id, agent: roleKey });
-    const target: DeliveryTarget = { requestId: event.id, conversationKey: key, conversation };
-    const handle = await transport.deliver(target, message);
+    const handle = await transport.deliver(await targetFor(event.id, ticket.id, key), message);
     board.relay.admitted(event.id, handle.id);
+    return handle;
+  };
 
-    const outcome = await handle.wait();
-    const { state, outcome: detail } = settled(outcome);
-    board.relay.settle(event.id, state, detail);
+  /** Await one admitted delivery and record how it ended. */
+  const settleDelivery = async (eventId: string, handle: DeliveryHandle): Promise<void> => {
+    const { state, outcome } = settled(await handle.wait());
+    board.relay.settle(eventId, state, outcome);
   };
 
   /** Hand the ticket to a person: the board's own move, then a `skipped` row and a moved cursor. */
@@ -480,100 +522,147 @@ export function createRelay(options: RelayOptions): Relay {
     try {
       board.assign(ticket.id, assignee, event.actor ?? "relay");
     } catch (error) {
-      // A ticket that already moved on is not a failure: the row records the attempt either way, and
-      // the assignment's own `assigned` event will be skipped on the next poll.
-      if (!(error instanceof Error)) throw error;
+      // A ticket that already moved on (closed before the relay got to it) is not a failure: the row
+      // records the attempt either way. Anything else is a real fault, and it propagates before the
+      // row is written, so the cursor stays behind the event and the hand-off is tried again.
+      if (!(error instanceof BoardError && error.kind === "invalid_status")) throw error;
     }
     recordWithoutDelivery(event, "skipped", null);
   };
 
-  const deliverEvent = async (event: TicketEvent): Promise<void> => {
+  /**
+   * Account for one event: a terminal row for anything that is not delivered, or a `pending` row and
+   * an admission for work that goes to a role. Returns the handle of a delivery that is now running.
+   */
+  const admitEvent = async (event: TicketEvent): Promise<DeliveryHandle | undefined> => {
     const ticket = board.get(event.ticketId);
     if (ticket === undefined) {
       recordWithoutDelivery(event, "skipped", null);
-      return;
+      return undefined;
     }
     const decision = decide(event, ticket);
     switch (decision.kind) {
       case "settle":
         recordWithoutDelivery(event, "settled", null);
-        return;
+        return undefined;
       case "skipped":
         recordWithoutDelivery(event, "skipped", null);
-        return;
+        return undefined;
       case "stalled":
         // A stalled route is its own board event (the surfaced gap) plus a terminal `failed` row, so
         // recovery never retries a route that cannot work and a reader of the board sees why.
         board.stall(ticket.id, "relay", decision.reason);
         recordWithoutDelivery(event, "failed", decision.reason);
-        return;
+        return undefined;
       case "handToPerson":
         handToPerson(event, ticket, decision.personId);
-        return;
-      default:
-        await submitDelivery(event, ticket, decision.roleKey, decision.note);
+        return undefined;
+      default: {
+        const key = relayTicketKey(decision.roleKey, ticket.id);
+        // The ledger row and the cursor move together, before anything is submitted. If the relay
+        // dies after this point, the row is still `pending` and `recover` admits the same requestId.
+        board.relay.begin({
+          eventId: event.id,
+          seq: event.seq,
+          ticketId: ticket.id,
+          kind: event.kind,
+          targetKey: key,
+          state: "pending",
+          at: new Date(now()).toISOString(),
+        });
+        return await admit(event, ticket, key, decision.note);
+      }
     }
   };
 
-  const settleOpenDelivery = async (row: OpenDelivery): Promise<void> => {
+  /**
+   * Pick one non-terminal row back up after a restart.
+   *
+   * A submission Pi Durable already holds is reacquired as it is: its guards passed before the crash
+   * and its turn is running (or done) whatever this relay decides, so the row follows it. That
+   * includes a `pending` row, when the crash fell between the submission and the note of it. A row
+   * with no submission was never delivered, so it is a fresh delivery and takes the same path as one,
+   * guards included: the budget may have run out, or the chain been stopped, while the office was down.
+   */
+  const readmit = async (row: DeliveryRecord): Promise<DeliveryHandle | undefined> => {
+    if (row.targetKey === "") {
+      board.relay.settle(row.eventId, "failed", "a pending delivery with no target");
+      return undefined;
+    }
     const ticket = board.get(row.ticketId);
     if (ticket === undefined) {
       board.relay.settle(row.eventId, "failed", "the ticket is gone");
-      return;
+      return undefined;
     }
-    const target: DeliveryTarget = {
-      requestId: row.eventId,
-      conversationKey: row.targetKey,
-      conversation: await conversationFor(row.targetKey),
+    const existing = await transport.reacquire(
+      await targetFor(row.eventId, row.ticketId, row.targetKey),
+    );
+    if (existing !== undefined) {
+      if (row.submissionId === null) board.relay.admitted(row.eventId, existing.id);
+      return existing;
+    }
+    const event: TicketEvent = {
+      id: row.eventId,
+      seq: row.seq,
+      ticketId: row.ticketId,
+      kind: row.kind,
+      actor: null,
+      payload: {},
+      at: row.at,
     };
-    // A recovered delivery is still a delivery: the mid-turn hooks charge the ticket this conversation
-    // is working, so the binding is written again here, idempotently.
-    const roleKey = roleKeyOfConversationKey(row.targetKey);
-    if (roleKey !== undefined) {
-      board.bindConversation(target.conversation.id, {
-        ticketId: row.ticketId,
-        agent: roleKey,
+    return await admit(event, ticket, row.targetKey, undefined);
+  };
+
+  /**
+   * Settle `admitted`, and keep admitting whatever reaches the board meanwhile, until nothing is left
+   * running. The first failure — a transport that threw, which is what a crash looks like from here —
+   * rejects the call and leaves its row non-terminal for `recover`.
+   */
+  const drain = async (
+    admitted: readonly { readonly eventId: string; readonly handle: DeliveryHandle }[],
+  ): Promise<void> => {
+    const settling = new Set<Promise<void>>();
+    const failures: unknown[] = [];
+    const settleLater = (eventId: string, handle: DeliveryHandle): void => {
+      const settlement = settleDelivery(eventId, handle)
+        .catch((error: unknown) => {
+          failures.push(error);
+        })
+        .finally(() => settling.delete(settlement));
+      settling.add(settlement);
+    };
+    for (const { eventId, handle } of admitted) settleLater(eventId, handle);
+
+    for (;;) {
+      if (failures.length > 0) throw failures[0];
+      for (const event of board.eventsAfter(board.relay.cursor())) {
+        const handle = await admitEvent(event);
+        if (handle !== undefined) settleLater(event.id, handle);
+      }
+      if (settling.size === 0) {
+        if (failures.length > 0) throw failures[0];
+        return;
+      }
+      let timer: NodeJS.Timeout | undefined;
+      const tick = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, ADMIT_POLL_MS);
       });
+      await Promise.race([...settling, tick]);
+      clearTimeout(timer);
     }
-    const handle = row.submissionId === null ? undefined : await transport.reacquire(target);
-    const admitted =
-      handle ??
-      (await transport.deliver(
-        target,
-        messageFor(
-          {
-            id: row.eventId,
-            seq: row.seq,
-            ticketId: row.ticketId,
-            kind: row.kind,
-            actor: null,
-            payload: {},
-            at: row.at,
-          },
-          ticket,
-          undefined,
-        ),
-      ));
-    if (row.submissionId === null) board.relay.admitted(row.eventId, admitted.id);
-    const outcome = await admitted.wait();
-    const { state, outcome: detail } = settled(outcome);
-    board.relay.settle(row.eventId, state, detail);
   };
 
   return {
     async pollOnce() {
-      for (const event of board.eventsAfter(board.relay.cursor())) {
-        await deliverEvent(event);
-      }
+      await drain([]);
     },
     async recover() {
+      const admitted: { eventId: string; handle: DeliveryHandle }[] = [];
       for (const row of board.relay.openDeliveries()) {
-        if (row.targetKey === "") {
-          board.relay.settle(row.eventId, "failed", "a pending delivery with no target");
-          continue;
-        }
-        await settleOpenDelivery(row);
+        const handle = await readmit(row);
+        if (handle !== undefined) admitted.push({ eventId: row.eventId, handle });
       }
+      await drain(admitted);
     },
     async dispatch(type, request) {
       // A fresh caller key per dispatch, so two dispatches of the same type are two tickets; a caller
@@ -622,6 +711,10 @@ export function createRelay(options: RelayOptions): Relay {
         taskId as TaskId<WaitTaskResult>,
         BACKGROUND_CONTEXT,
       );
+      // The record exists so a restart finds the same running task. Once the task has answered —
+      // with a result or a timeout — keeping it would hand that old answer to every later wait on
+      // the ticket. A newer wait's record is left alone.
+      if (board.relay.wait(ticketId)?.taskId === taskId) board.relay.clearWait(ticketId);
       return waitResult(settledTask);
     },
   };
@@ -640,14 +733,3 @@ function assigneeOfEvent(event: TicketEvent): Assignee | undefined {
   }
   return { kind: record.kind, id: record.id };
 }
-
-/** The fields of a non-terminal delivery row that `recover` re-submits. */
-type OpenDelivery = {
-  readonly eventId: string;
-  readonly seq: number;
-  readonly ticketId: string;
-  readonly kind: string;
-  readonly targetKey: string;
-  readonly submissionId: number | null;
-  readonly at: string;
-};

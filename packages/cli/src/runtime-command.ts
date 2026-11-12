@@ -3,29 +3,38 @@
  * stdin/stdout. The gateway supervises it; it can also be run directly for development, by typing
  * protocol frames (one JSON object per line) at it.
  *
+ * With `--board FILE` the office has a workboard: the people on the roles' company records are
+ * loaded onto it, and the agents hand work to each other through it. Without one, each agent works
+ * alone.
+ *
  * stdout carries protocol frames only. Everything for a person (what loaded, failures) goes to stderr
  * through `io.error`; `io.output` is never used here.
  */
 
+import { resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { ModelRef } from "@earendil-works/pi-durable";
 import {
   approvalTimeoutsMs,
   loadOfficeRoles,
   RemoteApprovals,
+  readOfficeCompany,
   readOfficeFile,
   serveRuntime,
 } from "@officehum/office";
+import { openOfficeBoard } from "@officehum/office/board";
 import type { CliDependencies, CliIo } from "./cli.js";
 import { modelsFor, parseModelRef } from "./run.js";
 import { UsageError } from "./usage-error.js";
 
 export const RUNTIME_USAGE =
-  "officehum runtime --db FILE --office FILE [--model provider/model] [--demo]";
+  "officehum runtime --db FILE --office FILE [--board FILE] [--model provider/model] [--demo]";
 
-export interface RuntimeArguments {
+interface RuntimeArguments {
   readonly database: string;
   readonly officeFile: string;
+  /** The office's workboard file. Omitted: the agents work alone. */
+  readonly board?: string;
   readonly model?: string;
   readonly demo: boolean;
 }
@@ -33,6 +42,7 @@ export interface RuntimeArguments {
 export function parseRuntimeArguments(args: readonly string[]): RuntimeArguments {
   let database: string | undefined;
   let officeFile: string | undefined;
+  let board: string | undefined;
   let model: string | undefined;
   let demo = false;
   for (let index = 0; index < args.length; index++) {
@@ -42,7 +52,7 @@ export function parseRuntimeArguments(args: readonly string[]): RuntimeArguments
       continue;
     }
     const value = args[index + 1];
-    if (flag !== "--db" && flag !== "--office" && flag !== "--model") {
+    if (flag !== "--db" && flag !== "--office" && flag !== "--board" && flag !== "--model") {
       throw new UsageError(`Unknown runtime option: ${flag}\nUsage: ${RUNTIME_USAGE}`);
     }
     if (value === undefined || value.startsWith("--")) {
@@ -51,12 +61,24 @@ export function parseRuntimeArguments(args: readonly string[]): RuntimeArguments
     index++;
     if (flag === "--db") database = value;
     else if (flag === "--office") officeFile = value;
+    else if (flag === "--board") board = value;
     else model = value;
   }
   if (database === undefined || officeFile === undefined) {
     throw new UsageError(`The runtime needs --db and --office.\nUsage: ${RUNTIME_USAGE}`);
   }
-  return { database, officeFile, demo, ...(model === undefined ? {} : { model }) };
+  if (board !== undefined && resolve(board) === resolve(database)) {
+    throw new UsageError(
+      `--board and --db must be different files: --db is the harness's store and --board is the workboard (got ${database} for both).`,
+    );
+  }
+  return {
+    database,
+    officeFile,
+    demo,
+    ...(board === undefined ? {} : { board }),
+    ...(model === undefined ? {} : { model }),
+  };
 }
 
 /** The streams the runtime speaks on; tests inject their own. */
@@ -97,6 +119,8 @@ export async function runRuntimeCommand(
     `Office ${file.id} on ${parsed.database}${parsed.demo ? ", on demonstration data" : ""}`,
   );
 
+  // The board is the host's to open and to close, after the runtime has let go of it.
+  const board = parsed.board === undefined ? undefined : openOfficeBoard(parsed.board);
   const stop = new AbortController();
   const unregister = register({ close: async () => stop.abort() });
   // An operator or process manager stops a runtime with SIGTERM (the gateway closes stdin instead):
@@ -104,10 +128,17 @@ export async function runRuntimeCommand(
   const terminate = () => stop.abort();
   process.once("SIGTERM", terminate);
   try {
+    const company = board === undefined ? undefined : readOfficeCompany(roles);
+    if (company !== undefined) {
+      io.error(`Board ${parsed.board}: ${company.people.length} people from the company record`);
+    }
     await serveRuntime({
       serverId: file.id,
       roles,
       storage: { sqlite: parsed.database },
+      ...(board === undefined || company === undefined
+        ? {}
+        : { board, people: company.people, personRoutes: company.personRoutes }),
       approvals,
       approvalTimeoutsMs: approvalTimeoutsMs(file, roles),
       models,
@@ -120,6 +151,7 @@ export async function runRuntimeCommand(
   } finally {
     process.removeListener("SIGTERM", terminate);
     unregister();
+    board?.close();
   }
   return 0;
 }

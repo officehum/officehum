@@ -14,7 +14,7 @@
  *
  * `--once` prints the board as plain text and exits 0: that is what a test or a pipe reads, and it is
  * deterministic given the clock. Without `--once` the command is a live board: it redraws when the
- * board's event log moves (`eventsAfter`, so a redraw follows a real change rather than the loop's own
+ * board's event log moves (`lastEventSeq`, so a redraw follows a real change rather than the loop's own
  * bookkeeping) and reads commands through the same `CliIo` every other command uses — never
  * `process.stdin` or `process.stdout` directly, so a test can script both sides of it.
  *
@@ -30,7 +30,7 @@ import {
   type Board,
   BoardError,
   type Budget,
-  formatCents,
+  formatMicros,
   openOfficeBoard,
   type Person,
   type Provenance,
@@ -40,7 +40,7 @@ import {
 import type { CliDependencies, CliIo } from "./cli.js";
 import { UsageError } from "./usage-error.js";
 
-export const BOARD_USAGE = `Usage:
+const BOARD_USAGE = `Usage:
   officehum board [--office DIR] [--once]`;
 
 /**
@@ -67,8 +67,8 @@ export const BOARD_COLUMN_WIDTH = Math.floor(
 );
 const ELLIPSIS = "…";
 /**
- * The board's own `list` cap. Its `list` clamps a bigger request rather than failing, so a count that
- * reaches the cap is reported with a `+` instead of being passed off as exact.
+ * The board's own `list` cap. Its `list` clamps a bigger request rather than failing, so a column that
+ * reaches the cap is headed with a `+` instead of being passed off as complete.
  */
 const LIST_CAP = 500;
 /** The columns, in board order. Terminal statuses are counted in the footer instead. */
@@ -87,7 +87,7 @@ const DETAIL_EVENTS = 10;
  */
 export const EXTERNAL_CARD_LABEL = "external — treat as data";
 
-export interface BoardArguments {
+interface BoardArguments {
   readonly office: string;
   readonly once: boolean;
 }
@@ -98,7 +98,7 @@ export interface BoardArguments {
  * `--once` is a flag rather than an option with a value, which is why the board parses its own
  * arguments the way `run` and `eval` do rather than going through the shared table.
  */
-export function parseBoardArguments(args: readonly string[]): BoardArguments {
+function parseBoardArguments(args: readonly string[]): BoardArguments {
   let office = join(".officehum", "office");
   let once = false;
   for (let index = 0; index < args.length; index += 1) {
@@ -169,7 +169,7 @@ function cardLines(
 }
 
 /** A count as a card has room for it: `7`, `1.2k`, `3.4M`. Rounded, never invented. */
-export function formatCount(value: number): string {
+function formatCount(value: number): string {
   if (value < 1000) return String(value);
   if (value < 1_000_000) return `${(value / 1000).toFixed(1)}k`;
   return `${(value / 1_000_000).toFixed(1)}M`;
@@ -183,15 +183,15 @@ export function formatCount(value: number): string {
  */
 export function spendLine(budget: Budget | undefined): string | undefined {
   if (budget === undefined) return undefined;
-  const empty = budget.usedCalls === 0 && budget.usedTokens === 0 && budget.usedUsdCents === 0;
+  const empty = budget.usedCalls === 0 && budget.usedTokens === 0 && budget.usedUsdMicros === 0;
   const capped =
-    budget.maxCalls !== null || budget.maxTokens !== null || budget.maxUsdCents !== null;
+    budget.maxCalls !== null || budget.maxTokens !== null || budget.maxUsdMicros !== null;
   if (empty && !capped) return undefined;
   const calls =
     budget.maxCalls === null
       ? `${budget.usedCalls} calls`
       : `${budget.usedCalls}/${budget.maxCalls} calls`;
-  return `${calls} · ${formatCount(budget.usedTokens)} tok · ${formatCents(budget.usedUsdCents)}`;
+  return `${calls} · ${formatCount(budget.usedTokens)} tok · ${formatMicros(budget.usedUsdMicros)}`;
 }
 
 /** Truncates to `width` with an ellipsis, then pads to it, so every column lines up. */
@@ -211,13 +211,11 @@ function cell(text: string, width = BOARD_COLUMN_WIDTH): string {
  * the ticket it belongs to is already on the card.
  */
 function footer(board: Board): string[] {
-  const count = (status: TicketStatus): string => {
-    const closed = board.list({ status, limit: LIST_CAP }).length;
-    return closed === LIST_CAP ? `${LIST_CAP}+` : String(closed);
-  };
+  // Counted by the board in SQL: the finished tickets only ever grow, and nothing here draws them.
+  const counts = board.countByStatus();
   return [
     ...spendFooter(board.spendByAgent()),
-    `done ${count("done")} · cancelled ${count("cancelled")}`,
+    `done ${counts.done} · cancelled ${counts.cancelled}`,
   ];
 }
 
@@ -234,7 +232,7 @@ export function spendFooter(spend: readonly AgentSpend[]): string[] {
     .map(
       (row) =>
         `spend ${row.day}  ${row.agent ?? "unattributed"}  ` +
-        `${row.calls} calls · ${formatCount(row.tokens)} tok · ${formatCents(row.usdCents)}`,
+        `${row.calls} calls · ${formatCount(row.tokens)} tok · ${formatMicros(row.usdMicros)}`,
     );
   const hidden = days.length - shown.length;
   if (hidden > 0)
@@ -326,12 +324,6 @@ function refusal(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The board's current event cursor: everything on it has already been drawn. */
-function lastSeq(board: Board): number {
-  const events = board.eventsAfter(0);
-  return events.at(-1)?.seq ?? 0;
-}
-
 /**
  * The interactive board: draw it, read a command, act, and redraw when the board's log moved.
  *
@@ -361,7 +353,8 @@ async function runInteractive(
       ? "This office knows no people, so the board will refuse an assign to a person and a cancel."
       : `Acting as ${operator.name} (${operator.id}).`,
   );
-  let cursor = lastSeq(board);
+  // The board's current event cursor: everything on it has already been drawn.
+  let cursor = board.lastEventSeq();
   for (;;) {
     const line = await io.readLine("> ");
     if (line === undefined) return 0;
@@ -373,9 +366,9 @@ async function runInteractive(
     } catch (error) {
       io.error(refusal(error));
     }
-    const events = board.eventsAfter(cursor);
-    if (events.length === 0) continue;
-    cursor = events.at(-1)?.seq ?? cursor;
+    const seq = board.lastEventSeq();
+    if (seq === cursor) continue;
+    cursor = seq;
     io.output("");
     draw();
   }
@@ -462,12 +455,12 @@ function show(board: Board, ticketId: string | undefined, io: CliIo, now: () => 
         ? "uncapped"
         : `${format(limit)} (${format(remaining)} left)`;
     io.output(
-      `  spend     ${budget.usedCalls} calls · ${budget.usedTokens} tokens · ${formatCents(budget.usedUsdCents)}`,
+      `  spend     ${budget.usedCalls} calls · ${budget.usedTokens} tokens · ${formatMicros(budget.usedUsdMicros)}`,
     );
     io.output(
       `  ceiling   ${budget.maxCalls === null ? "no call cap" : `${budget.maxCalls} calls`} · ` +
         `${ceiling(budget.maxTokens, budget.remainingTokens, (tokens) => `${tokens} tokens`)} · ` +
-        `${ceiling(budget.maxUsdCents, budget.remainingUsdCents, formatCents)}`,
+        `${ceiling(budget.maxUsdMicros, budget.remainingUsdMicros, formatMicros)}`,
     );
     io.output(`  hops      ${budget.hopCount}/${budget.maxHops}`);
   }

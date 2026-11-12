@@ -24,6 +24,7 @@ import {
   formatAge,
   renderBoard,
   spendFooter,
+  spendLine,
 } from "./board.js";
 import { type CliDependencies, type CliIo, runCli } from "./cli.js";
 
@@ -403,7 +404,7 @@ describe("officehum board", () => {
     board.chargeUsage(ticket.id, "call-1", {
       calls: 1,
       tokens: 600,
-      usdCents: 1,
+      usdMicros: 10_000,
       agent: "agent:bookkeeper",
     });
     board.chargeUsage(ticket.id, "call-2", { calls: 1, tokens: 600, agent: "agent:bookkeeper" });
@@ -432,13 +433,34 @@ describe("officehum board", () => {
     expect(text).toContain("  hops      0/4");
   });
 
+  it("shows a ticket whose only spend is under a cent, and counts closed tickets past the list cap", () => {
+    const file = join(officeDirectory(), "office.sqlite");
+    seedPerson(file, "owner", "Pat Owner");
+    const board = createWorkboard(file);
+    const cheap = create(board, { title: "Cheap turn" });
+    // Dollars with no calls and no tokens behind them: the micro-dollar figure alone must keep the
+    // line, and a dollar ceiling alone must too.
+    board.chargeUsage(cheap.id, "turn-1", { usdMicros: 450 });
+    expect(spendLine(board.budget(cheap.id))).toBe("0 calls · 0 tok · $0.00");
+    const capped = create(board, { title: "Capped", budget: { maxUsdCents: 5 } });
+    expect(spendLine(board.budget(capped.id))).toBe("0 calls · 0 tok · $0.00");
+    expect(spendLine(board.budget(create(board, { title: "Untouched" }).id))).toBeUndefined();
+
+    // The footer's counts come from the board's own count, which `list`'s cap does not clamp.
+    for (let index = 0; index < 501; index += 1) {
+      board.cancel(create(board, { title: `Closed ${index}` }).id, "owner");
+    }
+    expect(renderBoard(board, NOW).at(-1)).toBe("done 0 · cancelled 501");
+    board.close();
+  });
+
   it("prints the newest days of spend and counts the days it leaves out", () => {
     const rows = Array.from({ length: 9 }, (_, index) => ({
       day: `2026-10-${String(20 - index).padStart(2, "0")}`,
       agent: "agent:bookkeeper",
       calls: index + 1,
       tokens: 1000,
-      usdCents: 2,
+      usdMicros: 20_000,
     }));
     const lines = spendFooter(rows);
     // Seven days printed, newest first, then one line that says how many were not.
@@ -448,7 +470,7 @@ describe("officehum board", () => {
     expect(lines[7]).toBe("spend … 2 earlier days not shown");
     // Spend with no role behind it is named rather than dropped.
     expect(
-      spendFooter([{ day: "2026-10-20", agent: null, calls: 1, tokens: 5, usdCents: 0 }]),
+      spendFooter([{ day: "2026-10-20", agent: null, calls: 1, tokens: 5, usdMicros: 0 }]),
     ).toEqual(["spend 2026-10-20  unattributed  1 calls · 5 tok · $0.00"]);
   });
 

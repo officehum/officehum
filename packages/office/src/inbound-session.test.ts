@@ -1345,7 +1345,7 @@ describe("Inbound session", () => {
     expect(
       (await secondSolo.harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT))?.contacts ?? [],
     ).toEqual([]);
-    expect(await fake.listBookings()).toEqual([]);
+    expect(await fake.listBookings({ timeMin: "2030-01-01T00:00:00Z" })).toEqual([]);
     expect({ availabilityReads, calendarWrites, posts, approvals }).toEqual({
       availabilityReads: 1,
       calendarWrites: 0,

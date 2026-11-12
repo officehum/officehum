@@ -81,13 +81,10 @@ export function fakeQuickBooks(seed: QuickBooksSeed = {}): QuickBooks {
         throw invalid('A customer search query is required; pass "" to list every customer.');
       }
       const needle = query.trim().toLowerCase();
+      // In stored order, as the REST client returns QuickBooks' own: neither sorts customers.
       return [...customers.values()]
         .filter(
           (customer) => needle.length === 0 || customer.displayName.toLowerCase().includes(needle),
-        )
-        .sort(
-          (left, right) =>
-            left.displayName.localeCompare(right.displayName) || left.id.localeCompare(right.id),
         )
         .map((customer) => ({ ...customer }));
     },

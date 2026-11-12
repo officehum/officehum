@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReceivingEvent } from "./resend-inbound.js";
 import {
   durableInboundReplyApprover,
@@ -105,6 +105,33 @@ describe("Resend inbox", () => {
     expect(reopened.namespace).toBe(namespace);
     expect(reopened.summaries()).toHaveLength(1);
     await reopened.close();
+  });
+
+  it("prepares its statements when it opens, not on each call", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "officehum-inbox-"));
+    directories.push(directory);
+    const inbox = openResendInbox(join(directory, "inbound.sqlite"), {
+      authority,
+      getApiKey: async () => "synthetic",
+      getWebhookSecrets: async () => [SECRET],
+      now: () => NOW,
+    });
+    const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+    try {
+      const fixture = signed();
+      expect(record(inbox, fixture)).toBe(true);
+      expect(record(inbox, fixture)).toBe(false);
+      expect(inbox.receipt(fixture.event.data.email_id)?.state).toBe("received");
+      expect(inbox.eligible()).toHaveLength(1);
+      inbox.defer(fixture.event.data.email_id, "fetch_failed");
+      inbox.block(fixture.event.data.email_id, "auto_message");
+      expect(inbox.summaries()).toHaveLength(1);
+      expect(inbox.replyOperation("none")).toBeUndefined();
+      expect(prepare).not.toHaveBeenCalled();
+    } finally {
+      prepare.mockRestore();
+      await inbox.close();
+    }
   });
 
   it("rejects an unknown persisted reason without echoing its contents", async () => {

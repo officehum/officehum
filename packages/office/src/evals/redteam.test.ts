@@ -25,10 +25,10 @@
  * here and handed to the runner as an option (`office.disableGuards`), so no production path reads an
  * environment variable that weakens a gate.
  *
- * Not implemented here, and not faked: RT-H1 (hand-off laundering) and RT-L1 (a hand-off loop) need
- * `agent_dispatch` and the board's hop limit driven through a real relay. The office-mode runner has no
- * relay and hardcodes `Trace.delegated` empty, so a scenario for either would be a test of a stub. See
- * the skipped test at the end of this file.
+ * Not in this file: RT-H1 (hand-off laundering) and RT-L1 (a hand-off loop) need `agent_dispatch` and
+ * the board's hop limit driven through a real relay. The office-mode runner has no relay and hardcodes
+ * `Trace.delegated` empty, so a scenario row for either would be a test of a stub. They run over a
+ * real board, relay and office extension in `redteam-handoff.test.ts` instead.
  */
 
 import { fileURLToPath } from "node:url";
@@ -162,25 +162,5 @@ describe.runIf(MUTATION)("red-team mutation pass: every attack goes red without 
     // switching the gate off means. What must survive is the ledger: the call still runs and is still
     // recorded, so a red attack scenario below is a fact about the office and not a broken harness.
     expect(controlTrace?.executedCalls.some((call) => call.executed)).toBe(true);
-  });
-});
-
-describe("red-team: not yet possible", () => {
-  it.skip("RT-H1 / RT-L1 — hand-off laundering and hand-off loops need delegation through a real relay", () => {
-    // Both are real attack classes and neither can be built honestly on this harness.
-    //
-    // RT-H1 (hand-off laundering) needs a colleague's conversation to receive the attacker's words as
-    // an ordinary instruction, so the child ticket's provenance can be shown to be the office's own
-    // and the delivered content unfenced. That path is `agent_dispatch` through the office extension
-    // and the relay's transport; office mode installs neither, and `Trace.delegated` is hardcoded
-    // empty (`pi-durable-runner.ts`), so a scenario would assert against a stub.
-    //
-    // RT-L1 (a hand-off loop) needs the board's hop limit to be reached by a real chain — at least two
-    // tickets created by dispatch, the second refused with `max_hops`. Without the relay there is no
-    // chain to exhaust.
-    //
-    // Both are owed by the follow-up ticket that adds relay-backed delegation to the eval runner.
-    // Until then the report says so rather than shipping a colleague that pretends to be a hand-off.
-    expect(attacks.map((scenario) => scenario.id)).not.toContain("RT-H1");
   });
 });

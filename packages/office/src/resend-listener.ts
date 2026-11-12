@@ -270,7 +270,9 @@ async function deliver(context: RouteContext, route: Route): Promise<void> {
  * Resend's statuses, and the four the route can answer with.
  *
  * `ignored` is a 204 with no body: a delivery this office does not take as a message (Resend's own
- * `email.sent`, `email.delivered`) is acknowledged so it is not retried, and nothing is written.
+ * `email.sent`, `email.delivered`) is acknowledged so it is not retried, and nothing is written. A
+ * message the adapter rejected for good (an auto-reply, a DMARC failure) gets the same answer after
+ * its receipt is marked blocked: a 5xx there would have Resend retry a delivery that can never pass.
  */
 const EMAIL_REFUSAL: Readonly<Record<InboundRefusal, { status: number; body: string }>> = {
   ignored: { status: 204, body: "" },

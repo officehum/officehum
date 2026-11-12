@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import type { ModelRef } from "@earendil-works/pi-durable";
-import type { RoleRun } from "@officehum/office";
+import { COMPANY_FACTS, type RoleRun } from "@officehum/office";
 import { PAPER_MODEL_REF, paperProvider } from "@officehum/provider-paper";
 import {
   type Approver,
@@ -58,7 +58,7 @@ export function terminalApprover(io: CliIo, user: string = terminalUser()): Appr
   };
 }
 
-export interface RunArguments {
+interface RunArguments {
   readonly roleDir: string;
   readonly overlays: readonly string[];
   readonly database?: string;
@@ -141,9 +141,6 @@ export function deskBanner(
     ? "Desk: demonstration data (--demo)"
     : "Desk: none bound (a role that keeps records refuses until you pass --demo or a desk in --clients)";
 }
-
-/** Where a role package keeps the company record generated into it (`npm run sync-company`). */
-const COMPANY_FACTS = "skills/company-handbook/references/facts.json";
 
 /**
  * The verified sender for the operator at the terminal, from `--as`. The terminal is the operator's

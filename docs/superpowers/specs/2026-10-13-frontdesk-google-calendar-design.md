@@ -23,7 +23,7 @@ interface CalendarBooking extends Slot {
 }
 interface CalendarClient {
   freeSlots(date: string): Promise<Slot[]>;
-  listBookings(): Promise<CalendarBooking[]>;
+  listBookings(window: { timeMin: string; timeMax?: string }): Promise<CalendarBooking[]>;
   book(input: Slot & {customer: string; requestId: string}): Promise<CalendarBooking>;
   reschedule(id: string, slot: Slot, requestId: string): Promise<CalendarBooking>;
   cancel(id: string, requestId: string): Promise<void>;
@@ -42,7 +42,7 @@ Booking: deterministic event ID `oh` + SHA-256 hex(requestId), valid in Google's
 
 Google does not provide atomic freeBusy-and-reserve or guaranteed collision detection across concurrent creators. Each connector client serializes complete book/reschedule/cancel operations from their initial read through conflict checking and write, with a rejection-safe promise tail, so parallel tool calls in one owned Harness cannot race each other. Independent connector instances and Google writers can still overlap after the check. Document this limitation and do not present the provider as an atomic slot lock. Deterministic IDs address retries, not competing request IDs.
 
-`listBookings` paginates events.list with owner private-property filter, showDeleted=false, singleEvents=true; returns only valid connector-owned active timed bookings, sorted by start/id. Canceled tombstones need not contain start/customer and are ignored before parsing. See [list](https://developers.google.com/workspace/calendar/api/v3/reference/events/list).
+`listBookings(window)` paginates events.list with owner private-property filter, showDeleted=false, singleEvents=true, and since 2026-11-11 the caller's window (`timeMin`, and `timeMax` when it has one), so it never pages through past events: the host lists from now onwards and checks a completed operation against that booking's own slot; returns only valid connector-owned active timed bookings, sorted by start/id. Canceled tombstones need not contain start/customer and are ignored before parsing. See [list](https://developers.google.com/workspace/calendar/api/v3/reference/events/list).
 
 `reschedule` GETs a managed active event, validates slot/duration, then checks all target-window events via paginated events.list(timeMin=start,timeMax=end,singleEvents=true). Exclude only exact self ID, canceled/transparent/workingLocation events; reject any remaining half-open overlap. Interpret all-day date endpoints in the calendar's IANA timezone obtained from calendars.get, not the caller's timezone; recurring instances are already expanded. Malformed intervals/timezone fail closed. This refuses currently taken targets, while retaining the external concurrent-writer limitation.
 

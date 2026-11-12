@@ -10,7 +10,11 @@ import {
   normalizeReceivedEmail,
   parseReceivingEvent,
   type ReceivingEvent,
+  terminalRejection,
 } from "./resend-inbound.js";
+import { readBoundedJsonObject } from "./shared/bounded-http.js";
+import { transact } from "./shared/transact.js";
+import { controls, exact, messageText } from "./shared/validation.js";
 import { withSoloOwnership } from "./solo.js";
 
 export type InboundAuthority = {
@@ -181,51 +185,8 @@ const REASON_CODES = new Set([
   "submission_binding_unknown",
 ]);
 
-function exact(value: unknown, maximum: number): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= maximum &&
-    value.trim() === value &&
-    ![...value].some((character) => {
-      const code = character.codePointAt(0) ?? 0;
-      return code <= 31 || (code >= 127 && code <= 159);
-    })
-  );
-}
-
-function messageText(value: unknown, maximum: number): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= maximum &&
-    value.trim().length > 0 &&
-    !controls(value, true)
-  );
-}
-
-function controls(value: string, message = false): boolean {
-  return [...value].some((character) => {
-    const code = character.codePointAt(0) ?? 0;
-    if (message && (code === 9 || code === 10 || code === 13)) return false;
-    return code <= 31 || (code >= 127 && code <= 159);
-  });
-}
-
 function reasonCode(value: unknown): value is string {
   return typeof value === "string" && REASON_CODES.has(value);
-}
-
-function inTransaction<T>(database: DatabaseSync, action: () => T): T {
-  database.exec("BEGIN IMMEDIATE");
-  try {
-    const result = action();
-    database.exec("COMMIT");
-    return result;
-  } catch (error) {
-    if (database.isTransaction) database.exec("ROLLBACK");
-    throw error;
-  }
 }
 
 function tableNames(database: DatabaseSync): string[] {
@@ -490,75 +451,6 @@ function validateApprovalRow(row: Record<string, unknown>): void {
   }
 }
 
-function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>): void {
-  try {
-    void reader.cancel().catch(() => {});
-  } catch {}
-}
-
-async function boundedJson(
-  response: Response,
-  signal: AbortSignal,
-): Promise<Record<string, unknown>> {
-  if (response.redirected || !response.ok || response.body === null)
-    throw new Error("Receiving request failed.");
-  const responseHeaders = [...response.headers];
-  if (
-    responseHeaders.length > 200 ||
-    responseHeaders.reduce((total, [key, value]) => total + key.length + value.length, 0) >
-      64 * 1024 ||
-    responseHeaders.some(([key, value]) => key.length > 200 || value.length > 8192)
-  ) {
-    throw new Error("Receiving response was invalid.");
-  }
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  try {
-    while (true) {
-      signal.throwIfAborted();
-      let onAbort!: () => void;
-      const aborted = new Promise<never>((_resolve, reject) => {
-        onAbort = () => reject(signal.reason ?? new Error("aborted"));
-        signal.addEventListener("abort", onAbort, { once: true });
-      });
-      let next: Awaited<ReturnType<typeof reader.read>>;
-      try {
-        next = await Promise.race([reader.read(), aborted]);
-      } catch (error) {
-        if (signal.aborted) cancelReader(reader);
-        throw error;
-      } finally {
-        signal.removeEventListener("abort", onAbort);
-      }
-      if (next.done) break;
-      length += next.value.byteLength;
-      if (length > GET_LIMIT) {
-        cancelReader(reader);
-        throw new Error("Receiving response was invalid.");
-      }
-      chunks.push(next.value);
-    }
-  } finally {
-    try {
-      reader.releaseLock();
-    } catch {}
-  }
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
-  }
-  try {
-    const parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-    return parsed as Record<string, unknown>;
-  } catch {
-    throw new Error("Receiving response was invalid.");
-  }
-}
-
 function validDecision(value: ApprovalDecision): ApprovalDecision {
   if (
     value === null ||
@@ -591,7 +483,7 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
   try {
     database.exec("PRAGMA busy_timeout=5000; PRAGMA synchronous=FULL; PRAGMA journal_mode=WAL;");
     if (fresh && tableNames(database).length === 0) {
-      inTransaction(database, () => {
+      transact(database, () => {
         database.exec(`
           CREATE TABLE inbound_metadata(singleton INTEGER PRIMARY KEY CHECK(singleton=1),schema_version INTEGER NOT NULL,authority_json TEXT NOT NULL,ledger_namespace TEXT NOT NULL,work_cursor INTEGER NOT NULL);
           CREATE TABLE events(event_id TEXT PRIMARY KEY,raw_payload BLOB NOT NULL,raw_sha256 TEXT NOT NULL,canonical_event_json TEXT NOT NULL,email_id TEXT NOT NULL,verified_at INTEGER NOT NULL);
@@ -691,7 +583,64 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
     database.close();
     throw error;
   }
+  // Every statement is prepared once, when the inbox opens: the webhook route and the worker call
+  // these methods per message, and preparing inside them recompiled the same SQL each time.
   const findReceipt = database.prepare("SELECT * FROM receipts WHERE email_id=?");
+  const findEvent = database.prepare("SELECT * FROM events WHERE event_id=?");
+  const insertEvent = database.prepare("INSERT INTO events VALUES(?,?,?,?,?,?)");
+  const insertReceipt = database.prepare(
+    "INSERT INTO receipts(email_id,canonical_event_json,state,reason) VALUES(?,?,?,?)",
+  );
+  const listSummaries = database.prepare(
+    "SELECT email_id,state,reason,conversation_id,submission_id FROM receipts ORDER BY rowid",
+  );
+  const readWorkCursor = database.prepare(
+    "SELECT work_cursor FROM inbound_metadata WHERE singleton=1",
+  );
+  const eligibleAfter = database.prepare(
+    "SELECT rowid,* FROM receipts WHERE state IN ('received','prepared','admitted') AND rowid>? ORDER BY rowid LIMIT ?",
+  );
+  const eligibleUpTo = database.prepare(
+    "SELECT rowid,* FROM receipts WHERE state IN ('received','prepared','admitted') AND rowid<=? ORDER BY rowid LIMIT ?",
+  );
+  const saveWorkCursor = database.prepare(
+    "UPDATE inbound_metadata SET work_cursor=? WHERE singleton=1",
+  );
+  const markPrepared = database.prepare(
+    "UPDATE receipts SET fetched_json=?,normalized_json=?,state='prepared',reason=NULL WHERE email_id=? AND state='received'",
+  );
+  const bindRoute = database.prepare(
+    "UPDATE receipts SET route_snapshot_json=?,conversation_id=?,request_id=?,envelope=? WHERE email_id=? AND state='prepared'",
+  );
+  const markAdmitted = database.prepare(
+    "UPDATE receipts SET submission_id=?,state='admitted',reason=NULL WHERE email_id=? AND submission_id IS NULL AND state='prepared'",
+  );
+  const markSettled = database.prepare(
+    "UPDATE receipts SET settlement_json=?,state='settled',reason=NULL WHERE email_id=? AND state='admitted'",
+  );
+  const deferReceipt = database.prepare(
+    "UPDATE receipts SET reason=? WHERE email_id=? AND state='received'",
+  );
+  const blockReceipt = database.prepare(
+    "UPDATE receipts SET state='blocked',reason=? WHERE email_id=? AND state!='settled'",
+  );
+  const findReplyDecision = database.prepare(
+    "SELECT request_json,decision_json FROM reply_approvals WHERE approval_key=?",
+  );
+  const insertReplyDecision = database.prepare("INSERT INTO reply_approvals VALUES(?,?,?)");
+  const findReplyOperation = database.prepare("SELECT * FROM reply_operations WHERE request_id=?");
+  const bindReplyRequest = database.prepare(
+    "UPDATE receipts SET reply_request_id=? WHERE email_id=? AND reply_request_id IS NULL",
+  );
+  const insertReplyOperation = database.prepare(
+    "INSERT INTO reply_operations VALUES(?,?,?,?,?,?,?,?,?)",
+  );
+  const observeReply = database.prepare(
+    "UPDATE reply_operations SET last_observed_at=? WHERE request_id=? AND state='pending'",
+  );
+  const acceptReply = database.prepare(
+    "UPDATE reply_operations SET state='accepted',provider_receipt_id=? WHERE request_id=? AND state='pending'",
+  );
   let closed = false;
   const closeController = new AbortController();
   const active = new Set<AbortController>();
@@ -735,8 +684,8 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
       const event = parseReceivingEvent(raw);
       const rawHash = createHash("sha256").update(raw).digest("hex");
       const verifiedAt = now();
-      return inTransaction(database, () => {
-        const priorEvent = database.prepare("SELECT * FROM events WHERE event_id=?").get(eventId) as
+      return transact(database, () => {
+        const priorEvent = findEvent.get(eventId) as
           | {
               raw_payload: Uint8Array;
               raw_sha256: string;
@@ -759,33 +708,23 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
         if (receipt !== undefined && receipt.canonical_event_json !== canonicalEventJson) {
           throw new Error("Inbound email identity conflict.");
         }
-        database
-          .prepare("INSERT INTO events VALUES(?,?,?,?,?,?)")
-          .run(
-            eventId,
-            Buffer.from(raw),
-            rawHash,
-            canonicalEventJson,
-            event.data.email_id,
-            verifiedAt,
-          );
+        insertEvent.run(
+          eventId,
+          Buffer.from(raw),
+          rawHash,
+          canonicalEventJson,
+          event.data.email_id,
+          verifiedAt,
+        );
         if (receipt !== undefined) return false;
-        database
-          .prepare(
-            "INSERT INTO receipts(email_id,canonical_event_json,state,reason) VALUES(?,?,?,?)",
-          )
-          .run(event.data.email_id, canonicalEventJson, "received", null);
+        insertReceipt.run(event.data.email_id, canonicalEventJson, "received", null);
         return true;
       });
     },
     summaries() {
       if (closed) throw new Error("Inbound inbox is closed.");
       return (
-        database
-          .prepare(
-            "SELECT email_id,state,reason,conversation_id,submission_id FROM receipts ORDER BY rowid",
-          )
-          .all() as unknown as {
+        listSummaries.all() as unknown as {
           email_id: string;
           state: InboxSummary["state"];
           reason: string | null;
@@ -820,32 +759,25 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
     eligible(limit = 20) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20)
         throw new Error("Inbound batch limit is invalid.");
-      return inTransaction(database, () => {
-        const metadata = database
-          .prepare("SELECT work_cursor FROM inbound_metadata WHERE singleton=1")
-          .get() as { work_cursor: number };
-        const after = database
-          .prepare(
-            "SELECT rowid,* FROM receipts WHERE state IN ('received','prepared','admitted') AND rowid>? ORDER BY rowid LIMIT ?",
-          )
-          .all(metadata.work_cursor, limit) as unknown as (ReceiptRow & { rowid: number })[];
+      return transact(database, () => {
+        const metadata = readWorkCursor.get() as { work_cursor: number };
+        const after = eligibleAfter.all(metadata.work_cursor, limit) as unknown as (ReceiptRow & {
+          rowid: number;
+        })[];
         const rows = [...after];
         if (rows.length < limit) {
           rows.push(
-            ...(database
-              .prepare(
-                "SELECT rowid,* FROM receipts WHERE state IN ('received','prepared','admitted') AND rowid<=? ORDER BY rowid LIMIT ?",
-              )
-              .all(metadata.work_cursor, limit - rows.length) as unknown as (ReceiptRow & {
+            ...(eligibleUpTo.all(
+              metadata.work_cursor,
+              limit - rows.length,
+            ) as unknown as (ReceiptRow & {
               rowid: number;
             })[]),
           );
         }
         const last = rows.at(-1);
         if (last !== undefined) {
-          database
-            .prepare("UPDATE inbound_metadata SET work_cursor=? WHERE singleton=1")
-            .run(last.rowid);
+          saveWorkCursor.run(last.rowid);
         }
         return rows.map((row) =>
           structuredClone(storedReceipt(row, inboundAuthorityId(boundAuthority))),
@@ -890,7 +822,12 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
               signal: controller.signal,
             },
           );
-          const fetched = await boundedJson(response, controller.signal);
+          if (response.redirected || !response.ok || response.body === null)
+            throw new Error("Receiving request failed.");
+          const fetched = await readBoundedJsonObject(response, controller.signal, {
+            limit: GET_LIMIT,
+            invalid: "Receiving response was invalid.",
+          });
           const normalized = normalizeReceivedEmail(
             event,
             fetched,
@@ -899,20 +836,7 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
           );
           return { fetched: immutableFetched(fetched), normalized };
         } catch (error) {
-          if (
-            error instanceof Error &&
-            [
-              "authentication_failed",
-              "reply_to_mismatch",
-              "auto_message",
-              "invalid_thread_headers",
-              "subject_too_long",
-              "empty_body",
-              "body_too_large",
-              "binding_mismatch",
-            ].includes(error.message)
-          )
-            throw error;
+          if (terminalRejection(error) !== undefined) throw error;
           throw new Error("Receiving request failed.");
         } finally {
           clearTimeout(timer);
@@ -928,7 +852,7 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
       }
     },
     savePrepared(emailId, fetched, normalized) {
-      inTransaction(database, () => {
+      transact(database, () => {
         const row = findReceipt.get(emailId) as ReceiptRow | undefined;
         if (row === undefined) throw new Error("Inbound receipt was not found.");
         if (row.fetched_json !== null || row.normalized_json !== null) {
@@ -939,16 +863,12 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
             throw new Error("Inbound prepared snapshot conflict.");
           return;
         }
-        const result = database
-          .prepare(
-            "UPDATE receipts SET fetched_json=?,normalized_json=?,state='prepared',reason=NULL WHERE email_id=? AND state='received'",
-          )
-          .run(canonicalJson(fetched), canonicalJson(normalized), emailId);
+        const result = markPrepared.run(canonicalJson(fetched), canonicalJson(normalized), emailId);
         if (result.changes !== 1) throw new Error("Inbound prepared state conflict.");
       });
     },
     saveRoute(emailId, route, conversationId, requestId, envelope) {
-      inTransaction(database, () => {
+      transact(database, () => {
         const row = findReceipt.get(emailId) as ReceiptRow | undefined;
         if (row === undefined) throw new Error("Inbound receipt was not found.");
         const prepared = storedReceipt(row, inboundAuthorityId(boundAuthority));
@@ -982,20 +902,12 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
             throw new Error("Inbound route binding conflict.");
           return;
         }
-        const result = database
-          .prepare(
-            "UPDATE receipts SET route_snapshot_json=?,conversation_id=?,request_id=?,envelope=? WHERE email_id=? AND state='prepared'",
-          )
-          .run(routeJson, conversationId, requestId, envelope, emailId);
+        const result = bindRoute.run(routeJson, conversationId, requestId, envelope, emailId);
         if (result.changes !== 1) throw new Error("Inbound route state conflict.");
       });
     },
     saveAdmission(emailId, submissionId) {
-      const result = database
-        .prepare(
-          "UPDATE receipts SET submission_id=?,state='admitted',reason=NULL WHERE email_id=? AND submission_id IS NULL AND state='prepared'",
-        )
-        .run(submissionId, emailId);
+      const result = markAdmitted.run(submissionId, emailId);
       if (result.changes === 0) {
         const row = findReceipt.get(emailId) as ReceiptRow | undefined;
         if (row?.submission_id !== submissionId)
@@ -1004,11 +916,7 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
     },
     saveSettlement(emailId, settlement) {
       const json = canonicalJson(settlement);
-      const result = database
-        .prepare(
-          "UPDATE receipts SET settlement_json=?,state='settled',reason=NULL WHERE email_id=? AND state='admitted'",
-        )
-        .run(json, emailId);
+      const result = markSettled.run(json, emailId);
       if (result.changes === 0) {
         const row = findReceipt.get(emailId) as ReceiptRow | undefined;
         if (row?.settlement_json !== json) throw new Error("Inbound settlement binding conflict.");
@@ -1016,48 +924,38 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
     },
     defer(emailId, reason) {
       if (!reasonCode(reason)) throw new Error("Inbound deferral reason is invalid.");
-      database
-        .prepare("UPDATE receipts SET reason=? WHERE email_id=? AND state='received'")
-        .run(reason, emailId);
+      deferReceipt.run(reason, emailId);
     },
     block(emailId, reason) {
       if (!reasonCode(reason)) throw new Error("Inbound block reason is invalid.");
-      database
-        .prepare(
-          "UPDATE receipts SET state='blocked',reason=? WHERE email_id=? AND state!='settled'",
-        )
-        .run(reason, emailId);
+      blockReceipt.run(reason, emailId);
     },
     readReplyDecision(key, request) {
-      const row = database
-        .prepare("SELECT request_json,decision_json FROM reply_approvals WHERE approval_key=?")
-        .get(key) as { request_json: string; decision_json: string } | undefined;
+      const row = findReplyDecision.get(key) as
+        | { request_json: string; decision_json: string }
+        | undefined;
       if (row === undefined) return undefined;
       if (row.request_json !== canonicalJson(request))
         throw new Error("Approval identity was already bound to a different reply.");
       return validDecision(JSON.parse(row.decision_json) as ApprovalDecision);
     },
     recordReplyDecision(key, request, decision) {
-      return inTransaction(database, () => {
+      return transact(database, () => {
         const requestJson = canonicalJson(request);
         const saved = api.readReplyDecision(key, request);
         if (saved !== undefined) return saved;
         const valid = validDecision(decision);
-        database
-          .prepare("INSERT INTO reply_approvals VALUES(?,?,?)")
-          .run(key, requestJson, canonicalJson(valid));
+        insertReplyDecision.run(key, requestJson, canonicalJson(valid));
         return valid;
       });
     },
     replyOperation(requestId) {
-      const row = database
-        .prepare("SELECT * FROM reply_operations WHERE request_id=?")
-        .get(requestId) as Record<string, unknown> | undefined;
+      const row = findReplyOperation.get(requestId) as Record<string, unknown> | undefined;
       if (row === undefined) return undefined;
       return replyOperationRow(row);
     },
     reserveReplyOperation(row) {
-      return inTransaction(database, () => {
+      return transact(database, () => {
         replyOperationRow({
           request_id: row.requestId,
           receipt_id: row.receiptId,
@@ -1078,35 +976,25 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
         }
         if (receipt.reply_request_id !== null && receipt.reply_request_id !== row.requestId)
           throw new Error("This inbound receipt already has a reply operation.");
-        database
-          .prepare(
-            "UPDATE receipts SET reply_request_id=? WHERE email_id=? AND reply_request_id IS NULL",
-          )
-          .run(row.requestId, row.receiptId);
-        database
-          .prepare("INSERT INTO reply_operations VALUES(?,?,?,?,?,?,?,?,?)")
-          .run(
-            row.requestId,
-            row.receiptId,
-            row.intentJson,
-            row.payloadJson,
-            row.providerKey,
-            row.firstAttemptAt,
-            row.lastObservedAt,
-            row.state,
-            row.providerReceiptId,
-          );
+        bindReplyRequest.run(row.requestId, row.receiptId);
+        insertReplyOperation.run(
+          row.requestId,
+          row.receiptId,
+          row.intentJson,
+          row.payloadJson,
+          row.providerKey,
+          row.firstAttemptAt,
+          row.lastObservedAt,
+          row.state,
+          row.providerReceiptId,
+        );
         return row;
       });
     },
     observeReplyOperation(requestId, observedAt) {
       if (!Number.isSafeInteger(observedAt) || observedAt < 0)
         throw new Error("Reply observation time is invalid.");
-      const result = database
-        .prepare(
-          "UPDATE reply_operations SET last_observed_at=? WHERE request_id=? AND state='pending'",
-        )
-        .run(observedAt, requestId);
+      const result = observeReply.run(observedAt, requestId);
       if (result.changes === 0) {
         const row = api.replyOperation(requestId);
         if (row === undefined) throw new Error("Reply operation was not found.");
@@ -1114,7 +1002,7 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
     },
     acceptReplyOperation(requestId, providerReceiptId) {
       if (!exact(providerReceiptId, 200)) throw new Error("Reply delivery ID is invalid.");
-      inTransaction(database, () => {
+      transact(database, () => {
         const row = api.replyOperation(requestId);
         if (row === undefined) throw new Error("Reply operation was not found.");
         if (row.state === "accepted") {
@@ -1122,11 +1010,7 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
             throw new Error("Reply operation contains a conflicting accepted receipt.");
           return;
         }
-        database
-          .prepare(
-            "UPDATE reply_operations SET state='accepted',provider_receipt_id=? WHERE request_id=? AND state='pending'",
-          )
-          .run(providerReceiptId, requestId);
+        acceptReply.run(providerReceiptId, requestId);
       });
     },
     async close() {

@@ -352,8 +352,10 @@ A sender comes from one of three places today, and nowhere else:
   matches an internal sender) and refuses anyone it does not name. The role gets
   `{ origin: "internal", channel: "terminal", contact: <person id> }` for every call. With no `--as`
   the CLI passes no resolver and the sender is unknown.
-- **A board-backed host**, which passes `boardSenderResolver(board)`. Today the only such host is the
-  eval runner's office mode; no production host opens a board for a role yet.
+- **A board-backed host**, which passes `boardSenderResolver(board)`. Today the only host that does
+  is the eval runner's office mode. `officehum runtime --board` opens a board for its roles but does
+  not pass the resolver: the tickets its agents open do not name the person who asked, so there is
+  no sender to resolve yet, and a role there sees the sender as unknown.
 
 `boardSenderResolver(board)` reads the provenance row of the ticket the
 conversation is bound to, which the channel gateway resolved before the ticket existed. A child

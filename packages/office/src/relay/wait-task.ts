@@ -6,6 +6,10 @@
  * once, because Pi Durable refuses a second terminal commit. Delivery, a wake, and a recovery pass
  * racing on the same completion therefore leave one winner, which is what "settles once" means here.
  *
+ * The terminal outcome is the only thing the task ever commits. While the ticket is open there is
+ * nothing new to make durable, so the phase stays in its invocation and sleeps between looks at the
+ * board; a restart re-enters the phase from the same checkpoint and looks again.
+ *
  * The task reads the board directly, and the board is the authority on whether the ticket is done:
  * `board.complete` writes `done` before the relay ever sees the `completed` event, so settlement does
  * not depend on the cursor catching up. That is why a crash after completion still resolves a waiter
@@ -25,7 +29,9 @@ import type { Context } from "@earendil-works/chord";
 import {
   type ConversationId,
   defineTask,
+  type RunningTask,
   type Task,
+  type TaskOutcome,
   type TaskRuntime,
 } from "@earendil-works/pi-durable";
 import type { Board } from "../board/index.js";
@@ -47,7 +53,10 @@ export type WaitTaskInput = {
 
 export type WaitTaskState = {
   readonly phase: "awaiting";
-  /** Incremented every pass, so each non-terminal commit is a changed checkpoint. */
+  /**
+   * Always 0 for a new wait. Earlier versions committed a checkpoint per poll and counted them here;
+   * the field stays so those checkpoints still load under this version.
+   */
   readonly polls: number;
 };
 
@@ -110,74 +119,18 @@ export function createWaitTask(
     phases: {
       awaiting: async (task, runtime, context) => {
         const { ticketId, deadlineMs } = task.input;
-        const ticket = deps.board.get(ticketId);
-        if (ticket === undefined) {
-          // The wait has nothing to settle on. Failing closed beats parking forever on a ticket that
-          // no longer exists.
-          await runtime.commit(
-            () => ({
-              status: "terminal",
-              outcome: {
-                status: "failed",
-                error: { message: `No ticket ${ticketId} on this board.` },
-              },
-            }),
-            context,
-          );
-          return;
+        // One invocation polls until there is an outcome to commit. A poll, not a wake: settlement
+        // is a board fact, so polling cannot miss it. Returning between polls would need a changed
+        // checkpoint each time (Pi Durable faults a phase that returns without one), which is a
+        // storage write every interval for as long as a ticket waits.
+        for (;;) {
+          const outcome = await outcomeOf(deps.board, ticketId, deadlineMs, task, runtime, context);
+          if (outcome !== undefined) {
+            await runtime.commit(() => ({ status: "terminal", outcome }), context);
+            return;
+          }
+          await runtime.sleep(runtime.now() + POLL_MS, context);
         }
-        if (ticket.status === "cancelled") {
-          await runtime.commit(
-            () => ({
-              status: "terminal",
-              outcome: {
-                status: "aborted",
-                reason: "cancelled",
-                result: { ok: false, reason: "cancelled" },
-              },
-            }),
-            context,
-          );
-          return;
-        }
-        if (ticket.status === "done" && settledDeliveries(deps.board, ticketId)) {
-          // A recorded result is what the delegate said it was replying with; its transcript is
-          // whatever it happened to write last. Prefer the answer the board holds, and fall back to
-          // the transcript only for tickets closed without one (a human closing it, say).
-          const answer = ticket.result ?? (await answerText(runtime, task.conversationId, context));
-          await runtime.commit(
-            () => ({
-              status: "terminal",
-              outcome: { status: "completed", result: completed(ticketId, answer) },
-            }),
-            context,
-          );
-          return;
-        }
-        if (deadlineMs !== null && runtime.now() >= deadlineMs) {
-          await runtime.commit(
-            () => ({
-              status: "terminal",
-              outcome: {
-                status: "failed",
-                error: { message: `Wait on ticket ${ticketId} timed out.` },
-                result: { ok: false, reason: "timeout" },
-              },
-            }),
-            context,
-          );
-          return;
-        }
-        // No terminal outcome yet: commit a changed checkpoint (the phase must make durable progress)
-        // and park. A poll, not a wake: settlement is a board fact, so polling cannot miss it.
-        await runtime.commit(
-          () => ({
-            status: "running",
-            checkpoint: { phase: "awaiting", polls: task.state.checkpoint.polls + 1 },
-          }),
-          context,
-        );
-        await runtime.sleep(runtime.now() + POLL_MS, context);
       },
     },
     abort: async (_task, runtime, context) => {
@@ -194,6 +147,41 @@ export function createWaitTask(
       );
     },
   });
+}
+
+/** The wait's terminal outcome as the board stands now, or `undefined` while there is none yet. */
+async function outcomeOf(
+  board: Board,
+  ticketId: string,
+  deadlineMs: number | null,
+  task: RunningTask<WaitTaskInput, WaitTaskState, WaitTaskResult>,
+  runtime: TaskRuntime<WaitTaskInput, WaitTaskState, WaitTaskResult, object>,
+  context: Context,
+): Promise<TaskOutcome<WaitTaskResult> | undefined> {
+  const ticket = board.get(ticketId);
+  if (ticket === undefined) {
+    // The wait has nothing to settle on. Failing closed beats parking forever on a ticket that no
+    // longer exists.
+    return { status: "failed", error: { message: `No ticket ${ticketId} on this board.` } };
+  }
+  if (ticket.status === "cancelled") {
+    return { status: "aborted", reason: "cancelled", result: { ok: false, reason: "cancelled" } };
+  }
+  if (ticket.status === "done" && settledDeliveries(board, ticketId)) {
+    // A recorded result is what the delegate said it was replying with; its transcript is whatever
+    // it happened to write last. Prefer the answer the board holds, and fall back to the transcript
+    // only for tickets closed without one (a human closing it, say).
+    const answer = ticket.result ?? (await answerText(runtime, task.conversationId, context));
+    return { status: "completed", result: completed(ticketId, answer) };
+  }
+  if (deadlineMs !== null && runtime.now() >= deadlineMs) {
+    return {
+      status: "failed",
+      error: { message: `Wait on ticket ${ticketId} timed out.` },
+      result: { ok: false, reason: "timeout" },
+    };
+  }
+  return undefined;
 }
 
 /** Whether every delivery for the ticket has reached a terminal state (or there are none). */

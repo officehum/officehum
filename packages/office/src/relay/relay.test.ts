@@ -14,7 +14,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ModelRef } from "@earendil-works/pi-durable";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { ModelRef, TaskId } from "@earendil-works/pi-durable";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Office, openOffice } from "../adapter/index.js";
 import type { Board } from "../board/index.js";
@@ -57,6 +58,8 @@ type RoleSpec = {
 type KillPoints = {
   /** Throw before the wrapped message is ever submitted. */
   beforeDelivery: boolean;
+  /** Throw after Pi Durable admitted the submission, before the relay recorded the admission. */
+  afterDelivery: boolean;
   /** Throw after admission, before the relay sees the settlement. */
   beforeSettlement: boolean;
   /** Throw after the settlement was observed. */
@@ -100,6 +103,7 @@ async function openFixture(options: {
   const inner = harnessTransport(office);
   const kill: KillPoints = {
     beforeDelivery: false,
+    afterDelivery: false,
     beforeSettlement: false,
     afterSettlement: false,
   };
@@ -108,6 +112,7 @@ async function openFixture(options: {
     async deliver(target: DeliveryTarget, message) {
       if (kill.beforeDelivery) throw new Error("simulated crash before delivery");
       const handle = await inner.deliver(target, message);
+      if (kill.afterDelivery) throw new Error("simulated crash after the admission");
       return {
         id: handle.id,
         async wait() {
@@ -150,6 +155,14 @@ async function openFixture(options: {
     },
   };
   return fixture;
+}
+
+/**
+ * The ticket's deliveries into a conversation. A poll also accounts for the events a turn's own work
+ * wrote (a claim, a completion, a stall) with rows that go nowhere; those are bookkeeping.
+ */
+function submitted(board: Board, ticketId: string) {
+  return board.relay.deliveriesForTicket(ticketId).filter((row) => row.targetKey !== "");
 }
 
 /** The user-role text one recorded request carried, in order. */
@@ -425,7 +438,150 @@ describe("relay delivery", () => {
       const second = await fixture.relay.wait(ticket.id, { timeoutMs: 5_000 });
       expect(second).toEqual(first);
       expect(fixture.scripted.calls).toBe(calls);
-      expect(fixture.board.relay.wait(ticket.id)).toBeDefined();
+      // A consumed wait leaves no record behind: the second call asked the board again.
+      expect(fixture.board.relay.wait(ticket.id)).toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  });
+});
+
+describe("relay waits", () => {
+  it("a timed-out wait is cleared, so a later wait reads the ticket and not the old timeout", async () => {
+    const fixture = await openFixture({
+      directory: DIRECTORY(),
+      script: [{ text: ANSWER }],
+      roles: (model) => [{ roleKey: ROLE, accepts: [TYPE], model }],
+    });
+    try {
+      const ticket = await fixture.relay.dispatch(TYPE, dispatch("Invoice 42"));
+      const first = await fixture.relay.wait(ticket.id, { timeoutMs: 50 });
+      expect(first).toEqual({ ok: false, reason: "timeout" });
+      expect(fixture.board.relay.wait(ticket.id)).toBeUndefined();
+
+      await fixture.relay.pollOnce();
+      complete(fixture, ticket.id);
+      const second = await fixture.relay.wait(ticket.id, { timeoutMs: 5_000 });
+      expect(second).toEqual({
+        ok: true,
+        ticketId: ticket.id,
+        status: "completed",
+        answer: ANSWER,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("a wait that timed out before a restart does not answer the wait made after it", async () => {
+    const directory = DIRECTORY();
+    const fixture = await openFixture({
+      directory,
+      script: [{ text: ANSWER }],
+      roles: (model) => [{ roleKey: ROLE, accepts: [TYPE], model }],
+    });
+    const ticket = await fixture.relay.dispatch(TYPE, dispatch("Invoice 42"));
+    expect(await fixture.relay.wait(ticket.id, { timeoutMs: 50 })).toEqual({
+      ok: false,
+      reason: "timeout",
+    });
+    await fixture.close();
+
+    const reopened = await fixture.reopen();
+    try {
+      await reopened.relay.recover();
+      await reopened.relay.pollOnce();
+      complete(reopened, ticket.id);
+      expect(await reopened.relay.wait(ticket.id, { timeoutMs: 5_000 })).toEqual({
+        ok: true,
+        ticketId: ticket.id,
+        status: "completed",
+        answer: ANSWER,
+      });
+    } finally {
+      await reopened.close();
+    }
+  });
+
+  it("a waiting ticket commits no checkpoint while nothing changes", async () => {
+    const fixture = await openFixture({
+      directory: DIRECTORY(),
+      script: [{ text: ANSWER }],
+      roles: (model) => [{ roleKey: ROLE, accepts: [TYPE], model }],
+    });
+    try {
+      const ticket = await fixture.relay.dispatch(TYPE, dispatch("Invoice 42"));
+      const waiting = fixture.relay.wait(ticket.id);
+      // Several poll intervals pass with the ticket untouched.
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      const record = fixture.board.relay.wait(ticket.id);
+      expect(record).toBeDefined();
+      const task = await fixture.office.harness.getTask(
+        record?.taskId as TaskId<unknown>,
+        BACKGROUND_CONTEXT,
+      );
+      expect(task?.state.status).toBe("running");
+      expect(task?.state.checkpoint).toEqual({ phase: "awaiting", polls: 0 });
+
+      // And it still notices the change it was waiting for.
+      await fixture.relay.pollOnce();
+      complete(fixture, ticket.id);
+      expect(await waiting).toEqual({
+        ok: true,
+        ticketId: ticket.id,
+        status: "completed",
+        answer: ANSWER,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+});
+
+describe("handing a ticket to a person", () => {
+  it("skips a ticket that already moved on", async () => {
+    const directory = DIRECTORY();
+    seedPerson(join(directory, "office.sqlite"), "pat", "Pat");
+    const fixture = await openFixture({
+      directory,
+      script: [{ text: "unused" }],
+      roles: (model) => [{ roleKey: ROLE, accepts: [TYPE], model }],
+    });
+    try {
+      const ticket = await fixture.relay.dispatch(UNKNOWN_TYPE, dispatch("Unknown thing"));
+      fixture.board.cancel(ticket.id, "pat");
+      await fixture.relay.pollOnce();
+
+      expect(fixture.board.get(ticket.id)?.status).toBe("cancelled");
+      const [row] = fixture.board.relay.deliveriesForTicket(ticket.id);
+      expect(row?.state).toBe("skipped");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rethrows any other board failure and leaves the event to be retried", async () => {
+    const directory = DIRECTORY();
+    seedPerson(join(directory, "office.sqlite"), "pat", "Pat");
+    const fixture = await openFixture({
+      directory,
+      script: [{ text: "unused" }],
+      roles: (model) => [{ roleKey: ROLE, accepts: [TYPE], model }],
+    });
+    try {
+      const ticket = await fixture.relay.dispatch(UNKNOWN_TYPE, dispatch("Unknown thing"));
+      const assign = fixture.board.assign;
+      fixture.board.assign = () => {
+        throw new Error("disk I/O error");
+      };
+      await expect(fixture.relay.pollOnce()).rejects.toThrow(/disk I\/O error/);
+      // Nothing was recorded and the cursor did not move, so the hand-off is not lost.
+      expect(fixture.board.relay.deliveriesForTicket(ticket.id)).toEqual([]);
+      expect(fixture.board.relay.cursor()).toBe(0);
+
+      fixture.board.assign = assign;
+      await fixture.relay.pollOnce();
+      expect(fixture.board.get(ticket.id)?.assignee).toBe("pat");
     } finally {
       await fixture.close();
     }
@@ -433,6 +589,82 @@ describe("relay delivery", () => {
 });
 
 describe("relay crash and restart", () => {
+  it("recovery re-runs the guards on a pending row and refuses it as a fresh delivery would be", async () => {
+    const directory = DIRECTORY();
+    const roles = (model: ModelRef) => [{ roleKey: ROLE, accepts: [TYPE], model }];
+    const fixture = await openFixture({ directory, script: [{ text: ANSWER }], roles });
+    const ticket = await fixture.relay.dispatch(TYPE, dispatch("Invoice 42"));
+    fixture.kill.beforeDelivery = true;
+    await expect(fixture.relay.pollOnce()).rejects.toThrow(/simulated crash/);
+    expect(fixture.board.relay.deliveriesForTicket(ticket.id)[0]?.state).toBe("pending");
+    await fixture.close();
+
+    // While the office was down the ticket's budget ran out: the guard that allowed the delivery
+    // before the crash refuses it now.
+    const reopened = await openFixture({
+      directory,
+      script: [],
+      roles,
+      scripted: fixture.scripted,
+      guards: {
+        ...openGuards(),
+        checkBudget: async () => ({ allowed: false, reason: "the budget is spent" }),
+      },
+    });
+    try {
+      await reopened.relay.recover();
+      const rows = submitted(reopened.board, ticket.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.state).toBe("failed");
+      expect(rows[0]?.outcome).toBe("the budget is spent");
+      expect(rows[0]?.submissionId).toBeNull();
+      // Refused the way a fresh delivery is: the board says which delivery was turned away.
+      const stalled = reopened.board.events(ticket.id).filter((event) => event.kind === "stalled");
+      expect(stalled).toHaveLength(1);
+      expect(stalled[0]?.payload).toEqual({ reason: "the budget is spent" });
+      expect(reopened.scripted.calls).toBe(0);
+    } finally {
+      await reopened.close();
+    }
+  });
+
+  it("recovery does not turn away a delivery Pi Durable admitted before the crash", async () => {
+    const directory = DIRECTORY();
+    const roles = (model: ModelRef) => [{ roleKey: ROLE, accepts: [TYPE], model }];
+    const fixture = await openFixture({ directory, script: [{ text: ANSWER }], roles });
+    const ticket = await fixture.relay.dispatch(TYPE, dispatch("Invoice 42"));
+    // The submission exists, and the relay died before it could write that down.
+    fixture.kill.afterDelivery = true;
+    await expect(fixture.relay.pollOnce()).rejects.toThrow(/simulated crash/);
+    const [crashed] = fixture.board.relay.deliveriesForTicket(ticket.id);
+    expect(crashed?.state).toBe("pending");
+    expect(crashed?.submissionId).toBeNull();
+    await fixture.close();
+
+    const reopened = await openFixture({
+      directory,
+      script: [],
+      roles,
+      scripted: fixture.scripted,
+      guards: {
+        ...openGuards(),
+        checkBudget: async () => ({ allowed: false, reason: "the budget is spent" }),
+      },
+    });
+    try {
+      await reopened.relay.recover();
+      const rows = reopened.board.relay.deliveriesForTicket(ticket.id);
+      expect(rows).toHaveLength(1);
+      // The turn is already running in the harness, so the row follows it rather than a guard that
+      // can no longer stop it.
+      expect(rows[0]?.state).toBe("settled");
+      expect(rows[0]?.outcome).toBe(ANSWER);
+      expect(rows[0]?.submissionId).not.toBeNull();
+    } finally {
+      await reopened.close();
+    }
+  });
+
   it("restart after create delivers the created event once", async () => {
     const directory = DIRECTORY();
     const fixture = await openFixture({
@@ -539,7 +771,7 @@ describe("relay crash and restart", () => {
       });
       // The work did not run again: the answer came from the first, resumed run.
       expect(reopened.scripted.calls).toBe(1);
-      expect(reopened.board.relay.deliveriesForTicket(ticket.id)).toHaveLength(1);
+      expect(submitted(reopened.board, ticket.id)).toHaveLength(1);
     } finally {
       await reopened.close();
     }

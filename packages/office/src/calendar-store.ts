@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, rmSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
+import { bounded } from "./shared/validation.js";
 
 export interface Booking {
   readonly id: string;
@@ -53,14 +54,6 @@ type LegacyBooking = {
 const KINDS = new Set<CalendarOperationKind>(["book", "reschedule", "cancel"]);
 const LEGACY_COLUMNS = ["id", "start", "customer", "idempotency_key"];
 const CURRENT_COLUMNS = ["id", "original_start", "start", "customer", "idempotency_key", "status"];
-
-function bounded(value: string, label: string): string {
-  const normalized = value.trim();
-  if (normalized.length === 0 || normalized.length > 500) {
-    throw new Error(`${label} must be between 1 and 500 characters.`);
-  }
-  return normalized;
-}
 
 function object(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)

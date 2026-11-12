@@ -9,6 +9,8 @@ import type {
   StoredInboundReceipt,
 } from "./resend-inbox.js";
 import { inboundAuthorityId } from "./resend-inbox.js";
+import { readBoundedJsonObject } from "./shared/bounded-http.js";
+import { exact, messageText } from "./shared/validation.js";
 
 export type ReplyTarget = {
   receiptId: string;
@@ -44,20 +46,6 @@ function providerKey(identity: string, namespace: string, requestId: string): st
   return `officehum.email.reply.v1/${createHash("sha256")
     .update(JSON.stringify([identity, namespace, requestId]))
     .digest("hex")}`;
-}
-
-function exact(value: unknown, maximum: number, message = false): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= maximum &&
-    (message ? value.trim().length > 0 : value.trim() === value) &&
-    ![...value].some((character) => {
-      const code = character.codePointAt(0) ?? 0;
-      if (message && (code === 9 || code === 10 || code === 13)) return false;
-      return code <= 31 || (code >= 127 && code <= 159);
-    })
-  );
 }
 
 function safeTime(value: number): number {
@@ -196,75 +184,6 @@ async function validateSubmission(
   return result;
 }
 
-async function boundedBody(
-  response: Response,
-  signal: AbortSignal,
-): Promise<Record<string, unknown>> {
-  if (response.redirected || response.body === null)
-    throw new Error("Resend reply response was invalid.");
-  const responseHeaders = [...response.headers];
-  if (
-    responseHeaders.length > 200 ||
-    responseHeaders.reduce((total, [key, value]) => total + key.length + value.length, 0) >
-      64 * 1024 ||
-    responseHeaders.some(([key, value]) => key.length > 200 || value.length > 8192)
-  ) {
-    throw new Error("Resend reply response was invalid.");
-  }
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  try {
-    while (true) {
-      signal.throwIfAborted();
-      let onAbort!: () => void;
-      const aborted = new Promise<never>((_resolve, reject) => {
-        onAbort = () => reject(signal.reason ?? new Error("aborted"));
-        signal.addEventListener("abort", onAbort, { once: true });
-      });
-      let next: Awaited<ReturnType<typeof reader.read>>;
-      try {
-        next = await Promise.race([reader.read(), aborted]);
-      } catch (error) {
-        if (signal.aborted) cancelReader(reader);
-        throw error;
-      } finally {
-        signal.removeEventListener("abort", onAbort);
-      }
-      if (next.done) break;
-      length += next.value.byteLength;
-      if (length > RESPONSE_LIMIT) {
-        cancelReader(reader);
-        throw new Error("Resend reply response was invalid.");
-      }
-      chunks.push(next.value);
-    }
-  } finally {
-    try {
-      reader.releaseLock();
-    } catch {}
-  }
-  const joined = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    joined.set(chunk, offset);
-    offset += chunk.length;
-  }
-  try {
-    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(joined)) as unknown;
-    if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error();
-    return value as Record<string, unknown>;
-  } catch {
-    throw new Error("Resend reply response was invalid.");
-  }
-}
-
-function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>): void {
-  try {
-    void reader.cancel().catch(() => {});
-  } catch {}
-}
-
 export function createResendReplyMessenger(options: {
   inbox: InternalResendInbox;
   getHarness: () => Harness | undefined;
@@ -289,7 +208,7 @@ export function createResendReplyMessenger(options: {
     sendOptions: { requestId: string },
   ): Promise<{ id: string; status: "accepted" }> => {
     if (closed) throw new Error("Reply transport is closed.");
-    if (!exact(sendOptions?.requestId, 500) || !exact(intent?.text, 4000, true)) {
+    if (!exact(sendOptions?.requestId, 500) || !messageText(intent?.text, 4000)) {
       throw new Error("Reply request is invalid.");
     }
     const pinned = await messenger.prepare(intent.target.receiptId, intent.target.conversationId);
@@ -379,7 +298,10 @@ export function createResendReplyMessenger(options: {
         body: row.payloadJson,
         signal: controller.signal,
       });
-      parsed = await boundedBody(response, controller.signal);
+      parsed = await readBoundedJsonObject(response, controller.signal, {
+        limit: RESPONSE_LIMIT,
+        invalid: "Resend reply response was invalid.",
+      });
     } catch (error) {
       if (closed) throw new Error("Reply transport is closed.");
       if (error instanceof Error && error.message === "Resend reply response was invalid.")

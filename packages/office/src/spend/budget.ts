@@ -4,7 +4,7 @@
  * Three seats enforce one number, and none of them is the prompt:
  *
  * - **The board is the authority.** `admitCall` counts a tool call and answers whether the ceiling
- *   allows it inside one `BEGIN IMMEDIATE`; `chargeUsage` adds tokens and cents exactly once per call
+ *   allows it inside one `BEGIN IMMEDIATE`; `chargeUsage` adds tokens and micro-dollars exactly once per call
  *   id and rolls the deltas up to every ancestor. Two counters that can disagree are not a budget.
  * - **These hooks are the sensor and the gate.** `beforeTool` refuses a call the ceiling will not pay
  *   for; `afterTool` and `afterResponse` charge the spend they observe. In Pi Durable 1.3.0
@@ -39,7 +39,13 @@ import {
   ToolTask,
 } from "@earendil-works/pi-durable";
 import { type Board, type Budget, budgetSpent, type ConversationTicket } from "../board/index.js";
-import { centsFor, DEFAULT_PRICE_TABLE, formatCents, type PriceTable, tokensOf } from "./prices.js";
+import {
+  DEFAULT_PRICE_TABLE,
+  formatMicros,
+  microsFor,
+  type PriceTable,
+  tokensOf,
+} from "./prices.js";
 
 /** The actor a budget's block is recorded as. Not a role: this is the office itself. */
 export const BUDGET_ACTOR = "budget";
@@ -55,7 +61,7 @@ export function spendRefusal(budget: Budget): string {
   const ceilings = spent.length === 0 ? "a ceiling" : `the ${spent.join(", ")} ceiling`;
   return (
     `budget reached (${budget.usedCalls} calls / ${budget.usedTokens} tokens / ` +
-    `${formatCents(budget.usedUsdCents)} against ${ceilings})`
+    `${formatMicros(budget.usedUsdMicros)} against ${ceilings})`
   );
 }
 
@@ -96,7 +102,7 @@ export interface BudgetHookOptions {
 }
 
 /** A charge as the board wants it: counts, never negative. */
-type Charge = { readonly tokens: number; readonly usdCents: number };
+type Charge = { readonly tokens: number; readonly usdMicros: number };
 
 /**
  * `budgetHooks({ board })` — the registrations an office installs on its roles' conversations.
@@ -121,7 +127,7 @@ export function budgetHooks(options: BudgetHookOptions): readonly HookRegistrati
 
   /** Charge spend to a ticket, once per call id. A zero charge writes no ledger row. */
   const charge = (ticket: ConversationTicket, callId: string, spend: Charge): void => {
-    if (spend.tokens === 0 && spend.usdCents === 0) return;
+    if (spend.tokens === 0 && spend.usdMicros === 0) return;
     board.chargeUsage(ticket.ticketId, callId, { ...spend, agent: ticket.agent });
   };
 
@@ -156,7 +162,7 @@ export function budgetHooks(options: BudgetHookOptions): readonly HookRegistrati
       },
       /**
        * A tool's own spend, when it reports any. Most do not: a deterministic worker answers from a
-       * library, not a model. Tokens are counted and no cents are charged, because a tool's usage has no
+       * library, not a model. Tokens are counted and no dollars are charged, because a tool's usage has no
        * model identity to look up — inventing a rate for it would be a number nobody wrote down.
        */
       afterTool(call, result, api) {
@@ -164,14 +170,14 @@ export function budgetHooks(options: BudgetHookOptions): readonly HookRegistrati
         if (ticket === undefined || result.usage === undefined) return undefined;
         charge(ticket, `${callKey(api, call)}:usage`, {
           tokens: tokensOf(result.usage),
-          usdCents: 0,
+          usdMicros: 0,
         });
         return undefined;
       },
     }),
     hook(GenerationTask, {
       /**
-       * Every terminal provider message, before classification: a turn's tokens and its cents, charged to
+       * Every terminal provider message, before classification: a turn's tokens and its cost, charged to
        * the ticket this conversation is working. The whole turn is one charge, keyed on the response's own
        * identity so observing the same response twice adds nothing.
        *
@@ -185,7 +191,7 @@ export function budgetHooks(options: BudgetHookOptions): readonly HookRegistrati
         if (tokens === 0) return undefined;
         charge(ticket, turnKey(api, message), {
           tokens,
-          usdCents: centsFor(
+          usdMicros: microsFor(
             prices,
             { provider: message.provider, modelId: message.model },
             message.usage,

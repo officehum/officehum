@@ -52,7 +52,10 @@ export interface RoleRun {
   submit(input: string, requestId: string): Promise<RoleRunResult>;
   /** Reacquires and waits on every submission left unsettled by a previous run. */
   resume(): Promise<RoleRunResult[]>;
-  /** Re-reads the role's files and overlays, then re-applies its agent settings. Named issues on problems. */
+  /**
+   * Re-reads the role's files and overlays, then re-applies its agent settings, except the model: the
+   * conversation keeps the one it started with. Named issues on problems.
+   */
   reload(): Promise<readonly Issue[]>;
   /** Runs one operator command from the manifest: an engine view, with no model involved. */
   command(name: string): Promise<EngineResult>;
@@ -130,10 +133,10 @@ export async function openRoleRun(options: RoleRunOptions): Promise<RoleRun> {
       );
     }
     if (persisted === undefined) await office.configure(conversation, agent);
-    const currentAgent = (): AgentChange => ({
-      ...role.bundle.agent,
-      model: options.model === undefined ? (role.bundle.agent.model ?? model) : model,
-    });
+    // A saved conversation keeps the provider and model it started with. `model` is that pair (it
+    // was checked against the persisted one above), so a reload re-applies the role's other agent
+    // settings and never an overlay's model: that applies to new conversations only.
+    const currentAgent = (): AgentChange => ({ ...role.bundle.agent, model });
 
     let closing: Promise<void> | undefined;
     return {

@@ -174,15 +174,16 @@ describe("QuickBooks fake", () => {
   it("finds customers by name and reads one back, refusing an unknown id", async () => {
     const quickbooks = fakeQuickBooks({
       customers: [
-        { id: "1", displayName: "Acme Corp", active: true, email: "ap@acme.example" },
-        { id: "2", displayName: "Bravo Ltd", active: true },
+        { id: "1", displayName: "Bravo Ltd", active: true },
+        { id: "2", displayName: "Acme Corp", active: true, email: "ap@acme.example" },
       ],
     });
 
-    expect((await quickbooks.findCustomers("acme")).map((c) => c.id)).toEqual(["1"]);
+    expect((await quickbooks.findCustomers("acme")).map((c) => c.id)).toEqual(["2"]);
+    // Stored order, not by name: the REST client returns QuickBooks' order unsorted, and so does this.
     expect((await quickbooks.findCustomers("")).map((c) => c.id)).toEqual(["1", "2"]);
-    expect(await quickbooks.getCustomer("1")).toEqual({
-      id: "1",
+    expect(await quickbooks.getCustomer("2")).toEqual({
+      id: "2",
       displayName: "Acme Corp",
       active: true,
       email: "ap@acme.example",

@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { awaitWithContext, BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
-import type { ModelRef } from "@earendil-works/pi-durable";
+import type { AgentChange, ModelRef } from "@earendil-works/pi-durable";
 import frontdesk, { ContactsDoc, type Messenger } from "@officehum/frontdesk";
 import {
   type CalendarClient,
@@ -20,6 +21,7 @@ import {
   type GoogleConnectorIdentity,
   hasDurableLocalState,
   hasDurableMessagingState,
+  type InboundAuthority,
   type InboundSession,
   type InternalResendInbox,
   inboundAwareApprover,
@@ -27,13 +29,16 @@ import {
   loadRole,
   type MessengerIdentity,
   messengerIdentityString,
+  OFFICE_CONFIG_FILE,
   openConsoleMessenger,
   openInboundSession,
   openLocalCalendar,
+  openOfficeConfig,
   openResendInbox,
   openResendListener,
   openResendMessenger,
   openRoleRun,
+  openSmsIntake,
   openSolo,
   PI_DURABLE_VERSION,
   parseMessengerIdentity,
@@ -45,9 +50,12 @@ import {
   readInboundAuthority,
   readInboundInbox,
   readMessengerIdentity,
+  readOfficeCompany,
   readSoloDocument,
+  SMS_CALLBACK_TYPE,
   type SoloResult,
   type SoloSession,
+  type TwilioHookOptions,
 } from "@officehum/office";
 import { type Board, openOfficeBoard } from "@officehum/office/board";
 import { PAPER_MODEL_REF, paperProvider } from "@officehum/provider-paper";
@@ -749,6 +757,77 @@ function customerTools(role: ReturnType<typeof frontdesk>) {
   return offered.filter(({ name }) => selected.has(name));
 }
 
+/**
+ * The Front Desk role an inbound host runs, with the Resend resources it owns: the outbound
+ * messenger, the inbound inbox and the reply messenger. `listen` and the inbound `resume` host the
+ * same role; they differ only in the mailbox `authority` the inbox opens with (`listen` states it,
+ * `resume` reads the saved one).
+ */
+function inboundRole(options: {
+  readonly parsed: Parsed;
+  readonly calendar: HostCalendar;
+  readonly messengerIdentity: Extract<MessengerIdentity, { backend: "resend" }>;
+  readonly authority: InboundAuthority;
+  readonly rootDecision: Approver;
+  readonly replyDecision: Approver;
+  readonly dependencies: CliDependencies;
+  /** The running office, once the caller has attached it. */
+  readonly harness: () => SoloSession["harness"] | undefined;
+  /** Receives what was opened, for the caller's inbound session and listener. */
+  readonly onHosted: (hosted: InboundHosted) => void;
+}) {
+  const { parsed, messengerIdentity } = options;
+  return async () => {
+    let outbound: HostedMessenger | undefined;
+    let inbox: InternalResendInbox | undefined;
+    let reply: ResendReplyMessenger | undefined;
+    const closeAll = () =>
+      closeEvery([
+        async () => reply?.close(),
+        async () => inbox?.close(),
+        async () => outbound?.close(),
+      ]);
+    try {
+      outbound = (options.dependencies.openResendMessenger ?? openResendMessenger)(
+        join(parsed.state, "email.sqlite"),
+        {
+          accountId: messengerIdentity.accountId,
+          fromEmail: messengerIdentity.fromEmail,
+          subject: messengerIdentity.subject,
+          getApiKey: async () => requireResendApiKey(),
+        },
+      );
+      inbox = openResendInbox(join(parsed.state, "inbound.sqlite"), {
+        authority: options.authority,
+        getApiKey: async () => requireResendApiKey(),
+        getWebhookSecrets: async () => webhookSecrets(),
+      });
+      reply = createResendReplyMessenger({
+        inbox,
+        getHarness: options.harness,
+        getApiKey: async () => requireResendApiKey(),
+      });
+      const role = frontdesk({
+        calendar: options.calendar,
+        messenger: outbound,
+        approve: inboundAwareApprover(options.harness, options.rootDecision),
+        replyMessenger: reply,
+        approveReply: durableInboundReplyApprover(inbox, options.replyDecision),
+      });
+      options.onHosted({ inbox, reply, role });
+      return {
+        role,
+        close: async () => {
+          if (await closeAll()) throw new Error("Inbound hosted cleanup failed.");
+        },
+      };
+    } catch (error) {
+      await closeAll();
+      throw error;
+    }
+  };
+}
+
 async function openInboundRuntime(
   parsed: Parsed,
   calendar: HostCalendar,
@@ -773,61 +852,19 @@ async function openInboundRuntime(
     model: runtime.model,
     messengerIdentity,
     connectorIdentity,
-    createRole: async () => {
-      let outbound: HostedMessenger | undefined;
-      let inbox: InternalResendInbox | undefined;
-      let reply: ResendReplyMessenger | undefined;
-      try {
-        outbound = (dependencies.openResendMessenger ?? openResendMessenger)(
-          join(parsed.state, "email.sqlite"),
-          {
-            accountId: messengerIdentity.accountId,
-            fromEmail: messengerIdentity.fromEmail,
-            subject: messengerIdentity.subject,
-            getApiKey: async () => requireResendApiKey(),
-          },
-        );
-        inbox = openResendInbox(join(parsed.state, "inbound.sqlite"), {
-          authority: savedAuthority,
-          getApiKey: async () => requireResendApiKey(),
-          getWebhookSecrets: async () => webhookSecrets(),
-        });
-        reply = createResendReplyMessenger({
-          inbox,
-          getHarness: () => attachedHarness,
-          getApiKey: async () => requireResendApiKey(),
-        });
-        const role = frontdesk({
-          calendar,
-          messenger: outbound,
-          approve: inboundAwareApprover(() => attachedHarness, rootDecision),
-          replyMessenger: reply,
-          approveReply: durableInboundReplyApprover(inbox, replyDecision),
-        });
-        hosted = { inbox, reply, role };
-        return {
-          role,
-          close: async () => {
-            if (
-              await closeEvery([
-                async () => reply?.close(),
-                async () => inbox?.close(),
-                async () => outbound?.close(),
-              ])
-            ) {
-              throw new Error("Inbound hosted cleanup failed.");
-            }
-          },
-        };
-      } catch (error) {
-        await closeEvery([
-          async () => reply?.close(),
-          async () => inbox?.close(),
-          async () => outbound?.close(),
-        ]);
-        throw error;
-      }
-    },
+    createRole: inboundRole({
+      parsed,
+      calendar,
+      messengerIdentity,
+      authority: savedAuthority,
+      rootDecision,
+      replyDecision,
+      dependencies,
+      harness: () => attachedHarness,
+      onHosted: (created) => {
+        hosted = created;
+      },
+    }),
   });
   if (hosted === undefined) {
     await solo.close();
@@ -840,6 +877,56 @@ async function openInboundRuntime(
     attach() {
       attachedHarness = solo.harness;
     },
+  };
+}
+
+/** The Front Desk's package directory: its company record names the office's people. */
+const FRONTDESK_DIR = fileURLToPath(new URL("..", import.meta.resolve("@officehum/frontdesk")));
+
+/**
+ * The inbound SMS route's options, or `undefined` when the office has not been given the channel:
+ * the route is served only when `TWILIO_AUTH_TOKEN` is set. The number texts arrive on is read from
+ * the office config in the state directory, where a provisioner writes it; the listener refuses to
+ * start without one.
+ *
+ * A text from a contact's number goes to the Front Desk in a conversation of its own, which may only
+ * check availability and answer by email. A text from anyone else becomes a callback ticket for a
+ * person: whoever the company record routes that ticket type to, or else its first person. The
+ * people are loaded onto the board here, because the board refuses an assignee it does not know.
+ */
+function smsHook(options: {
+  readonly state: string;
+  readonly board: Board;
+  readonly harness: () => SoloSession["harness"] | undefined;
+  /** The Front Desk's conversation settings, as its own conversations run. */
+  readonly agent: AgentChange;
+}): TwilioHookOptions | undefined {
+  // Read where it is used, and handed straight to the route: never stored, printed or logged.
+  const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+  if (authToken === undefined || authToken.length === 0) return undefined;
+  const { board } = options;
+  const company = readOfficeCompany([{ dir: FRONTDESK_DIR }]);
+  board.upsertPeople(company.people);
+  const people = board.people();
+  const routed = company.personRoutes.find((route) => route.type === SMS_CALLBACK_TYPE);
+  const person = people.find((candidate) => candidate.id === routed?.personId) ?? people[0];
+  if (person === undefined) {
+    throw new Error(
+      "Inbound SMS needs a person to take callbacks, and the Front Desk's company record names nobody. Run `npm run sync-company`, or unset TWILIO_AUTH_TOKEN to listen for email only.",
+    );
+  }
+  const intake = openSmsIntake({
+    board,
+    harness: options.harness,
+    agent: options.agent,
+    agentKey: "frontdesk",
+    personId: person.id,
+  });
+  return {
+    authToken,
+    config: openOfficeConfig(join(options.state, OFFICE_CONFIG_FILE)),
+    board: board.sms,
+    onInbound: (outcome) => intake.accept(outcome),
   };
 }
 
@@ -916,67 +1003,25 @@ async function runListen(
       model: runtime.model,
       messengerIdentity,
       connectorIdentity: identity,
-      createRole: async () => {
-        let outbound: HostedMessenger | undefined;
-        let inbox: InternalResendInbox | undefined;
-        let reply: ResendReplyMessenger | undefined;
-        try {
-          outbound = (dependencies.openResendMessenger ?? openResendMessenger)(
-            join(parsed.state, "email.sqlite"),
-            {
-              accountId: messengerIdentity.accountId,
-              fromEmail: messengerIdentity.fromEmail,
-              subject: messengerIdentity.subject,
-              getApiKey: async () => requireResendApiKey(),
-            },
-          );
-          inbox = openResendInbox(join(parsed.state, "inbound.sqlite"), {
-            authority: {
-              version: 1,
-              messengerId: messengerIdentityString(messengerIdentity),
-              accountId: messengerIdentity.accountId,
-              fromEmail: messengerIdentity.fromEmail,
-              inboundEmail,
-            },
-            getApiKey: async () => requireResendApiKey(),
-            getWebhookSecrets: async () => webhookSecrets(),
-          });
-          reply = createResendReplyMessenger({
-            inbox,
-            getHarness: () => attachedHarness,
-            getApiKey: async () => requireResendApiKey(),
-          });
-          const role = frontdesk({
-            calendar,
-            messenger: outbound,
-            approve: inboundAwareApprover(() => attachedHarness, rootDecision),
-            replyMessenger: reply,
-            approveReply: durableInboundReplyApprover(inbox, replyDecision),
-          });
-          hosted = { inbox, reply, role };
-          return {
-            role,
-            close: async () => {
-              if (
-                await closeEvery([
-                  async () => reply?.close(),
-                  async () => inbox?.close(),
-                  async () => outbound?.close(),
-                ])
-              ) {
-                throw new Error("Inbound hosted cleanup failed.");
-              }
-            },
-          };
-        } catch (error) {
-          await closeEvery([
-            async () => reply?.close(),
-            async () => inbox?.close(),
-            async () => outbound?.close(),
-          ]);
-          throw error;
-        }
-      },
+      createRole: inboundRole({
+        parsed,
+        calendar,
+        messengerIdentity,
+        authority: {
+          version: 1,
+          messengerId: messengerIdentityString(messengerIdentity),
+          accountId: messengerIdentity.accountId,
+          fromEmail: messengerIdentity.fromEmail,
+          inboundEmail,
+        },
+        rootDecision,
+        replyDecision,
+        dependencies,
+        harness: () => attachedHarness,
+        onHosted: (created) => {
+          hosted = created;
+        },
+      }),
     });
     await ensureRunning();
     const savedAgent = await solo.root.agent(BACKGROUND_CONTEXT);
@@ -988,17 +1033,17 @@ async function runListen(
     }
     attachedHarness = solo.harness;
     if (hosted === undefined) throw new Error("Inbound role resources were not created.");
+    const deskAgent: AgentChange = {
+      ...hosted.role.agent,
+      model: runtime.model,
+      ...(savedAgent.thinkingLevel === undefined
+        ? {}
+        : { thinkingLevel: savedAgent.thinkingLevel }),
+    };
     session = (dependencies.createInboundSession ?? openInboundSession)({
       solo,
       inbox: hosted.inbox,
-      customerAgent: {
-        ...hosted.role.agent,
-        model: runtime.model,
-        ...(savedAgent.thinkingLevel === undefined
-          ? {}
-          : { thinkingLevel: savedAgent.thinkingLevel }),
-        tools: customerTools(hosted.role),
-      },
+      customerAgent: { ...deskAgent, tools: customerTools(hosted.role) },
     });
     await session.reconcile();
     await ensureRunning();
@@ -1007,15 +1052,25 @@ async function runListen(
     // The one duplicate table both routes share (RASF-3160). The office owns one board beside the
     // harness store, and `officehum board` opens the same file by the same name.
     board = openOfficeBoard(join(parsed.state, "office.sqlite"));
+    const twilio = smsHook({
+      state: parsed.state,
+      board,
+      harness: () => attachedHarness,
+      agent: deskAgent,
+    });
     listener = await openResendListener({
       inbox: hosted.inbox,
       board: board.sms.inbound,
       port: parsed.port,
+      ...(twilio === undefined ? {} : { twilio }),
     });
     await ensureRunning();
     timer = setInterval(() => {
       void session?.tick().catch(() => io.error("Inbound worker tick failed."));
     }, 5000);
+    if (twilio !== undefined) {
+      io.output(`SMS webhook: ${listener.address}/hooks/twilio (inbound only)`);
+    }
     io.output(`Inbound listener: ${listener.address}/webhooks/resend`);
     io.output(`Approval: ${parsed.approval ?? "interactive review"}`);
     await done;
@@ -1346,7 +1401,7 @@ function requireReviewOption(value: string | undefined, name: string): string {
  * hashes, and only then lets the FileStore compare-and-swap the published pointer — refusing, with
  * the pointer left where it was, whenever the review is missing, denied, mismatched or superseded.
  */
-export async function runReview(args: readonly string[], io: CliIo): Promise<number> {
+async function runReview(args: readonly string[], io: CliIo): Promise<number> {
   const parsed = parseReviewArguments(args);
   const store = localVersionedFileStore(join(parsed.state, "files"));
   const ledger = reviewLedger(join(parsed.state, "reviews"));

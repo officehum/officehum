@@ -12,6 +12,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { fence } from "@officehum/channels";
 import type { Approver } from "@officehum/sdk";
+import { terminalRejection } from "./resend-inbound.js";
 import {
   type InternalResendInbox,
   inboundAuthorityId,
@@ -306,19 +307,8 @@ export function openInboundSession(options: {
         const prepared = await options.inbox.fetchReceived(current.emailId, current.event);
         options.inbox.savePrepared(current.emailId, prepared.fetched, prepared.normalized);
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "fetch_failed";
-        if (
-          [
-            "authentication_failed",
-            "reply_to_mismatch",
-            "auto_message",
-            "invalid_thread_headers",
-            "subject_too_long",
-            "empty_body",
-            "body_too_large",
-            "binding_mismatch",
-          ].includes(reason)
-        ) {
+        const reason = terminalRejection(error);
+        if (reason !== undefined) {
           options.inbox.block(current.emailId, reason);
           return;
         }

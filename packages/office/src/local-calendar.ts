@@ -10,6 +10,7 @@ import {
   type Cancellation,
   openCalendarStore,
 } from "./calendar-store.js";
+import { bounded } from "./shared/validation.js";
 
 export type { Booking, Cancellation } from "./calendar-store.js";
 
@@ -64,14 +65,6 @@ export function canonicalAppointmentStart(start: string): string {
     throw new Error(`Unknown UTC appointment slot: ${start}`);
   }
   return canonical;
-}
-
-function bounded(value: string, label: string, maximum = 500): string {
-  const normalized = value.trim();
-  if (normalized.length === 0 || normalized.length > maximum) {
-    throw new Error(`${label} must be between 1 and ${maximum} characters.`);
-  }
-  return normalized;
 }
 
 function validCustomer(customer: string): string {

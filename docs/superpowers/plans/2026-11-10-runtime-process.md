@@ -62,3 +62,10 @@ invalid message, unknown agent, subscribe after settle, abort, list_agents/get_s
 Child process: SIGKILL during the unsafe tool, restart, subscribe → settled done, unsafe tool ran once,
 model saw an interrupted result. Office file: validation problems with paths. CLI: `runtime` answers
 `hello` and `submit` over injected stdio.
+
+## Status, 2026-11-11
+
+`--board FILE` gives the runtime a workboard (audit items D1 and B12): the company record's people are
+loaded at start, each agent gets the office extension, and the relay runs for the life of the process
+(`packages/office/src/runtime/teamwork.ts`). `docs/design/gateway-protocol.md` says what that reaches
+and what it does not.

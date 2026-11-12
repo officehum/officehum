@@ -152,10 +152,13 @@ export {
 } from "./runtime/approvals.js";
 export {
   approvalTimeoutsMs,
+  COMPANY_FACTS,
   loadOfficeRoles,
+  type OfficeCompany,
   type OfficeFile,
   type OfficeFileRole,
   parseOfficeFile,
+  readOfficeCompany,
   readOfficeFile,
 } from "./runtime/office-file.js";
 export {

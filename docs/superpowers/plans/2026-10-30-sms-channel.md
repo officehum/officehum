@@ -82,3 +82,12 @@ The Front Desk manifest's `channels` block gains an SMS entry: inbound only, rep
 ## Out of scope
 
 Sending any SMS, MMS, WhatsApp, voice (RASF-3220), and the full gateway core (RASF-3160).
+
+## Status, 2026-11-11
+
+`officehum listen` now mounts `/hooks/twilio` and opens the SMS intake when `TWILIO_AUTH_TOKEN` is set
+(audit item D1); without it the route does not exist. The number comes from `office.config.json`. The
+callback person is whoever the company record routes `phone.callback` to, or else its first person;
+the Front Desk's company record is loaded onto the board when the route opens. Still open: a real
+provisioner and number (RASF-3159), and `isRegistered`, which the CLI does not pass, so a saved
+contact is rate limited like a stranger.

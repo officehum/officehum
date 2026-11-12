@@ -32,6 +32,7 @@ import {
   parseReceivingEvent,
   type ReceivingEvent,
   type SignedWebhookHeaders,
+  terminalRejection,
   verifySvixWebhook,
 } from "./resend-inbound.js";
 import type { InternalResendInbox } from "./resend-inbox.js";
@@ -157,12 +158,29 @@ export class ResendInboundAdapter implements ChannelAdapter {
     }
     const existing = this.#inbox.receipt(event.data.email_id);
     let normalized: NormalizedInboundEmail;
+    if (existing?.state === "blocked") {
+      // Already rejected for good, and the receipt says why. Acknowledged again, without asking the
+      // provider for the words a second time.
+      return { accepted: false, reason: "ignored" };
+    }
     if (existing !== undefined && existing.normalized !== null) {
       normalized = existing.normalized;
     } else {
       const eventId = request.headers?.["svix-id"] ?? "";
       this.#inbox.record(raw, eventId);
-      const prepared = await this.#inbox.fetchReceived(event.data.email_id, event);
+      let prepared: Awaited<ReturnType<InternalResendInbox["fetchReceived"]>>;
+      try {
+        prepared = await this.#inbox.fetchReceived(event.data.email_id, event);
+      } catch (error) {
+        const reason = terminalRejection(error);
+        // A transient failure is thrown on: the route answers 5xx and the provider retries.
+        if (reason === undefined) throw error;
+        // An auto-reply, a DMARC failure or another refusal of the message itself will be refused
+        // again on every retry. The receipt records it as blocked with its reason, and the provider
+        // is acknowledged (`ignored` is the contract's one refusal answered 2xx) so it stops sending.
+        this.#inbox.block(event.data.email_id, reason);
+        return { accepted: false, reason: "ignored" };
+      }
       this.#inbox.savePrepared(event.data.email_id, prepared.fetched, prepared.normalized);
       normalized = prepared.normalized;
     }

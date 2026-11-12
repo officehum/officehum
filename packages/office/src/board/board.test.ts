@@ -24,6 +24,7 @@ import {
   type Board,
   BoardError,
   type BoardErrorKind,
+  budgetSpent,
   type NewTicket,
   openBoard,
   type Ticket,
@@ -66,9 +67,9 @@ function seedPerson(file: string, id: string): void {
 
 type Budget = {
   max_tokens: number | null;
-  max_usd_cents: number | null;
+  max_usd_micros: number | null;
   used_tokens: number;
-  used_usd_cents: number;
+  used_usd_micros: number;
   hop_count: number;
   max_hops: number;
   used_calls: number;
@@ -79,7 +80,7 @@ function budgetOf(file: string, ticketId: string): Budget {
   const row = withRaw(file, (database) =>
     database
       .prepare(
-        `SELECT max_tokens, max_usd_cents, used_tokens, used_usd_cents, hop_count, max_hops,
+        `SELECT max_tokens, max_usd_micros, used_tokens, used_usd_micros, hop_count, max_hops,
                 used_calls, max_calls
            FROM budgets WHERE ticket_id = ?`,
       )
@@ -100,8 +101,8 @@ function provenanceOf(file: string, ticketId: string): unknown {
 function spend(file: string, ticketId: string, tokens: number, cents = 0): void {
   withRaw(file, (database) => {
     database
-      .prepare("UPDATE budgets SET used_tokens = ?, used_usd_cents = ? WHERE ticket_id = ?")
-      .run(tokens, cents, ticketId);
+      .prepare("UPDATE budgets SET used_tokens = ?, used_usd_micros = ? WHERE ticket_id = ?")
+      .run(tokens, cents * 10_000, ticketId);
   });
 }
 
@@ -366,9 +367,9 @@ describe("workboard", () => {
     const ticket = child(board, parent);
     expect(budgetOf(file, ticket.id)).toMatchObject({
       max_tokens: 700,
-      max_usd_cents: 450,
+      max_usd_micros: 4_500_000,
       used_tokens: 0,
-      used_usd_cents: 0,
+      used_usd_micros: 0,
       hop_count: 1,
     });
     board.close();
@@ -380,16 +381,19 @@ describe("workboard", () => {
     const parent = root(board, { budget: { maxTokens: 1000, maxUsdCents: 500 } });
 
     const greedy = child(board, parent, { budget: { maxTokens: 2000, maxUsdCents: 900 } });
-    expect(budgetOf(file, greedy.id)).toMatchObject({ max_tokens: 1000, max_usd_cents: 500 });
+    expect(budgetOf(file, greedy.id)).toMatchObject({
+      max_tokens: 1000,
+      max_usd_micros: 5_000_000,
+    });
 
     const thrifty = child(board, parent, { budget: { maxTokens: 100, maxUsdCents: 10 } });
-    expect(budgetOf(file, thrifty.id)).toMatchObject({ max_tokens: 100, max_usd_cents: 10 });
+    expect(budgetOf(file, thrifty.id)).toMatchObject({ max_tokens: 100, max_usd_micros: 100_000 });
 
     // NULL is uncapped: it narrows to whatever the other side says, in either direction.
     const uncapped = root(board);
-    expect(budgetOf(file, uncapped.id)).toMatchObject({ max_tokens: null, max_usd_cents: null });
+    expect(budgetOf(file, uncapped.id)).toMatchObject({ max_tokens: null, max_usd_micros: null });
     const capped = child(board, uncapped, { budget: { maxTokens: 50 } });
-    expect(budgetOf(file, capped.id)).toMatchObject({ max_tokens: 50, max_usd_cents: null });
+    expect(budgetOf(file, capped.id)).toMatchObject({ max_tokens: 50, max_usd_micros: null });
     board.close();
   });
 
@@ -778,6 +782,70 @@ describe("workboard", () => {
     board.close();
   });
 
+  it("filters the list by creator before the limit applies", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    const mine = root(board, { createdBy: "bookkeeper" });
+    withRaw(file, (database) => {
+      database.prepare("UPDATE tickets SET updated_at = '2020-01-01T00:00:00.000Z'").run();
+    });
+    // Newer tickets by somebody else, enough to fill the list on their own.
+    for (let index = 0; index < 3; index += 1) root(board);
+
+    expect(board.list({ limit: 3 }).map((ticket) => ticket.id)).not.toContain(mine.id);
+    expect(board.list({ createdBy: "bookkeeper", limit: 3 }).map((ticket) => ticket.id)).toEqual([
+      mine.id,
+    ]);
+    board.close();
+  });
+
+  it("reads the last event seq and the ticket counts by status without loading either", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    expect(board.lastEventSeq()).toBe(0);
+    expect(board.countByStatus()).toEqual({
+      open: 0,
+      claimed: 0,
+      waiting: 0,
+      blocked: 0,
+      done: 0,
+      cancelled: 0,
+    });
+
+    const done = root(board);
+    board.claim(done.id, "agent-a");
+    board.complete(done.id, "agent-a");
+    const cancelled = root(board);
+    board.claim(cancelled.id, "agent-a");
+    board.cancel(cancelled.id, "agent-a");
+    root(board);
+    root(board);
+
+    expect(board.lastEventSeq()).toBe(board.eventsAfter(0).at(-1)?.seq);
+    expect(board.countByStatus()).toEqual({
+      open: 2,
+      claimed: 0,
+      waiting: 0,
+      blocked: 0,
+      done: 1,
+      cancelled: 1,
+    });
+
+    // Past the list cap the counts are still whole: this is what `list` cannot answer.
+    withRaw(file, (database) => {
+      const insert = database.prepare(
+        `INSERT INTO tickets (id, type, title, status, created_by, created_at, updated_at)
+         VALUES (?, 'invoice.create', 'Seeded', 'done', 'front-desk', ?, ?)`,
+      );
+      const at = "2030-01-02T00:00:00.000Z";
+      database.exec("BEGIN IMMEDIATE");
+      for (let index = 0; index < 600; index += 1) insert.run(`seed-${index}`, at, at);
+      database.exec("COMMIT");
+    });
+    expect(board.countByStatus().done).toBe(601);
+    board.close();
+  });
+
   it("keeps the board file and openBoard inside this directory", () => {
     // The board file is one office's record: nothing outside this directory may open it by path or
     // grow a second writer. node:sqlite stays allowed elsewhere (the calendar is its own file).
@@ -849,19 +917,19 @@ describe("spend accounting", () => {
     const grandchild = child(board, kid);
 
     expect(
-      board.chargeUsage(grandchild.id, "call-1", { calls: 1, tokens: 100, usdCents: 3 }).charged,
+      board.chargeUsage(grandchild.id, "call-1", { calls: 1, tokens: 100, usdMicros: 3 }).charged,
     ).toBe(true);
     for (const ticket of [grandchild, kid, parent]) {
       expect(budgetOf(file, ticket.id)).toMatchObject({
         used_calls: 1,
         used_tokens: 100,
-        used_usd_cents: 3,
+        used_usd_micros: 3,
       });
     }
 
     // The same call again is the same spend: a replay of one attempt, not a second charge.
     expect(
-      board.chargeUsage(grandchild.id, "call-1", { calls: 1, tokens: 100, usdCents: 3 }).charged,
+      board.chargeUsage(grandchild.id, "call-1", { calls: 1, tokens: 100, usdMicros: 3 }).charged,
     ).toBe(false);
     expect(count(file, "spend_ledger")).toBe(1);
     expect(budgetOf(file, parent.id).used_calls).toBe(1);
@@ -871,7 +939,7 @@ describe("spend accounting", () => {
     expect(budgetOf(file, parent.id)).toMatchObject({
       used_calls: 2,
       used_tokens: 150,
-      used_usd_cents: 3,
+      used_usd_micros: 3,
     });
     expect(count(file, "spend_ledger")).toBe(2);
     board.close();
@@ -887,19 +955,19 @@ describe("spend accounting", () => {
     const first = board.chargeUsage(ticket.id, "conv:task:call-9", {
       calls: 1,
       tokens: 7,
-      usdCents: 1,
+      usdMicros: 1,
     });
     const second = board.chargeUsage(ticket.id, "conv:task:call-9", {
       calls: 1,
       tokens: 7,
-      usdCents: 1,
+      usdMicros: 1,
     });
     expect([first.charged, second.charged]).toEqual([true, false]);
     expect(count(file, "spend_ledger")).toBe(1);
     expect(budgetOf(file, ticket.id)).toMatchObject({
       used_calls: 1,
       used_tokens: 7,
-      used_usd_cents: 1,
+      used_usd_micros: 1,
     });
     // The ledger is the dedupe: nothing may rewrite it, so no later call can pretend the row was not there.
     withRaw(file, (database) => {
@@ -921,12 +989,12 @@ describe("spend accounting", () => {
     expect(board.budget(kid.id)).toMatchObject({
       maxCalls: 4,
       maxTokens: 1000,
-      maxUsdCents: null,
+      maxUsdMicros: null,
       usedCalls: 0,
       hopCount: 1,
       remainingCalls: 4,
       remainingTokens: 1000,
-      remainingUsdCents: null,
+      remainingUsdMicros: null,
     });
 
     board.chargeUsage(kid.id, "call-1", { calls: 1, tokens: 100 });
@@ -1045,6 +1113,35 @@ describe("spend accounting", () => {
     board.close();
   });
 
+  it("adds sub-cent charges up to a dollar ceiling, across a reopen of the same file", () => {
+    const file = boardFile();
+    const first = openBoard(file);
+    // One cent, held as 10,000 micro-dollars. Each charge is 0.4 of a cent: nothing, in whole cents.
+    const ticket = root(first, { budget: { maxUsdCents: 1 } });
+    expect(first.budget(ticket.id)).toMatchObject({
+      maxUsdMicros: 10_000,
+      remainingUsdMicros: 10_000,
+    });
+    first.chargeUsage(ticket.id, "turn-1", { tokens: 10, usdMicros: 4000 });
+    const beforeRestart = first.chargeUsage(ticket.id, "turn-2", { tokens: 10, usdMicros: 4000 });
+    expect(budgetSpent(beforeRestart.budget)).toEqual([]);
+    first.close();
+
+    const second = openBoard(file);
+    expect(second.budget(ticket.id)).toMatchObject({
+      usedUsdMicros: 8000,
+      remainingUsdMicros: 2000,
+    });
+    // A replay of a turn charged before the restart is still a no-op.
+    expect(second.chargeUsage(ticket.id, "turn-2", { tokens: 10, usdMicros: 4000 }).charged).toBe(
+      false,
+    );
+    const third = second.chargeUsage(ticket.id, "turn-3", { tokens: 10, usdMicros: 4000 });
+    expect(third.budget).toMatchObject({ usedUsdMicros: 12_000, remainingUsdMicros: 0 });
+    expect(budgetSpent(third.budget)).toEqual(["usd"]);
+    second.close();
+  });
+
   it("totals spend per agent per day from the ledger", () => {
     const file = boardFile();
     const board = openBoard(file);
@@ -1052,13 +1149,13 @@ describe("spend accounting", () => {
     board.chargeUsage(ticket.id, "call-1", {
       calls: 1,
       tokens: 100,
-      usdCents: 2,
+      usdMicros: 2,
       agent: "bookkeeper",
     });
     board.chargeUsage(ticket.id, "call-2", {
       calls: 1,
       tokens: 50,
-      usdCents: 1,
+      usdMicros: 1,
       agent: "bookkeeper",
     });
     board.chargeUsage(ticket.id, "call-3", { calls: 1, tokens: 10, agent: "frontdesk" });
@@ -1069,9 +1166,9 @@ describe("spend accounting", () => {
     // Grouped by the day the ledger row was written. Two days cannot be produced here — the board writes
     // its own clock — so the day *ordering* is asserted where it is cheap: the CLI's footer, over rows.
     expect(board.spendByAgent()).toEqual([
-      { day: today, agent: "bookkeeper", calls: 2, tokens: 150, usdCents: 3 },
-      { day: today, agent: "frontdesk", calls: 1, tokens: 10, usdCents: 0 },
-      { day: today, agent: null, calls: 0, tokens: 5, usdCents: 0 },
+      { day: today, agent: "bookkeeper", calls: 2, tokens: 150, usdMicros: 3 },
+      { day: today, agent: "frontdesk", calls: 1, tokens: 10, usdMicros: 0 },
+      { day: today, agent: null, calls: 0, tokens: 5, usdMicros: 0 },
     ]);
     board.close();
   });

@@ -13,7 +13,7 @@ interface QuestionReader {
   close(): void;
 }
 
-export interface TerminalIoOptions {
+interface TerminalIoOptions {
   readonly input: Readable & { readonly isTTY?: boolean };
   readonly output: Writable;
   readonly error: Writable;

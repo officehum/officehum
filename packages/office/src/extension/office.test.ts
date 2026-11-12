@@ -62,6 +62,7 @@ import {
 import {
   type ScriptedModel,
   type ScriptedScript,
+  type ScriptedTurn,
   scriptedProvider,
 } from "../testing/scripted-model.js";
 import {
@@ -330,6 +331,15 @@ async function deliverUntilDone(fixture: Fixture, ticketId: string): Promise<voi
   throw new Error(`Ticket ${ticketId} never finished within 10s.`);
 }
 
+/**
+ * The ticket's deliveries into a conversation. A poll also accounts for the events the delegate's own
+ * turn wrote (its claim, its completion) with rows that go nowhere; those are bookkeeping, not work
+ * handed to anybody.
+ */
+function submitted(board: Board, ticketId: string) {
+  return board.relay.deliveriesForTicket(ticketId).filter((row) => row.targetKey !== "");
+}
+
 /** A board ticket's own state, or a loud failure — a helper, not a silent `undefined`. */
 function ticketOf(board: Board, id: string): NonNullable<ReturnType<Board["get"]>> {
   const ticket = board.get(id);
@@ -413,7 +423,7 @@ describe("agent_dispatch", () => {
       // The ledger records the delegated turn's answer; the delegator gets the reply's result
       // (asserted below). They differ on purpose, so this test cannot pass by the two coinciding.
       expect(delivery?.outcome).toBe(DELEGATE_CHATTER);
-      expect(fixture.board.relay.deliveriesForTicket(ticketId)).toHaveLength(1);
+      expect(submitted(fixture.board, ticketId)).toHaveLength(1);
 
       // The delegate took the ticket and completed it.
       const ticket = ticketOf(fixture.board, ticketId);
@@ -811,6 +821,38 @@ describe("agent_inbox", () => {
     }
   });
 
+  it("still shows the tickets this agent opened when the board holds over a hundred newer ones", async () => {
+    const fixture = await openFixture({
+      directory: DIRECTORY(),
+      script: () => ({ text: "unused" }),
+    });
+    try {
+      const mine = fixture.board.create(
+        {
+          type: TYPE,
+          title: "Invoice job 42",
+          detail: REQUEST,
+          createdBy: FRONT,
+          provenance: PROVENANCE,
+        },
+        "inbox-mine",
+      );
+      // A busy office: more than one list page of other people's tickets, all touched after it.
+      for (let index = 0; index < 101; index += 1) {
+        fixture.board.create(
+          { type: TYPE, title: `Other ${index}`, createdBy: "office", provenance: PROVENANCE },
+          `inbox-other-${index}`,
+        );
+      }
+
+      const inbox = await call(toolOf(fixture.front, "agent_inbox"), {}, OFFICE_CALL);
+      const tickets = detailsOf(inbox).tickets as readonly { readonly id: string }[];
+      expect(tickets.map((ticket) => ticket.id)).toEqual([mine.id]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("reads without changing the board", async () => {
     const fixture = await openFixture({
       directory: DIRECTORY(),
@@ -868,7 +910,7 @@ describe("a crash during the wait", () => {
     const reopened = await fixture.reopen();
     try {
       await reopened.relay.recover();
-      const rows = reopened.board.relay.deliveriesForTicket(ticketId);
+      const rows = submitted(reopened.board, ticketId);
       expect(rows).toHaveLength(1);
       expect(rows[0]?.state).toBe("settled");
       expect(rows[0]?.outcome).toBe(DELEGATE_CHATTER);
@@ -889,7 +931,133 @@ describe("a crash during the wait", () => {
       expect(second).toEqual(first);
       // One ticket, one delivery, one completion: the answer arrived exactly once.
       expect(reopened.board.list({ type: TYPE })).toHaveLength(1);
-      expect(reopened.board.relay.deliveriesForTicket(ticketId)).toHaveLength(1);
+      expect(submitted(reopened.board, ticketId)).toHaveLength(1);
+    } finally {
+      await reopened.close();
+    }
+  });
+});
+
+/**
+ * Both roles' script when the delegator's own turn arrives through the relay: the front desk, working
+ * a ticket it was delivered, hands part of it on with `wait: true`, then replies on its own ticket
+ * with whatever came back. The delegate runs the shared script unchanged.
+ */
+function nestedScript(): (messages: readonly Message[]) => ScriptedTurn {
+  const delegate = delegatingScript();
+  return (messages) => {
+    const delivered = messages.findLast(
+      (message) => message.role === "user" && textOf(message).includes("TICKET "),
+    );
+    if (delivered === undefined || !textOf(delivered).includes(`type ${FRONT_TYPE}`)) {
+      return delegate(messages) as ScriptedTurn;
+    }
+    const ticketId = /TICKET (\S+)/.exec(textOf(delivered))?.[1] ?? "";
+    const results = messages
+      .slice(messages.lastIndexOf(delivered) + 1)
+      .filter((message) => message.role === "toolResult");
+    const dispatched = results.find((message) => message.toolName === "agent_dispatch");
+    if (dispatched === undefined) {
+      return {
+        toolCalls: [
+          {
+            name: "agent_dispatch",
+            args: { type: TYPE, title: "Invoice job 42", detail: REQUEST, wait: true },
+          },
+        ],
+      };
+    }
+    if (!results.some((message) => message.toolName === "agent_reply")) {
+      return {
+        toolCalls: [
+          { name: "agent_reply", args: { ticketId, result: `Booked. ${textOf(dispatched)}` } },
+        ],
+      };
+    }
+    return { text: "Replied on the booking." };
+  };
+}
+
+/** Fail loudly instead of hanging: a deadlocked poll never settles, and a test timeout hides why. */
+async function within<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} did not finish within ${ms} ms.`)), ms);
+  });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+describe("a nested wait", () => {
+  /** A booking the relay delivers to the front desk, whose turn then waits on the bookkeeper. */
+  const book = (board: Board) =>
+    board.create(
+      {
+        type: FRONT_TYPE,
+        title: "Book job 42 and invoice it",
+        createdBy: "office",
+        provenance: PROVENANCE,
+      },
+      "nested-parent",
+    );
+
+  it("a delivered turn that dispatches with wait: true gets its answer inside the same poll", async () => {
+    const fixture = await openFixture({ directory: DIRECTORY(), script: nestedScript() });
+    try {
+      const parent = book(fixture.board);
+      await within(fixture.relay.pollOnce(), 4_000, "The poll");
+
+      const [childId] = fixture.board.list({ type: TYPE }).map((ticket) => ticket.id);
+      if (childId === undefined) throw new Error("The delegator never dispatched.");
+      expect(ticketOf(fixture.board, childId).status).toBe("done");
+      const done = ticketOf(fixture.board, parent.id);
+      expect(done.status).toBe("done");
+      // The delegate's answer came back through the wait, into the turn that asked for it.
+      expect(done.result).toBe(`Booked. ${DELEGATE_RESULT}`);
+
+      // Each ticket was delivered once, and nothing is left behind the cursor.
+      for (const id of [parent.id, childId]) {
+        expect(submitted(fixture.board, id).map((row) => row.state)).toEqual(["settled"]);
+      }
+      expect(fixture.board.relay.cursor()).toBe(fixture.board.lastEventSeq());
+      expect(fixture.board.relay.openDeliveries()).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("a restart while the delegator's turn waits recovers both deliveries, each once", async () => {
+    const directory = DIRECTORY();
+    const fixture = await openFixture({ directory, script: nestedScript() });
+    const parent = book(fixture.board);
+
+    // The process dies once the delegator's turn is admitted. The turn keeps running long enough to
+    // dispatch and block on the wait, and the child's event is still behind the cursor.
+    fixture.kill.beforeSettlement = true;
+    await expect(fixture.relay.pollOnce()).rejects.toThrow(/simulated crash/);
+    const childId = await waitForTicket(fixture.board, TYPE);
+    await waitForWaitRecord(fixture.board, childId);
+    expect(fixture.board.relay.deliveriesForTicket(parent.id)[0]?.state).toBe("admitted");
+    expect(fixture.board.relay.deliveriesForTicket(childId)).toEqual([]);
+    await fixture.close();
+
+    const reopened = await fixture.reopen();
+    try {
+      await within(reopened.relay.recover(), 8_000, "Recovery");
+
+      for (const id of [parent.id, childId]) {
+        expect(submitted(reopened.board, id).map((row) => row.state)).toEqual(["settled"]);
+      }
+      expect(ticketOf(reopened.board, childId).status).toBe("done");
+      expect(ticketOf(reopened.board, childId).result).toBe(DELEGATE_RESULT);
+      expect(ticketOf(reopened.board, parent.id).status).toBe("done");
+      // One dispatch, one child: the interrupted call was not made a second time.
+      expect(reopened.board.list({ type: TYPE })).toHaveLength(1);
+      expect(reopened.board.relay.cursor()).toBe(reopened.board.lastEventSeq());
+      expect(reopened.board.relay.openDeliveries()).toEqual([]);
     } finally {
       await reopened.close();
     }

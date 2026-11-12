@@ -7,6 +7,9 @@ import {
   parseMessengerIdentity,
   type ResendMessengerIdentity,
 } from "./messenger-identity.js";
+import { readBoundedText } from "./shared/bounded-http.js";
+import { transact } from "./shared/transact.js";
+import { controls, exact } from "./shared/validation.js";
 
 export type ResendMessageIntent = { to: string; channel: "email" | "sms"; text: string };
 export type ResendDeliveryReceipt = { id: string; status: "accepted" };
@@ -44,24 +47,6 @@ const EMAIL =
 const UNCERTAIN =
   "Email outcome is uncertain; automatic retry is blocked. Inspect Resend before a new authorized submission.";
 
-function hasControl(value: string, message = false): boolean {
-  return [...value].some((character) => {
-    const code = character.codePointAt(0) ?? 0;
-    if (message && (code === 9 || code === 10 || code === 13)) return false;
-    return code <= 31 || (code >= 127 && code <= 159);
-  });
-}
-
-function exact(value: unknown, maximum: number): value is string {
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.length <= maximum &&
-    value.trim() === value &&
-    !hasControl(value)
-  );
-}
-
 function validRequestId(value: unknown): string {
   if (!exact(value, 500)) throw new Error("Request ID is invalid.");
   return value;
@@ -81,7 +66,7 @@ function validIntent(value: unknown): { to: string; channel: "email"; text: stri
     record.text.length === 0 ||
     record.text.length > 4000 ||
     record.text.trim().length === 0 ||
-    hasControl(record.text, true)
+    controls(record.text, true)
   ) {
     throw new Error("Message text is invalid.");
   }
@@ -107,76 +92,6 @@ function providerKey(identity: string, namespace: string, requestId: string): st
   return `officehum.email.v1/${createHash("sha256")
     .update(JSON.stringify([identity, namespace, requestId]))
     .digest("hex")}`;
-}
-
-function inTransaction<T>(database: DatabaseSync, action: () => T): T {
-  database.exec("BEGIN IMMEDIATE");
-  try {
-    const result = action();
-    database.exec("COMMIT");
-    return result;
-  } catch (error) {
-    if (database.isTransaction) database.exec("ROLLBACK");
-    throw error;
-  }
-}
-
-async function boundedBody(response: Response, signal: AbortSignal): Promise<string> {
-  if (response.body === null) return "";
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  try {
-    while (true) {
-      signal.throwIfAborted();
-      let onAbort!: () => void;
-      const aborted = new Promise<never>((_resolve, reject) => {
-        onAbort = () => reject(signal.reason ?? new Error("aborted"));
-        signal.addEventListener("abort", onAbort, { once: true });
-      });
-      let next: Awaited<ReturnType<typeof reader.read>>;
-      try {
-        next = await Promise.race([reader.read(), aborted]);
-      } catch (error) {
-        if (signal.aborted) cancelReader(reader);
-        throw error;
-      } finally {
-        signal.removeEventListener("abort", onAbort);
-      }
-      if (next.done) break;
-      length += next.value.byteLength;
-      if (length > RESPONSE_LIMIT) {
-        cancelReader(reader);
-        throw new Error("Resend response was invalid.");
-      }
-      chunks.push(next.value);
-    }
-  } finally {
-    try {
-      reader.releaseLock();
-    } catch {
-      // A native stream may keep its read pending while cancellation stalls.
-    }
-  }
-  const joined = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    joined.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(joined);
-  } catch {
-    throw new Error("Resend response was invalid.");
-  }
-}
-
-function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>): void {
-  try {
-    void reader.cancel().catch(() => {});
-  } catch {
-    // Cancellation is cleanup only and must not extend the request deadline.
-  }
 }
 
 function tableNames(database: DatabaseSync): string[] {
@@ -306,7 +221,7 @@ export function openResendMessenger(
        PRAGMA journal_mode = WAL;`,
     );
     if (freshPath && tableNames(database).length === 0) {
-      inTransaction(database, () => {
+      transact(database, () => {
         if (tableNames(database).length !== 0) return;
         const initialNamespace = randomUUID();
         database.exec(
@@ -452,7 +367,7 @@ export function openResendMessenger(
     const observed = safeTime(clock());
     if (row === undefined) {
       const key = providerKey(identity, namespace, requestId);
-      row = inTransaction(database, () => {
+      row = transact(database, () => {
         const concurrent = find.get(requestId) as OperationRow | undefined;
         if (concurrent !== undefined) {
           return validateRow(concurrent, identity, namespace, authority);
@@ -466,7 +381,7 @@ export function openResendMessenger(
       if (row.state === "accepted") return { id: row.receipt_id as string, status: "accepted" };
     }
     validatePendingTime(row, observed);
-    row = inTransaction(database, () => {
+    row = transact(database, () => {
       const current = validateRow(
         find.get(requestId) as OperationRow,
         identity,
@@ -505,7 +420,10 @@ export function openResendMessenger(
         signal: controller.signal,
       });
       if (response.redirected) throw new Error("redirect");
-      body = await boundedBody(response, controller.signal);
+      body = await readBoundedText(response, controller.signal, {
+        limit: RESPONSE_LIMIT,
+        invalid: "Resend response was invalid.",
+      });
     } catch (error) {
       if (closed) throw new Error("Resend Messenger is closed.");
       if (error instanceof Error && error.message === "Resend response was invalid.") {
@@ -538,7 +456,7 @@ export function openResendMessenger(
       throw new Error(`Resend rejected the email request with HTTP ${response.status}.`);
     }
     const receiptId = validReceiptId(parsed?.id);
-    return inTransaction(database, () => {
+    return transact(database, () => {
       const current = validateRow(
         find.get(requestId) as OperationRow,
         identity,
