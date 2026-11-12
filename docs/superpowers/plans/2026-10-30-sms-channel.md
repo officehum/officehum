@@ -96,5 +96,8 @@ contact is rate limited like a stranger.
 
 `listen` now passes `signedUrl` (RASF-3572): when `office.config.json` names `sms.publicBaseUrl`, the
 Twilio signature is checked against `<publicBaseUrl>/hooks/twilio` instead of the URL rebuilt from the
-request's headers. `isRegistered` is still not passed: the route asks it synchronously, and contacts
-are a harness document that can only be read asynchronously.
+request's headers.
+
+`listen` now passes `isRegistered` too (RASF-3572): `SmsIntake.isContact` answers it from the same
+contact list the intake routes by, so a saved contact is not held to the stranger's ceiling. The
+channel's sender resolver may now answer asynchronously, because contacts are a harness document.

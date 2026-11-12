@@ -83,10 +83,11 @@ export interface TwilioHookOptions {
    *
    * The ceiling exists for a stranger, not for a customer with a job in flight, and this route cannot
    * read the contact list itself — contacts live in the harness, behind the office's own documents.
-   * So the host answers, synchronously, from whatever it already holds. A host with no answer gets
-   * the conservative one: every sender is a stranger, and the ceiling applies to all of them.
+   * So the host answers: `SmsIntake.isContact` is that answer for the office's contact list. A host
+   * with no answer gets the conservative one: every sender is a stranger, and the ceiling applies to
+   * all of them.
    */
-  readonly isRegistered?: (from: E164) => boolean;
+  readonly isRegistered?: (from: E164) => boolean | Promise<boolean>;
   /**
    * The exact URL Twilio is configured to call. Behind a TLS-terminating proxy the request cannot say
    * its own public URL, so a host passes it here; otherwise it is reconstructed from the request's

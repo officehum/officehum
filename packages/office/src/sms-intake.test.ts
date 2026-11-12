@@ -137,7 +137,8 @@ async function office(options: {
   readonly approve?: (approvalId: string) => boolean;
   readonly contacts?: readonly { phone: string; email: string | null }[];
   readonly rateLimit?: { limit: number; windowMs: number };
-  readonly isRegistered?: boolean;
+  /** A fixed answer, or `"contacts"` for the intake's own lookup in the office's contact list. */
+  readonly isRegistered?: boolean | "contacts";
 }): Promise<Office> {
   const path = directory();
   const board = createWorkboard(join(path, "office.sqlite"));
@@ -209,7 +210,10 @@ async function office(options: {
       authToken: TOKEN,
       businessNumber: BUSINESS,
       board: board.sms,
-      isRegistered: () => options.isRegistered ?? false,
+      isRegistered: (from) =>
+        options.isRegistered === "contacts"
+          ? intake.isContact(from)
+          : (options.isRegistered ?? false),
       ...(options.rateLimit === undefined ? {} : { rateLimit: options.rateLimit }),
       onInbound: async (outcome) => {
         outcomes.push(outcome);
@@ -291,6 +295,32 @@ const sendEmail = (to: string, text: string) =>
   );
 
 describe("inbound text from a registered number", () => {
+  it("is not held to the stranger's ceiling when the office looks the number up in its contacts", async () => {
+    const window = { limit: 1, windowMs: 60 * 60 * 1000 };
+    const office1 = await office({
+      contacts: [{ phone: CUSTOMER, email: EMAIL }],
+      turns: () => [fauxAssistantMessage("Noted."), fauxAssistantMessage("Noted again.")],
+      rateLimit: window,
+      isRegistered: "contacts",
+    });
+    await office1.post({ MessageSid: "SM1", SmsSid: "SM1" });
+    await office1.post({ MessageSid: "SM2", SmsSid: "SM2" });
+    // A number no contact owns, asked of the same contact list, is still a stranger.
+    await office1.post({ From: STRANGER, MessageSid: "SM3", SmsSid: "SM3" });
+    await office1.post({ From: STRANGER, MessageSid: "SM4", SmsSid: "SM4" });
+
+    expect(office1.outcomes.map(({ disposition }) => disposition)).toEqual([
+      "recorded",
+      "recorded",
+      "recorded",
+      "rate_limited",
+    ]);
+    await office1.solo.harness.waitForIdle(BACKGROUND_CONTEXT);
+    // Two texts in one conversation for the customer; one callback ticket for the stranger.
+    expect(await routes(office1.solo)).toHaveLength(1);
+    expect(office1.board.list()).toHaveLength(1);
+  });
+
   it("opens one conversation, marked external, keyed by the MessageSid", async () => {
     const office1 = await office({
       contacts: [{ phone: CUSTOMER, email: EMAIL }],

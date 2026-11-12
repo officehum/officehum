@@ -24,8 +24,14 @@ export function registeredSender(contactId: string | null = null): SenderResolut
   return { kind: "registered", contactId };
 }
 
-/** A resolver, as the gateway calls it. Synchronous: a webhook must not wait on a lookup. */
-export type SenderResolver = (message: InboundMessage) => SenderResolution;
+/**
+ * A resolver, as the gateway calls it. It may answer later: an office's contact list lives behind
+ * its own store, and reading it is not instant. The gateway waits for the answer before the ceiling
+ * is applied, and the provider is acknowledged only after dispatch either way.
+ */
+export type SenderResolver = (
+  message: InboundMessage,
+) => SenderResolution | Promise<SenderResolution>;
 
 /**
  * A resolver from a predicate over the sender's address.
@@ -34,8 +40,8 @@ export type SenderResolver = (message: InboundMessage) => SenderResolution;
  * whatever the host already holds. A host with no answer passes nothing, and every sender is a
  * stranger — which is the conservative reading, because it only makes the ceiling stricter.
  */
-export function resolveBy(predicate: (from: string) => boolean): SenderResolver {
-  return (message) => (predicate(message.from) ? registeredSender() : UNKNOWN_SENDER);
+export function resolveBy(predicate: (from: string) => boolean | Promise<boolean>): SenderResolver {
+  return async (message) => ((await predicate(message.from)) ? registeredSender() : UNKNOWN_SENDER);
 }
 
 /** The resolver a host with nothing to say gets. */

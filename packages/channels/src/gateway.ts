@@ -204,7 +204,7 @@ export class ChannelGateway {
 
     // A registered sender is a customer, not a stranger: the ceiling exists to stop a flood, and one
     // of this office's own customers asking three questions in an hour is a conversation, not a flood.
-    const sender = this.#options.resolve(message);
+    const sender = await this.#options.resolve(message);
     const ceiling = this.#options.ceiling;
     const allowed =
       sender.kind === "registered" ||
