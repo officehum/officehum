@@ -83,6 +83,18 @@ the client watches again and passes on whatever is waiting then; if the gateway 
 `busy` (its runtime is restarting), the client asks again, with backoff, until it is taken. A
 listener whose own `watchApprovals` call rejects is not registered.
 
+A watch can end without your asking: if the gateway refuses the watch after a reconnect (`forbidden`
+because you may no longer approve, for example), the client does not ask again. It drops every
+listener and calls the optional second argument once with that `GatewayError`:
+
+```ts
+await client.watchApprovals(onApproval, (error) => {
+  // no longer watching: error.code is the protocol's error code, error.message says why
+});
+```
+
+Call `watchApprovals` again to start over. Without the second argument the watch ends silently.
+
 ## HTTP fallback
 
 Where a WebSocket cannot go, `GatewayClient.connect({ url, token, transport: "http" })` submits with

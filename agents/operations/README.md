@@ -79,8 +79,16 @@ company does not require approval; it never says anyone approved it.
 shown the crew by name, the client, the service, the job's date and hours, the crew's booked hours
 against its cap for that week, and for a contract move both dates and the client's reason, all read
 from the desk rather than a bare job and crew id. A job or crew that is not on the desk, or a one-off
-job sent as a contract move, asks nobody. The facts are for the person to read; the desk still checks
-the overtime figure and the new date itself when the approved call runs.
+job sent as a contract move, asks nobody.
+
+**The write is bound to what was approved.** On a yes the gate hands those facts to the tool, and the
+tool passes them to the desk as `approved`. The desk reads the same facts again (`overtimeFacts` and
+`contractRescheduleFacts` in `src/desk.ts`) and refuses with `changed`, writing nothing, when they
+differ: the job went to another crew, the crew's week or the hours changed, the visit moved, or the
+call names another date or reason. A gated call that carries no approved facts is refused with
+`not_approved`; the one exception is overtime at a company that does not require approval, where
+nobody was asked and there is nothing to compare. The desk still checks the overtime figure and the
+new date itself.
 
 "Today", and so "this week" in `list_crews`, is the company's day (`hours.timezone`), in the prompt
 and on the desk alike; `fakeOperationsDesk` takes it as `timeZone`.
@@ -103,7 +111,11 @@ asks a person on every call. The approval is unconditional in `officehum.json`;
 The role ships no field-service connection. `fakeOperationsDesk` is the demonstration one; a host
 binds an `OperationsDesk` (`src/desk.ts`): `listJobs`, `listCrews`, `assignCrew`, `requestOvertime`,
 `rescheduleJob`, `requestContractReschedule` and `recordCallout`. Every write carries a `requestId`
-derived from the durable call identity, so a retried call returns what it already did. The desk owns
+derived from the durable call identity, so a retried call returns what it already did. The two gated
+writes also carry `approved`, the facts a person was shown: a host desk builds the same facts from its
+own records with the exported `overtimeFacts` and `contractRescheduleFacts`, compares them with
+`sameFacts` (`@officehum/sdk`) and refuses with `changed` when they differ. `requestOvertime` gets
+`approved: undefined` only when the company does not require approval for overtime. The desk owns
 the hours arithmetic and the refusals; a refusal is an `OperationsDeskError` with a `code` the tools
 turn into the next step.
 

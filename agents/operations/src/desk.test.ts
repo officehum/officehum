@@ -7,7 +7,13 @@
 
 import { describe, expect, it } from "vitest";
 import { type Crew, loadCompanyFacts } from "./company.js";
-import { fakeOperationsDesk, type OperationsDesk, OperationsDeskError } from "./desk.js";
+import {
+  contractRescheduleFacts,
+  fakeOperationsDesk,
+  type OperationsDesk,
+  OperationsDeskError,
+  overtimeFacts,
+} from "./desk.js";
 
 const company = loadCompanyFacts();
 
@@ -33,6 +39,32 @@ async function crewWeek(operations: OperationsDesk, crewId: string, weekOf = "20
   const crew = crews.find((candidate) => candidate.crewId === crewId);
   if (crew === undefined) throw new Error(`no crew ${crewId}`);
   return crew;
+}
+
+async function jobOf(operations: OperationsDesk, jobId: string) {
+  const job = (await operations.listJobs({ client: jobId }))[0];
+  if (job === undefined) throw new Error(`no job ${jobId}`);
+  return job;
+}
+
+/** A gated overtime call as the tool makes it: its arguments, and the facts a person was shown. */
+async function overtime(
+  operations: OperationsDesk,
+  args: { readonly crewId: string; readonly jobId: string; readonly hours: number },
+) {
+  const job = await jobOf(operations, args.jobId);
+  const crew = await crewWeek(operations, args.crewId, job.date);
+  return { ...args, approved: overtimeFacts(job, crew, args.hours) };
+}
+
+/** A gated contract move as the tool makes it: its arguments, and the facts a person was shown. */
+async function contractMove(
+  operations: OperationsDesk,
+  args: { readonly jobId: string; readonly newDate: string; readonly reason: string },
+) {
+  const job = await jobOf(operations, args.jobId);
+  const crew = job.crewId === null ? undefined : await crewWeek(operations, job.crewId, job.date);
+  return { ...args, approved: contractRescheduleFacts(job, crew, args) };
 }
 
 describe("listJobs", () => {
@@ -205,7 +237,7 @@ describe("requestOvertime", () => {
   it("records the overtime the cap needs and assigns the crew", async () => {
     const operations = desk();
     const grant = await operations.requestOvertime(
-      { crewId: "cleaning-central", jobId: "J-2101", hours: 7 },
+      await overtime(operations, { crewId: "cleaning-central", jobId: "J-2101", hours: 7 }),
       { requestId: "ot-1" },
     );
     expect(grant).toMatchObject({
@@ -229,7 +261,7 @@ describe("requestOvertime", () => {
     for (const hours of [6, 8]) {
       const refused = await refusalOf(
         operations.requestOvertime(
-          { crewId: "cleaning-central", jobId: "J-2101", hours },
+          await overtime(operations, { crewId: "cleaning-central", jobId: "J-2101", hours }),
           { requestId: `ot-${hours}` },
         ),
       );
@@ -240,9 +272,10 @@ describe("requestOvertime", () => {
   });
 
   it("refuses overtime a job does not need, pointing back to assign_crew", async () => {
+    const operations = desk();
     const refused = await refusalOf(
-      desk().requestOvertime(
-        { crewId: "cleaning-north", jobId: "J-2102", hours: 2 },
+      operations.requestOvertime(
+        await overtime(operations, { crewId: "cleaning-north", jobId: "J-2102", hours: 2 }),
         { requestId: "ot-fits" },
       ),
     );
@@ -251,9 +284,10 @@ describe("requestOvertime", () => {
   });
 
   it("refuses overtime on a day the crew has approved time off", async () => {
+    const operations = desk();
     const refused = await refusalOf(
-      desk().requestOvertime(
-        { crewId: "cleaning-south", jobId: "J-2101", hours: 1 },
+      operations.requestOvertime(
+        await overtime(operations, { crewId: "cleaning-south", jobId: "J-2101", hours: 1 }),
         { requestId: "ot-off" },
       ),
     );
@@ -262,16 +296,81 @@ describe("requestOvertime", () => {
 
   it("answers a replayed call with the overtime it already recorded, granting it once", async () => {
     const operations = desk();
-    const args = { crewId: "cleaning-central", jobId: "J-2101", hours: 7 };
+    const args = await overtime(operations, {
+      crewId: "cleaning-central",
+      jobId: "J-2101",
+      hours: 7,
+    });
     const first = await operations.requestOvertime(args, { requestId: "ot-replay" });
     const again = await operations.requestOvertime(args, { requestId: "ot-replay" });
     expect(again).toEqual(first);
     expect((await crewWeek(operations, "cleaning-central")).overtimeHours).toBe(7);
   });
+  it("refuses an approved call once the crew's week is no longer the one the person saw", async () => {
+    const operations = desk();
+    const asked = await overtime(operations, {
+      crewId: "cleaning-central",
+      jobId: "J-2101",
+      hours: 7,
+    });
+    // Between the ask and the grant, three more hours land on Central's week.
+    await operations.assignCrew(
+      { jobId: "J-2104", crewId: "cleaning-central" },
+      { requestId: "meanwhile" },
+    );
+    const refused = await refusalOf(operations.requestOvertime(asked, { requestId: "ot-stale" }));
+    expect(refused.code).toBe("changed");
+    expect(refused.message).toContain("Nothing was recorded");
+    expect((await jobOf(operations, "J-2101")).crewId).toBeNull();
+    expect((await crewWeek(operations, "cleaning-central")).overtimeHours).toBe(0);
+  });
+
+  it("refuses an approved call once the job was given to another crew", async () => {
+    const operations = desk();
+    const asked = await overtime(operations, {
+      crewId: "cleaning-central",
+      jobId: "J-2101",
+      hours: 7,
+    });
+    await operations.assignCrew(
+      { jobId: "J-2101", crewId: "cleaning-north" },
+      { requestId: "to-north-first" },
+    );
+    const refused = await refusalOf(
+      operations.requestOvertime(asked, { requestId: "ot-reassigned-first" }),
+    );
+    expect(refused.code).toBe("changed");
+    expect((await jobOf(operations, "J-2101")).crewId).toBe("cleaning-north");
+    expect((await crewWeek(operations, "cleaning-central")).overtimeHours).toBe(0);
+  });
+
+  it("refuses a call whose hours are not the hours the person approved", async () => {
+    const operations = desk();
+    const asked = await overtime(operations, {
+      crewId: "cleaning-central",
+      jobId: "J-2101",
+      hours: 7,
+    });
+    const refused = await refusalOf(
+      operations.requestOvertime({ ...asked, hours: 9 }, { requestId: "ot-other-hours" }),
+    );
+    expect(refused.code).toBe("changed");
+    expect((await crewWeek(operations, "cleaning-central")).overtimeHours).toBe(0);
+  });
+
+  it("checks no facts when none were approved: a company that does not require approval", async () => {
+    const operations = desk();
+    const grant = await operations.requestOvertime(
+      { crewId: "cleaning-central", jobId: "J-2101", hours: 7, approved: undefined },
+      { requestId: "ot-no-approval" },
+    );
+    expect(grant.hours).toBe(7);
+  });
+
   it("counts approved overtime only while its job is still on that crew in that week", async () => {
     const operations = desk();
     await operations.requestOvertime(
-      { crewId: "cleaning-central", jobId: "J-2101", hours: 7 },
+      await overtime(operations, { crewId: "cleaning-central", jobId: "J-2101", hours: 7 }),
       { requestId: "ot-moves" },
     );
     await operations.rescheduleJob(
@@ -292,7 +391,7 @@ describe("requestOvertime", () => {
   it("stops counting overtime once its job is given to another crew", async () => {
     const operations = desk();
     await operations.requestOvertime(
-      { crewId: "cleaning-central", jobId: "J-2101", hours: 7 },
+      await overtime(operations, { crewId: "cleaning-central", jobId: "J-2101", hours: 7 }),
       { requestId: "ot-reassigned" },
     );
     await operations.assignCrew(
@@ -308,7 +407,7 @@ describe("requestOvertime", () => {
     const operations = desk();
     const refused = await refusalOf(
       operations.requestOvertime(
-        { crewId: "cleaning-central", jobId: "J-1011", hours: 7 },
+        await overtime(operations, { crewId: "cleaning-central", jobId: "J-1011", hours: 7 }),
         { requestId: "ot-contract" },
       ),
     );
@@ -387,7 +486,11 @@ describe("requestContractReschedule", () => {
   it("moves a visit on a recurring contract, keeping the reason", async () => {
     const operations = desk();
     const moved = await operations.requestContractReschedule(
-      { jobId: "J-1034", newDate: "2026-11-14", reason: "Floors recarpeted on Thursday" },
+      await contractMove(operations, {
+        jobId: "J-1034",
+        newDate: "2026-11-14",
+        reason: "Floors recarpeted on Thursday",
+      }),
       { requestId: "c-1" },
     );
     expect(moved).toMatchObject({
@@ -401,9 +504,14 @@ describe("requestContractReschedule", () => {
   });
 
   it("refuses a one-off job, which reschedule_job moves", async () => {
+    const operations = desk();
     const refused = await refusalOf(
-      desk().requestContractReschedule(
-        { jobId: "J-2103", newDate: "2026-11-16", reason: "Client asked" },
+      operations.requestContractReschedule(
+        await contractMove(operations, {
+          jobId: "J-2103",
+          newDate: "2026-11-16",
+          reason: "Client asked",
+        }),
         { requestId: "c-2" },
       ),
     );
@@ -412,9 +520,10 @@ describe("requestContractReschedule", () => {
   });
 
   it("refuses a move with no reason", async () => {
+    const operations = desk();
     const refused = await refusalOf(
-      desk().requestContractReschedule(
-        { jobId: "J-1034", newDate: "2026-11-14", reason: "  " },
+      operations.requestContractReschedule(
+        await contractMove(operations, { jobId: "J-1034", newDate: "2026-11-14", reason: "  " }),
         { requestId: "c-3" },
       ),
     );
@@ -423,10 +532,56 @@ describe("requestContractReschedule", () => {
 
   it("answers a replayed call with the move it already made", async () => {
     const operations = desk();
-    const args = { jobId: "J-1034", newDate: "2026-11-14", reason: "Floors recarpeted" };
+    const args = await contractMove(operations, {
+      jobId: "J-1034",
+      newDate: "2026-11-14",
+      reason: "Floors recarpeted",
+    });
     const first = await operations.requestContractReschedule(args, { requestId: "c-replay" });
     const again = await operations.requestContractReschedule(args, { requestId: "c-replay" });
     expect(again).toEqual(first);
+  });
+  it("refuses an approved move once the visit is no longer where the person saw it", async () => {
+    const operations = desk();
+    const asked = await contractMove(operations, {
+      jobId: "J-1034",
+      newDate: "2026-11-14",
+      reason: "Floors recarpeted",
+    });
+    // Between the ask and the grant, another approved move takes the visit to Sunday.
+    await operations.requestContractReschedule(
+      await contractMove(operations, {
+        jobId: "J-1034",
+        newDate: "2026-11-15",
+        reason: "Client asked",
+      }),
+      { requestId: "c-meanwhile" },
+    );
+    const refused = await refusalOf(
+      operations.requestContractReschedule(asked, { requestId: "c-stale" }),
+    );
+    expect(refused.code).toBe("changed");
+    expect(refused.message).toContain("Nothing was moved");
+    expect((await jobOf(operations, "J-1034")).date).toBe("2026-11-15");
+  });
+
+  it("refuses a move to a date, or for a reason, the person did not approve", async () => {
+    const operations = desk();
+    const asked = await contractMove(operations, {
+      jobId: "J-1034",
+      newDate: "2026-11-14",
+      reason: "Floors recarpeted",
+    });
+    for (const changed of [
+      { ...asked, newDate: "2026-11-15" },
+      { ...asked, reason: "Someone else's reason" },
+    ]) {
+      const refused = await refusalOf(
+        operations.requestContractReschedule(changed, { requestId: `c-${changed.newDate}` }),
+      );
+      expect(refused.code).toBe("changed");
+    }
+    expect((await jobOf(operations, "J-1034")).date).toBe("2026-11-12");
   });
 });
 

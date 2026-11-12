@@ -887,7 +887,8 @@ const FRONTDESK_DIR = fileURLToPath(new URL("..", import.meta.resolve("@officehu
  * The inbound SMS route's options, or `undefined` when the office has not been given the channel:
  * the route is served only when `TWILIO_AUTH_TOKEN` is set. The number texts arrive on is read from
  * the office config in the state directory, where a provisioner writes it; the listener refuses to
- * start without one.
+ * start without one. The same config may name the office's public base URL, for signature checks
+ * behind a proxy.
  *
  * A text from a contact's number goes to the Front Desk in a conversation of its own, which may only
  * check availability and answer by email. A text from anyone else becomes a callback ticket for a
@@ -922,10 +923,15 @@ function smsHook(options: {
     agentKey: "frontdesk",
     personId: person.id,
   });
+  const config = openOfficeConfig(join(options.state, OFFICE_CONFIG_FILE));
+  const publicBaseUrl = config.smsPublicBaseUrl();
   return {
     authToken,
-    config: openOfficeConfig(join(options.state, OFFICE_CONFIG_FILE)),
+    config,
     board: board.sms,
+    // Twilio signs the public URL it called. Behind a proxy or tunnel the request cannot say what
+    // that was, so the office config names it; without one the route goes by the request's headers.
+    ...(publicBaseUrl === undefined ? {} : { signedUrl: `${publicBaseUrl}/hooks/twilio` }),
     onInbound: (outcome) => intake.accept(outcome),
   };
 }

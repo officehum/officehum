@@ -90,8 +90,8 @@ Each bug fix marked (test) has a regression test that failed before the fix.
 >   are decided through the gateway, and the board's gate is not installed there.
 > - **A12.** Resolved in RASF-3571: the SDK's file store commits several files together
 >   (`commitVersions`), and a Paper run's outputs land all or none.
-> - **A21.** Errors other than `busy` on the approval re-watch after a reconnect are still dropped.
-> - **B8.** Operations approval facts are shown to the approver but not re-checked at the write.
+> - **A21.** Resolved in RASF-3572: a caller of `watchApprovals` is told when the watch is lost.
+> - **B8.** Resolved in RASF-3572: Operations re-checks the approved facts at the write.
 > - **Left by decision:** B9, B13, C2 (its own PR), C4, C10, D2, D5, canonical JSON ordering (E2),
 >   Python helper duplication (E3).
 

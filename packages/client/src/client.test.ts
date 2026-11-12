@@ -338,6 +338,58 @@ describe("GatewayClient approvals", () => {
     expect(watches()).toBe(taken);
   });
 
+  it("tells the caller once, and stops, when the watch after a reconnect is refused", async () => {
+    const { fake, client } = await setup();
+    const heard: string[] = [];
+    const lost: GatewayError[] = [];
+    await client.watchApprovals(
+      (approval) => heard.push(approval.approvalId),
+      (error) => lost.push(error),
+    );
+    const watches = () => fake.received.filter((m) => m.type === "watch_approvals").length;
+
+    // The caller lost the right to approve while the client was away.
+    fake.refuse.set("watch_approvals", "forbidden");
+    fake.drop();
+    await until(() => expect(lost).toHaveLength(1));
+    expect(lost[0]).toBeInstanceOf(GatewayError);
+    expect(lost[0]?.code).toBe("forbidden");
+    expect(lost[0]?.message).not.toBe("");
+    expect(watches()).toBe(2); // refused is not retried
+
+    // The listener is gone: it hears nothing more, and the next reconnect does not watch for it.
+    fake.refuse.delete("watch_approvals");
+    fake.broadcast({ type: "approval", approval: waiting });
+    fake.drop();
+    await until(() => expect(fake.tokens).toHaveLength(3));
+    await client.ping();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(heard).toEqual([]);
+    expect(lost).toHaveLength(1);
+    expect(watches()).toBe(2);
+  });
+
+  it("does not report a watch answered busy after a reconnect as lost", async () => {
+    const { fake, client } = await setup();
+    const heard: string[] = [];
+    const lost: GatewayError[] = [];
+    await client.watchApprovals(
+      (approval) => heard.push(approval.approvalId),
+      (error) => lost.push(error),
+    );
+    fake.refuse.set("watch_approvals", "busy");
+    fake.approvals.push(waiting);
+    fake.drop();
+    await until(() =>
+      expect(
+        fake.received.filter((m) => m.type === "watch_approvals").length,
+      ).toBeGreaterThanOrEqual(3),
+    );
+    fake.refuse.delete("watch_approvals");
+    await until(() => expect(heard).toEqual([waiting.approvalId]));
+    expect(lost).toEqual([]);
+  });
+
   it("refuses to watch approvals over HTTP", async () => {
     const { client } = await setup({ transport: "http" });
     await expect(client.watchApprovals(() => {})).rejects.toThrow(/WebSocket transport/);

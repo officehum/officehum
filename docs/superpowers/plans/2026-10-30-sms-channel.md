@@ -91,3 +91,10 @@ callback person is whoever the company record routes `phone.callback` to, or els
 the Front Desk's company record is loaded onto the board when the route opens. Still open: a real
 provisioner and number (RASF-3159), and `isRegistered`, which the CLI does not pass, so a saved
 contact is rate limited like a stranger.
+
+## Status, 2026-11-12
+
+`listen` now passes `signedUrl` (RASF-3572): when `office.config.json` names `sms.publicBaseUrl`, the
+Twilio signature is checked against `<publicBaseUrl>/hooks/twilio` instead of the URL rebuilt from the
+request's headers. `isRegistered` is still not passed: the route asks it synchronously, and contacts
+are a harness document that can only be read asynchronously.

@@ -30,7 +30,7 @@
     {
       "name": "request_overtime",
       "replay": "unsafe",
-      "description": "Ask a person to approve overtime for a crew so it can take a job its weekly hours cap cannot hold. Once approved, the desk records the overtime and assigns the crew."
+      "description": "Ask a person to approve overtime for a crew so it can take a job its weekly hours cap cannot hold. Once approved, the desk records the overtime and assigns the crew; it refuses if the job or the crew's week changed since the person saw it."
     },
     {
       "name": "reschedule_job",
@@ -41,7 +41,7 @@
     {
       "name": "request_contract_reschedule",
       "replay": "unsafe",
-      "description": "Ask a person to approve moving a visit on a recurring contract to a new date, with the reason. Once approved, the desk moves the visit."
+      "description": "Ask a person to approve moving a visit on a recurring contract to a new date, with the reason. Once approved, the desk moves the visit; it refuses if the visit changed since the person saw it."
     },
     {
       "name": "record_callout",

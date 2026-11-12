@@ -120,7 +120,10 @@ describe("spend price table", () => {
 
   it("writes micro-dollars as money a person reads, rounded only for display", () => {
     expect(formatMicros(0)).toBe("$0.00");
-    expect(formatMicros(450)).toBe("$0.00");
+    // Spent, but too little to round up to a cent: "$0.00" would read as nothing spent at all.
+    expect(formatMicros(1)).toBe("<$0.01");
+    expect(formatMicros(450)).toBe("<$0.01");
+    expect(formatMicros(4_999)).toBe("<$0.01");
     expect(formatMicros(5_000)).toBe("$0.01");
     expect(formatMicros(650_000)).toBe("$0.65");
     expect(formatMicros(12_340_000)).toBe("$12.34");

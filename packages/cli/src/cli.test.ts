@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1235,7 +1235,9 @@ describe("runCli", () => {
     process.env.RESEND_INBOUND_EMAIL = "desk@example.test";
     process.env.RESEND_WEBHOOK_SECRET = secret;
 
-    const text = (port: number, messageSid: string) => {
+    // Twilio signs the URL it was configured to call, which behind a proxy is not the listener's own.
+    const publicBase = "https://office.example.test";
+    const text = (port: number, messageSid: string, signedFor?: string) => {
       const url = `http://127.0.0.1:${port}/hooks/twilio`;
       const params: Record<string, string> = {
         AccountSid: "AC11111111111111111111111111111111",
@@ -1246,7 +1248,7 @@ describe("runCli", () => {
       };
       const signed = Object.keys(params)
         .sort()
-        .reduce((payload, key) => payload + key + params[key], url);
+        .reduce((payload, key) => payload + key + params[key], signedFor ?? url);
       return fetch(url, {
         method: "POST",
         headers: {
@@ -1294,9 +1296,44 @@ describe("runCli", () => {
       expect(await response.text()).toContain("<Response>");
       // Twilio retries: the same message again is the same ticket.
       expect((await text(port, "SM00000000000000000000000000000002")).status).toBe(200);
+      // With no public URL configured, a request signed for the public name does not verify.
+      expect(
+        (await text(port, "SM00000000000000000000000000000003", `${publicBase}/hooks/twilio`))
+          .status,
+      ).toBe(403);
       await interruptCli();
       expect(await served.running).toBe(0);
       expect([...served.capture.output, ...served.capture.errors].join("\n")).not.toContain(token);
+
+      // The same request against an office whose config names its public URL verifies.
+      const proxiedDirectory = state();
+      const proxiedPort = await freeLoopbackPort();
+      writeFileSync(
+        join(proxiedDirectory, OFFICE_CONFIG_FILE),
+        JSON.stringify({
+          version: 1,
+          sms: { businessNumber: business, publicBaseUrl: publicBase },
+        }),
+        "utf8",
+      );
+      const proxied = await listen(proxiedDirectory, proxiedPort);
+      const verified = await text(
+        proxiedPort,
+        "SM00000000000000000000000000000003",
+        `${publicBase}/hooks/twilio`,
+      );
+      expect(verified.status).toBe(200);
+      expect(await verified.text()).toContain("<Response>");
+      // The configured URL is the only one checked: the listener's own address no longer verifies.
+      expect((await text(proxiedPort, "SM00000000000000000000000000000004")).status).toBe(403);
+      await interruptCli();
+      expect(await proxied.running).toBe(0);
+      const proxiedBoard = openOfficeBoard(join(proxiedDirectory, "office.sqlite"));
+      try {
+        expect(proxiedBoard.list({ type: "phone.callback" })).toHaveLength(1);
+      } finally {
+        proxiedBoard.close();
+      }
 
       const board = openOfficeBoard(join(directory, "office.sqlite"));
       try {

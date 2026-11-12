@@ -75,6 +75,38 @@ describe("office config", () => {
     expect(() => openOfficeConfig(path).smsBusinessNumber()).toThrow(/E\.164/);
   });
 
+  it("reads the public base URL beside the number, and keeps it when the number is rewritten", async () => {
+    const path = configPath();
+    const config = openOfficeConfig(path);
+    expect(config.smsPublicBaseUrl()).toBeUndefined();
+    writeFileSync(
+      path,
+      JSON.stringify({
+        version: 1,
+        sms: { businessNumber: FAKE_NUMBER, publicBaseUrl: "https://office.example.test/" },
+      }),
+      "utf8",
+    );
+    // One spelling, with or without the trailing slash, so the webhook path joins to it cleanly.
+    expect(config.smsPublicBaseUrl()).toBe("https://office.example.test");
+
+    await new FakeNumberProvisioner(OTHER_NUMBER, config).provision("acme-hvac");
+    expect(config.smsBusinessNumber()).toBe(OTHER_NUMBER);
+    expect(config.smsPublicBaseUrl()).toBe("https://office.example.test");
+  });
+
+  it("refuses a public base URL that is not an http(s) URL, or carries a query or fragment", () => {
+    const path = configPath();
+    for (const value of ["office.example.test", "ftp://office.example.test", 42, ""]) {
+      writeFileSync(path, JSON.stringify({ version: 1, sms: { publicBaseUrl: value } }), "utf8");
+      expect(() => openOfficeConfig(path).smsPublicBaseUrl()).toThrow(/sms\.publicBaseUrl/);
+    }
+    for (const value of ["https://office.example.test/?a=1", "https://office.example.test/#top"]) {
+      writeFileSync(path, JSON.stringify({ version: 1, sms: { publicBaseUrl: value } }), "utf8");
+      expect(() => openOfficeConfig(path).smsPublicBaseUrl()).toThrow(/sms\.publicBaseUrl/);
+    }
+  });
+
   it("keeps the number a provisioner wrote when it writes another key", async () => {
     const path = configPath();
     const config = openOfficeConfig(path);

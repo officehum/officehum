@@ -9,7 +9,9 @@
  * the SDK's gate before the tool runs (overtime's only while the company's staff policy requires it,
  * a condition `index.ts` passes), so this file holds no hours limit and no approval rule. It does
  * hold what the person is shown: `overtimeFacts` and `contractRescheduleFacts` read the crew, the
- * client, the dates and the hours from the desk before the gate asks anyone.
+ * client, the dates and the hours from the desk before the gate asks anyone. On a yes the gate hands
+ * those facts back, the tool passes them to the desk, and the desk refuses the write if the schedule
+ * no longer equals them.
  *
  * Every hours figure a tool speaks comes back from the desk, and every name from the company record.
  */
@@ -19,6 +21,7 @@ import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-wo
 import {
   APPROVED_FACTS_ARG,
   type ApprovalFactsReader,
+  approvedFacts,
   approvedFactsParameter,
   companyEscalationText,
   companyGlossaryText,
@@ -38,10 +41,12 @@ import { type CompanyFacts, person, personLabel, scheduleOwner } from "./company
 import {
   type Assignment,
   type CrewWeek,
+  contractRescheduleFacts as contractRescheduleFactsOf,
   type DeskRefusal,
   type Job,
   type OperationsDesk,
   OperationsDeskError,
+  overtimeFacts as overtimeFactsOf,
   type Reschedule,
 } from "./desk.js";
 
@@ -197,6 +202,8 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
       time_off: "",
       fits: "",
       one_off: "",
+      changed:
+        " Next: say the schedule changed after this was put to a person, so it was not done; read it again with list_jobs and list_crews before anything else.",
     };
     return deskRefusal(`${error.message}${next[error.code]}`, error.code, {
       ...(error.overtimeHoursNeeded === undefined
@@ -246,20 +253,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
         : `, with ${hours(crew.overtimeHours)} ${overtimeLabel(approvalRequired)} already`;
     return {
       summary: `Approve ${hours(overtimeHours)} hours of overtime for ${crew.name} so it can take ${job.id}: ${job.client}, ${job.service}, on ${job.date} (${hours(job.crewHours)} crew-hours). In the week of ${crew.weekStart} the crew has ${hours(crew.bookedHours)} of its ${hours(crew.weeklyHoursCap)} hours booked${already}.`,
-      facts: {
-        crewId: crew.crewId,
-        crewName: crew.name,
-        jobId: job.id,
-        client: job.client,
-        site: job.site,
-        service: job.service,
-        date: job.date,
-        crewHours: job.crewHours,
-        overtimeHours,
-        weekStart: crew.weekStart,
-        bookedHours: crew.bookedHours,
-        weeklyHoursCap: crew.weeklyHoursCap,
-      },
+      facts: overtimeFactsOf(job, crew, overtimeHours),
     };
   };
 
@@ -271,26 +265,14 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
         `${job.id} is a one-off job, not a visit on a recurring contract: move it with reschedule_job. Nothing was put to a person.`,
       );
     }
-    const crewName =
-      job.crewId === null ? "no crew yet" : (await crewFor(desk, job.crewId, job.date)).name;
-    const toDate = String(args.newDate).trim();
-    const reason = String(args.reason)
-      .trim()
-      .replace(/[.\s]+$/, "");
+    const crew = job.crewId === null ? undefined : await crewFor(desk, job.crewId, job.date);
+    const facts = contractRescheduleFactsOf(job, crew, {
+      newDate: String(args.newDate),
+      reason: String(args.reason),
+    });
     return {
-      summary: `Move ${job.id} (${job.client}, ${job.service}, contract ${job.contractId}, ${crewName}) from ${job.date} to ${toDate}. The client's reason: ${reason}.`,
-      facts: {
-        jobId: job.id,
-        client: job.client,
-        site: job.site,
-        service: job.service,
-        contractId: job.contractId,
-        crewId: job.crewId,
-        crewName,
-        fromDate: job.date,
-        toDate,
-        reason,
-      },
+      summary: `Move ${job.id} (${job.client}, ${job.service}, contract ${job.contractId}, ${facts.crewName}) from ${job.date} to ${facts.toDate}. The client's reason: ${facts.reason}.`,
+      facts,
     };
   };
 
@@ -410,7 +392,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
   const requestOvertime = defineTool({
     name: "request_overtime",
     description:
-      "Ask for overtime so a crew can take a job its weekly hours cap cannot hold. Use the hours assign_crew's refusal stated. It waits for a person while the company requires approval for overtime; once approved, or when the company does not require approval, the desk records the overtime and assigns the crew.",
+      "Ask for overtime so a crew can take a job its weekly hours cap cannot hold. Use the hours assign_crew's refusal stated. It waits for a person while the company requires approval for overtime; once approved, or when the company does not require approval, the desk records the overtime and assigns the crew. The desk refuses if the job or the crew's week changed since the person saw it.",
     parameters: Type.Object(
       {
         crewId: Type.String({ description: "The crew's id, e.g. cleaning-central" }),
@@ -419,8 +401,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
           exclusiveMinimum: 0,
           description: "The overtime hours, exactly as assign_crew's refusal stated them",
         }),
-        // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared. The
-        // facts are what the person was shown; the desk works out the overtime itself at the write.
+        // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared.
         [APPROVED_FACTS_ARG]: approvedFactsParameter(),
       },
       { additionalProperties: false },
@@ -428,9 +409,18 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     replay: "unsafe",
     execute: async (args, api) => {
       const desk = requireDesk(dependencies.desk, "operations");
+      // With approval off the gate asks nobody and hands back no facts, so the desk has none to
+      // compare; while the company requires approval, a call without them was approved by nobody.
+      const approved = approvedFacts(args);
+      if (approvalRequired && approved === undefined) {
+        return refusal(
+          `Nothing was approved: this overtime request for ${args.jobId} carries no facts a person approved. Overtime is recorded only after the approval gate has put it to a person and they said yes. Next: say the overtime waits for ${owner}'s approval and nothing was recorded.`,
+          { code: "not_approved", crewId: args.crewId, jobId: args.jobId },
+        );
+      }
       try {
         const grant = await desk.requestOvertime(
-          { crewId: args.crewId, jobId: args.jobId, hours: args.hours },
+          { crewId: args.crewId, jobId: args.jobId, hours: args.hours, approved },
           { requestId: requestId("overtime", api) },
         );
         // Said from the policy the gate applied: "approved" only when a person had to approve it.
@@ -478,7 +468,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
   const requestContractReschedule = defineTool({
     name: "request_contract_reschedule",
     description:
-      "Ask a person to approve moving a visit on a recurring contract to a new date, with the client's reason. Every call waits for a person; once approved, the desk moves the visit.",
+      "Ask a person to approve moving a visit on a recurring contract to a new date, with the client's reason. Every call waits for a person; once approved, the desk moves the visit. The desk refuses if the visit changed since the person saw it.",
     parameters: Type.Object(
       {
         jobId: Type.String({ description: "The contract visit's job id from list_jobs" }),
@@ -492,9 +482,16 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     replay: "unsafe",
     execute: async (args, api) => {
       const desk = requireDesk(dependencies.desk, "operations");
+      const approved = approvedFacts(args);
+      if (approved === undefined) {
+        return refusal(
+          `Nothing was approved: this move of ${args.jobId} carries no facts a person approved. A contract visit moves only after the approval gate has put it to a person and they said yes. Next: say the move waits for ${owner}'s approval and nothing was moved.`,
+          { code: "not_approved", jobId: args.jobId },
+        );
+      }
       try {
         const moved = await desk.requestContractReschedule(
-          { jobId: args.jobId, newDate: args.newDate, reason: args.reason },
+          { jobId: args.jobId, newDate: args.newDate, reason: args.reason, approved },
           { requestId: requestId("contract-reschedule", api) },
         );
         return {

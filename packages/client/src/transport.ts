@@ -1,5 +1,6 @@
 import type { Accepted, ApprovalInfo, ClientCommand, Result } from "@officehum/protocol";
 import type { BackoffOptions } from "./backoff.js";
+import type { GatewayError } from "./errors.js";
 import type { Run } from "./run.js";
 
 /** A command as the client builds it; the transport gives it its `id`. */
@@ -23,6 +24,13 @@ export interface TransportOptions {
   readonly retries?: number;
 }
 
+/**
+ * Told, once, that a watch on approvals ended: after a reconnect the gateway refused to take it
+ * again (`error.code` is `forbidden` when the caller may no longer approve). The listener hears
+ * nothing more; call `watchApprovals` again to start over.
+ */
+export type ApprovalsLost = (error: GatewayError) => void;
+
 /** How the client reaches a gateway: WebSocket, or the HTTP/SSE fallback. */
 export interface Transport {
   /**
@@ -32,9 +40,13 @@ export interface Transport {
   request(command: Outgoing, run?: Run): Promise<Accepted | Result>;
   /**
    * Starts hearing of approvals the caller may decide: resolves with those waiting now, then calls
-   * `listener` for each one asked for or decided, across reconnects.
+   * `listener` for each one asked for or decided, across reconnects. `onLost` is called if a
+   * reconnect cannot take the watch up again.
    */
-  watchApprovals(listener: (approval: ApprovalInfo) => void): Promise<readonly ApprovalInfo[]>;
+  watchApprovals(
+    listener: (approval: ApprovalInfo) => void,
+    onLost?: ApprovalsLost,
+  ): Promise<readonly ApprovalInfo[]>;
   close(): Promise<void>;
 }
 

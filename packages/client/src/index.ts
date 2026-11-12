@@ -11,4 +11,4 @@ export {
 export { GatewayError, isGatewayError } from "./errors.js";
 export { makeRequestId } from "./request-id.js";
 export { Run, type RunEvent, type Settled } from "./run.js";
-export type { TokenSource } from "./transport.js";
+export type { ApprovalsLost, TokenSource } from "./transport.js";

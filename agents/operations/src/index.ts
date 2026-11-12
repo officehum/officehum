@@ -50,6 +50,7 @@ export {
   type Assignment,
   type Callout,
   type CrewWeek,
+  contractRescheduleFacts,
   DEMO_NOW,
   type DeskRefusal,
   demoJobs,
@@ -61,6 +62,7 @@ export {
   type OperationsDesk,
   OperationsDeskError,
   type OvertimeGrant,
+  overtimeFacts,
   type Reschedule,
   type TimeOff,
 } from "./desk.js";
@@ -138,7 +140,8 @@ export default function operations(options: OperationsOptions = {}): DefinedRole
     // office's manifest-only gate never runs it and keeps asking on every call, which fails safe.
     when: { overtime: () => company.staffPolicies.overtimeNeedsApproval },
     // What the person is shown: the crew, the client, the dates and the hours, read from the desk
-    // before anyone is asked, so they never approve a bare job id.
+    // before anyone is asked, so they never approve a bare job id. The gate hands the same facts to
+    // the tool on a yes, and the desk refuses the write if the schedule no longer equals them.
     approvalFacts: {
       overtime: tools.overtimeFacts,
       contract_reschedule: tools.contractRescheduleFacts,

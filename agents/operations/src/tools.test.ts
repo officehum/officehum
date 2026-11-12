@@ -5,6 +5,7 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { APPROVED_FACTS_ARG, type ApprovalFactsReader } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { loadCompanyFacts, personLabel, scheduleOwner } from "./company.js";
 import { fakeOperationsDesk, type OperationsDesk } from "./desk.js";
@@ -27,10 +28,29 @@ const tools = (desk: OperationsDesk | undefined): OperationsToolset =>
 
 const desk = (): OperationsDesk => fakeOperationsDesk({ now: () => NOW });
 
+/**
+ * The arguments a gated tool receives after a yes: the model's, plus the facts the gate read from
+ * the desk and a person approved.
+ */
+async function approvedArgs<Args extends Record<string, unknown>>(
+  reader: ApprovalFactsReader,
+  args: Args,
+) {
+  const read = await reader(args, BACKGROUND_CONTEXT as never, {
+    conversationId: "conversation-1",
+    taskId: "task-1",
+  });
+  return { ...args, [APPROVED_FACTS_ARG]: read.facts };
+}
+
 function text(result: { output?: readonly unknown[] }): string {
   return (result.output ?? [])
     .map((block) => (block as { type?: string; text?: string }).text ?? "")
     .join("\n");
+}
+
+async function centralWeek(operations: OperationsDesk) {
+  return (await operations.listCrews()).find((crew) => crew.crewId === "cleaning-central");
 }
 
 function details(result: unknown): Record<string, unknown> {
@@ -150,8 +170,13 @@ describe("assign_crew", () => {
 describe("request_overtime", () => {
   it("records the overtime and assigns the crew, in the desk's figures", async () => {
     const operations = desk();
-    const result = await tools(operations).requestOvertime.execute(
-      { crewId: "cleaning-central", jobId: "J-2101", hours: 7 },
+    const set = tools(operations);
+    const result = await set.requestOvertime.execute(
+      await approvedArgs(set.overtimeFacts, {
+        crewId: "cleaning-central",
+        jobId: "J-2101",
+        hours: 7,
+      }),
       call("c8"),
       BACKGROUND_CONTEXT,
     );
@@ -164,30 +189,71 @@ describe("request_overtime", () => {
 
   it("refuses a figure that is not the overage, and replays without granting twice", async () => {
     const operations = desk();
-    const wrong = await tools(operations).requestOvertime.execute(
-      { crewId: "cleaning-central", jobId: "J-2101", hours: 10 },
+    const set = tools(operations);
+    const wrong = await set.requestOvertime.execute(
+      await approvedArgs(set.overtimeFacts, {
+        crewId: "cleaning-central",
+        jobId: "J-2101",
+        hours: 10,
+      }),
       call("c9"),
       BACKGROUND_CONTEXT,
     );
     expect(isError(wrong)).toBe(true);
     expect(text(wrong)).toContain("exactly 7 hours");
 
-    const args = { crewId: "cleaning-central", jobId: "J-2101", hours: 7 };
-    const first = await tools(operations).requestOvertime.execute(
-      args,
-      call("ot"),
-      BACKGROUND_CONTEXT,
-    );
-    const again = await tools(operations).requestOvertime.execute(
-      args,
-      call("ot"),
-      BACKGROUND_CONTEXT,
-    );
+    const args = await approvedArgs(set.overtimeFacts, {
+      crewId: "cleaning-central",
+      jobId: "J-2101",
+      hours: 7,
+    });
+    const first = await set.requestOvertime.execute(args, call("ot"), BACKGROUND_CONTEXT);
+    const again = await set.requestOvertime.execute(args, call("ot"), BACKGROUND_CONTEXT);
     expect(text(again)).toBe(text(first));
-    const central = (await operations.listCrews()).find(
-      (crew) => crew.crewId === "cleaning-central",
+    // After a restart the role is built again over the same desk, and the same call is run again
+    // with the facts the gate kept: still one grant.
+    const restarted = await tools(operations).requestOvertime.execute(
+      args,
+      call("ot"),
+      BACKGROUND_CONTEXT,
     );
-    expect(central?.overtimeHours).toBe(7);
+    expect(text(restarted)).toBe(text(first));
+    expect(await centralWeek(operations)).toMatchObject({ overtimeHours: 7, bookedHours: 147 });
+  });
+
+  it("refuses a call that carries no facts a person approved, and records nothing", async () => {
+    const operations = desk();
+    const result = await tools(operations).requestOvertime.execute(
+      { crewId: "cleaning-central", jobId: "J-2101", hours: 7 },
+      call("bare"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(details(result).code).toBe("not_approved");
+    expect(text(result)).toContain(owner);
+    expect(await centralWeek(operations)).toMatchObject({ overtimeHours: 0, bookedHours: 135 });
+  });
+
+  it("refuses when the job was given to another crew after the person saw it", async () => {
+    const operations = desk();
+    const set = tools(operations);
+    const args = await approvedArgs(set.overtimeFacts, {
+      crewId: "cleaning-central",
+      jobId: "J-2101",
+      hours: 7,
+    });
+    await set.assignCrew.execute(
+      { jobId: "J-2101", crewId: "cleaning-north" },
+      call("meanwhile"),
+      BACKGROUND_CONTEXT,
+    );
+    const result = await set.requestOvertime.execute(args, call("stale"), BACKGROUND_CONTEXT);
+    expect(isError(result)).toBe(true);
+    expect(details(result).code).toBe("changed");
+    expect(text(result)).toContain("Nothing was recorded");
+    expect(text(result)).toContain("list_jobs");
+    expect((await operations.listJobs({ client: "J-2101" }))[0]?.crewId).toBe("cleaning-north");
+    expect(await centralWeek(operations)).toMatchObject({ overtimeHours: 0, bookedHours: 135 });
   });
 });
 
@@ -207,6 +273,7 @@ describe("approval facts", () => {
       service: "Deep clean and floor care",
       date: "2026-11-12",
       crewHours: 12,
+      assignedCrewId: null,
       overtimeHours: 7,
       weekStart: "2026-11-09",
       bookedHours: 135,
@@ -284,8 +351,13 @@ describe("reschedule_job", () => {
 
 describe("request_contract_reschedule", () => {
   it("moves the contract visit and keeps the reason", async () => {
-    const result = await tools(desk()).requestContractReschedule.execute(
-      { jobId: "J-1034", newDate: "2026-11-14", reason: "Floors recarpeted on Thursday" },
+    const set = tools(desk());
+    const result = await set.requestContractReschedule.execute(
+      await approvedArgs(set.contractRescheduleFacts, {
+        jobId: "J-1034",
+        newDate: "2026-11-14",
+        reason: "Floors recarpeted on Thursday",
+      }),
       call("c12"),
       BACKGROUND_CONTEXT,
     );
@@ -295,9 +367,50 @@ describe("request_contract_reschedule", () => {
     expect(text(result)).toContain("2026-11-12 to 2026-11-14");
   });
 
+  it("refuses a call that carries no facts a person approved, and moves nothing", async () => {
+    const operations = desk();
+    const result = await tools(operations).requestContractReschedule.execute(
+      { jobId: "J-1034", newDate: "2026-11-14", reason: "Floors recarpeted on Thursday" },
+      call("bare"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(details(result).code).toBe("not_approved");
+    expect((await operations.listJobs({ client: "J-1034" }))[0]?.date).toBe("2026-11-12");
+  });
+
+  it("refuses when the visit moved after the person saw it, and moves nothing more", async () => {
+    const operations = desk();
+    const set = tools(operations);
+    const stale = await approvedArgs(set.contractRescheduleFacts, {
+      jobId: "J-1034",
+      newDate: "2026-11-14",
+      reason: "Floors recarpeted on Thursday",
+    });
+    await set.requestContractReschedule.execute(
+      await approvedArgs(set.contractRescheduleFacts, {
+        jobId: "J-1034",
+        newDate: "2026-11-15",
+        reason: "Client asked",
+      }),
+      call("meanwhile"),
+      BACKGROUND_CONTEXT,
+    );
+    const result = await set.requestContractReschedule.execute(
+      stale,
+      call("stale"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(details(result).code).toBe("changed");
+    expect(text(result)).toContain("Nothing was moved");
+    expect((await operations.listJobs({ client: "J-1034" }))[0]?.date).toBe("2026-11-15");
+  });
+
   it("refuses a one-off job", async () => {
     const result = await tools(desk()).requestContractReschedule.execute(
-      { jobId: "J-2103", newDate: "2026-11-16", reason: "Client asked" },
+      // The gate's reader refuses a one-off job, so no real grant exists for one; the desk refuses too.
+      { jobId: "J-2103", newDate: "2026-11-16", reason: "Client asked", [APPROVED_FACTS_ARG]: {} },
       call("c13"),
       BACKGROUND_CONTEXT,
     );
@@ -327,10 +440,20 @@ describe("replay of the other writes", () => {
       ["requestContractReschedule", { jobId: "J-1034", newDate: "2026-11-14", reason: "Carpet" }],
       ["recordCallout", { jobId: "J-1041", reason: "Leak" }],
     ] as const;
-    for (const [tool, args] of cases) {
+    for (const [tool, bare] of cases) {
       const operations = desk();
-      const first = await tools(operations)[tool].execute(args, call("r"), BACKGROUND_CONTEXT);
-      const again = await tools(operations)[tool].execute(args, call("r"), BACKGROUND_CONTEXT);
+      const set = tools(operations);
+      const args =
+        tool === "requestContractReschedule"
+          ? await approvedArgs(set.contractRescheduleFacts, bare)
+          : bare;
+      const first = await set[tool].execute(args as never, call("r"), BACKGROUND_CONTEXT);
+      // The second run is on tools built again over the same desk, as after a restart.
+      const again = await tools(operations)[tool].execute(
+        args as never,
+        call("r"),
+        BACKGROUND_CONTEXT,
+      );
       expect(isError(first), tool).toBe(false);
       expect(text(again), tool).toBe(text(first));
     }
