@@ -192,7 +192,7 @@ describe("marketing eval stubs", () => {
         { conversationId: "c", taskId: "t", callId: section } as never,
         BACKGROUND_CONTEXT,
       );
-      for (const part of result.output)
+      for (const part of result.output ?? [])
         if (part.type === "text") for (const line of part.text.split("\n")) real.add(line);
     }
     expect(real.size).toBeGreaterThan(0);
@@ -223,7 +223,10 @@ describe("marketing eval stubs", () => {
       const held = /^Refused: "([^"]+)" \(the phrase "([^"]+)"\).*held as (D-\d+)/s.exec(refusal);
       if (held === null) continue;
       const [, claim, phrase, draftId] = held;
-      const read = await reader({ draftId }, {} as never);
+      const read = await reader({ draftId }, {} as never, {
+        conversationId: "conversation-1",
+        taskId: "task-1",
+      });
       expect(read.facts.heldClaims, scenario.id).toEqual([{ claim, phrase }]);
       checked.push(`${scenario.id}: ${draftId}`);
     }

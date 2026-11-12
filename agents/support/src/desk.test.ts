@@ -445,11 +445,12 @@ describe("fakeSupportDesk: escalation", () => {
     // Whatever the reason, a case never goes to anyone it names: a refund naming the person who
     // decides money back goes up the line instead.
     const refundOwner = person(company, refunds.refundNeeds);
+    if (refundOwner === undefined) throw new Error("company changed");
     const named = await desk().escalateCase(
-      { caseId: "C-301", reason: "refund", note: "Wants October back.", about: refundOwner?.name },
+      { caseId: "C-301", reason: "refund", note: "Wants October back.", about: refundOwner.name },
       { requestId: "s3" },
     );
-    expect(named.toPersonId).not.toBe(refundOwner?.id);
+    expect(named.toPersonId).not.toBe(refundOwner.id);
     expect(named.redirected).toBe(true);
 
     // A crew member the record does not list is not a person the case could go to.

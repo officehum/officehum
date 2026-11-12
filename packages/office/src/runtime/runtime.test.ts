@@ -165,9 +165,7 @@ describe("openRuntime", () => {
   });
 
   it("cannot be confused by a principal id containing a slash", () => {
-    expect(scopedRequestId({ id: "a/b", roles: [] }, "c")).not.toBe(
-      scopedRequestId({ id: "a", roles: [] }, "b/c"),
-    );
+    expect(scopedRequestId({ id: "a/b" }, "c")).not.toBe(scopedRequestId({ id: "a" }, "b/c"));
   });
 
   it("queues a second submission while the conversation is busy, and attributes events to each", async () => {

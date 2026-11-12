@@ -185,7 +185,7 @@ describe("people-ops eval stubs", () => {
         { conversationId: "c", taskId: "t", callId: section } as never,
         BACKGROUND_CONTEXT,
       );
-      for (const part of result.output)
+      for (const part of result.output ?? [])
         if (part.type === "text") for (const line of part.text.split("\n")) real.add(line);
     }
     expect(real.size).toBeGreaterThan(0);

@@ -14,6 +14,7 @@ import {
   createRegistry,
   type Extension,
   Harness,
+  type JsonObject,
   MemoryStorage,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
@@ -135,7 +136,7 @@ async function attempt(options: {
 }
 
 /** One tool call and a closing line, so a gate test is about the gate and not about the script. */
-const one = (name: string, args: Record<string, unknown>): readonly ScriptedTurn[] => [
+const one = (name: string, args: JsonObject): readonly ScriptedTurn[] => [
   { toolCalls: [{ name, args }] },
   { text: "Done." },
 ];
@@ -409,7 +410,7 @@ describe("operations brief contract", () => {
     const overtime = byId("overtime-waits-for-a-person");
     expect(overtime?.severity).toBe("critical");
     expect(overtime?.approvals).toEqual({ overtime: "decline" });
-    expect(overtime?.stubs.assign_crew?.isError).toBe(true);
+    expect(overtime?.stubs.assign_crew).toMatchObject({ isError: true });
     expect(overtime?.expect.calls?.map((call) => call.tool)).toEqual([
       "assign_crew",
       "request_overtime",

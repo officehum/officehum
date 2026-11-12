@@ -45,7 +45,8 @@ describe("Resend inbound protocol", () => {
     }
     const fixture = signed();
     const changed = Uint8Array.from(fixture.raw);
-    changed[changed.length - 2] ^= 1;
+    const flipped = changed.length - 2;
+    changed[flipped] = (changed[flipped] ?? 0) ^ 1;
     expect(() => verifySvixWebhook(changed, fixture.headers, [SECRET], NOW)).toThrow(
       "Webhook signature is invalid.",
     );

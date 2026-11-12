@@ -23,6 +23,9 @@ import {
   type PeopleOpsDesk,
   PeopleOpsDeskError,
   PROTECTED_REASONS,
+  type TimeOffExceptionInput,
+  type TimeOffInput,
+  type TimeOffRequest,
 } from "./desk.js";
 
 const company = loadCompanyFacts();
@@ -44,11 +47,30 @@ const ANA: VerifiedSender = {
   contact: "ana.lopez@crew.example",
 };
 
+/** The sender a test may leave out: the wrapper below files as the People Ops owner by default. */
+type SenderOptional<Input extends TimeOffInput> = Omit<Input, "from"> & {
+  readonly from?: VerifiedSender | undefined;
+};
+
+/** `PeopleOpsDesk`, with the sender and the approved facts of a time-off write optional. */
+interface TestDesk extends Omit<PeopleOpsDesk, "recordTimeOffRequest" | "requestTimeOffException"> {
+  recordTimeOffRequest(
+    input: SenderOptional<TimeOffInput>,
+    options: { readonly requestId: string },
+  ): Promise<TimeOffRequest>;
+  requestTimeOffException(
+    input: SenderOptional<TimeOffExceptionInput> & {
+      readonly approved?: Readonly<Record<string, unknown>>;
+    },
+    options: { readonly requestId: string },
+  ): Promise<TimeOffRequest>;
+}
+
 /**
  * The demonstration desk, with every time-off write filed by the People Ops owner unless a test says
  * who sent it: who may file for whom has its own tests below.
  */
-const desk = (facts: CompanyFacts = company): PeopleOpsDesk => {
+const desk = (facts: CompanyFacts = company): TestDesk => {
   const people = fakePeopleOpsDesk({ company: facts, now: () => NOW });
   return {
     ...people,
@@ -57,9 +79,9 @@ const desk = (facts: CompanyFacts = company): PeopleOpsDesk => {
     // An exception is recorded only with the facts a person approved: here, the desk's own.
     requestTimeOffException: async (input, options) => {
       const full = { from: OWNER, ...input };
-      const approved =
-        (input as { approved?: Record<string, unknown> }).approved ??
-        (await people.timeOffExceptionFacts(full).catch(() => ({})));
+      const approved = input.approved ?? {
+        ...(await people.timeOffExceptionFacts(full).catch(() => ({}))),
+      };
       return people.requestTimeOffException({ ...full, approved }, options);
     },
   };
@@ -812,7 +834,7 @@ describe("company data and the verified sender", () => {
     );
     expect(changed.code).toBe("exception_changed");
     const recorded = await people.requestTimeOffException(
-      { ...input, approved: facts },
+      { ...input, approved: { ...facts } },
       { requestId: "ex-ok" },
     );
     expect(recorded).toMatchObject({ employeeName: "Ana Lopez", status: "approved" });
@@ -838,7 +860,7 @@ describe("company data and the verified sender", () => {
     now = new Date("2026-11-10T09:00:00.000Z");
     // The grant on the next day still works out to what the person approved on the day it was asked.
     const recorded = await people.requestTimeOffException(
-      { ...input, approved: facts },
+      { ...input, approved: { ...facts } },
       { requestId: "ex-next-day" },
     );
     expect(recorded).toMatchObject({
@@ -848,7 +870,7 @@ describe("company data and the verified sender", () => {
     });
     expect(
       await people.requestTimeOffException(
-        { ...input, approved: facts },
+        { ...input, approved: { ...facts } },
         { requestId: "ex-next-day" },
       ),
     ).toEqual(recorded);
@@ -858,7 +880,10 @@ describe("company data and the verified sender", () => {
     // A first day that has passed by the time the person decides is still refused.
     now = new Date("2026-11-21T09:00:00.000Z");
     const passed = await refusal(
-      people.requestTimeOffException({ ...input, approved: facts }, { requestId: "ex-too-late" }),
+      people.requestTimeOffException(
+        { ...input, approved: { ...facts } },
+        { requestId: "ex-too-late" },
+      ),
     );
     expect(passed.code).toBe("invalid");
   });
@@ -894,7 +919,7 @@ describe("company data and the verified sender", () => {
     // Granted the next day, it records with the new ask's notice.
     now = new Date("2026-11-13T09:00:00.000Z");
     const recorded = await people.requestTimeOffException(
-      { ...again, approved: second },
+      { ...again, approved: { ...second } },
       { requestId: "re-ask" },
     );
     expect(recorded).toMatchObject({ status: "approved", daysNotice: 8 });
@@ -949,7 +974,7 @@ describe("company data and the verified sender", () => {
     const facts = await people.timeOffExceptionFacts(input);
     now = new Date("2026-11-12T09:00:00.000Z");
     const recorded = await people.requestTimeOffException(
-      { ...input, approved: facts },
+      { ...input, approved: { ...facts } },
       { requestId: "ex-later" },
     );
     expect(recorded).toMatchObject({ status: "approved", daysNotice: 11 });

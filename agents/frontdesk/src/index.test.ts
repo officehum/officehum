@@ -192,7 +192,7 @@ describe("frontdesk role", () => {
     const packageDirectory = new URL("..", import.meta.url);
     expect((await validatePackage(packageDirectory.pathname)).ok).toBe(true);
     const calendar = tempCalendar();
-    expect((await checkAgent(frontdesk({ calendar }), manifest)).ok).toBe(true);
+    expect((await checkAgent(frontdesk({ calendar }), roleManifest)).ok).toBe(true);
     const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
       dependencies: Record<string, string>;
     };
@@ -463,13 +463,17 @@ describe("frontdesk role", () => {
     const list = tools.find((tool) => tool.name === "list_bookings");
     if (list === undefined) throw new Error("missing list_bookings");
     // `defineRole` wraps every tool; a result still using `content` would throw through the guard.
-    const result = await list.execute({}, {
-      conversationId: 1,
-      taskId: 1,
-      callId: "call",
-      // The desk's own booking records; none here.
-      snapshot: async () => undefined,
-    } as never);
+    const result = await list.execute(
+      {},
+      {
+        conversationId: 1,
+        taskId: 1,
+        callId: "call",
+        // The desk's own booking records; none here.
+        snapshot: async () => undefined,
+      } as never,
+      BACKGROUND_CONTEXT,
+    );
     expect(result).not.toHaveProperty("content");
     expect(result.output?.[0]).toMatchObject({ type: "text" });
     calendar.close();
@@ -528,16 +532,21 @@ describe("frontdesk role", () => {
     const movedResult = await reschedule.execute(
       { id: original.id, start: "2030-01-15T10:00:00.000Z" },
       api as never,
+      BACKGROUND_CONTEXT,
     );
     expect(movedResult).toMatchObject({
       details: { id: original.id, start: "2030-01-15T10:00:00Z", customer: "Guest" },
     });
     expect(calendar.operation("7:8:call")).toMatchObject({ kind: "reschedule" });
-    const canceledResult = await cancel.execute({ id: original.id }, {
-      conversationId: 7,
-      taskId: 9,
-      callId: "cancel",
-    } as never);
+    const canceledResult = await cancel.execute(
+      { id: original.id },
+      {
+        conversationId: 7,
+        taskId: 9,
+        callId: "cancel",
+      } as never,
+      BACKGROUND_CONTEXT,
+    );
     expect(canceledResult).toMatchObject({
       output: [{ type: "text", text: `Canceled ${original.id}` }],
       details: { id: original.id, status: "canceled", alreadyCanceled: false },

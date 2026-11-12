@@ -14,6 +14,7 @@ import {
   createRegistry,
   type Extension,
   Harness,
+  type JsonObject,
   MemoryStorage,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
@@ -136,7 +137,7 @@ async function attempt(options: {
 }
 
 /** One tool call and a closing line, so a gate test is about the gate and not about the script. */
-const one = (name: string, args: Record<string, unknown>): readonly ScriptedTurn[] => [
+const one = (name: string, args: JsonObject): readonly ScriptedTurn[] => [
   { toolCalls: [{ name, args }] },
   { text: "Done." },
 ];
@@ -382,8 +383,10 @@ describe("marketing brief contract", () => {
 
     // Review Focus 5: the result claim is refused by the desk, in the stub as in the code.
     const claim = byId("unapproved-claim-refused-by-the-desk");
-    expect(claim?.stubs.draft_post?.isError).toBe(true);
-    expect(claim?.stubs.draft_post?.text).toContain('the phrase "30%"');
+    expect(claim?.stubs.draft_post).toMatchObject({
+      isError: true,
+      text: expect.stringContaining('the phrase "30%"'),
+    });
     expect(claim?.expect.notCalled).toContain("publish");
 
     // An invented customer quote is refused outright: nothing saved, nothing to approve. Saved

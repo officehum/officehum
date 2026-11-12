@@ -96,7 +96,7 @@ async function streamResult(
     model,
     {
       systemPrompt: "Follow instructions.",
-      messages: [{ role: "user", content: "Check my schedule." }],
+      messages: [{ role: "user", content: "Check my schedule.", timestamp: 0 }],
       tools: [
         {
           name: "check_schedule",
@@ -156,7 +156,8 @@ describe("Paper Instruments Ultramarine provider", () => {
 
     expect(requestUrl?.pathname).toBe("/v1/chat/completions");
     expect(requestHeaders?.has("authorization")).toBe(true);
-    expect(requestBody.messages[0].role).toBe("system");
+    if (requestBody === undefined) throw new Error("The provider never called fetch.");
+    expect(requestBody.messages[0]?.role).toBe("system");
     expect(
       requestBody.messages.some((message: { role: string }) => message.role === "developer"),
     ).toBe(false);
@@ -381,7 +382,7 @@ describe("Paper Instruments Ultramarine provider", () => {
     if (model === undefined) throw new Error("Paper provider model is not registered.");
     const stream = models.streamSimple(
       model,
-      { messages: [{ role: "user", content: "Check" }] },
+      { messages: [{ role: "user", content: "Check", timestamp: 0 }] },
       {
         apiKey: "test-only-placeholder",
         fetch: fakeFetch,
@@ -578,7 +579,7 @@ describe("Paper Instruments Ultramarine provider", () => {
     });
     let calls = 0;
     let requestSignal: AbortSignal | undefined;
-    vi.stubGlobal("fetch", async (_input, init) => {
+    vi.stubGlobal("fetch", (async (_input, init) => {
       calls += 1;
       if (calls === 1) {
         requestSignal = init?.signal ?? undefined;
@@ -627,7 +628,7 @@ describe("Paper Instruments Ultramarine provider", () => {
         event({ choices: [], usage }),
         "data: [DONE]\n\n",
       ]);
-    });
+    }) satisfies typeof fetch);
     let harness: Awaited<ReturnType<typeof Harness.open>> | undefined;
     try {
       harness = await Harness.open(storage, { models, registry }, BACKGROUND_CONTEXT);

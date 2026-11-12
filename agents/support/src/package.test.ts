@@ -142,7 +142,8 @@ describe("support package", () => {
     }
     const invoices = demoInvoices();
     const cases = demoCases();
-    for (const entry of cases) expect(clients.has(entry.clientId), entry.id).toBe(true);
+    for (const entry of cases)
+      expect(entry.clientId !== null && clients.has(entry.clientId), entry.id).toBe(true);
     // A demo credit is on its own case's client's invoice, for what the desk would work out.
     for (const credit of demoCredits()) {
       const entry = cases.find((candidate) => candidate.id === credit.caseId);
@@ -196,7 +197,7 @@ describe("support eval stubs", () => {
         { conversationId: "c", taskId: "t", callId: section } as never,
         BACKGROUND_CONTEXT,
       );
-      for (const part of result.output)
+      for (const part of result.output ?? [])
         if (part.type === "text") for (const line of part.text.split("\n")) real.add(line);
     }
     expect(real.size).toBeGreaterThan(0);

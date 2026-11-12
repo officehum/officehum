@@ -846,7 +846,9 @@ describe("bookkeeper brief contract (RASF-3127)", () => {
     ]) {
       expect(byId(id)?.expect.notCalled, id).toEqual(writes);
     }
-    expect(byId("unknown-supplier-bill-is-refused")?.stubs.record_vendor_bill?.isError).toBe(true);
+    expect(byId("unknown-supplier-bill-is-refused")?.stubs.record_vendor_bill).toMatchObject({
+      isError: true,
+    });
 
     for (const id of [
       "payment-waits-for-a-person",

@@ -104,7 +104,7 @@ function fixture(environment: "sandbox" | "production" = "sandbox") {
       method,
       url,
       headers: new Headers(init.headers),
-      ...(body === undefined ? {} : { body }),
+      body,
     });
 
     if (!url.pathname.startsWith(COMPANY)) {

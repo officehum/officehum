@@ -6,7 +6,12 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { APPROVED_FACTS_ARG, type HookContext, type SenderResolver } from "@officehum/sdk";
+import {
+  APPROVED_FACTS_ARG,
+  type ApprovalCallIdentity,
+  type HookContext,
+  type SenderResolver,
+} from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { financeLead, loadCompanyFacts, personLabel, purchasingLead } from "./company.js";
 import {
@@ -64,13 +69,15 @@ function isError(result: unknown): boolean {
 }
 
 const HOOK_CONTEXT = {} as HookContext;
+/** The gate passes every facts reader the conversation and task of the call it is deciding. */
+const CALL_IDENTITY: ApprovalCallIdentity = { conversationId: "conversation-1", taskId: "task-1" };
 
 /**
  * A `pay_vendor_bill` call as the approval gate hands it to the tool after a yes: the bill's id and
  * the facts the gate read from the desk and showed the person.
  */
 async function approvedCall(set: PayablesToolset, billId = "BILL-2001") {
-  const { facts } = await set.paymentApprovalFacts({ billId }, HOOK_CONTEXT);
+  const { facts } = await set.paymentApprovalFacts({ billId }, HOOK_CONTEXT, CALL_IDENTITY);
   return { billId, [APPROVED_FACTS_ARG]: facts };
 }
 
@@ -154,7 +161,11 @@ describe("record_vendor_bill", () => {
     expect(text(result)).toContain("recorded 2026-11-09 by Rosa Martinez, from email from");
     expect(details(result).recordedBy).toBe("Rosa Martinez");
     // The person approving a payment is shown the verified name.
-    const read = await set.paymentApprovalFacts({ billId: "BILL-2004" }, HOOK_CONTEXT);
+    const read = await set.paymentApprovalFacts(
+      { billId: "BILL-2004" },
+      HOOK_CONTEXT,
+      CALL_IDENTITY,
+    );
     expect(read.summary).toContain("recorded by Rosa Martinez from email from");
     expect(read.facts).toMatchObject({ recordedBy: "Rosa Martinez" });
   });
@@ -257,7 +268,11 @@ describe("pay_vendor_bill", () => {
 
   it("the payment approval reads the bill's facts from the desk", async () => {
     const set = tools(desk());
-    const read = await set.paymentApprovalFacts({ billId: "BILL-2001" }, HOOK_CONTEXT);
+    const read = await set.paymentApprovalFacts(
+      { billId: "BILL-2001" },
+      HOOK_CONTEXT,
+      CALL_IDENTITY,
+    );
     expect(read.summary).toBe(
       "Pay BILL-2001 to Rainier Cleaning Tools, supplier invoice RT-5520: $648.00, recorded by Eileen Hart from PDF invoice RT-5520 emailed by sales@rainiertools.example on 2026-10-05",
     );
@@ -276,11 +291,15 @@ describe("pay_vendor_bill", () => {
   it("the payment approval refuses, asking nobody, a bill not on the desk or already paid", async () => {
     const accounts = desk();
     const set = tools(accounts);
-    await expect(set.paymentApprovalFacts({ billId: "BILL-42" }, HOOK_CONTEXT)).rejects.toThrow(
+    await expect(
+      set.paymentApprovalFacts({ billId: "BILL-42" }, HOOK_CONTEXT, CALL_IDENTITY),
+    ).rejects.toThrow(
       'No bill on the desk has the id "BILL-42". Nothing was put to a person and nothing was paid. Next: find the bill with list_vendor_bills.',
     );
     await set.payVendorBill.execute(await approvedCall(set), call("paid"), BACKGROUND_CONTEXT);
-    await expect(set.paymentApprovalFacts({ billId: "BILL-2001" }, HOOK_CONTEXT)).rejects.toThrow(
+    await expect(
+      set.paymentApprovalFacts({ billId: "BILL-2001" }, HOOK_CONTEXT, CALL_IDENTITY),
+    ).rejects.toThrow(
       /^BILL-2001 \(Rainier Cleaning Tools, invoice RT-5520\) was already paid on 2026-11-09 as PAY-\d+\. Nothing was put to a person and nothing was paid again\./,
     );
   });

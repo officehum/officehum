@@ -283,11 +283,12 @@ describe("runCli", () => {
   });
 
   it("selects OpenAI models as a provider/model pair regardless of option order", async () => {
-    for (const [options, expectedModel] of [
+    const cases: [options: string[], expectedModel: string][] = [
       [["--provider", "openai"], "gpt-6-sol"],
       [["--provider", "openai", "--model", "gpt-6.1-sol"], "gpt-6.1-sol"],
       [["--model", "gpt-6.1-sol", "--provider", "openai"], "gpt-6.1-sol"],
-    ]) {
+    ];
+    for (const [options, expectedModel] of cases) {
       const directory = state();
       const faux = fauxProvider({
         provider: "openai",
@@ -1162,7 +1163,7 @@ describe("runCli", () => {
         operation: database
           .prepare("SELECT intent_json,payload_json,state FROM reply_operations")
           .get(),
-      } as Record<string, Record<string, unknown>>;
+      } as Record<"receipt" | "approval" | "operation", Record<string, unknown>>;
       database.close();
       expect(persisted.receipt).toMatchObject({
         request_id: expect.any(String),
@@ -1529,9 +1530,7 @@ describe("runCli", () => {
     });
     const pending = (await solo.harness.inspect(BACKGROUND_CONTEXT)).submissions;
     expect(pending.map((record) => String(record.id))).toContain(submissionId);
-    expect(
-      pending.find((record) => String(record.id) === submissionId)?.settlement,
-    ).toBeUndefined();
+    expect(pending.find((record) => String(record.id) === submissionId)?.status).toBe("placed");
     await solo.close();
     calendar.close();
   });
@@ -2100,7 +2099,7 @@ describe("runCli", () => {
     });
     await reopened.root.commit(async (transaction) => {
       const agent = await transaction.doc(AgentDoc, reopened.root.id);
-      agent.model = undefined;
+      delete agent.model;
     }, BACKGROUND_CONTEXT);
     await reopened.close();
     calendar.close();

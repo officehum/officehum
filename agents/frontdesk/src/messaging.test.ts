@@ -308,10 +308,13 @@ describe("Front Desk messaging", () => {
       text: args.text,
       delivery: { status: "accepted" },
     });
+    const sent = first.details;
+    if (typeof sent !== "object" || sent === null || Array.isArray(sent))
+      throw new Error("send_message returned no details");
     expect(replay.details).toMatchObject({
       replayed: true,
       text: args.text,
-      delivery: first.details?.delivery,
+      delivery: sent.delivery,
     });
     expect(effects).toHaveLength(1);
     await expect(

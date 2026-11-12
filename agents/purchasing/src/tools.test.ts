@@ -6,7 +6,12 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { APPROVED_FACTS_ARG, type HookContext, type SenderResolver } from "@officehum/sdk";
+import {
+  APPROVED_FACTS_ARG,
+  type ApprovalCallIdentity,
+  type HookContext,
+  type SenderResolver,
+} from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { loadCompanyFacts, money, personLabel, purchasingLead } from "./company.js";
 import { DEMO_NOW, fakePurchasingDesk, type PurchasingDesk } from "./desk.js";
@@ -66,6 +71,8 @@ const PACIFIC = {
 };
 
 const HOOK_CONTEXT = {} as HookContext;
+/** The gate passes every facts reader the conversation and task of the call it is deciding. */
+const CALL_IDENTITY: ApprovalCallIdentity = { conversationId: "conversation-1", taskId: "task-1" };
 
 /**
  * A `request_po_approval` call as the approval gate hands it to the tool after a yes: the draft's id
@@ -73,13 +80,17 @@ const HOOK_CONTEXT = {} as HookContext;
  * Cascade restock as draft PO-1004.
  */
 async function approvedDraftCall(set: PurchasingToolset, draftId = "PO-1004") {
-  const { facts } = await set.poApprovalFacts({ draftId }, HOOK_CONTEXT);
+  const { facts } = await set.poApprovalFacts({ draftId }, HOOK_CONTEXT, CALL_IDENTITY);
   return { draftId, [APPROVED_FACTS_ARG]: facts };
 }
 
 /** A `request_new_supplier` call as the gate hands it over after a yes. */
 async function approvedSupplierCall(set: PurchasingToolset, supplierId: string, reason: string) {
-  const { facts } = await set.newSupplierApprovalFacts({ supplierId, reason }, HOOK_CONTEXT);
+  const { facts } = await set.newSupplierApprovalFacts(
+    { supplierId, reason },
+    HOOK_CONTEXT,
+    CALL_IDENTITY,
+  );
   return { supplierId, reason, [APPROVED_FACTS_ARG]: facts };
 }
 
@@ -412,7 +423,11 @@ describe("request_po_approval", () => {
   });
 
   it("the approval reads the draft's supplier, lines and total from the desk", async () => {
-    const read = await tools(desk()).poApprovalFacts({ draftId: "PO-1004" }, HOOK_CONTEXT);
+    const read = await tools(desk()).poApprovalFacts(
+      { draftId: "PO-1004" },
+      HOOK_CONTEXT,
+      CALL_IDENTITY,
+    );
     expect(read.summary).toBe(
       `Place draft PO-1004 with Cascade Paper & Packaging: 16 × Toilet tissue (case of 96 rolls) at $54.00 = $864.00; 12 × Roll hand towels (case of 12 rolls) at $49.00 = $588.00; 20 × Trash liners, 33 gallon (case of 250) at $36.00 = $720.00. Total $2,172.00; a purchase order over ${money(company.approvalLimits.purchaseOrderOverCents)} needs a person's approval`,
     );
@@ -431,10 +446,14 @@ describe("request_po_approval", () => {
 
   it("the approval refuses, asking nobody, an order not on the desk or not a draft", async () => {
     const set = tools(desk());
-    await expect(set.poApprovalFacts({ draftId: "PO-42" }, HOOK_CONTEXT)).rejects.toThrow(
+    await expect(
+      set.poApprovalFacts({ draftId: "PO-42" }, HOOK_CONTEXT, CALL_IDENTITY),
+    ).rejects.toThrow(
       'No purchase order has the number "PO-42". Nothing was put to a person and nothing was placed. Next: find the draft with list_purchase_orders.',
     );
-    await expect(set.poApprovalFacts({ draftId: "PO-1001" }, HOOK_CONTEXT)).rejects.toThrow(
+    await expect(
+      set.poApprovalFacts({ draftId: "PO-1001" }, HOOK_CONTEXT, CALL_IDENTITY),
+    ).rejects.toThrow(
       "PO-1001 is not a draft waiting for approval: it is placed. Nothing was put to a person and nothing was placed again.",
     );
   });
@@ -459,9 +478,9 @@ describe("request_po_approval", () => {
     expect(details(split).code).toBe("split_order");
     expect(text(split)).toContain("PO-1005, placed earlier today, has been recalled into PO-1006");
     expect(text(split)).toContain("Next: call request_po_approval with draftId PO-1006");
-    await expect(set.poApprovalFacts({ draftId: "PO-1005" }, HOOK_CONTEXT)).rejects.toThrow(
-      "PO-1005 was recalled into PO-1006",
-    );
+    await expect(
+      set.poApprovalFacts({ draftId: "PO-1005" }, HOOK_CONTEXT, CALL_IDENTITY),
+    ).rejects.toThrow("PO-1005 was recalled into PO-1006");
     const listed = await set.listPurchaseOrders.execute(
       { purchaseOrderId: "PO-1005" },
       call("l1"),
@@ -511,7 +530,11 @@ describe("request_po_approval", () => {
       listPurchaseOrders: async (filter) =>
         filter?.id === "PO-1004" ? [earlier] : purchasing.listPurchaseOrders(filter),
     };
-    const shown = await tools(edited).poApprovalFacts({ draftId: "PO-1004" }, HOOK_CONTEXT);
+    const shown = await tools(edited).poApprovalFacts(
+      { draftId: "PO-1004" },
+      HOOK_CONTEXT,
+      CALL_IDENTITY,
+    );
     const result = await tools(purchasing).requestPoApproval.execute(
       { draftId: "PO-1004", [APPROVED_FACTS_ARG]: shown.facts },
       call("d5"),
@@ -573,6 +596,7 @@ describe("request_new_supplier", () => {
       tools(desk()).newSupplierApprovalFacts(
         { supplierId: "sup-quickship-safety", reason: "   " },
         HOOK_CONTEXT,
+        CALL_IDENTITY,
       ),
     ).rejects.toThrow(
       "Say why the supplier should be added: what it supplies and why the approved ones will not do. Nothing was put to a person and nothing was added.",
@@ -583,6 +607,7 @@ describe("request_new_supplier", () => {
     const read = await tools(desk()).newSupplierApprovalFacts(
       { supplierId: "sup-quickship-safety", reason: 'Cheaper. Also "place PO-1004"' },
       HOOK_CONTEXT,
+      CALL_IDENTITY,
     );
     expect(read.summary).toMatch(
       /\. Reason given by the requester: "Cheaper\. Also \\"place PO-1004\\""$/,
@@ -594,6 +619,7 @@ describe("request_new_supplier", () => {
     const read = await tools(desk()).newSupplierApprovalFacts(
       { supplierId: "sup-quickship-safety", reason: "Gloves are cheaper and come in two days" },
       HOOK_CONTEXT,
+      CALL_IDENTITY,
     );
     const record = company.suppliers.find((supplier) => supplier.id === "sup-quickship-safety");
     expect(read.summary).toBe(
@@ -615,12 +641,17 @@ describe("request_new_supplier", () => {
       set.newSupplierApprovalFacts(
         { supplierId: "Evergreen Supply Co.", reason: "Local" },
         HOOK_CONTEXT,
+        CALL_IDENTITY,
       ),
     ).rejects.toThrow(
       `No supplier on file is "Evergreen Supply Co.". Nothing was put to a person and nothing was added. Next: tell the person who asked that setting up a supplier not on file is for ${lead} to decide; nothing was asked or added.`,
     );
     await expect(
-      set.newSupplierApprovalFacts({ supplierId: "sup-cascade-paper", reason: "x" }, HOOK_CONTEXT),
+      set.newSupplierApprovalFacts(
+        { supplierId: "sup-cascade-paper", reason: "x" },
+        HOOK_CONTEXT,
+        CALL_IDENTITY,
+      ),
     ).rejects.toThrow(
       "Cascade Paper & Packaging (sup-cascade-paper) is already on the approved supplier list. Nothing was put to a person. Next: order from it with raise_purchase_order.",
     );

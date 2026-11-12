@@ -65,7 +65,7 @@ describe("portable calendar scheduling", () => {
     await expect(calendar.freeSlots(date)).rejects.toThrow(/ambiguous|nonexistent/i);
   });
 
-  it.each([
+  it.each<[string, () => unknown]>([
     [
       "invalid date",
       () =>

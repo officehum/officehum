@@ -7,7 +7,7 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { APPROVED_FACTS_ARG, type VerifiedSender } from "@officehum/sdk";
+import { APPROVED_FACTS_ARG, type CompanyPerson, type VerifiedSender } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import {
   companyHead,
@@ -34,7 +34,7 @@ const refundOwner = personLabel(person(company, refunds.refundNeeds));
 const complaintOwner = personLabel(person(company, refunds.complaintOwner));
 const safetyOwner = personLabel(escalationOwner(company, "safety-incident"));
 /** "Name (Title)", as a hand-off receipt names who has the case. */
-const named = (who: ReturnType<typeof person>) => `${who?.name} (${who?.title})`;
+const named = (who: CompanyPerson | undefined) => `${who?.name} (${who?.title})`;
 
 /** The durable identity one tool call runs under; only the ids matter to these tools. */
 const call = (callId: string) =>
@@ -576,7 +576,10 @@ describe("log_case", () => {
 
   it("records who raised it from the verified sender, never from the call", async () => {
     // log_case takes no reportedBy: the model cannot name who raised a case.
-    expect(Object.keys(tools(desk()).logCase.parameters.properties)).not.toContain("reportedBy");
+    const parameters = tools(desk()).logCase.parameters as unknown as {
+      properties: Record<string, unknown>;
+    };
+    expect(Object.keys(parameters.properties)).not.toContain("reportedBy");
     // A client: their contact's name on the desk.
     const support = desk();
     await tools(support, GRACE).logCase.execute(SAFETY, call("by-client"), BACKGROUND_CONTEXT);
@@ -728,7 +731,12 @@ describe("offer_credit", () => {
     const unknownId = async (sender: VerifiedSender | null) =>
       tools(support, sender)
         .creditFacts({ creditId: "CR-999" }, BACKGROUND_CONTEXT as never, call("f0"))
-        .catch((error: Error) => error.message);
+        .then(
+          (): never => {
+            throw new Error("CR-999 is on no desk, so the reader must refuse it");
+          },
+          (error: Error) => error.message,
+        );
     for (const sender of [GRACE, null]) {
       const message = await tools(support, sender)
         .creditFacts({ creditId: "CR-400" }, BACKGROUND_CONTEXT as never, call("f1"))
@@ -937,7 +945,7 @@ describe("next steps come from the refusal's code, not its wording", () => {
   it("names the step for each code even when the desk's message names no tool", async () => {
     const cases: [
       SupportDeskError["code"],
-      keyof SupportToolset,
+      Exclude<keyof SupportToolset, "creditFacts">,
       Record<string, unknown>,
       string,
     ][] = [
