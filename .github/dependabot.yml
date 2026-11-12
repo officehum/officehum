@@ -1,33 +1,23 @@
 version: 2
 updates:
-  # Upstream Pi packages: one PR per new release, checked daily.
+  # Dependabot allows one entry per ecosystem and directory, so both npm groups live here.
+  # Upstream Pi packages get their own PR per release; everything else is grouped into one.
   # CI must pass (adapter contract tests, crash-recovery tests, agent evals) before merge.
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: daily
-    allow:
-      - dependency-name: "@earendil-works/*"
     groups:
       pi-upstream:
         patterns:
           - "@earendil-works/*"
-    labels:
-      - pi-upstream
-    commit-message:
-      prefix: "deps(pi)"
-
-  # Everything else: weekly, grouped.
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: weekly
-    ignore:
-      - dependency-name: "@earendil-works/*"
-    groups:
       other:
         patterns:
           - "*"
+        exclude-patterns:
+          - "@earendil-works/*"
+    commit-message:
+      prefix: "deps"
 
   - package-ecosystem: github-actions
     directory: /
