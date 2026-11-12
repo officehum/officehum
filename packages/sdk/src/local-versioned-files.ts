@@ -29,6 +29,13 @@ import {
   snapshotVersion,
 } from "./versioned-file-validation.js";
 
+/**
+ * One commit, checked against the state and not yet applied: the receipt an earlier commit of the
+ * same operation left, or the write that makes this one. Checking every commit of a batch before
+ * the first write is what lets several files land together or not at all.
+ */
+type Planned = VersionCommitReceipt | (() => Promise<VersionCommitReceipt>);
+
 const own = <T>(record: Record<string, T>, key: string): T | undefined =>
   Object.hasOwn(record, key) ? record[key] : undefined;
 
@@ -76,8 +83,7 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
     return verified(ref);
   }
 
-  async function commitCreate(input: CreateVersionInput): Promise<VersionCommitReceipt> {
-    await assertBlobRoot();
+  async function planCreate(state: VersionedState, input: CreateVersionInput): Promise<Planned> {
     const canonicalHash = intentHash({
       kind: "create",
       fileId: null,
@@ -91,14 +97,15 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
       size: input.bytes.byteLength,
     });
     const operationKey = digest(input.operationId);
-    return mutateState(root, async (state) => {
-      const previous = own(state.operations, operationKey);
-      if (previous) {
-        if (previous.kind !== "create" || previous.intentSha256 !== canonicalHash)
-          throw collision();
-        await validateReceipt(previous);
-        return structuredClone(previous) as VersionCommitReceipt;
-      }
+    const previous = own(state.operations, operationKey);
+    if (previous) {
+      if (previous.kind !== "create" || previous.intentSha256 !== canonicalHash) throw collision();
+      await validateReceipt(previous);
+      return structuredClone(previous) as VersionCommitReceipt;
+    }
+    return async () => {
+      // Two commits of one batch under the same operation: the first has taken it by now.
+      if (own(state.operations, operationKey)) throw collision();
       const blob = await blobs.put({
         bytes: input.bytes,
         name: input.name,
@@ -127,11 +134,10 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
       };
       state.operations[operationKey] = structuredClone(receipt);
       return receipt;
-    });
+    };
   }
 
-  async function edit(input: PutVersionInput): Promise<VersionCommitReceipt> {
-    await assertBlobRoot();
+  async function planEdit(state: VersionedState, input: PutVersionInput): Promise<Planned> {
     const canonicalBase = {
       kind: "version",
       contentSha256: hash(input.bytes),
@@ -144,31 +150,35 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
       size: input.bytes.byteLength,
     };
     const operationKey = digest(input.operationId);
-    return mutateState(root, async (state) => {
-      const previous = own(state.operations, operationKey);
-      if (previous) {
-        if (previous.kind !== "version") throw collision();
-        if (
-          previous.output.id !== input.fileId ||
-          previous.source?.versionId !== input.sourceVersionId
-        )
-          throw collision();
-        const canonicalHash = intentHash({
-          ...canonicalBase,
-          sourceSha256: previous.source.sha256,
-        });
-        if (previous.intentSha256 !== canonicalHash) throw collision();
-        await validateReceipt(previous);
-        return structuredClone(previous);
-      }
-      const entry = own(state.files, input.fileId);
-      const source = own(state.versions, input.sourceVersionId);
-      if (!entry || !source || source.id !== input.fileId)
-        throw notFound("Source version not found");
-      await verified(source);
-      const canonicalHash = intentHash({ ...canonicalBase, sourceSha256: source.sha256 });
-      if (entry.head !== input.sourceVersionId)
-        throw new FileStoreError("VERSION_CONFLICT", "Source version is no longer the head");
+    const previous = own(state.operations, operationKey);
+    if (previous) {
+      if (previous.kind !== "version") throw collision();
+      if (
+        previous.output.id !== input.fileId ||
+        previous.source?.versionId !== input.sourceVersionId
+      )
+        throw collision();
+      const canonicalHash = intentHash({
+        ...canonicalBase,
+        sourceSha256: previous.source.sha256,
+      });
+      if (previous.intentSha256 !== canonicalHash) throw collision();
+      await validateReceipt(previous);
+      return structuredClone(previous);
+    }
+    const entry = own(state.files, input.fileId);
+    const source = own(state.versions, input.sourceVersionId);
+    if (!entry || !source || source.id !== input.fileId) throw notFound("Source version not found");
+    await verified(source);
+    const canonicalHash = intentHash({ ...canonicalBase, sourceSha256: source.sha256 });
+    const conflict = () =>
+      new FileStoreError("VERSION_CONFLICT", "Source version is no longer the head");
+    if (entry.head !== input.sourceVersionId) throw conflict();
+    return async () => {
+      // Checked again at the write: an earlier commit of the same batch may have moved the head
+      // or taken the operation.
+      if (entry.head !== input.sourceVersionId) throw conflict();
+      if (own(state.operations, operationKey)) throw collision();
       const blob = await blobs.put({
         bytes: input.bytes,
         name: input.name,
@@ -194,6 +204,24 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
       };
       state.operations[operationKey] = structuredClone(receipt);
       return receipt;
+    };
+  }
+
+  /** Checks every commit against one state, then writes them all into it: one manifest write. */
+  async function commitAll(
+    inputs: readonly (CreateVersionInput | PutVersionInput)[],
+  ): Promise<VersionCommitReceipt[]> {
+    await assertBlobRoot();
+    return mutateState(root, async (state) => {
+      const planned: Planned[] = [];
+      for (const input of inputs) {
+        planned.push(
+          "fileId" in input ? await planEdit(state, input) : await planCreate(state, input),
+        );
+      }
+      const receipts: VersionCommitReceipt[] = [];
+      for (const plan of planned) receipts.push(typeof plan === "function" ? await plan() : plan);
+      return receipts;
     });
   }
 
@@ -280,10 +308,23 @@ export function localVersionedFileStore(dir: string): VersionedFileStore {
       return structuredClone(output);
     },
     async create(input) {
-      return commitCreate(snapshotCreate(input));
+      const [receipt] = await commitAll([snapshotCreate(input)]);
+      return receipt as VersionCommitReceipt;
     },
     async putVersion(input) {
-      return edit(snapshotVersion(input));
+      const [receipt] = await commitAll([snapshotVersion(input)]);
+      return receipt as VersionCommitReceipt;
+    },
+    async commitVersions(inputs) {
+      if (!Array.isArray(inputs) || inputs.length === 0 || inputs.length > 100)
+        throw new FileStoreError("INVALID_INPUT", "A commit takes between 1 and 100 files");
+      return commitAll(
+        inputs.map((input) =>
+          typeof input === "object" && input !== null && "fileId" in input
+            ? snapshotVersion(input)
+            : snapshotCreate(input),
+        ),
+      );
     },
     async publish(input) {
       return publish(input);

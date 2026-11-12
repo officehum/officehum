@@ -568,3 +568,59 @@ it("keeps the same file's initial get and info stable after a base put edit", as
   expect((await store.get(first.id))?.ref).toEqual(first);
   expect(await store.info(first.id)).toEqual(first);
 });
+
+it("commits several files together, and answers a replay with the same receipts", async () => {
+  const { dir, store } = await setup();
+  const base = await store.create(input("create:base", "one"));
+  const batch = [
+    input("create:new", "fresh"),
+    {
+      ...input("edit:base", "two"),
+      fileId: base.output.id,
+      sourceVersionId: base.output.versionId,
+    },
+  ];
+  const receipts = await store.commitVersions(batch);
+  expect(receipts.map((receipt) => receipt.kind)).toEqual(["create", "version"]);
+  expect((await store.getHead(base.output.id))?.versionId).toBe(receipts[1]?.output.versionId);
+
+  // Reopened, the same batch is the same commit: no second version of either file.
+  const reopened = localVersionedFileStore(dir);
+  expect(await reopened.commitVersions(batch)).toEqual(receipts);
+  expect(await reopened.lookupOperation("create:new")).toEqual(receipts[0]);
+});
+
+it("commits none of several files when one edit's source is no longer the head", async () => {
+  const { store } = await setup();
+  const base = await store.create(input("create:base", "one"));
+  const stale = base.output.versionId;
+  const moved = await store.putVersion({
+    ...input("edit:first", "two"),
+    fileId: base.output.id,
+    sourceVersionId: stale,
+  });
+  await expect(
+    store.commitVersions([
+      input("create:new", "fresh"),
+      { ...input("edit:late", "three"), fileId: base.output.id, sourceVersionId: stale },
+    ]),
+  ).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
+  expect(await store.lookupOperation("create:new")).toBeUndefined();
+  expect(await store.lookupOperation("edit:late")).toBeUndefined();
+  expect((await store.getHead(base.output.id))?.versionId).toBe(moved.output.versionId);
+});
+
+it("commits none of several files when two of them edit the same version", async () => {
+  const { store } = await setup();
+  const base = await store.create(input("create:base", "one"));
+  const edit = (operationId: string, text: string) => ({
+    ...input(operationId, text),
+    fileId: base.output.id,
+    sourceVersionId: base.output.versionId,
+  });
+  await expect(
+    store.commitVersions([edit("edit:a", "two"), edit("edit:b", "three")]),
+  ).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
+  expect(await store.lookupOperation("edit:a")).toBeUndefined();
+  expect((await store.getHead(base.output.id))?.versionId).toBe(base.output.versionId);
+});

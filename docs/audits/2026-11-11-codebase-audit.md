@@ -88,8 +88,8 @@ Each bug fix marked (test) has a regression test that failed before the fix.
 >   that writes says so with `writes: true`, and the sub-agent and evidence rules key on that.
 > - **D1, approval inbox.** Resolved in RASF-3569: the runtime's approvals, ticket work included,
 >   are decided through the gateway, and the board's gate is not installed there.
-> - **A12.** Multi-output Paper commits check everything first and finish on replay, but are not
->   atomic against a concurrent edit; that needs a multi-file commit in the SDK's file store.
+> - **A12.** Resolved in RASF-3571: the SDK's file store commits several files together
+>   (`commitVersions`), and a Paper run's outputs land all or none.
 > - **A21.** Errors other than `busy` on the approval re-watch after a reconnect are still dropped.
 > - **B8.** Operations approval facts are shown to the approver but not re-checked at the write.
 > - **Left by decision:** B9, B13, C2 (its own PR), C4, C10, D2, D5, canonical JSON ordering (E2),
