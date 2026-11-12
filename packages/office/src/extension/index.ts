@@ -16,9 +16,11 @@
  *   assigned to them, the relay leaves it alone, and the result says it is with them.
  * - `agent_inbox` reads the tickets waiting for this agent, plus the answers to the tickets this agent
  *   opened. Read-only: it never writes to the board.
- * - `agent_reply` completes a ticket this agent is working on, taking it (`claim`) when the relay has
+ * - `agent_reply` finishes a ticket this agent is working on, taking it (`claim`) when the relay has
  *   only just delivered it. Only the assignee or a person may complete, which the board enforces; the
- *   refusal is surfaced as a tool error rather than swallowed.
+ *   refusal is surfaced as a tool error rather than swallowed. The ticket is done only when the
+ *   completion evidence its type declares checks out (RASF-3230): the reply runs those checks in the
+ *   host (`../board/evidence.js`), and a failed check comes back as a tool error naming it.
  *
  * The tools wrap the board and the relay. Delivery, routing, dedupe and the untrusted fence all live
  * in those two, and none of it is reimplemented here: dispatching a ticket is `board.create` with the
@@ -49,7 +51,9 @@ import {
   communicationError,
   dispatchedText,
   dispatchTargets,
+  type Engine,
   emptyInboxText,
+  type FileStore,
   inboxLine,
   noAnswerText,
   noTicketText,
@@ -59,6 +63,13 @@ import {
   teamText as sharedTeamText,
   unknownTypeText,
 } from "@officehum/sdk";
+import {
+  awaitingConfirmationText,
+  type CompletionOutcome,
+  completeWithEvidence,
+  failedCompletionText,
+  type ToolEvidence,
+} from "../board/evidence.js";
 import {
   type Board,
   BoardError,
@@ -140,6 +151,13 @@ export interface OfficeExtensionOptions {
   readonly people: readonly AgentManifest[];
   /** Ticket types no role accepts that go to a person on the board. Omitted: none. */
   readonly personRoutes?: readonly PersonRoute[];
+  /**
+   * What this agent's completion evidence is checked with (RASF-3230): its role's engine, for `engine`
+   * evidence, and the office's file store, for `file` evidence. `tool` evidence needs nothing here: it
+   * runs as a nested call of `agent_reply`, through the role's own extension. The evidence itself is
+   * read from this agent's manifest in `people`. A check with nothing to run it fails; it is not skipped.
+   */
+  readonly evidence?: { readonly engine?: Engine; readonly files?: FileStore };
   readonly settings: OfficeExtensionSettings;
   /**
    * Which business this is: a name and a sentence, for the `office` section (RASF-3133). Omitted, the
@@ -232,8 +250,22 @@ function deliveredAnswer(board: Board, ticket: Ticket): string | undefined {
   return settled.length === 0 ? undefined : (settled[settled.length - 1]?.outcome ?? undefined);
 }
 
+/** Why a nested evidence call failed, from what the harness recorded about it. */
+function nestedError(result: {
+  readonly structuredOutput?: unknown;
+  readonly diagnostics: readonly { readonly severity: string; readonly message: string }[];
+}): string {
+  const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  if (errors.length > 0) return errors.map((diagnostic) => diagnostic.message).join("; ");
+  return typeof result.structuredOutput === "string" && result.structuredOutput.length > 0
+    ? result.structuredOutput
+    : "the tool reported an error";
+}
+
 export function officeExtension(options: OfficeExtensionOptions): Extension {
   const { board, relay, role, settings } = options;
+  // This agent's own manifest: its `accepts` entries say what must check out before a ticket is done.
+  const ownManifest = options.people.find((manifest) => manifest.id === role);
   const accepted = dispatchTargets(options.people, role);
   const routed = personRouted(options.personRoutes ?? [], accepted);
 
@@ -411,11 +443,12 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
 
   const agentReply = defineTool({
     ...AGENT_REPLY,
-    execute: async (args) => {
+    execute: async (args, api, context) => {
       const ticket = board.get(args.ticketId);
       if (ticket === undefined) {
         return toolError(noTicketText(args.ticketId));
       }
+      let outcome: CompletionOutcome;
       try {
         // A ticket the relay just delivered is `open` and unassigned: taking it is the claim the board
         // wants before it can be completed. A ticket held by anyone else is left alone, so the board's
@@ -423,9 +456,55 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
         if (ticket.status === "open" && (ticket.assignee === null || ticket.assignee === role)) {
           board.claim(args.ticketId, role);
         }
-        board.complete(args.ticketId, role, { result: args.result });
+        outcome = await completeWithEvidence({
+          board,
+          ticketId: args.ticketId,
+          actor: role,
+          result: args.result,
+          ...(args.files === undefined ? {} : { files: args.files }),
+          manifest: ownManifest,
+          runners: {
+            ...options.evidence,
+            // A nested call: the harness resolves the tool among this conversation's own, validates
+            // the arguments and runs the role's hooks, and the result comes back here, not to the model.
+            runTool: async (name, toolArgs): Promise<ToolEvidence> => {
+              const result = await api.executeTool(name, { ...toolArgs }, context, {
+                progress: false,
+              });
+              return result.isError
+                ? { details: result.details ?? null, error: nestedError(result) }
+                : { details: result.details ?? null };
+            },
+          },
+        });
       } catch (error) {
         return boardRefusal(error, "reply");
+      }
+      if (outcome.status === "failed" || outcome.status === "blocked") {
+        return {
+          ...toolError(failedCompletionText(outcome)),
+          details: {
+            ticketId: args.ticketId,
+            status: outcome.ticket.status,
+            failures: outcome.failures.map(({ kind, check }) => ({ kind, check })),
+          },
+        };
+      }
+      if (outcome.status === "awaiting_confirmation") {
+        return {
+          output: [
+            {
+              type: "text" as const,
+              text: awaitingConfirmationText(args.ticketId, outcome.person),
+            },
+          ],
+          details: {
+            ticketId: args.ticketId,
+            result: args.result,
+            status: outcome.ticket.status,
+            personId: outcome.person.id,
+          },
+        };
       }
       return {
         output: [{ type: "text" as const, text: repliedText(args.ticketId, args.result) }],

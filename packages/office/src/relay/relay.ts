@@ -216,6 +216,18 @@ function hopOf(board: Board, ticket: Ticket): number {
   return depth;
 }
 
+/** What the agent is told when a person did not confirm its ticket: who, why, and what to do. */
+function refusedNote(event: TicketEvent): string {
+  const payload = event.payload as { readonly failures?: unknown } | null;
+  const failures = Array.isArray(payload?.failures) ? payload.failures : [];
+  const reasons = failures
+    .map((failure: unknown) => (failure as { readonly reason?: unknown } | null)?.reason)
+    .filter((reason): reason is string => typeof reason === "string")
+    .map((reason) => reason.replace(/[.\s]+$/u, ""));
+  const why = reasons.length === 0 ? "" : `: ${reasons.join("; ")}`;
+  return `${event.actor ?? "A person"} did not confirm this ticket is done${why}. Do what is missing, then reply to the ticket again.`;
+}
+
 /** The assignee id when it names an agent (anything not in `people`), else `undefined`. */
 function agentAssignee(board: Board, ticket: Ticket): string | undefined {
   if (ticket.assignee === null) return undefined;
@@ -340,6 +352,24 @@ export function createRelay(options: RelayOptions): Relay {
           kind: "skipped",
           reason: "the ticket is blocked and with a person, so nothing is delivered to an agent",
         };
+      case "awaiting_confirmation":
+        return { kind: "skipped", reason: "the ticket is waiting for a person to confirm it" };
+      case "evidence_failed": {
+        // A failed check is the result of the assignee's own reply, so it already knows. A person
+        // saying "not done" arrives when the agent is not running, and nothing else would tell it:
+        // that refusal is delivered as work, or the ticket would sit claimed and untouched.
+        const assignee = agentAssignee(board, ticket);
+        if (assignee === undefined || ticket.status !== "claimed") {
+          return { kind: "skipped", reason: "the ticket is no longer with an agent to rework" };
+        }
+        if (event.actor === null || event.actor === assignee) {
+          return { kind: "skipped", reason: "the assignee was told in its own reply" };
+        }
+        const route = routeTicket(ticket, assignee);
+        return route.kind === "input" && route.note === undefined
+          ? { ...route, note: refusedNote(event) }
+          : route;
+      }
       default:
         return { kind: "skipped", reason: `event kind ${event.kind} is not delivered` };
     }

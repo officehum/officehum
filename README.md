@@ -410,8 +410,15 @@ officehum runtime --db .officehum/harness.sqlite --board .officehum/office.sqlit
   through the gateway, exactly like one called from a request you submit: a signed-in person
   approves or declines it, within their approval limit, and unanswered it times out and is
   declined. The request survives a restart. With no gateway approver, it is refused.
-- **Watching it.** `officehum board --office .officehum` shows the board, when the board file is
-  named `office.sqlite`. Keep `--db` and `--board` as two files.
+- **Evidence before done.** An agent's reply finishes a ticket only when the checks its role
+  declares for that ticket type pass; the office runs them, not the model. Every catalog ticket type
+  also asks for a person, so a ticket then waits for the first person in the company record to
+  confirm it, and the agent that asked waits with it. A failed check goes back to the agent; three
+  failures block the ticket and hand it to that person.
+- **Watching it, and confirming.** `officehum board --office .officehum` shows the board, when the
+  board file is named `office.sqlite`. Tickets waiting for a confirmation are in the `waiting`
+  column, marked `confirm? y/n`: `y <ticket>` confirms one, `n <ticket> <why>` sends it back. Keep
+  `--db` and `--board` as two files.
 
 What is not there yet:
 

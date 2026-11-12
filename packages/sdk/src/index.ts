@@ -166,6 +166,13 @@ export {
   validateSuite,
 } from "./evals/suite.js";
 export {
+  type EvidenceTicket,
+  type EvidenceValue,
+  evidenceEngineArgs,
+  type ResolvedEvidenceArgs,
+  resolveEvidenceArgs,
+} from "./evidence.js";
+export {
   type CreateVersionInput,
   type FileMetadata,
   type FileOperationReceipt,

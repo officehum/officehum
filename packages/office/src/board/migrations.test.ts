@@ -285,6 +285,82 @@ describe("board migrations", () => {
     }
   });
 
+  it("lets a version-9 board hold a ticket awaiting confirmation, keeping every row (migration 10)", () => {
+    const file = boardFile();
+    const at = "2026-11-01T00:00:00.000Z";
+    const old = new DatabaseSync(file);
+    for (const migration of MIGRATIONS.filter((step) => step.version <= 9)) migration.up(old);
+    old.exec("PRAGMA user_version = 9");
+    const insert = old.prepare(
+      `INSERT INTO tickets (id, type, title, detail, payload, status, assignee, created_by,
+                            parent_id, workflow_run_id, created_at, updated_at, result)
+       VALUES (?, 'job.request', ?, ?, ?, ?, ?, 'front-desk', ?, ?, ?, ?, ?)`,
+    );
+    insert.run(
+      "t1",
+      "Leaking sink",
+      "Under the bar",
+      '{"site":"Main St"}',
+      "done",
+      "ops",
+      null,
+      "run-1",
+      at,
+      at,
+      "Fixed.",
+    );
+    insert.run("t2", "Follow up", null, "{}", "claimed", "ops", "t1", null, at, at, null);
+    // The old constraint is the reason for the rebuild: it refuses the new status outright.
+    expect(() =>
+      insert.run(
+        "t3",
+        "Waiting",
+        null,
+        "{}",
+        "awaiting_confirmation",
+        "ops",
+        null,
+        null,
+        at,
+        at,
+        null,
+      ),
+    ).toThrow(/CHECK/);
+    const before = old.prepare("SELECT * FROM tickets ORDER BY id").all();
+    old.close();
+
+    const upgraded = new DatabaseSync(file);
+    try {
+      expect(applyMigrations(upgraded)).toBe(MIGRATIONS.length);
+      expect(upgraded.prepare("SELECT * FROM tickets ORDER BY id").all()).toEqual(before);
+      const indexes = upgraded
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'tickets'")
+        .all()
+        .map((row) => (row as { name: string }).name);
+      expect(indexes).toEqual(
+        expect.arrayContaining(["tickets_parent", "tickets_assignee", "tickets_status"]),
+      );
+      upgraded.prepare("UPDATE tickets SET status = 'awaiting_confirmation' WHERE id = 't2'").run();
+      // Still a constraint: the vocabulary grew by one word, it did not go away.
+      expect(() =>
+        upgraded.prepare("UPDATE tickets SET status = 'finished' WHERE id = 't2'").run(),
+      ).toThrow(/CHECK/);
+      expect(
+        upgraded.prepare("SELECT name FROM sqlite_master WHERE name = 'tickets_v10'").get(),
+      ).toBeUndefined();
+    } finally {
+      upgraded.close();
+    }
+
+    const board = openBoard(file);
+    try {
+      expect(board.get("t2")).toMatchObject({ status: "awaiting_confirmation", parentId: "t1" });
+      expect(board.get("t1")).toMatchObject({ result: "Fixed.", workflowRunId: "run-1" });
+    } finally {
+      board.close();
+    }
+  });
+
   it("unifies the inbound dedupe tables and back-fills SMS rows (migration 7)", () => {
     const file = boardFile();
     const at = "2026-10-20T00:00:00.000Z";

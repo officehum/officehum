@@ -487,6 +487,47 @@ function addSpendMicros(database: DatabaseSync): void {
   `);
 }
 
+/**
+ * Migration 10 lets a ticket be `awaiting_confirmation` (RASF-3230): the agent's work checked out and
+ * a person has been asked to confirm it.
+ *
+ * A rebuild, for the reason migration 5 gives: SQLite cannot alter a CHECK constraint, and the one
+ * migration 1 wrote admits six statuses. No column is dropped or changes meaning and every row is
+ * copied as it stands, ids and timestamps included, so this stays expand-only where it matters to a
+ * host. Nothing else names the table: it has no triggers, no views and no foreign keys, only the three
+ * indexes recreated below.
+ */
+function addAwaitingConfirmation(database: DatabaseSync): void {
+  database.exec(`
+    CREATE TABLE tickets_v10 (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      detail TEXT,
+      payload TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL CHECK (status IN
+        ('open','claimed','waiting','awaiting_confirmation','blocked','done','cancelled')),
+      assignee TEXT,
+      created_by TEXT NOT NULL,
+      parent_id TEXT,
+      workflow_run_id TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      result TEXT
+    );
+    INSERT INTO tickets_v10
+      (id, type, title, detail, payload, status, assignee, created_by, parent_id, workflow_run_id,
+       created_at, updated_at, result)
+      SELECT id, type, title, detail, payload, status, assignee, created_by, parent_id,
+             workflow_run_id, created_at, updated_at, result
+        FROM tickets;
+    DROP TABLE tickets;
+    ALTER TABLE tickets_v10 RENAME TO tickets;
+    CREATE INDEX IF NOT EXISTS tickets_parent ON tickets (parent_id);
+    CREATE INDEX IF NOT EXISTS tickets_assignee ON tickets (assignee);
+    CREATE INDEX IF NOT EXISTS tickets_status ON tickets (status);
+  `);
+}
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: createWorkboard },
   { version: 2, up: createRelay },
@@ -497,6 +538,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 7, up: unifyInboundDedupe },
   { version: 8, up: addApprovalFacts },
   { version: 9, up: addSpendMicros },
+  { version: 10, up: addAwaitingConfirmation },
 ];
 
 for (const [index, migration] of MIGRATIONS.entries()) {

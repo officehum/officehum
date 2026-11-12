@@ -645,7 +645,7 @@
             <tr><td>Context</td><td><code>AGENTS.md</code>, <code>APPEND_SYSTEM.md</code></td><td>Informs. Who the role is. No amounts or thresholds.</td></tr>
             <tr><td>Knowledge</td><td>Skills and their reference files</td><td>Informs. Loaded only when needed.</td></tr>
             <tr><td>Wisdom</td><td>Replay class, approval rules, overlay limits</td><td>Controls, in code. A prompt edit cannot switch it off.</td></tr>
-            <tr><td>Workflow</td><td><code>accepts</code> with completion evidence</td><td>Controls. A ticket is done only when its evidence checks out. The evidence is declared and validated today; nothing runs it yet.</td></tr>
+            <tr><td>Workflow</td><td><code>accepts</code> with completion evidence</td><td>Controls. A ticket is done only when its evidence checks out. The office runs the checks when an agent replies; a person confirms on the board.</td></tr>
           </tbody>
         </table></div>
 
@@ -884,7 +884,7 @@
           <tr><td>Exactly-once delivery</td><td>The relay uses the event ID as the Pi Durable request ID, so a crash cannot deliver a ticket twice</td><td>RASF-3067 · built</td></tr>
           <tr><td>Provenance and budget are inherited</td><td>A child ticket carries where the work came from (customer email is <i>external</i>) and what budget remains</td><td>RASF-3066, 3142 · built</td></tr>
           <tr><td>Hop limit</td><td>After four hand-offs a ticket goes to a person, so agents cannot loop</td><td>RASF-3066 · built</td></tr>
-          <tr><td>Evidence to close</td><td>A ticket is done only when its declared evidence checks out, such as an invoice ID in QuickBooks</td><td>RASF-3230 · planned</td></tr>
+          <tr><td>Evidence to close</td><td>A ticket is done only when its declared evidence checks out, such as an invoice ID in QuickBooks</td><td>RASF-3230 · built</td></tr>
           <tr><td>Install-time check</td><td>The office warns when a role hands off a ticket type nobody accepts</td><td>RASF-3236 · planned</td></tr>
           <tr><td>Shared memory and files</td><td>Facts are shared office-wide; a file one agent makes is handed to another by ID</td><td>RASF-3222, 3193 · planned</td></tr>
           <tr><td>Askers' permissions</td><td>An agent answering a staff member acts with that person's approval limits, not its own</td><td>RASF-3089 · planned</td></tr>
@@ -897,8 +897,10 @@
         agents and the owner handle it. The team runtime that steps 5 to 12 depend on is built, and so
         are the roles. The chain still does not run as drawn: the Front Desk's manifest declares only
         an <code>invoice.question</code> hand-off, Sales declares none for <code>invoice.create</code>,
-        the runtime binds no calendar or other app client to a role (only demonstration desks), no
-        role is wired to the Paper Office pack, and nothing checks completion evidence (step 12).</p>
+        the runtime binds no calendar or other app client to a role (only demonstration desks), and no
+        role is wired to the Paper Office pack. Completion evidence (step 12) is checked, but the
+        catalog's <code>invoice.create</code> evidence asks only whether the customer has any
+        invoice, not for the one this ticket raised.</p>
 
       <figure class="figure wide">
         <div class="scroll">
@@ -935,7 +937,8 @@
           an approved reply. Steps 5, 6, 8 and 9 use the workboard and relay, which are built, but the
           catalog roles do not declare these two hand-offs. Step 7 needs a role wired to the Paper
           Office pack. Steps 10 and 11, an approval raised on ticket work, are answered through the
-          gateway. Step 12 needs completion evidence. Steps 7 and 12 are not built.</figcaption>
+          gateway. Step 12 is the office checking the ticket's completion evidence when the agent
+          replies. Step 7 is not built.</figcaption>
       </figure>
 
       <ol class="flow" style="--paper: var(--office)">

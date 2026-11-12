@@ -27,6 +27,7 @@ import {
   section,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
+import type { AgentManifest } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   BOOK,
@@ -138,11 +139,12 @@ async function call(
 }
 
 /** A role's own extension: one tool and one section naming the role, so it is visible in a request. */
-function fixtureRole(roleKey: string): Extension {
+function fixtureRole(roleKey: string, more: readonly ToolRegistration[] = []): Extension {
   return defineExtension({
     name: `fixture.${roleKey}`,
     sections: [section("fixture_role", () => roleKey)],
     tools: [
+      ...more,
       defineTool({
         name: `fixture_note_${roleKey.replaceAll("-", "_")}`,
         description: "Record a note about the work in hand.",
@@ -190,6 +192,10 @@ async function openFixture(options: {
   readonly personRoutes?: readonly PersonRoute[];
   /** People seeded onto the board before it opens. */
   readonly seed?: readonly { readonly id: string; readonly name: string }[];
+  /** The delegate's manifest, when a test declares completion evidence for its ticket type. */
+  readonly bookManifest?: AgentManifest;
+  /** More tools for the delegate's own role extension, such as the ones its evidence names. */
+  readonly bookTools?: readonly ToolRegistration[];
 }): Promise<Fixture> {
   const scripted = options.scripted ?? scriptedProvider(options.script);
   const boardFile = join(options.directory, "office.sqlite");
@@ -247,7 +253,7 @@ async function openFixture(options: {
     now: () => Date.now(),
   });
 
-  const people = [FRONT_MANIFEST, BOOK_MANIFEST];
+  const people = [FRONT_MANIFEST, options.bookManifest ?? BOOK_MANIFEST];
   const front = officeExtension({
     board,
     relay,
@@ -269,7 +275,7 @@ async function openFixture(options: {
   });
 
   const frontRole = fixtureRole(FRONT);
-  const bookRole = fixtureRole(BOOK);
+  const bookRole = fixtureRole(BOOK, options.bookTools);
   office.install({ extensions: [frontRole, front, bookRole, book], agent: {} });
   roleAgents.set(FRONT, { extensions: [frontRole, front], model: scripted.model });
   roleAgents.set(BOOK, { extensions: [bookRole, book], model: scripted.model });
@@ -744,6 +750,177 @@ describe("agent_reply", () => {
         "created",
         "claimed",
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+});
+
+describe("agent_reply with completion evidence", () => {
+  /** The delegate's records, and the two tools over them: one the evidence runs, one that does the work. */
+  function invoiceDesk() {
+    const invoices: string[] = [];
+    const tools = [
+      defineTool({
+        name: "fixture_list_invoices",
+        description: "List the invoices raised for a customer.",
+        parameters: Type.Object({ customer: Type.String() }, { additionalProperties: false }),
+        replay: "safe",
+        execute: async (args) => {
+          const found = invoices.filter((invoice) => invoice.startsWith(`${args.customer}:`));
+          return {
+            output: [{ type: "text" as const, text: `${found.length} invoices` }],
+            details: { found: found.length > 0, invoices: found },
+          };
+        },
+      }),
+      defineTool({
+        name: "fixture_raise_invoice",
+        description: "Raise an invoice for a customer.",
+        parameters: Type.Object({ customer: Type.String() }, { additionalProperties: false }),
+        replay: "unsafe",
+        execute: async (args) => {
+          invoices.push(`${args.customer}:INV-1`);
+          return { output: [{ type: "text" as const, text: "raised INV-1" }] };
+        },
+      }),
+    ] as unknown as ToolRegistration[];
+    return { invoices, tools };
+  }
+
+  const EVIDENCED: AgentManifest = {
+    ...BOOK_MANIFEST,
+    accepts: [
+      {
+        type: TYPE,
+        description: "Invoice a completed job",
+        done: [
+          {
+            tool: "fixture_list_invoices",
+            args: { customer: "{ticket.data.customer}" },
+            expect: "found",
+          },
+        ],
+      },
+    ],
+  };
+
+  /**
+   * The delegate says it is done before it has done anything, is told what is missing, does the work
+   * and replies again. The delegator dispatches with the customer in the ticket's data and waits.
+   */
+  function claimThenWork(): (messages: readonly Message[]) => ScriptedTurn {
+    return (messages) => {
+      const delivered = messages.findLast(
+        (message) => message.role === "user" && textOf(message).includes("TICKET "),
+      );
+      if (delivered === undefined) {
+        return messages.some(
+          (message) => message.role === "toolResult" && message.toolName === "agent_dispatch",
+        )
+          ? { text: "Done." }
+          : {
+              toolCalls: [
+                {
+                  name: "agent_dispatch",
+                  args: {
+                    type: TYPE,
+                    title: "Invoice job 42",
+                    detail: REQUEST,
+                    payload: { customer: "Acme" },
+                    wait: true,
+                  },
+                },
+              ],
+            };
+      }
+      const ticketId = /TICKET (\S+)/.exec(textOf(delivered))?.[1] ?? "";
+      const results = messages
+        .slice(messages.lastIndexOf(delivered) + 1)
+        .filter((message) => message.role === "toolResult");
+      const replies = results.filter((message) => message.toolName === "agent_reply").length;
+      const raised = results.some((message) => message.toolName === "fixture_raise_invoice");
+      if (replies === 0 || (replies === 1 && raised)) {
+        return {
+          toolCalls: [{ name: "agent_reply", args: { ticketId, result: DELEGATE_RESULT } }],
+        };
+      }
+      if (replies === 1) {
+        return { toolCalls: [{ name: "fixture_raise_invoice", args: { customer: "Acme" } }] };
+      }
+      return { text: DELEGATE_CHATTER };
+    };
+  }
+
+  it("runs the role's evidence tool in the host: the first reply fails, the second completes", async () => {
+    const desk = invoiceDesk();
+    const fixture = await openFixture({
+      directory: DIRECTORY(),
+      script: claimThenWork(),
+      bookManifest: EVIDENCED,
+      bookTools: desk.tools,
+    });
+    try {
+      const submission = await fixture.office.submit(fixture.frontConversation, {
+        input: REQUEST,
+        requestId: "req-evidence",
+      });
+      const ticketId = await waitForTicket(fixture.board, TYPE);
+      await deliverUntilDone(fixture, ticketId);
+      expect((await submission.wait(BACKGROUND_CONTEXT)).status).toBe("done");
+
+      const events = fixture.board.events(ticketId);
+      expect(events.map((event) => event.kind)).toEqual([
+        "created",
+        "claimed",
+        "evidence_failed",
+        "completed",
+      ]);
+      expect(events[2]?.payload).toEqual({
+        attempt: 1,
+        failures: [
+          {
+            kind: "tool",
+            check: "fixture_list_invoices",
+            passed: false,
+            reason: 'found no record for {"customer":"Acme"}',
+            found: { found: false, invoices: [] },
+          },
+        ],
+      });
+      expect(events[3]?.payload).toEqual({
+        result: DELEGATE_RESULT,
+        evidence: [
+          {
+            kind: "tool",
+            check: "fixture_list_invoices",
+            passed: true,
+            found: { found: true, invoices: ["Acme:INV-1"] },
+          },
+        ],
+      });
+      expect(ticketOf(fixture.board, ticketId)).toMatchObject({
+        status: "done",
+        result: DELEGATE_RESULT,
+      });
+
+      // The delegate was told what failed, in its own reply's result, and never ran the check itself:
+      // the evidence tool's result went to the host, not into the transcript.
+      const seen = fixture.scripted.requests.flatMap((request) => request.messages);
+      const replies = seen.filter(
+        (message) => message.role === "toolResult" && message.toolName === "agent_reply",
+      );
+      expect(replies.map(textOf).some((text) => text.includes("is not done"))).toBe(true);
+      expect(
+        seen.some(
+          (message) =>
+            message.role === "toolResult" && message.toolName === "fixture_list_invoices",
+        ),
+      ).toBe(false);
+
+      // The delegator's wait returned only once the evidence passed.
+      const messages = (await fixture.frontConversation.context(BACKGROUND_CONTEXT)).messages;
+      expect(resultText(messages, "agent_dispatch")).toContain(DELEGATE_RESULT);
     } finally {
       await fixture.close();
     }

@@ -347,7 +347,12 @@ export function localBoardExtension(options: LocalBoardOptions): Extension {
       if (outcome !== undefined) return communicationError(outcome);
       return {
         output: [{ type: "text" as const, text: repliedText(args.ticketId, args.result) }],
-        details: { ticketId: args.ticketId, result: args.result },
+        details: {
+          ticketId: args.ticketId,
+          result: args.result,
+          // The local board checks no completion evidence, so it only passes the files on.
+          ...(args.files === undefined ? {} : { files: args.files }),
+        },
       };
     },
   });

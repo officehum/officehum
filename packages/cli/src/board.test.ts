@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BOARD_COLUMN_WIDTH,
   BOARD_WIDTH,
+  CONFIRM_CARD_LABEL,
   EXTERNAL_CARD_LABEL,
   formatAge,
   renderBoard,
@@ -369,6 +370,60 @@ describe("officehum board", () => {
     expect(terminal.output.join("\n")).toContain(`Cancelled ${target} as owner.`);
     // The board redrew once the log moved: the header appears again after the first command.
     expect(terminal.output.filter((line) => line.startsWith("as of "))).toHaveLength(4);
+  });
+
+  it("shows a ticket awaiting confirmation in the waiting column, and confirms or sends it back", async () => {
+    const office = fixture();
+    const ask = (title: string): string => {
+      const ticket = create(office.board, { type: "invoice.create", title });
+      office.board.claim(ticket.id, "agent:bookkeeper");
+      office.board.awaitConfirmation(ticket.id, "agent:bookkeeper", {
+        result: "Invoiced.",
+        evidence: [],
+        person: "owner",
+      });
+      return ticket.id;
+    };
+    const right = ask("Invoice Acme");
+    const wrong = ask("Invoice Birch");
+
+    const lines = renderBoard(office.board, NOW);
+    // Both sit beside the ticket that was already waiting on a person, each marked for an answer.
+    expect(headerRow(lines)).toContain("waiting (3)");
+    const waiting = columnOf(lines, "booking.request Confirm Tuesday");
+    expect(columnOf(lines, "invoice.create Invoice Acme")).toBe(waiting);
+    expect(lines.filter((line) => columnsOf(line)[waiting] === CONFIRM_CARD_LABEL)).toHaveLength(2);
+
+    const terminal = scripted([
+      `o ${right}`,
+      `y ${right}`,
+      `n ${wrong}`,
+      `n ${wrong} The total is wrong`,
+      `y ${office.ids.open}`,
+      "q",
+    ]);
+    expect(await runCli(["board", "--office", office.directory], terminal.io, clock)).toBe(0);
+    // Opening the ticket shows what a yes would confirm.
+    expect(terminal.output).toContain("        result: Invoiced.");
+    expect(terminal.output.join("\n")).toContain(`Confirmed ${right} is done, as owner.`);
+    expect(terminal.output.join("\n")).toContain(
+      `Sent ${wrong} back to agent:bookkeeper, as owner.`,
+    );
+    // A refusal needs a reason, and a ticket nobody was asked about is the board's to refuse.
+    expect(terminal.errors.join("\n")).toContain("n needs a ticket and the reason it is not done.");
+    expect(terminal.errors.join("\n")).toContain("The board refused (invalid_status)");
+
+    expect(office.board.get(right)).toMatchObject({ status: "done", result: "Invoiced." });
+    expect(office.board.events(right).at(-1)).toMatchObject({ kind: "completed", actor: "owner" });
+    expect(office.board.get(wrong)).toMatchObject({
+      status: "claimed",
+      assignee: "agent:bookkeeper",
+    });
+    expect(office.board.events(wrong).at(-1)?.payload).toMatchObject({
+      attempt: 1,
+      failures: [{ kind: "person", reason: "The total is wrong" }],
+    });
+    office.board.close();
   });
 
   it("cancels as a person, and surfaces the board's refusal of a person it does not know", async () => {
