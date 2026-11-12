@@ -86,9 +86,8 @@ Each bug fix marked (test) has a regression test that failed before the fix.
 > - **B7 was a wrong finding.** Front Desk's writing tools are correctly `replay: "safe"`: its
 >   exactly-once design relies on an interrupted call being re-run. What is misleading is that the
 >   docs and the sub-agent rules read "safe" as "does not write".
-> - **D1, approval inbox.** With `officehum runtime --board`, a gated call inside ticket work is
->   recorded and blocked, and nothing can decide it. Needs a decision on which authority (board or
->   gateway) governs approvals for ticket work.
+> - **D1, approval inbox.** Resolved in RASF-3569: the runtime's approvals, ticket work included,
+>   are decided through the gateway, and the board's gate is not installed there.
 > - **A12.** Multi-output Paper commits check everything first and finish on replay, but are not
 >   atomic against a concurrent edit; that needs a multi-file commit in the SDK's file store.
 > - **A21.** Errors other than `busy` on the approval re-watch after a reconnect are still dropped.

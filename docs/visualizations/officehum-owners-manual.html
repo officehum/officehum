@@ -790,7 +790,7 @@
     <!-- 07 -->
     <section class="chapter" id="team">
       <div class="chapter-head"><div class="num">07</div><h2>Running a team of agents</h2>
-        <div class="eyebrow">Front Desk, Sales, Bookkeeper and Office Manager in one office · team runtime built · approvals on ticket work not answerable yet</div></div>
+        <div class="eyebrow">Front Desk, Sales, Bookkeeper and Office Manager in one office · team runtime built</div></div>
       <div class="col">
         <p>In a running office, one runtime process hosts one Pi Durable harness and every role in it. The
           harness is one SQLite file and the workboard a second
@@ -888,7 +888,7 @@
           <tr><td>Install-time check</td><td>The office warns when a role hands off a ticket type nobody accepts</td><td>RASF-3236 · planned</td></tr>
           <tr><td>Shared memory and files</td><td>Facts are shared office-wide; a file one agent makes is handed to another by ID</td><td>RASF-3222, 3193 · planned</td></tr>
           <tr><td>Askers' permissions</td><td>An agent answering a staff member acts with that person's approval limits, not its own</td><td>RASF-3089 · planned</td></tr>
-          <tr><td>Approvals on ticket work</td><td>A gated tool called while working a ticket is recorded on the board for a person and does not run</td><td>RASF-3138 · recorded, but no command or screen answers it yet</td></tr>
+          <tr><td>Approvals on ticket work</td><td>A gated tool called while working a ticket waits for a signed-in person to decide through the gateway</td><td>RASF-3569 · built</td></tr>
         </tbody>
       </table></div>
 
@@ -898,8 +898,7 @@
         are the roles. The chain still does not run as drawn: the Front Desk's manifest declares only
         an <code>invoice.question</code> hand-off, Sales declares none for <code>invoice.create</code>,
         the runtime binds no calendar or other app client to a role (only demonstration desks), no
-        role is wired to the Paper Office pack, an approval raised while working a ticket (step 10)
-        cannot be answered yet, and nothing checks completion evidence (step 12).</p>
+        role is wired to the Paper Office pack, and nothing checks completion evidence (step 12).</p>
 
       <figure class="figure wide">
         <div class="scroll">
@@ -935,8 +934,8 @@
         <figcaption><b>Figure 7.2</b> Steps 1 to 4 work today in solo mode: inbound email, approval and
           an approved reply. Steps 5, 6, 8 and 9 use the workboard and relay, which are built, but the
           catalog roles do not declare these two hand-offs. Step 7 needs a role wired to the Paper
-          Office pack. Steps 10 and 11 need a way to answer an approval raised on ticket work. Step 12
-          needs completion evidence. Those three are not built.</figcaption>
+          Office pack. Steps 10 and 11, an approval raised on ticket work, are answered through the
+          gateway. Step 12 needs completion evidence. Steps 7 and 12 are not built.</figcaption>
       </figure>
 
       <ol class="flow" style="--paper: var(--office)">
@@ -977,7 +976,7 @@
           <tbody>
             <tr><td>Gated tools wait for a person</td><td><code>approvalGate()</code>, a Pi Durable <code>beforeTool</code> hook. With no approver supplied, gated actions are refused.</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Remote approvals</td><td>In the team runtime a gated call in a direct request waits for a signed-in person to decide through the gateway, within that person's approval limit; unanswered after four hours it is declined</td><td><span class="chip built">Built</span></td></tr>
-            <tr class="planned"><td>Approvals on ticket work</td><td>Recorded on the board and the tool does not run; no command or screen can answer them yet</td><td><span class="chip planned">No host yet</span></td></tr>
+            <tr><td>Approvals on ticket work</td><td>Decided through the gateway like any other gated call, and still waiting after a restart; the board's own approval inbox is not used by the runtime</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Decisions survive restarts</td><td>Stored as task memos; a declined call stays declined after recovery</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Customer text cannot approve</td><td>Inbound email conversations only get schedule and reply tools</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Receipts, not words</td><td>A write is complete only when its tool returns a receipt</td><td><span class="chip built">Built</span></td></tr>

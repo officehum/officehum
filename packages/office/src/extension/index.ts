@@ -163,6 +163,13 @@ export interface OfficeExtensionOptions {
    * tool that requires approved facts refuses after a grant.
    */
   readonly approvalFacts?: Readonly<Record<string, ApprovalFactsReader>>;
+  /**
+   * Who decides this agent's gated calls. `"board"` (the default) installs the office's gate, which
+   * records a request on the board for a person to decide there. `"role"` installs no gate: the
+   * role's own gate asks the approver its host gave it, and that is the only authority. A host picks
+   * one, because a call two gates must both pass can be granted by neither alone (RASF-3569).
+   */
+  readonly approvals?: "board" | "role";
 }
 
 const toolError = communicationError;
@@ -449,6 +456,6 @@ export function officeExtension(options: OfficeExtensionOptions): Extension {
     // reached from the Inbox or a Teams card, can answer one.
     // The hooks seam (RASF-3141, RASF-3138): the office's own approval gate, from this board and these
     // manifests, plus the registrations a caller supplies. With nothing to gate it installs no gate.
-    hooks: registerOfficeHooks(options),
+    hooks: options.approvals === "role" ? [...(options.hooks ?? [])] : registerOfficeHooks(options),
   });
 }

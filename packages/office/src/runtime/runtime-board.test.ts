@@ -376,37 +376,15 @@ describe("the runtime's workboard", () => {
     expect(paid).toEqual([{ amount: 500 }]);
   });
 
-  it("records a gated call in handed-on work as a request to the office's first person, and does not run it", async () => {
+  describe("a gated call in handed-on work", () => {
     const declarations: ApprovalDeclaration[] = [
       { id: "any_payment", tool: "pay", description: "Approve this payment" },
     ];
-    const approvals = new RemoteApprovals();
-    const paid: unknown[] = [];
-    const pay = defineTool({
-      name: "pay",
-      description: "Pays an amount.",
-      parameters: Type.Object({ amount: Type.Number() }),
-      replay: "unsafe",
-      execute: async (args) => {
-        paid.push(args);
-        return { output: [{ type: "text", text: "paid" }] };
-      },
-    });
-    const extension = defineExtension({
-      name: "payer-tools",
-      tools: [pay],
-      hooks: [approvalGate({ approvals: declarations, approve: approvals.approve })],
-    });
-    const payer = {
-      dir: "/fixture",
-      manifest: {
-        ...BOOK_MANIFEST,
-        tools: [{ name: "pay", replay: "unsafe" }],
-        approvals: declarations,
-      },
-      bundle: { extensions: [extension], agent: { extensions: [extension] } },
-      approvalFacts: {},
-    } as unknown as LoadedRole;
+    const people = [
+      { id: "dana-whitfield", name: "Dana Whitfield" },
+      { id: "eileen-hart", name: "Eileen Hart" },
+    ];
+    // The front desk hands the payment on; the colleague's first move on the ticket is to pay.
     const script: ScriptedScript = (messages) => {
       const delivered = messages.some(
         (message) => message.role === "user" && textOf(message).includes("TICKET "),
@@ -416,38 +394,116 @@ describe("the runtime's workboard", () => {
           messages,
         );
       return messages.at(-1)?.role === "toolResult"
-        ? { text: "Waiting for a person." }
+        ? { text: "Done with the payment." }
         : { toolCalls: [{ name: "pay", args: { amount: 500 } }] };
     };
-    const office = await open(directory(), script, {
-      roles: [role(FRONT_MANIFEST), payer],
-      people: [
-        { id: "dana-whitfield", name: "Dana Whitfield" },
-        { id: "eileen-hart", name: "Eileen Hart" },
-      ],
-      approvals,
-    });
-    await office.runtime.handle(submit("c1", "r1"));
-    await office.settledFor("ada/r1");
 
-    const waiting = await vi.waitFor(
-      () => {
-        const [item] = openApprovalInbox(office.board).list();
-        if (item === undefined) throw new Error("not asked yet");
-        return item;
-      },
-      { timeout: 10_000, interval: 20 },
-    );
-    expect(waiting).toMatchObject({
-      tool: "pay",
-      args: { amount: 500 },
-      requestedBy: BOOK,
-      awaiting: { id: "dana-whitfield", name: "Dana Whitfield" },
-      status: "waiting",
+    /** A runtime whose bookkeeper has one gated tool, `pay`, which records what it paid in `paid`. */
+    async function payingOffice(home: string, paid: unknown[]) {
+      const approvals = new RemoteApprovals();
+      const pay = defineTool({
+        name: "pay",
+        description: "Pays an amount.",
+        parameters: Type.Object({ amount: Type.Number() }),
+        replay: "unsafe",
+        execute: async (args) => {
+          paid.push(args);
+          return { output: [{ type: "text", text: "paid" }] };
+        },
+      });
+      const extension = defineExtension({
+        name: "payer-tools",
+        tools: [pay],
+        hooks: [approvalGate({ approvals: declarations, approve: approvals.approve })],
+      });
+      const payer = {
+        dir: "/fixture",
+        manifest: {
+          ...BOOK_MANIFEST,
+          tools: [{ name: "pay", replay: "unsafe" }],
+          approvals: declarations,
+        },
+        bundle: { extensions: [extension], agent: { extensions: [extension] } },
+        approvalFacts: {},
+      } as unknown as LoadedRole;
+      const office = await open(home, script, {
+        roles: [role(FRONT_MANIFEST), payer],
+        people,
+        approvals,
+      });
+      const approval = (status: "pending" | "approved" | "declined") =>
+        vi.waitFor(
+          () => {
+            const found = office.sent.find(
+              (message) => message.type === "approval" && message.approval.status === status,
+            );
+            if (found?.type !== "approval") throw new Error(`no ${status} approval yet`);
+            return found.approval;
+          },
+          { timeout: 10_000, interval: 20 },
+        );
+      const decide = (approvalId: string, decision: "approve" | "decline") =>
+        office.runtime.handle({ type: "approve", id: "a1", approvalId, decision, principal: ada });
+      /** Resolves once the colleague's model has read the result of its `pay` call. */
+      const payAnswered = () =>
+        vi.waitFor(
+          () => {
+            const answer = office.scripted.requests
+              .flatMap((request) => request.messages)
+              .find((message) => message.role === "toolResult" && message.toolName === "pay");
+            if (answer === undefined) throw new Error("the pay call has no result yet");
+            return textOf(answer);
+          },
+          { timeout: 10_000, interval: 20 },
+        );
+      return { ...office, approval, decide, payAnswered };
+    }
+
+    it("is asked through the gateway, and runs once when a person approves", async () => {
+      const paid: unknown[] = [];
+      const office = await payingOffice(directory(), paid);
+      await office.runtime.handle(submit("c1", "r1"));
+
+      const asked = await office.approval("pending");
+      expect(asked).toMatchObject({ agent: BOOK, tool: "pay" });
+      expect(paid).toEqual([]);
+      // One authority: the board holds no second request for the same call.
+      expect(openApprovalInbox(office.board).list()).toEqual([]);
+
+      await office.decide(asked.approvalId, "approve");
+      expect(await office.payAnswered()).toBe("paid");
+      expect(paid).toEqual([{ amount: 500 }]);
     });
-    expect(paid).toEqual([]);
-    // Nothing was asked through the gateway: handed-on work is gated on the board alone.
-    expect(office.sent.some((message) => message.type === "approval")).toBe(false);
+
+    it("does not run when a person declines", async () => {
+      const paid: unknown[] = [];
+      const office = await payingOffice(directory(), paid);
+      await office.runtime.handle(submit("c1", "r1"));
+
+      const asked = await office.approval("pending");
+      await office.decide(asked.approvalId, "decline");
+      expect(await office.payAnswered()).not.toBe("paid");
+      expect(paid).toEqual([]);
+    });
+
+    it("is still waiting after a restart, and then runs once when approved", async () => {
+      const home = directory();
+      const paid: unknown[] = [];
+      const first = await payingOffice(home, paid);
+      await first.runtime.handle(submit("c1", "r1"));
+      const asked = await first.approval("pending");
+      await first.close();
+
+      const second = await payingOffice(home, paid);
+      // The resumed turn asks again for the same call and finds the same request.
+      const again = await second.approval("pending");
+      expect(again.approvalId).toBe(asked.approvalId);
+      expect(paid).toEqual([]);
+
+      await second.decide(again.approvalId, "approve");
+      expect(await second.payAnswered()).toBe("paid");
+      expect(paid).toEqual([{ amount: 500 }]);
+    });
   });
 
   it("stops its relay when it closes", async () => {

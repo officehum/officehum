@@ -3,8 +3,8 @@
  * tickets between agents, and the office extension each agent's conversations select.
  *
  * The runtime builds this when it is given a board. Each agent gets its own instance of the office
- * extension (`agent_dispatch`, `agent_inbox`, `agent_reply`, the `team` and `office` sections, the
- * board's approval gate and the budget hooks), installed under its own name, and the relay routes a
+ * extension (`agent_dispatch`, `agent_inbox`, `agent_reply`, the `team` and `office` sections and
+ * the budget hooks; approvals stay with the role's own gate and the runtime's approver), installed under its own name, and the relay routes a
  * ticket to the agent whose manifest accepts its type, in a conversation of that agent's for that
  * ticket. The relay is the office's single poller: `start` recovers what a previous run left
  * unfinished and then polls the board until `stop`.
@@ -13,7 +13,7 @@
  * and hooks are the extension's; this module constructs them and keeps the loop turning.
  */
 
-import type { AgentChange, Extension } from "@earendil-works/pi-durable";
+import type { AgentChange } from "@earendil-works/pi-durable";
 import type { Office } from "../adapter/index.js";
 import type { Board, Person } from "../board/index.js";
 import {
@@ -113,7 +113,9 @@ export function openTeamwork(options: TeamworkOptions): Teamwork {
       people: manifests,
       ...(options.personRoutes === undefined ? {} : { personRoutes: options.personRoutes }),
       hooks: budgetHooks({ board }),
-      approvalFacts: agent.role.approvalFacts,
+      // The runtime's approvals are decided through its gateway (`./approvals.ts`), for direct
+      // requests and ticket work alike, so the board's gate is not installed beside the role's own.
+      approvals: "role",
       settings: {
         // One instance per agent, each under its own name: Pi Durable selects extensions by name.
         name: `${OFFICE_EXTENSION_NAME}.${agent.name}`,
@@ -124,17 +126,10 @@ export function openTeamwork(options: TeamworkOptions): Teamwork {
       },
     });
     office.install({ extensions: [extension], agent: {} });
-    const assembled = officeConversation(
-      { ...agent.role.bundle, agent: agent.settings },
-      { extension },
+    settings.set(
+      agent.name,
+      officeConversation({ ...agent.role.bundle, agent: agent.settings }, { extension }),
     );
-    // Hooks run in the order a conversation selects its extensions, and the office's gate must run
-    // before the role's own: it drops the approved-facts argument from every call, so run second it
-    // would take away the facts the role's gate had just attached to an approved call.
-    const selected = (assembled.extensions as readonly Extension[]).filter(
-      (candidate) => candidate !== extension,
-    );
-    settings.set(agent.name, { ...assembled, extensions: [extension, ...selected] });
   }
 
   let stopped = false;

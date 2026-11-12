@@ -402,15 +402,15 @@ officehum runtime --db .officehum/harness.sqlite --board .officehum/office.sqlit
   (`ticketRoutes`) goes on the board assigned to them instead. The runtime delivers tickets for as
   long as it runs, and a restart picks up a hand-off where it stopped.
 - **Budgets and hops.** The board's spend ceilings and hop limit apply to handed-on work.
+- **Approvals in handed-on work.** A gated tool called while an agent works a ticket is asked
+  through the gateway, exactly like one called from a request you submit: a signed-in person
+  approves or declines it, within their approval limit, and unanswered it times out and is
+  declined. The request survives a restart. With no gateway approver, it is refused.
 - **Watching it.** `officehum board --office .officehum` shows the board, when the board file is
   named `office.sqlite`. Keep `--db` and `--board` as two files.
 
 What is not there yet:
 
-- **Approvals in handed-on work.** A gated tool called from a request you submit is asked through
-  the gateway, as before. A gated tool called while working a *ticket* is recorded on the board as a
-  request to the office's first person and does not run, and there is no command or screen yet to
-  answer it. Until there is, keep gated work in direct requests.
 - **Who sent it.** A ticket an agent opens records that it came through the gateway, not which
   signed-in person asked.
 
