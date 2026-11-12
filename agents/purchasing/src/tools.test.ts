@@ -342,6 +342,28 @@ describe("raise_purchase_order", () => {
     expect(text(result)).toContain("neutral-cleaner (9 on hand, 0 on order, reorder point 4)");
   });
 
+  it("refuses a reorder-point order for more than the reorder quantity, whoever sent the message", async () => {
+    // HVAC filters are at their reorder point with a reorder quantity of 4. A reorder-point order
+    // carries no sender, so the quantity the company records is all it may order.
+    for (const sender of [undefined, PRIYA]) {
+      const purchasing = desk();
+      const result = await tools(purchasing, sender).raisePurchaseOrder.execute(
+        {
+          reason: "reorder_point",
+          supplierId: "sup-willamette-filters",
+          lines: [{ itemId: "hvac-filter-stock", quantity: 40 }],
+        },
+        call("q4"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(isError(result)).toBe(true);
+      expect(details(result).code).toBe("unrequested");
+      expect(text(result)).toContain("hvac-filter-stock (40 asked, reorder quantity 4)");
+      expect(text(result)).toContain(`pass the request to ${lead}`);
+      expect(await purchasing.listPurchaseOrders()).toHaveLength(4);
+    }
+  });
+
   it("raise_purchase_order takes a reason and the request's source, never who asked", () => {
     const { keys, schema } = named(tools(desk()).raisePurchaseOrder);
     expect(keys).toEqual(["supplierId", "lines", "reason", "requestSource"]);

@@ -40,7 +40,7 @@
       "name": "send_reminder",
       "replay": "unsafe",
       "skill": "collections",
-      "description": "Send a collections reminder for an overdue invoice, in a friendly, firm or final tone. One reminder per invoice per stage, at the stage the business's cadence has reached."
+      "description": "Send a collections reminder for an overdue invoice, in a friendly, firm or final tone. One reminder per invoice per stage, and only at the stage the invoice's age has reached in the business's cadence."
     },
     {
       "name": "list_vendor_bills",
@@ -50,8 +50,8 @@
     {
       "name": "record_vendor_bill",
       "replay": "unsafe",
-      "noApproval": "An internal record of a supplier bill someone in the company asked to record, with who asked and from what. The desk refuses a supplier not on file or not approved, prices every line from the supply catalogue and works out the total and due date; it pays nothing.",
-      "description": "Record a supplier's bill from catalogue items and quantities, with who asked and what it came from. The desk prices it and refuses an unknown supplier."
+      "noApproval": "An internal record of a supplier bill a person on the company record asked to record; who asked is the message's verified sender, or nothing is recorded. The desk refuses a supplier not on file or not approved, prices every line from the supply catalogue and pays nothing.",
+      "description": "Record a supplier's bill from catalogue items and quantities, with what it came from. Who asked is the message's verified sender, and nobody on the company record means nothing is recorded. The desk prices it and refuses an unknown supplier."
     },
     {
       "name": "pay_vendor_bill",

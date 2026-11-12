@@ -5,6 +5,7 @@
  * replayed under the same request id and must happen once.
  */
 
+import { addDays } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { loadCompanyFacts } from "./company.js";
 import {
@@ -585,6 +586,78 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     );
     expect(order).toMatchObject({ status: "placed", reason: "reorder_point" });
     expect(order.requestedBy).toBeUndefined();
+  });
+
+  it("caps a reorder-point line at the item's reorder quantity, since nobody asked for more", async () => {
+    const purchasing = desk();
+    // HVAC filters are at their reorder point; the company records a reorder quantity of 4. Five is
+    // inside the spending limit ($480.00), but nobody asked for the extra one.
+    const over = {
+      reason: "reorder_point" as const,
+      supplierId: "sup-willamette-filters",
+      lines: [{ itemId: "hvac-filter-stock", quantity: 5 }],
+    };
+    const refused = await refusal(purchasing.raisePurchaseOrder(over, { requestId: "cap-1" }));
+    expect(refused.code).toBe("unrequested");
+    expect(refused.message).toContain("hvac-filter-stock (5 asked, reorder quantity 4)");
+    expect(refused.message).toContain("Nothing was ordered.");
+    // A replay of the refused call is refused the same way, and neither saved anything.
+    const replayed = await refusal(purchasing.raisePurchaseOrder(over, { requestId: "cap-1" }));
+    expect(replayed.message).toBe(refused.message);
+    expect(await purchasing.listPurchaseOrders()).toHaveLength(4);
+    // Only the line over its quantity is named.
+    const mixed = await refusal(
+      purchasing.raisePurchaseOrder(
+        {
+          reason: "reorder_point",
+          supplierId: "sup-pacific-janitorial",
+          lines: [
+            { itemId: "disinfectant", quantity: 12 },
+            { itemId: "nitrile-gloves", quantity: 6 },
+          ],
+        },
+        { requestId: "cap-2" },
+      ),
+    );
+    expect(mixed.message).toContain("nitrile-gloves (6 asked, reorder quantity 5)");
+    expect(mixed.message).not.toContain("disinfectant");
+    // The reorder quantity itself, or less, goes through; so does more when a person asks for it.
+    const exact = await purchasing.raisePurchaseOrder(
+      { ...over, lines: [{ itemId: "hvac-filter-stock", quantity: 4 }] },
+      { requestId: "cap-3" },
+    );
+    expect(exact.status).toBe("placed");
+    const asked = await desk().raisePurchaseOrder(
+      { ...ASKED, supplierId: over.supplierId, lines: over.lines },
+      { requestId: "cap-4" },
+    );
+    expect(asked.status).toBe("placed");
+  });
+
+  it("holds a reorder-point order to the spending limit like any other order", async () => {
+    // Every Cascade line is at its reorder quantity, and together they pass the limit.
+    const refused = await refusal(
+      desk().raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "cap-limit" }),
+    );
+    expect(refused.code).toBe("over_limit");
+    expect(refused.totalCents).toBeGreaterThan(LIMIT);
+  });
+
+  it("dates an order in the company's time zone: after 16:00 Pacific today is still the Pacific date", async () => {
+    // 01:30 UTC on 10 November is 17:30 on 9 November in Portland, where the company keeps its day.
+    const evening = desk("2026-11-10T01:30:00.000Z");
+    const order = await evening.raisePurchaseOrder(
+      {
+        reason: "reorder_point",
+        supplierId: "sup-willamette-filters",
+        lines: [{ itemId: "hvac-filter-stock", quantity: 4 }],
+      },
+      { requestId: "evening" },
+    );
+    const lead = company.suppliers.find((supplier) => supplier.id === "sup-willamette-filters");
+    expect(order.raisedOn).toBe("2026-11-09");
+    expect(order.placedOn).toBe("2026-11-09");
+    expect(order.expectedOn).toBe(addDays("2026-11-09", lead?.leadTimeDays ?? Number.NaN));
   });
 
   it("places one order however many times the same call is replayed, and keeps one draft for a replayed refusal", async () => {

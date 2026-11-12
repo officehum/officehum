@@ -262,7 +262,9 @@ const root = await harness.root(context, { agent: role.agent });
 - **`overlays`** — the business's own `AGENTS.md`, skills, `settings.json` and limits, lowest first.
 - **`now`** — the clock the demonstration desk dates against (today for a quote, an outcome and a
   follow-up). Omitted: `DEMO_NOW`, 2026-11-01, the day the demo pipeline's newest quotes were made. A
-  host's own desk keeps its own clock.
+  host's own desk keeps its own clock. "Today" is that clock's day in the company's time zone (the
+  company record's `hours.timezone`), not UTC's, so a quote made at 17:00 in Portland is dated that
+  day.
 
 Office Hum's `officehum run` supplies a terminal approver and prints a gated action's description and
 arguments before it waits for `y`/`n`.

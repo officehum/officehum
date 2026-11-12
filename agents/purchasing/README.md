@@ -87,8 +87,13 @@ call with no approved facts places nothing (`not_approved`). An approval places 
 changed order is a new draft that needs its own approval, and a second request for a placed draft is
 refused.
 
-**Only orders someone asked for.** `raise_purchase_order` takes a `reason`. `reorder_point` is
-accepted only for items the desk shows at or below their reorder point (on hand plus on order).
+**Only orders someone asked for, or a capped restock.** `raise_purchase_order` takes a `reason`.
+`reorder_point` is the system's own trigger and needs no sender: the stock level is what asks. It is
+accepted only for items the desk shows at or below their reorder point (on hand plus on order), and
+only for up to each item's `reorderQuantity` in the company record's supply catalogue, the same
+record the spending limit comes from; a line for more is refused as `unrequested`, because more than
+the company's own reorder quantity is something a person has to ask for. It is held to the spending
+limit and the split-order rule like every other order.
 `request` is accepted only when the host's verified sender is a colleague, a person on the company
 record writing from inside the office (the SDK's `colleague`; an outside email or text from a
 colleague's own address or number is not one): the tool
@@ -97,7 +102,8 @@ person as `requestedBy` with the message the model names as `requestSource`. Any
 as `unrequested`, so a supplier's message or an outside sender can never get an order placed.
 
 **Someone not on the company record** (the default record lists the office staff, not the crews) can
-still get items at their reorder point ordered, since `reorder_point` needs no sender. Any other
+still get items at their reorder point ordered, up to their reorder quantity, since `reorder_point`
+needs no sender. Any other
 request, and any delivery report, from them is refused, and the refusal names the purchasing lead from
 the company record: the role tells them to pass it to that person. A company that wants its crew leads
 to order and report directly puts them on the record: a `people[]` entry each, with department
@@ -119,6 +125,8 @@ recalls nothing again.
 The rule counts every order placed that day, approved ones included, so once an over-limit order is
 approved and placed, any further order to that supplier the same day also goes to a person, and the
 approved order stays placed. That is deliberate: conservative, and a person can approve it.
+"That day" is the company's own day: the desk reads today from its clock in the company record's
+`hours.timezone`, not in UTC, so an order placed at 17:00 in Portland is dated, and counted, that day.
 
 **The approved supplier list** is the company's own setting (`suppliers[].approved`), not a legal
 rule. The desk refuses any supplier not marked approved and the refusal names

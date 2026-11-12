@@ -13,8 +13,9 @@ stage, and the tool enforces that — you do not have to remember what you sent.
    stage that many days has reached. The stages, the day each one starts at, and what each tone says
    are in [the tone guide](references/tone-guide.md).
 3. Call `send_reminder` once for each invoice whose stage is due, naming the invoice and choosing the
-   tone: `friendly`, `firm` or `final`. One stage per invoice per run — an invoice already reminded at
-   a stage is not chased again at that stage, and the next stage waits until its own day arrives.
+   tone: `friendly`, `firm` or `final`. One stage per invoice per run, the one its age has reached —
+   an invoice already reminded at a stage is not chased again at that stage, an earlier stage it has
+   passed is not sent, and the next stage waits until its own day arrives.
 4. The tool applies the business's own cadence, read from its settings, so take what it answers as
    final. If it says the stage is not due yet, or that the reminder is already recorded, do not call
    it again for that invoice and stage, and do not work the timing out yourself.

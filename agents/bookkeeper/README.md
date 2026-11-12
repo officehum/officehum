@@ -26,6 +26,8 @@ const role = bookkeeper({
   company,      // optional: suppliers, catalogue and people (default: the generated handbook facts)
   approve,      // optional: decides the gated actions
   overlays,     // optional: overlay directories, lowest first
+  now,          // optional: the host's clock
+  sender,       // optional: who each call's work came from, as the host verified it
 });
 ```
 
@@ -45,6 +47,11 @@ const role = bookkeeper({
   backend in this package.
 - **`company`** is the record the desk prices bills from and the hand-offs name people from. With
   none, the facts `npm run sync-company` generates into `skills/company-handbook/references/facts.json`.
+- **`sender`** is the host's `SenderResolver`: who each call's work came from. `record_vendor_bill`
+  records who asked for a bill from it, as the person on the company record it names, and never from
+  an argument: the person approving the payment later reads that name as fact. With none, or for a
+  sender who is not a colleague writing from inside the office, the tool records nothing
+  (`unknown_sender`, a tool-level code). `officehum run --as PERSON` supplies one at the terminal.
 - **`approve`** decides the gated actions. Gated actions are blocked unless one is supplied: with no
   approver, creating an invoice over the limit, sending to another address, sending a final notice
   and paying any supplier bill are all refused. Office Hum's `officehum run` supplies a terminal
@@ -178,7 +185,9 @@ Creating an invoice, sending one, sending a reminder and paying a supplier bill 
 
 One clock: the prompt, the desk and the QuickBooks tools all read the same one. On the shipped desk
 with no QuickBooks client it is fixed at Monday 9 November 2026; a host that binds its own desk or a
-QuickBooks client gets the real clock, and a `now` the host passes wins either way.
+QuickBooks client gets the real clock, and a `now` the host passes wins either way. "Today" is that
+clock's day in the company's time zone (the company record's `hours.timezone`), so a due date, the
+days an invoice is overdue and a bill's status are counted from the business's own day, not UTC's.
 
 ### `new_recipient` over-blocks in Office Hum, on purpose
 
@@ -228,9 +237,9 @@ Ten tools, each declaring its replay policy exactly as `officehum.json` does:
 | `get_invoice` | safe | `{ invoice }` — a QuickBooks id, or the number a customer quotes |
 | `create_invoice` | unsafe | `{ customer, lines, dueInDays?, jobReference?, currency? }` |
 | `send_invoice` | unsafe | `{ invoice, to? }` — `to` is another address, and waits for a person |
-| `send_reminder` | unsafe | `{ invoice, tone }` — `friendly`, `firm` or `final`, once per invoice per stage (this one belongs to the collections skill) |
+| `send_reminder` | unsafe | `{ invoice, tone }` — `friendly`, `firm` or `final`, once per invoice per stage and only the stage that is due (this one belongs to the collections skill) |
 | `list_vendor_bills` | safe | `{ status?, supplier?, billId? }` — `unpaid`, `due`, `overdue`, `open` or `paid` |
-| `record_vendor_bill` | unsafe | `{ supplier, supplierInvoice, lines: { itemId, quantity }[], recordedBy, source, termsDays? }` — no approval: the desk refuses a supplier not on file or not approved and prices every line |
+| `record_vendor_bill` | unsafe | `{ supplier, supplierInvoice, lines: { itemId, quantity }[], source, termsDays? }` — no approval: who asked is the host's verified sender (nobody on the company record: nothing is recorded), and the desk refuses a supplier not on file or not approved and prices every line |
 | `pay_vendor_bill` | unsafe | `{ billId }` — `any_payment` on every call, asked with the bill's facts read from the desk; demonstration backend |
 | `reconcile_summary` | safe | `{ month? }` — the month's number (10 for October); the desk works out the year as the last such month that has ended, or the last full month when omitted |
 
@@ -262,9 +271,13 @@ latest history — of the stages this conversation has sent, per invoice, with t
 It writes that record in the **same commit that returns the receipt**, so a process killed the moment
 after the commit leaves a restart with a reminder already recorded and nothing to send. A repeated
 run, a retried call or a restart is answered from the ledger: the tool reports what was already sent
-and reaches no client at all. A different stage for the same invoice (firm after friendly) is its own
-send and goes through. A paid invoice is never chased, and a stage before its day — at the business's
-own cadence — is refused rather than sent early.
+and reaches no client at all. Only the stage the invoice's age has reached, at the business's own
+cadence, goes out: a stage before its day is refused rather than sent early, and a stage the invoice
+has passed (friendly at twenty days, when firm is due) is refused rather than sent beside the one
+that is due, so an invoice gets one reminder per stage and never two in one run. The next stage
+(firm after friendly) is its own send once its day arrives. A paid invoice is never chased. A
+refusal says where the invoice stands in words: "is due in 5 days", "is due today" or "is 4 days
+overdue".
 
 The ledger lives in the conversation, so a run's conversation is the unit it protects: a repeated run,
 a retried call or a restart is answered from it without reaching the client at all. A run in another

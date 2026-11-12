@@ -114,14 +114,16 @@ export default function marketing(options: MarketingOptions = {}): DefinedRole {
   // passes a clock; otherwise the role runs on the system clock. The prompt reads the same clock.
   const now = options.now ?? (demoDesk ? () => new Date(DEMO_NOW) : () => new Date());
   const company = options.company ?? loadCompanyFacts();
-  // The demonstration desk checks claims against the company's own list and signs emails with its
-  // own address, so a first run and a real one refuse the same draft.
+  // The tools check claims against the company's own list and sign emails with its own address on
+  // any desk, so a first run and a real one refuse the same draft.
   const desk = demoDesk ? fakeMarketingDesk({ company, now }) : options.desk;
   const tools = marketingTools({ desk, company });
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
     now,
+    // "Today" in the prompt is the company's day, the same day the desk dates its records by.
+    timeZone: company.hours.timezone,
     tools: [
       tools.readServices,
       tools.draftPost,

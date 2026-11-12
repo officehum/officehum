@@ -139,6 +139,8 @@ export default function purchasing(options: PurchasingOptions = {}): DefinedRole
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
     now,
+    // "Today" in the prompt is the company's own day, as it is on the desk, not UTC's.
+    timeZone: company.hours.timezone,
     tools: [
       tools.listStock,
       tools.listSuppliers,

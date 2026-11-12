@@ -26,9 +26,15 @@ import {
   type ApprovalFactsReader,
   approvedFacts,
   approvedFactsParameter,
+  companyGlossaryText,
+  companyHoursText,
+  companyPeopleText,
+  companyToneText,
   deskRefusal,
+  readCompanyTool,
   refusal,
   requestId,
+  requireDesk,
   textResult,
 } from "@officehum/sdk";
 import {
@@ -96,28 +102,6 @@ export type CompanySection =
   | "tone"
   | "escalation"
   | "glossary";
-
-const SECTIONS: readonly CompanySection[] = [
-  "profile",
-  "hours",
-  "people",
-  "services",
-  "pricing",
-  "policies",
-  "tone",
-  "escalation",
-  "glossary",
-];
-
-/** The desk, or a refusal: a host with no desk gets no read and no write. */
-function requireDesk(dependencies: SalesToolDependencies): SalesDesk {
-  if (dependencies.desk === undefined) {
-    throw new Error(
-      "No sales desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
-    );
-  }
-  return dependencies.desk;
-}
 
 /** A lead as a UI reads it, amounts in integer cents and nothing optional. */
 function leadDetails(lead: Lead) {
@@ -287,94 +271,74 @@ function quoteReceipt(quote: Quote, verb: string): string {
   return [`${verb} ${totalsText(quote)}`, "It is ready to send.", ...counts, ...minimums].join(" ");
 }
 
-/** The company record as one section reads: prose the model can answer a client with. */
-function companySection(company: CompanyFacts, section: CompanySection): string {
-  switch (section) {
-    case "profile": {
-      const { profile } = company;
-      // Certificates sit with contract terms (insurance above ours is one): whoever the company's
-      // escalation path names for them, never a name fixed in this package.
-      const certificates = person(
-        company,
-        escalationRule(company, "contract-terms")?.toPersonId ?? "",
-      );
-      return [
-        `${profile.legalName} — trading as ${profile.tradingName}. ${profile.tagline}`,
-        `Founded ${profile.founded}. ${profile.headcount} people: ${profile.field.cleaningCrews} cleaning crews of ${profile.field.cleanersPerCrew}, ${profile.field.maintenanceTechnicians} maintenance technicians, ${profile.field.office} in the office.`,
-        `${profile.address.street}, ${profile.address.city}, ${profile.address.region} ${profile.address.postalCode}, ${profile.address.country}.`,
-        `Phone ${profile.phone}. Email ${profile.email}. Web ${profile.website}. ${profile.registration}.`,
-        `Service area: ${profile.serviceArea}`,
-        `Insurance: ${profile.insurance.map((cover) => `${cover.kind} ${money(cover.limitCents)}`).join("; ")}.${certificates === undefined ? "" : ` Certificates come from ${certificates.name}.`}`,
-        `Clients: ${profile.clients}`,
-      ].join("\n");
-    }
-    case "hours": {
-      const { hours } = company;
-      return [
-        `Office: ${hours.office} (${hours.timezone}).`,
-        `Crews: ${hours.crews}.`,
-        `Emergency line: ${hours.emergencyLine}.`,
-        `Closed: ${hours.closedOn}.`,
-        hours.note,
-      ].join("\n");
-    }
-    case "people":
-      return company.people
-        .map(
-          (worker) =>
-            `${worker.name} — ${worker.title} — ${worker.email} — decides: ${worker.decides.join("; ")}`,
-        )
-        .join("\n");
-    case "services":
-      return company.services
-        .map(
-          (service) =>
-            `${service.name} — ${service.summary} Price book: ${service.priceBookIds.join(", ")}. Lead time about ${service.leadTimeDays} days.`,
-        )
-        .join("\n\n");
-    case "pricing":
-      return [
-        "The price book, in integer cents behind these figures:",
-        ...company.priceBook.map(
-          (item) => `${item.id} — ${item.name} — ${priceText(item)} — ${item.category}`,
-        ),
-      ].join("\n");
-    case "policies": {
-      const { refunds, discounts } = company.policies;
-      const ladder = discounts.ladder
-        .map((step) => `${step.commitmentMonths} months: ${step.percent}%`)
-        .join(", ");
-      return [
-        `Complaints and refunds: ${refunds.summary}`,
-        `A re-clean is booked within ${refunds.recleanWindowDays} business days. A service-recovery credit is normally ${money(refunds.serviceRecoveryCreditCents)}. Credits: ${person(company, refunds.creditNeeds)?.name ?? refunds.creditNeeds}. Money back: ${person(company, refunds.refundNeeds)?.name ?? refunds.refundNeeds}. Complaints: ${person(company, refunds.complaintOwner)?.name ?? refunds.complaintOwner}.`,
-        `Discounts: ${discounts.summary} Approver: ${person(company, discounts.approver)?.name ?? discounts.approver}. Above ${discounts.ownerAbovePercent}%: ${person(company, discounts.ownerApprover)?.name ?? discounts.ownerApprover}. Ladder: ${ladder}.`,
-        "Safety:",
-        ...company.policies.safety.map((rule) => `- ${rule}`),
-        "Data handling:",
-        ...company.policies.dataHandling.map((rule) => `- ${rule}`),
-        "Never promised:",
-        ...company.policies.commitments.map((rule) => `- ${rule}`),
-      ].join("\n");
-    }
-    case "tone":
-      return [
-        company.tone.summary,
-        "Always:",
-        ...company.tone.always.map((rule) => `- ${rule}`),
-        "Never:",
-        ...company.tone.never.map((rule) => `- ${rule}`),
-      ].join("\n");
-    case "escalation":
-      return company.escalation
-        .map((rule) => {
-          const owner = person(company, rule.toPersonId);
-          return `${rule.topic} — ${owner?.name ?? rule.toPersonId} (${owner?.email ?? "no email"}) — ${rule.when}`;
-        })
-        .join("\n");
-    case "glossary":
-      return company.glossary.map((entry) => `${entry.term}: ${entry.meaning}`).join("\n");
-  }
-}
+/**
+ * The company record, one section at a time: prose the model can answer a client with. The key order
+ * is the order `read_company` offers the sections in. The profile, the policies and the escalation
+ * path read differently here than in the shared texts (insurance and certificates, the refund and
+ * discount rules, each owner's email), so they are this role's own.
+ */
+const COMPANY_SECTIONS: Readonly<Record<CompanySection, (company: CompanyFacts) => string>> = {
+  profile: (company) => {
+    const { profile } = company;
+    // Certificates sit with contract terms (insurance above ours is one): whoever the company's
+    // escalation path names for them, never a name fixed in this package.
+    const certificates = person(
+      company,
+      escalationRule(company, "contract-terms")?.toPersonId ?? "",
+    );
+    return [
+      `${profile.legalName} — trading as ${profile.tradingName}. ${profile.tagline}`,
+      `Founded ${profile.founded}. ${profile.headcount} people: ${profile.field.cleaningCrews} cleaning crews of ${profile.field.cleanersPerCrew}, ${profile.field.maintenanceTechnicians} maintenance technicians, ${profile.field.office} in the office.`,
+      `${profile.address.street}, ${profile.address.city}, ${profile.address.region} ${profile.address.postalCode}, ${profile.address.country}.`,
+      `Phone ${profile.phone}. Email ${profile.email}. Web ${profile.website}. ${profile.registration}.`,
+      `Service area: ${profile.serviceArea}`,
+      `Insurance: ${profile.insurance.map((cover) => `${cover.kind} ${money(cover.limitCents)}`).join("; ")}.${certificates === undefined ? "" : ` Certificates come from ${certificates.name}.`}`,
+      `Clients: ${profile.clients}`,
+    ].join("\n");
+  },
+  hours: companyHoursText,
+  people: (company) => companyPeopleText(company, "email"),
+  services: (company) =>
+    company.services
+      .map(
+        (service) =>
+          `${service.name} — ${service.summary} Price book: ${service.priceBookIds.join(", ")}. Lead time about ${service.leadTimeDays} days.`,
+      )
+      .join("\n\n"),
+  pricing: (company) =>
+    [
+      "The price book, in integer cents behind these figures:",
+      ...company.priceBook.map(
+        (item) => `${item.id} — ${item.name} — ${priceText(item)} — ${item.category}`,
+      ),
+    ].join("\n"),
+  policies: (company) => {
+    const { refunds, discounts } = company.policies;
+    const ladder = discounts.ladder
+      .map((step) => `${step.commitmentMonths} months: ${step.percent}%`)
+      .join(", ");
+    return [
+      `Complaints and refunds: ${refunds.summary}`,
+      `A re-clean is booked within ${refunds.recleanWindowDays} business days. A service-recovery credit is normally ${money(refunds.serviceRecoveryCreditCents)}. Credits: ${person(company, refunds.creditNeeds)?.name ?? refunds.creditNeeds}. Money back: ${person(company, refunds.refundNeeds)?.name ?? refunds.refundNeeds}. Complaints: ${person(company, refunds.complaintOwner)?.name ?? refunds.complaintOwner}.`,
+      `Discounts: ${discounts.summary} Approver: ${person(company, discounts.approver)?.name ?? discounts.approver}. Above ${discounts.ownerAbovePercent}%: ${person(company, discounts.ownerApprover)?.name ?? discounts.ownerApprover}. Ladder: ${ladder}.`,
+      "Safety:",
+      ...company.policies.safety.map((rule) => `- ${rule}`),
+      "Data handling:",
+      ...company.policies.dataHandling.map((rule) => `- ${rule}`),
+      "Never promised:",
+      ...company.policies.commitments.map((rule) => `- ${rule}`),
+    ].join("\n");
+  },
+  tone: companyToneText,
+  escalation: (company) =>
+    company.escalation
+      .map((rule) => {
+        const owner = person(company, rule.toPersonId);
+        return `${rule.topic} — ${owner?.name ?? rule.toPersonId} (${owner?.email ?? "no email"}) — ${rule.when}`;
+      })
+      .join("\n"),
+  glossary: companyGlossaryText,
+};
 
 /**
  * Builds the eleven tools over one desk and one company. Every one is plain Pi Durable: they install
@@ -431,7 +395,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     ),
     replay: "safe",
     execute: async (args) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "sales");
       const filter = {
         ...(args.stage === undefined ? {} : { stage: args.stage as LeadStage }),
         ...(args.query === undefined ? {} : { query: args.query }),
@@ -461,7 +425,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     ),
     replay: "safe",
     execute: async (args) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "sales");
       try {
         const quote = await desk.getQuote(args.quoteId);
         return {
@@ -580,7 +544,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "sales");
       try {
         const quote = await desk.createQuote(
           {
@@ -618,7 +582,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
    * it throws and the gate asks nobody.
    */
   const quoteApprovalFacts: ApprovalFactsReader = async (args) => {
-    const desk = requireDesk(dependencies);
+    const desk = requireDesk(dependencies.desk, "sales");
     const quoteId = String(args.quoteId);
     const quote = await desk.getQuote(quoteId);
     if (quote.status !== "awaiting_approval") {
@@ -647,7 +611,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "sales");
       const approved = approvedFacts(args);
       if (approved === undefined) {
         return refusal(
@@ -695,7 +659,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "sales");
       try {
         const activity = await desk.logActivity(
           { leadId: args.leadId, kind: args.kind as ActivityKind, summary: args.summary },
@@ -736,7 +700,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "sales");
       try {
         const move = await desk.updateLeadStage(
           { leadId: args.leadId, stage: args.stage as LeadStage, reason: args.reason },
@@ -808,7 +772,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "sales");
       const outcome = args.outcome as QuoteOutcome;
       try {
         const record = await desk.recordQuoteOutcome(
@@ -861,7 +825,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "sales");
       try {
         const scheduled = await desk.scheduleFollowUp(
           { leadId: args.leadId, on: args.on, what: args.what },
@@ -899,7 +863,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     parameters: Type.Object({}, { additionalProperties: false }),
     replay: "safe",
     execute: async () => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "sales");
       const report = await desk.pipelineReport();
       const leads = report.stages.reduce((total, row) => total + row.count, 0);
       return {
@@ -928,27 +892,11 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
     },
   });
 
-  const readCompany = defineTool({
-    name: "read_company",
+  const readCompany = readCompanyTool({
+    company,
     description:
       "Read one section of the company record: the profile and contact details, the hours, the people and what each decides, the services, the price book, the policies, the tone of voice, the escalation path or the glossary. Use it to answer a question about the business instead of guessing.",
-    parameters: Type.Object(
-      {
-        section: Type.Union(
-          SECTIONS.map((section) => Type.Literal(section)),
-          { description: "Which part of the record to read" },
-        ),
-      },
-      { additionalProperties: false },
-    ),
-    replay: "safe",
-    execute: async (args) => {
-      const section = args.section as CompanySection;
-      return {
-        ...textResult(companySection(company, section)),
-        details: { section },
-      };
-    },
+    sections: COMPANY_SECTIONS,
   });
 
   return {

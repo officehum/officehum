@@ -62,7 +62,7 @@ describe("marketing package", () => {
     ]);
     for (const approval of roleManifest.approvals) expect(approval.when).toBeUndefined();
 
-    // The claim check is the desk's, on the text it saves: never a manifest condition.
+    // The claim check is the tools', on the text the desk is to save: never a manifest condition.
     const note = (name: string) =>
       roleManifest.tools.find((tool) => tool.name === name)?.noApproval;
     expect(note("draft_post")).toContain("request_claim_approval");

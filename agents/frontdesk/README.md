@@ -150,12 +150,17 @@ durable document state:
 - `confirm_booking` — every booking.
 - `discount_booking` — a booking that carries a discount above the business's rate. The rate is the
   named limit `booking_discount_percent` (default `0`), which a business sets in an overlay's
-  `settings.json` without editing this package; a booking with no discount is not gated.
+  `settings.json` without editing this package; a booking with no discount is not gated. A discount
+  a booking is made with is recorded against it in the role's own `frontdesk.bookings` document (a
+  calendar holds a slot and a customer, not a rate); the booking's receipt states it and
+  `list_bookings` shows it.
 - `first_contact` — the first message to a given transport, contact, channel and destination. Once
   that exact tuple has successful history, later messages are not gated.
 
 `reply_message` carries its own approval (`confirm_inbound_reply`), raised in code because it holds
-the prepared envelope; the host supplies it as `approveReply`.
+the prepared envelope; the host supplies it as `approveReply`. An answer of `pending` (the request
+reached a person who has not decided) sends nothing and records no decision, as at the SDK's gate:
+the reply waits, and the same call asked again sends it on a yes. Only a person's no is a decline.
 
 ## The tools
 
@@ -174,6 +179,7 @@ an `approveReply` decision.
 | `officehum.json` | The manifest: tools, approvals, the `booking_discount_percent` limit, skills, evals |
 | `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
 | `src/index.ts` | The factory and the calendar tools (the discount condition is manifest data) |
+| `src/bookings.ts` | The `frontdesk.bookings` document: the discount a booking was made with |
 | `src/contacts.ts` | The `frontdesk.contacts` document and the contact tools |
 | `src/messaging.ts` | Outbound messaging and the first-contact condition |
 | `src/replies.ts` | Inbound threaded replies and the inbound conversation guard |

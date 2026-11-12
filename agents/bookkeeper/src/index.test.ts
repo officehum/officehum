@@ -24,9 +24,12 @@ import {
   type AgentManifest,
   APPROVED_FACTS_ARG,
   type Approver,
+  addDays,
   checkAgent,
   formatReport,
+  localDate,
   runEvals,
+  type SenderResolver,
   validatePackage,
 } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
@@ -37,6 +40,7 @@ import {
   scriptedProvider,
 } from "../../../packages/office/src/testing/scripted-model.js";
 import manifest from "../officehum.json" with { type: "json" };
+import { loadCompanyFacts } from "./company.js";
 import {
   billApprovalFacts,
   DEMO_NOW,
@@ -54,9 +58,11 @@ const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
 /** The JSON import's inferred type is widened; the checks want the SDK's manifest type. */
 const roleManifest = manifest as unknown as AgentManifest;
 
-/** Whole days from today in UTC, so a seeded invoice keeps the status the test expects. */
-const day = (offset: number): string =>
-  new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+/** The zone the role counts its day in: the company's, which is not UTC's day in the evening. */
+const ZONE = loadCompanyFacts().hours.timezone;
+
+/** Whole days from the company's today, so a seeded invoice is exactly as overdue as a test says. */
+const day = (offset: number): string => addDays(localDate(new Date(), ZONE), offset);
 
 const usd = (cents: number) => ({ cents, currency: "USD" });
 
@@ -74,8 +80,11 @@ const line = (description: string, quantity: number, unitPriceCents: number) => 
   amount: usd(Math.round(quantity * unitPriceCents)),
 });
 
-/** Demo Guest and one overdue invoice of 120.00 USD, due long enough ago to be at the final stage. */
-const books = (): QuickBooks =>
+/**
+ * Demo Guest and one overdue invoice of 120.00 USD: due long enough ago to be at the final stage, or
+ * as many days ago as a test says.
+ */
+const books = (overdueDays = 40): QuickBooks =>
   fakeQuickBooks({
     customers: [DEMO_GUEST],
     invoices: [
@@ -84,7 +93,7 @@ const books = (): QuickBooks =>
         customerId: "customer-1",
         number: "1042",
         issuedOn: day(-70),
-        dueOn: day(-40),
+        dueOn: day(-overdueDays),
         total: usd(12000),
         balance: usd(12000),
         lines: [line("On-site support", 3, 4000)],
@@ -179,8 +188,10 @@ async function attempt(options: {
   readonly desk?: FakeAccountingDesk;
   readonly approver?: Approver;
   readonly overlays?: readonly string[];
+  readonly sender?: SenderResolver;
 }): Promise<{ readonly messages: readonly Message[] }> {
   const role = bookkeeper({
+    ...(options.sender === undefined ? {} : { sender: options.sender }),
     quickbooks: options.quickbooks,
     ...(options.desk === undefined ? {} : { desk: options.desk }),
     ...(options.approver === undefined ? {} : { approve: options.approver }),
@@ -464,7 +475,8 @@ describe("bookkeeper approval gates", () => {
   });
 
   it("asks for approval for a final notice, and not for a friendly or firm one", async () => {
-    const friendly = books();
+    // Each reminder goes only at the stage the invoice's age calls for: 5, 20 and 40 days overdue.
+    const friendly = books(5);
     const friendlyDecisions: string[] = [];
     const friendlyRun = await attempt({
       prompt: "Chase invoice 1042",
@@ -480,7 +492,7 @@ describe("bookkeeper approval gates", () => {
       "Sent a friendly reminder for invoice 1042",
     );
 
-    const firm = books();
+    const firm = books(20);
     const firmDecisions: string[] = [];
     const firmRun = await attempt({
       prompt: "Chase invoice 1042",
@@ -694,7 +706,6 @@ describe("accounts payable approval gate", () => {
                 supplier: "sup-columbia-floor",
                 supplierInvoice: "CF-7790",
                 lines: [{ itemId: "floor-finish", quantity: 1 }],
-                recordedBy: "Rosa",
                 source: "email, 9 November",
               },
             },
@@ -713,8 +724,14 @@ describe("accounts payable approval gate", () => {
       quickbooks: books(),
       desk,
       approver: recording(decisions),
+      // The host's verified sender: Rosa Martinez, a person on the company record.
+      sender: async () => ({ origin: "internal", channel: "chat", contact: "rosa-martinez" }),
     });
     expect(decisions).toEqual(["any_payment"]);
+    // Who recorded the bill is the verified sender, not anything the model typed.
+    expect((await desk.listVendorBills({ billId: "BILL-2004" }))[0]?.recordedBy).toBe(
+      "Rosa Martinez",
+    );
     expect((await desk.listVendorBills({ billId: "BILL-2004" }))[0]?.status).toBe("paid");
   });
 });
@@ -924,7 +941,7 @@ describe("bookkeeper clock", () => {
   it("a host's QuickBooks connection runs on the system clock without now", async () => {
     // Real QuickBooks dates are real, so the demo date would misdate them.
     const role = bookkeeper({ quickbooks: books() });
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDate(new Date(), ZONE);
     expect(await todayOf(role)).toContain(`Today is ${today} `);
   });
 });

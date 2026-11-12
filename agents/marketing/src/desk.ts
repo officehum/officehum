@@ -6,18 +6,26 @@
  * drafts and publications in memory and sending nothing anywhere, so a test, an eval or a first run
  * needs no network and no credential.
  *
- * The desk owns every rule that matters. It checks every draft for result claims against the
- * company's approved list (`claims.ts`) and holds a draft that has one; it adds the unsubscribe line
- * and the postal address to every campaign email, so the model cannot leave them out; it records the
- * claims a person approved against that one draft only; and it grants or publishes a draft only when
- * it still equals what the person approved, as the approval gate read it from this desk. A refusal
- * carries a code, and the tools turn the code into the next step a person can take.
+ * A desk is a record: it stores what it is handed and publishes what it holds. The checks on what a
+ * draft says are not a desk's. The tools reach every desk through `checkedDesk` (`checks.ts`), which
+ * finds the result claims a draft must be held for, refuses an invented testimonial, and puts the
+ * unsubscribe line and the postal address on every campaign email, so a host desk gets the same
+ * rules as this one. What a desk does own: it holds a draft with the claims it was handed until a
+ * person approves them, records the claims a person approved against that one draft only, and grants
+ * or publishes a draft only when it still equals what the person approved, as the approval gate read
+ * it from this desk. A refusal carries a code, and the tools turn the code into the next step a
+ * person can take.
  */
 
-import { isoDate, sameFacts } from "@officehum/sdk";
+import { localDate, sameFacts } from "@officehum/sdk";
 import { findResultClaims, type ResultClaim } from "./claims.js";
-import { type CompanyFacts, loadCompanyFacts, money, postalAddress } from "./company.js";
-import { findUnrecordedTestimonials, ownNames } from "./testimonials.js";
+import {
+  type CompanyFacts,
+  loadCompanyFacts,
+  money,
+  offerTerms,
+  postalAddress,
+} from "./company.js";
 
 /** Where a post goes. A campaign email's channel is `email`. */
 export type PostChannel = "linkedin" | "facebook" | "instagram" | "website";
@@ -115,17 +123,39 @@ export function readyDraftFacts(draft: Draft): Record<string, unknown> {
   };
 }
 
-/** What the role needs from whatever system holds its drafts and publishes them. */
+/**
+ * What the role needs from whatever system holds its drafts and publishes them. The role checks a
+ * draft before the desk sees it (`checks.ts`); the desk stores what it is handed.
+ */
 export interface MarketingDesk {
   listDrafts(filter?: DraftFilter): Promise<readonly Draft[]>;
   listAudiences(): Promise<readonly Audience[]>;
+  /**
+   * Saves a post. `heldClaims` are the result claims the role found that nobody has approved: with
+   * any, the desk saves the draft as `held` with them; with none, as a ready `draft`.
+   */
   draftPost(
-    input: { readonly channel: PostChannel; readonly text: string },
+    input: {
+      readonly channel: PostChannel;
+      readonly text: string;
+      readonly heldClaims: readonly ResultClaim[];
+    },
     options: { readonly requestId: string },
   ): Promise<Draft>;
-  /** Saves an email draft; the desk adds the unsubscribe line and the postal address. */
+  /**
+   * Saves an email draft for an audience the desk listed. `finalText` is the email exactly as it
+   * would go out: the subject, the body, and the unsubscribe line and postal address the role added.
+   * The desk stores it as the draft's `finalText` and publishes nothing else. `heldClaims` as for
+   * `draftPost`.
+   */
   draftCampaignEmail(
-    input: { readonly subject: string; readonly body: string; readonly audienceId: string },
+    input: {
+      readonly subject: string;
+      readonly body: string;
+      readonly audienceId: string;
+      readonly finalText: string;
+      readonly heldClaims: readonly ResultClaim[];
+    },
     options: { readonly requestId: string },
   ): Promise<Draft>;
   /**
@@ -159,7 +189,10 @@ export type DeskRefusal =
   | "not_ready"
   | "already_published";
 
-/** A refusal the model reads: an unapproved claim, a changed draft, an unknown audience. */
+/**
+ * A refusal the model reads: an unapproved claim, a changed draft, an unknown audience. A desk throws
+ * it for what it owns, and the role's checks (`checks.ts`) for what they own.
+ */
 export class MarketingDeskError extends Error {
   readonly code: DeskRefusal;
   /** For `unapproved_claim`: the held draft the text was saved as. */
@@ -207,8 +240,9 @@ export function demoAudiences(): readonly Audience[] {
 }
 
 /**
- * The lines the desk adds to every campaign email: how to unsubscribe, and the company's postal
- * address. They come from the company record, and the model never writes them.
+ * The lines every campaign email ends with: how to unsubscribe, and the company's postal address.
+ * They come from the company record, the role adds them before the desk saves the email
+ * (`checks.ts`), and the model never writes them.
  */
 export function campaignFooter(company: Pick<CompanyFacts, "profile">, audience: Audience): string {
   return [
@@ -218,13 +252,20 @@ export function campaignFooter(company: Pick<CompanyFacts, "profile">, audience:
   ].join("\n");
 }
 
-function emailText(subject: string, body: string, footer: string): string {
+/** A campaign email exactly as it goes out: the subject, the body, then the footer. */
+export function emailText(subject: string, body: string, footer: string): string {
   return `Subject: ${subject}\n\n${body}\n\n${footer}`;
 }
 
-/** What the model wrote, which the desk checks: a post's text, or an email's subject and body. */
-function written(draft: Pick<Draft, "subject" | "text">): string {
-  return draft.subject === null ? draft.text : `${draft.subject}\n${draft.text}`;
+/** The refusal for an audience list that is not on the desk, naming the ones that are. */
+export function unknownAudience(
+  audienceId: string,
+  audiences: readonly Audience[],
+): MarketingDeskError {
+  return new MarketingDeskError(
+    "not_found",
+    `No audience is ${JSON.stringify(audienceId)}. The audiences are: ${audiences.map((entry) => `${entry.id} (${entry.description})`).join(", ")}.`,
+  );
 }
 
 /**
@@ -232,7 +273,7 @@ function written(draft: Pick<Draft, "subject" | "text">): string {
  * published post that states an approved claim, a ready post about the day porter at the price book's
  * rate, a ready campaign email about floor care at the price book's rates, and two posts held this
  * morning for their claims: D-104 on Facebook for "2x cleaner" and D-105 on LinkedIn for "30%". Their
- * held claims are the desk's own check, not a list.
+ * held claims are what the claim check finds in them for this company, not a list.
  *
  * The held posts are seeded because eval scenarios name them: as for every role's demonstration data,
  * the desk holds the records the scenarios' stubbed tools refer to, so the approval gate reads the
@@ -255,7 +296,7 @@ export function demoDrafts(company: CompanyFacts): readonly Draft[] {
   const subject = "Winter floor care, booked before the rain";
   const body = `Wet weather is hard on entrance floors. Carpet extraction is ${money(carpet.unitPriceCents)} per ${carpet.unit}, and strip and re-wax is ${money(wax.unitPriceCents)} per ${wax.unit}. Reply to this email and we will book a time that suits your building.`;
   const base = { heldClaims: [], grantedClaims: [], audienceId: null, subject: null } as const;
-  /** A post the desk's claim check held this morning, or a ready draft if the company approved it. */
+  /** A post held this morning for its claims, or a ready draft if the company approved them. */
   const checked = (id: string, channel: PostChannel, text: string): Draft => {
     const heldClaims = findResultClaims(
       text,
@@ -328,14 +369,6 @@ export function demoDrafts(company: CompanyFacts): readonly Draft[] {
   ];
 }
 
-/** What an offer may name after "off": one of the company's own services or price book lines. */
-function offerTerms(company: CompanyFacts): string[] {
-  return [
-    ...company.services.map((service) => service.name),
-    ...company.priceBook.map((line) => line.name),
-  ];
-}
-
 /** Held claims as a person reads them: each claim with the phrase that states it. */
 export function quoteClaims(claims: readonly ResultClaim[]): string {
   return claims.map((entry) => `"${entry.claim}" (the phrase "${entry.phrase}")`).join("; ");
@@ -344,7 +377,7 @@ export function quoteClaims(claims: readonly ResultClaim[]): string {
 type DraftState = { -readonly [K in keyof Draft]: Draft[K] };
 
 export interface FakeMarketingDeskOptions {
-  /** The company whose approved claims, prices and address the desk uses; its own when omitted. */
+  /** The company whose prices, address and time zone the desk uses; its own when omitted. */
   readonly company?: CompanyFacts;
   /** Existing drafts; the demonstration ones when omitted. */
   readonly drafts?: readonly Draft[];
@@ -359,16 +392,14 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
   const company = options.company ?? loadCompanyFacts();
   const clock = options.now ?? (() => new Date(DEMO_NOW));
   const audiences = options.audiences ?? demoAudiences();
-  const terms = offerTerms(company);
-  const own = ownNames(company);
   const drafts: DraftState[] = (options.drafts ?? demoDrafts(company)).map((draft) => ({
     ...draft,
     heldClaims: [...draft.heldClaims],
     grantedClaims: [...draft.grantedClaims],
   }));
-  // Every write is remembered by its request id, refusals that held a draft included, so a replayed
-  // call is answered with what it already did and never writes twice.
-  const created = new Map<string, Draft | MarketingDeskError>();
+  // Every write is remembered by its request id, so a replayed call is answered with what it already
+  // did and never writes twice.
+  const created = new Map<string, Draft>();
   const grants = new Map<string, Draft>();
   const published = new Map<string, Publication>();
 
@@ -402,67 +433,25 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
     return draft;
   };
 
-  /**
-   * Quoted, attributed passages that are not a testimonial on the company's record, in what the model
-   * wrote: a post's text, or an email's subject and body. The desk's own footer is never checked, and
-   * saving, approving and publishing check the same text, so a draft that saved cleanly is not
-   * refused later for words the desk added.
-   */
-  const unrecordedQuotes = (draft: Pick<DraftState, "subject" | "text">): string[] =>
-    findUnrecordedTestimonials(written(draft), company.marketing.testimonials ?? [], own);
-
-  /** `outcome` says what did not happen at this step: "Nothing was approved." */
-  const quoteRefusal = (passages: readonly string[], outcome: string): MarketingDeskError =>
-    new MarketingDeskError(
-      "unrecorded_testimonial",
-      `Refused: ${passages.map((passage) => `"${passage}"`).join("; ")} ${passages.length === 1 ? "is a quote" : "are quotes"} attributed to someone, and ${passages.length === 1 ? "it is" : "they are"} not a testimonial on the company's record. ${outcome} A customer is quoted only word for word from the record, and no one can approve a quote that is not on it.`,
-    );
-
-  /** Saves a new draft, held when it states a claim not approved. Throws for a held one. */
+  /** Saves a new draft: held with the claims the role found unapproved, ready with none. */
   const save = (
     requestId: string,
     draft: Omit<
       DraftState,
-      | "id"
-      | "status"
-      | "heldClaims"
-      | "grantedClaims"
-      | "createdOn"
-      | "publishedOn"
-      | "publicationId"
+      "id" | "status" | "grantedClaims" | "createdOn" | "publishedOn" | "publicationId"
     >,
   ): Draft => {
-    const checked = written(draft);
-    // An invented customer quote is refused outright: no draft is saved, so there is no held claim
-    // a person could be asked to approve.
-    const invented = unrecordedQuotes(draft);
-    if (invented.length > 0) {
-      const error = quoteRefusal(invented, "Nothing was saved and nothing was published.");
-      created.set(requestId, error);
-      throw error;
-    }
-    // An offer may name one of the company's own services or price book lines after "off".
-    const claims = findResultClaims(checked, company.marketing.approvedClaims, terms);
     const state: DraftState = {
       ...draft,
       id: nextDraftId(),
-      status: claims.length === 0 ? "draft" : "held",
-      heldClaims: claims,
+      status: draft.heldClaims.length === 0 ? "draft" : "held",
       grantedClaims: [],
-      createdOn: isoDate(clock()),
+      // The company's own day: its late afternoon is not yet tomorrow.
+      createdOn: localDate(clock(), company.hours.timezone),
       publishedOn: null,
       publicationId: null,
     };
     drafts.push(state);
-    if (claims.length > 0) {
-      const error = new MarketingDeskError(
-        "unapproved_claim",
-        `Refused: ${quoteClaims(claims)} ${claims.length === 1 ? "states a result that is" : "state results that are"} not on the company's approved list. The draft is held as ${state.id}, not ready to publish, and nothing was published.`,
-        { draftId: state.id, claims, finalText: state.finalText },
-      );
-      created.set(requestId, error);
-      throw error;
-    }
     const saved = snapshot(state);
     created.set(requestId, saved);
     return saved;
@@ -485,7 +474,6 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
 
     async draftPost(input, { requestId }): Promise<Draft> {
       const prior = created.get(requestId);
-      if (prior instanceof MarketingDeskError) throw prior;
       if (prior !== undefined) return prior;
       if (!POST_CHANNELS.includes(input.channel)) {
         throw new MarketingDeskError(
@@ -502,12 +490,12 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
         subject: null,
         text,
         finalText: text,
+        heldClaims: input.heldClaims.map((entry) => ({ ...entry })),
       });
     },
 
     async draftCampaignEmail(input, { requestId }): Promise<Draft> {
       const prior = created.get(requestId);
-      if (prior instanceof MarketingDeskError) throw prior;
       if (prior !== undefined) return prior;
       const subject = input.subject.trim();
       const body = input.body.trim();
@@ -515,21 +503,15 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
         throw new MarketingDeskError("invalid", "A campaign email needs a subject and a body.");
       }
       const audience = audiences.find((entry) => entry.id === input.audienceId.trim());
-      if (audience === undefined) {
-        throw new MarketingDeskError(
-          "not_found",
-          `No audience is ${JSON.stringify(input.audienceId)}. The audiences are: ${audiences.map((entry) => `${entry.id} (${entry.description})`).join(", ")}.`,
-        );
-      }
-      // The footer is the desk's: whatever the body says, the email carries it.
-      const finalText = emailText(subject, body, campaignFooter(company, audience));
+      if (audience === undefined) throw unknownAudience(input.audienceId, audiences);
       return save(requestId, {
         kind: "email",
         channel: "email",
         audienceId: audience.id,
         subject,
         text: body,
-        finalText,
+        finalText: input.finalText,
+        heldClaims: input.heldClaims.map((entry) => ({ ...entry })),
       });
     },
 
@@ -543,9 +525,6 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
           `${draft.id} has no claim waiting for approval: it is ${draft.status}. Nothing was approved.`,
         );
       }
-      // A quote that is not on record is not a claim: no approval makes it publishable.
-      const invented = unrecordedQuotes(draft);
-      if (invented.length > 0) throw quoteRefusal(invented, "Nothing was approved.");
       // The person approved these claims in this text; anything else is not what they were shown.
       if (!sameFacts(input.approved, heldDraftFacts(snapshot(draft)))) {
         throw new MarketingDeskError(
@@ -582,8 +561,6 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
           { draftId: draft.id, claims: draft.heldClaims },
         );
       }
-      const invented = unrecordedQuotes(draft);
-      if (invented.length > 0) throw quoteRefusal(invented, "Nothing was published.");
       // The person approved the draft as the gate read it. Publish only if it still is that draft.
       if (!sameFacts(input.approved, readyDraftFacts(snapshot(draft)))) {
         throw new MarketingDeskError(
@@ -594,7 +571,7 @@ export function fakeMarketingDesk(options: FakeMarketingDeskOptions = {}): Marke
       }
       const now = clock();
       draft.status = "published";
-      draft.publishedOn = isoDate(now);
+      draft.publishedOn = localDate(now, company.hours.timezone);
       draft.publicationId = nextPublicationId();
       const publication: Publication = {
         id: draft.publicationId,

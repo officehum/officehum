@@ -34,8 +34,8 @@
     {
       "name": "raise_purchase_order",
       "replay": "unsafe",
-      "noApproval": "Restocking inside the spending limit, at a reorder point or for a person on record. The desk prices every line and refuses an order nobody asked for, one over the limit or split under it (a draft for request_po_approval, earlier parts recalled) and an unapproved supplier (request_new_supplier).",
-      "description": "Raise a purchase order with one supplier for items and quantities, with its reason: reorder_point for items at their reorder point, or request with the message it came from. The desk records the requester from the verified sender, prices the order, and refuses it when nobody on the company record asked, it is over the spending limit, or the supplier is not approved."
+      "noApproval": "Restocking inside the limit: an item at its reorder point, up to its reorder quantity, or a person on record's request. The desk prices every line and refuses an unasked order, one over or split under the limit (a draft for request_po_approval) or an unapproved supplier (request_new_supplier).",
+      "description": "Raise a purchase order with one supplier for items and quantities, with its reason: reorder_point for items at their reorder point, up to each item's reorder quantity and with no sender needed, or request with the message it came from. The desk records a request's requester from the verified sender, prices the order, and refuses it when nobody on the company record asked, it is over the spending limit, or the supplier is not approved."
     },
     {
       "name": "request_po_approval",

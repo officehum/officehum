@@ -11,7 +11,27 @@
  * `company` to the factory instead, and nothing in this file runs.
  */
 
-import { loadCompanyFacts as loadFacts, personLabel as sharedPersonLabel } from "@officehum/sdk";
+import {
+  type CompanyAddress,
+  type CompanyEscalationRule,
+  type CompanyGlossaryEntry,
+  type CompanyHours,
+  type CompanyMarketing,
+  type CompanyPolicies,
+  type CompanyPriceBookItem,
+  type CompanyProfile,
+  type CompanyRecordPerson,
+  type CompanyService,
+  type CompanyTestimonial,
+  type CompanyTone,
+  loadCompanyFacts as loadFacts,
+  personById as person,
+  personLabel as sharedPersonLabel,
+} from "@officehum/sdk";
+
+// The lookups and the money format are the SDK's, shared by every role; re-exported under the names
+// this package has always used.
+export { money, personById as person } from "@officehum/sdk";
 
 /** Where the generated facts live, from either `src/company.ts` or `dist/company.js`. */
 export const COMPANY_FACTS_URL = new URL(
@@ -19,101 +39,35 @@ export const COMPANY_FACTS_URL = new URL(
   import.meta.url,
 );
 
-export interface Address {
-  readonly street: string;
-  readonly city: string;
-  readonly region: string;
-  readonly postalCode: string;
-  readonly country: string;
-}
-
-export interface Profile {
-  readonly legalName: string;
-  readonly tradingName: string;
-  readonly tagline: string;
-  readonly address: Address;
-  readonly phone: string;
-  readonly email: string;
-  readonly serviceArea: string;
-  readonly clients: string;
-}
-
-export interface Hours {
-  readonly timezone: string;
-  readonly office: string;
-  readonly crews: string;
-  readonly emergencyLine: string;
-  readonly closedOn: string;
-  readonly note: string;
-}
-
-export interface Person {
-  readonly id: string;
-  readonly name: string;
-  readonly title: string;
-  readonly email: string;
-  readonly decides: readonly string[];
-}
-
+export type Address = CompanyAddress;
+export type Profile = Pick<
+  CompanyProfile,
+  | "legalName"
+  | "tradingName"
+  | "tagline"
+  | "address"
+  | "phone"
+  | "email"
+  | "serviceArea"
+  | "clients"
+>;
+export type Hours = CompanyHours;
+export type Person = Pick<CompanyRecordPerson, "id" | "name" | "title" | "email" | "decides">;
 /** One service the company sells, and the price book lines that price it. */
-export interface Service {
-  readonly id: string;
-  readonly name: string;
-  readonly summary: string;
-  readonly priceBookIds: readonly string[];
-  readonly leadTimeDays: number;
-}
-
-export interface PriceBookLine {
-  readonly id: string;
-  readonly name: string;
-  readonly category: string;
-  readonly unit: string;
-  readonly unitPriceCents: number;
-  readonly minimumCents: number | null;
-  readonly notes: string;
-}
-
+export type Service = CompanyService;
+export type PriceBookLine = CompanyPriceBookItem;
 /** A customer's words the company holds on record, and may quote. */
-export interface Testimonial {
-  readonly quote: string;
-  /** Who said it, as the company records them. */
-  readonly attribution: string;
-}
-
+export type Testimonial = CompanyTestimonial;
 /**
  * What marketing may say. `approvedClaims` are the only results and facts it states without a
  * person; `approverId` is the person who approves a new claim and everything published. Both are
  * the company's own settings, kept in its data.
  */
-export interface Marketing {
-  readonly approverId: string;
-  readonly approvedClaims: readonly string[];
-  /** Absent or empty: the company holds no testimonial, and none is quoted. */
-  readonly testimonials?: readonly Testimonial[];
-}
-
-export interface Policies {
-  readonly safety: readonly string[];
-  readonly commitments: readonly string[];
-}
-
-export interface Tone {
-  readonly summary: string;
-  readonly always: readonly string[];
-  readonly never: readonly string[];
-}
-
-export interface EscalationRule {
-  readonly topic: string;
-  readonly toPersonId: string;
-  readonly when: string;
-}
-
-export interface GlossaryEntry {
-  readonly term: string;
-  readonly meaning: string;
-}
+export type Marketing = CompanyMarketing;
+export type Policies = Pick<CompanyPolicies, "safety" | "commitments">;
+export type Tone = CompanyTone;
+export type EscalationRule = CompanyEscalationRule;
+export type GlossaryEntry = CompanyGlossaryEntry;
 
 /** Everything the company records that this role reads. */
 export interface CompanyFacts {
@@ -132,18 +86,6 @@ export interface CompanyFacts {
 /** The company facts generated into this package. Throws when the copy is missing or is not JSON. */
 export const loadCompanyFacts = (): CompanyFacts => loadFacts<CompanyFacts>(COMPANY_FACTS_URL);
 
-const CURRENCY = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-
-/** Integer cents as the money a person reads, never a recomputed amount. */
-export function money(cents: number): string {
-  return CURRENCY.format(cents / 100);
-}
-
-/** One person by id, or `undefined` when nobody here has that id. */
-export function person(company: CompanyFacts, id: string): Person | undefined {
-  return company.people.find((candidate) => candidate.id === id);
-}
-
 /**
  * The person who approves what marketing publishes and any claim not on the approved list: the one
  * the company's `marketing.approverId` names. Every `publish` and `request_claim_approval` asks them.
@@ -160,4 +102,12 @@ export const personLabel = (who: Person | undefined): string =>
 export function postalAddress(company: CompanyFacts): string {
   const { legalName, address } = company.profile;
   return `${legalName}, ${address.street}, ${address.city}, ${address.region} ${address.postalCode}, ${address.country}`;
+}
+
+/** What an offer may name after "off": one of the company's own services or price book lines. */
+export function offerTerms(company: Pick<CompanyFacts, "services" | "priceBook">): string[] {
+  return [
+    ...company.services.map((service) => service.name),
+    ...company.priceBook.map((line) => line.name),
+  ];
 }

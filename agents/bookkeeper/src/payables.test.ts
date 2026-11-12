@@ -6,7 +6,7 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { APPROVED_FACTS_ARG, type HookContext } from "@officehum/sdk";
+import { APPROVED_FACTS_ARG, type HookContext, type SenderResolver } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { financeLead, loadCompanyFacts, personLabel, purchasingLead } from "./company.js";
 import {
@@ -28,10 +28,24 @@ const call = (callId: string) =>
 
 const LIMITS = { [MAJOR_UNMATCHED_LIMIT]: 50000 };
 
+/** The host's verified sender: Rosa Martinez, a person on the company record, from inside the office. */
+const ROSA: SenderResolver = async () => ({
+  origin: "internal",
+  channel: "chat",
+  contact: "rosa-martinez",
+});
+
 const tools = (
   desk: AccountingDesk | undefined,
   limits: Record<string, number> = LIMITS,
-): PayablesToolset => payablesTools({ desk, company, limits: () => limits });
+  sender: SenderResolver | undefined = ROSA,
+): PayablesToolset =>
+  payablesTools({
+    desk,
+    company,
+    limits: () => limits,
+    ...(sender === undefined ? {} : { sender }),
+  });
 
 const desk = (): FakeAccountingDesk => fakeAccountingDesk({ now: () => new Date(DEMO_NOW) });
 
@@ -64,7 +78,6 @@ const NEW_BILL = {
   supplier: "sup-columbia-floor",
   supplierInvoice: "CF-7790",
   lines: [{ itemId: "floor-finish", quantity: 2 }],
-  recordedBy: "Rosa",
   source: "email from orders@columbiafloor.example, 9 November",
 };
 
@@ -123,6 +136,57 @@ describe("record_vendor_bill", () => {
     expect(text(result)).toContain("Nothing has been paid.");
   });
 
+  it("records who asked from the host's verified sender, never from an argument", async () => {
+    const accounts = desk();
+    const set = tools(accounts);
+    const schema = set.recordVendorBill.parameters as {
+      properties: Record<string, unknown>;
+      required?: string[];
+    };
+    expect(Object.keys(schema.properties)).toEqual([
+      "supplier",
+      "supplierInvoice",
+      "lines",
+      "source",
+      "termsDays",
+    ]);
+    const result = await set.recordVendorBill.execute(NEW_BILL, call("who-1"), BACKGROUND_CONTEXT);
+    expect(text(result)).toContain("recorded 2026-11-09 by Rosa Martinez, from email from");
+    expect(details(result).recordedBy).toBe("Rosa Martinez");
+    // The person approving a payment is shown the verified name.
+    const read = await set.paymentApprovalFacts({ billId: "BILL-2004" }, HOOK_CONTEXT);
+    expect(read.summary).toContain("recorded by Rosa Martinez from email from");
+    expect(read.facts).toMatchObject({ recordedBy: "Rosa Martinez" });
+  });
+
+  it("records nothing for a sender who is nobody on the company record", async () => {
+    const outside: SenderResolver = async () => ({
+      origin: "external",
+      channel: "email",
+      // A colleague's own address on an outside channel proves nothing about who typed it.
+      contact: "rosa@northwindfacilities.com",
+    });
+    const stranger: SenderResolver = async () => ({
+      origin: "internal",
+      channel: "chat",
+      contact: "nobody-here",
+    });
+    for (const sender of [undefined, outside, stranger, async () => undefined]) {
+      const accounts = desk();
+      const result = await payablesTools({
+        desk: accounts,
+        company,
+        limits: () => LIMITS,
+        ...(sender === undefined ? {} : { sender }),
+      }).recordVendorBill.execute(NEW_BILL, call("who-2"), BACKGROUND_CONTEXT);
+      expect(isError(result)).toBe(true);
+      expect(details(result).code).toBe("unknown_sender");
+      expect(text(result)).toContain("Nothing was recorded");
+      expect(text(result)).toContain(finance);
+      expect(await accounts.listVendorBills()).toHaveLength(4);
+    }
+  });
+
   it("refuses an unknown supplier, sending it to purchasing and finance by name", async () => {
     const accounts = desk();
     const result = await tools(accounts).recordVendorBill.execute(
@@ -161,7 +225,7 @@ describe("record_vendor_bill", () => {
       BACKGROUND_CONTEXT,
     );
     // A restart builds fresh tools over the same desk: the desk is the system of record.
-    const restarted = payablesTools({ desk: accounts, company, limits: () => LIMITS });
+    const restarted = tools(accounts);
     const afterRestart = await restarted.recordVendorBill.execute(
       NEW_BILL,
       call("same"),

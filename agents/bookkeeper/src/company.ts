@@ -11,7 +11,17 @@
  * passes `company` to the factory instead, and nothing in this file runs.
  */
 
-import { loadCompanyFacts as loadFacts, personLabel } from "@officehum/sdk";
+import {
+  type CompanyHours,
+  type CompanyRecord,
+  type CompanyRecordPerson,
+  type CompanySupplier,
+  type CompanySupplyItem,
+  loadCompanyFacts as loadFacts,
+  money,
+  personLabel,
+  purchasingLead,
+} from "@officehum/sdk";
 
 /** Where the generated facts live, from either `src/company.ts` or `dist/company.js`. */
 export const COMPANY_FACTS_URL = new URL(
@@ -19,51 +29,23 @@ export const COMPANY_FACTS_URL = new URL(
   import.meta.url,
 );
 
-export interface Person {
-  readonly id: string;
-  readonly name: string;
-  readonly title: string;
-  /** Where they work: `office`, `maintenance` or `purchasing`, as the company record lists them. */
-  readonly department: string;
-  readonly email: string;
-  readonly decides: readonly string[];
-}
+export type Person = CompanyRecordPerson;
 
 /** A supplier on file; `approved` is the company's own approved-supplier list. */
-export interface Supplier {
-  readonly id: string;
-  readonly name: string;
-  readonly category: string;
-  readonly approved: boolean;
-  readonly leadTimeDays: number;
-  readonly contactEmail: string;
-}
+export type Supplier = CompanySupplier;
 
 /** One stocked item, bought from its usual supplier at the unit cost the company records. */
-export interface SupplyItem {
-  readonly id: string;
-  readonly name: string;
-  readonly supplierId: string;
-  readonly unit: string;
-  readonly unitCostCents: number;
-}
+export type SupplyItem = Omit<CompanySupplyItem, "reorderPoint" | "reorderQuantity">;
 
 /** Everything the company records that accounts payable reads. */
-export interface CompanyFacts {
-  readonly people: readonly Person[];
-  readonly suppliers: readonly Supplier[];
+export type CompanyFacts = Pick<CompanyRecord, "people" | "suppliers"> & {
+  /** The time zone the company keeps its day in: "today" for a due date and the days overdue. */
+  readonly hours: Pick<CompanyHours, "timezone">;
   readonly supplyCatalog: readonly SupplyItem[];
-}
+};
 
 /** The company facts generated into this package. Throws when the copy is missing or is not JSON. */
 export const loadCompanyFacts = (): CompanyFacts => loadFacts<CompanyFacts>(COMPANY_FACTS_URL);
-
-const CURRENCY = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-
-/** Integer cents as the money a person reads, never a recomputed amount. */
-export function money(cents: number): string {
-  return CURRENCY.format(cents / 100);
-}
 
 /**
  * The person who owns finance: whoever holds a title with "finance" in it. Payment details, payment
@@ -74,12 +56,4 @@ export function financeLead(company: CompanyFacts): Person | undefined {
   return company.people.find((candidate) => /finance/i.test(candidate.title));
 }
 
-/**
- * The person who decides purchasing, who owns a new supplier: whoever the company record puts in the
- * `purchasing` department, so a retitled job still finds them.
- */
-export function purchasingLead(company: CompanyFacts): Person | undefined {
-  return company.people.find((candidate) => candidate.department === "purchasing");
-}
-
-export { personLabel };
+export { money, personLabel, purchasingLead };

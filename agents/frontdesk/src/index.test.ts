@@ -28,7 +28,7 @@ import {
   scriptedProvider,
 } from "../../../packages/office/src/testing/scripted-model.js";
 import manifest from "../officehum.json" with { type: "json" };
-import frontdesk, { ContactsDoc } from "./index.js";
+import frontdesk, { BookingsDoc, ContactsDoc } from "./index.js";
 
 const temps: string[] = [];
 afterEach(() => {
@@ -467,6 +467,8 @@ describe("frontdesk role", () => {
       conversationId: 1,
       taskId: 1,
       callId: "call",
+      // The desk's own booking records; none here.
+      snapshot: async () => undefined,
     } as never);
     expect(result).not.toHaveProperty("content");
     expect(result.output?.[0]).toMatchObject({ type: "text" });
@@ -619,6 +621,62 @@ describe("frontdesk discount gate", () => {
     expect(attempt.approvals).toEqual(["confirm_booking", "discount_booking"]);
     expect(attempt.calendar.bookings()).toEqual([]);
     attempt.calendar.close();
+  });
+
+  it("records an approved discount on the booking, once, and shows it with the booking", async () => {
+    const calendar = tempCalendar();
+    const role = frontdesk({ calendar, approve: async () => ({ approved: true }) });
+    const tools = role.extensions.flatMap((extension) => extension.tools ?? []);
+    const book = tools.find((tool) => tool.name === "book_appointment");
+    const list = tools.find((tool) => tool.name === "list_bookings");
+    if (book === undefined || list === undefined) throw new Error("missing booking tools");
+    const harness = await Harness.open(
+      new MemoryStorage(),
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    const api = {
+      conversationId: 7,
+      taskId: 8,
+      callId: "discounted",
+      commit: harness.commit.bind(harness),
+      snapshot: harness.snapshot.bind(harness),
+    } as never;
+    const args = { start: "2030-01-15T09:00:00Z", customer: "Demo Guest", discountPercent: 20 };
+    const booked = await book.execute(args, api, BACKGROUND_CONTEXT);
+    const [booking] = calendar.bookings();
+    if (booking === undefined) throw new Error("no booking was made");
+    expect(booked.output).toEqual([
+      { type: "text", text: `Booked ${booking.id} at ${booking.start} with a 20% discount` },
+    ]);
+    expect(booked.details).toMatchObject({ id: booking.id, discountPercent: 20 });
+    // A booking with no discount records none and reads as it always has.
+    const plain = await book.execute(
+      { start: "2030-01-15T10:00:00Z", customer: "Other Guest" },
+      { ...(api as object), callId: "plain" } as never,
+      BACKGROUND_CONTEXT,
+    );
+    expect(plain.details).not.toHaveProperty("discountPercent");
+    // The same call replayed books nothing more and records the discount once.
+    const replayed = await book.execute(args, api, BACKGROUND_CONTEXT);
+    expect(replayed.details).toMatchObject({ id: booking.id, discountPercent: 20 });
+    expect(calendar.bookings()).toHaveLength(2);
+    expect((await harness.snapshot(BookingsDoc, BACKGROUND_CONTEXT))?.discounts).toEqual([
+      { key: "7:8:discounted", bookingId: booking.id, discountPercent: 20 },
+    ]);
+    const listed = await list.execute({}, api, BACKGROUND_CONTEXT);
+    const [first, second] = calendar.bookings();
+    expect(listed.output).toEqual([
+      {
+        type: "text",
+        text: `Bookings:\n${first?.id} — 2030-01-15T09:00:00Z — Demo Guest — 20% discount\n${second?.id} — 2030-01-15T10:00:00Z — Other Guest`,
+      },
+    ]);
+    expect(listed.details).toMatchObject({
+      bookings: [{ id: booking.id, discountPercent: 20 }, { customer: "Other Guest" }],
+    });
+    await harness.close(BACKGROUND_CONTEXT);
+    calendar.close();
   });
 
   it("never asks the discount gate for a booking without a discount", async () => {

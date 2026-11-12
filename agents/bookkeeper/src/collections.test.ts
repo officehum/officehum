@@ -27,7 +27,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeJsonlStorage } from "@earendil-works/pi-durable/storage/jsonl/node";
 import { fakeQuickBooks, type QuickBooks } from "@officehum/quickbooks";
-import type { DefinedRole, RoleBundle } from "@officehum/sdk";
+import { addDays, type DefinedRole, localDate, type RoleBundle } from "@officehum/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   type ScriptedTurn,
@@ -40,6 +40,7 @@ import {
   dispute,
   disputed,
 } from "./collections.js";
+import { loadCompanyFacts } from "./company.js";
 import bookkeeper from "./index.js";
 import {
   bookkeeperTools,
@@ -58,9 +59,11 @@ afterEach(async () => {
   for (const directory of temps.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-/** Whole days from today in UTC, so a seeded invoice keeps the status the test expects. */
-const day = (offset: number): string =>
-  new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+/** The zone the role counts its day in: the company's, which is not UTC's day in the evening. */
+const ZONE = loadCompanyFacts().hours.timezone;
+
+/** Whole days from the company's today, so a seeded invoice is exactly as overdue as a test says. */
+const day = (offset: number): string => addDays(localDate(new Date(), ZONE), offset);
 
 /** The fixtures are dated from the system clock (see `day`), so the tools run on it too. */
 const SYSTEM_CLOCK = (): Date => new Date();
@@ -364,7 +367,7 @@ describe("the collections ledger", () => {
   it("records the stage with the receipt, and answers the same stage without touching QuickBooks", async () => {
     const counted = counting(overdueBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS, ZONE);
 
     const sent = await tools.sendReminder.execute(
       { invoice: "1042", tone: "firm" },
@@ -417,34 +420,78 @@ describe("the collections ledger", () => {
     expect(byNumber.details).toMatchObject({ found: true, invoice: { id: "1042" } });
   });
 
-  it("sends a different stage through, and records it beside the first", async () => {
+  it("refuses a stage the invoice's age has passed: one reminder, at the stage that is due", async () => {
     const counted = counting(overdueBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS, ZONE);
+
+    // Twenty days overdue is the firm stage. The friendly one is past: it is refused before the firm
+    // reminder goes out and after it, so the customer gets one reminder for this invoice, not two.
+    const before = await tools.sendReminder.execute(
+      { invoice: "1042", tone: "friendly" },
+      api("friendly-before"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(before.isError).toBe(true);
+    expect(text(before)).toContain("is 20 days overdue");
+    expect(text(before)).toContain("the firm stage is the one due");
+    expect(text(before)).toContain("Nothing was sent.");
+    expect(counted.sends).toBe(0);
 
     await tools.sendReminder.execute(
       { invoice: "1042", tone: "firm" },
       api("firm"),
       BACKGROUND_CONTEXT,
     );
-    const friendly = await tools.sendReminder.execute(
+    const after = await tools.sendReminder.execute(
       { invoice: "1042", tone: "friendly" },
-      api("friendly"),
+      api("friendly-after"),
       BACKGROUND_CONTEXT,
     );
-    expect(text(friendly)).toContain("Sent a friendly reminder for invoice 1042");
-    expect(friendly.details).toMatchObject({ sent: true, alreadySent: false, tone: "friendly" });
-    expect(counted.sends).toBe(2);
+    expect(after.isError).toBe(true);
+    expect(after.details).toMatchObject({ sent: false, alreadySent: false, tone: "friendly" });
+    expect(counted.sends).toBe(1);
     const ledger = await harness.snapshot(CollectionsDoc, root.id, BACKGROUND_CONTEXT);
-    expect(ledger?.sent.map((record) => record.tone)).toEqual(["firm", "friendly"]);
-    // One record per stage: the invoice is chased once at firm and once at friendly, never twice.
-    expect(ledger?.sent.filter((record) => record.invoiceId === "1042")).toHaveLength(2);
+    expect(ledger?.sent.map((record) => record.tone)).toEqual(["firm"]);
+  });
+
+  it("says a not-yet-due invoice is due in so many days, never a negative number overdue", async () => {
+    const notDue = counting(
+      fakeQuickBooks({ customers: [DEMO_GUEST], invoices: [invoice("1042", day(5), 12000)] }),
+    );
+    const { api } = await withHarness();
+    const tools = bookkeeperTools(notDue.books, SYSTEM_CLOCK, () => CADENCE_LIMITS, ZONE);
+    const early = await tools.sendReminder.execute(
+      { invoice: "1042", tone: "friendly" },
+      api("not-due"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(early.isError).toBe(true);
+    expect(text(early)).toContain("Invoice 1042 is due in 5 days");
+    expect(text(early)).toContain("no stage is due yet");
+    expect(text(early)).not.toContain("-5");
+    expect(notDue.sends).toBe(0);
+
+    const today = counting(
+      fakeQuickBooks({ customers: [DEMO_GUEST], invoices: [invoice("1042", day(0), 12000)] }),
+    );
+    const dueToday = await bookkeeperTools(
+      today.books,
+      SYSTEM_CLOCK,
+      () => CADENCE_LIMITS,
+      ZONE,
+    ).sendReminder.execute(
+      { invoice: "1042", tone: "friendly" },
+      api("due-today"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(dueToday)).toContain("Invoice 1042 is due today");
   });
 
   it("leaves a paid invoice alone and refuses an unknown one", async () => {
     const counted = counting(overdueBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS, ZONE);
 
     const paid = await tools.sendReminder.execute(
       { invoice: "1044", tone: "final" },
@@ -486,6 +533,7 @@ describe("the collections ledger", () => {
       addressless.books,
       SYSTEM_CLOCK,
       () => CADENCE_LIMITS,
+      ZONE,
     ).sendReminder.execute(
       { invoice: "5001", tone: "friendly" },
       api("remind-no-email"),
@@ -499,7 +547,7 @@ describe("the collections ledger", () => {
   it("refuses a stage whose day has not arrived, and names the one that is due", async () => {
     const counted = counting(freshBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS, ZONE);
 
     const early = await tools.sendReminder.execute(
       { invoice: "1042", tone: "firm" },
@@ -562,11 +610,11 @@ describe("the collections cadence", () => {
   });
 
   it("places an invoice by how many whole days ago it was due", () => {
-    const now = new Date("2030-02-11T12:00:00.000Z");
-    expect(daysOverdue("2030-02-01", now)).toBe(10);
-    expect(daysOverdue("2030-02-11", now)).toBe(0);
-    expect(daysOverdue("2030-02-20", now)).toBe(-9);
-    expect(daysOverdue("not-a-date", now)).toBeUndefined();
+    const today = "2030-02-11";
+    expect(daysOverdue("2030-02-01", today)).toBe(10);
+    expect(daysOverdue("2030-02-11", today)).toBe(0);
+    expect(daysOverdue("2030-02-20", today)).toBe(-9);
+    expect(daysOverdue("not-a-date", today)).toBeUndefined();
 
     expect(collectionsStage(2, CADENCE)).toBeUndefined();
     expect(collectionsStage(3, CADENCE)).toBe("friendly");
@@ -811,7 +859,7 @@ describe("a reminder's identity (RASF-3393)", () => {
     const counted = counting(overdueBooks());
     // One conversation's run...
     const first = await withHarness();
-    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS, ZONE);
     const sent = await tools.sendReminder.execute(
       { invoice: "1042", tone: "firm" },
       first.api("firm-first"),
@@ -827,6 +875,7 @@ describe("a reminder's identity (RASF-3393)", () => {
       counted.books,
       SYSTEM_CLOCK,
       () => CADENCE_LIMITS,
+      ZONE,
     ).sendReminder.execute(
       { invoice: "1042", tone: "firm" },
       second.api("firm-second"),
@@ -847,24 +896,36 @@ describe("a reminder's identity (RASF-3393)", () => {
     expect(ledger?.sent[0]).toMatchObject({ invoiceId: "1042", tone: "firm" });
   });
 
-  it("still sends a genuinely different stage", async () => {
-    const counted = counting(overdueBooks());
-    const { api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
-
-    await tools.sendReminder.execute(
-      { invoice: "1042", tone: "firm" },
-      api("firm"),
-      BACKGROUND_CONTEXT,
-    );
-    const friendly = await tools.sendReminder.execute(
+  it("still sends a genuinely different stage, once the invoice's age reaches it", async () => {
+    const counted = counting(freshBooks());
+    const { harness, root, api } = await withHarness();
+    // Four days overdue: the friendly stage.
+    const friendly = await bookkeeperTools(
+      counted.books,
+      SYSTEM_CLOCK,
+      () => CADENCE_LIMITS,
+      ZONE,
+    ).sendReminder.execute(
       { invoice: "1042", tone: "friendly" },
       api("friendly"),
       BACKGROUND_CONTEXT,
     );
     expect(friendly.details).toMatchObject({ sent: true, tone: "friendly" });
+
+    // Sixteen days on the invoice is twenty days overdue: the firm stage, its own send.
+    const later = (): Date => new Date(Date.now() + 16 * 86_400_000);
+    const firm = await bookkeeperTools(
+      counted.books,
+      later,
+      () => CADENCE_LIMITS,
+      ZONE,
+    ).sendReminder.execute({ invoice: "1042", tone: "firm" }, api("firm"), BACKGROUND_CONTEXT);
+    expect(firm.details).toMatchObject({ sent: true, tone: "firm" });
     expect(counted.delivered).toBe(2);
     expect(new Set(counted.requestIds).size).toBe(2);
+    const ledger = await harness.snapshot(CollectionsDoc, root.id, BACKGROUND_CONTEXT);
+    // One record per stage: the invoice is chased once at friendly and once at firm, never twice.
+    expect(ledger?.sent.map((record) => record.tone)).toEqual(["friendly", "firm"]);
   });
 });
 
@@ -897,7 +958,7 @@ describe("a disputed invoice (RASF-3394)", () => {
   it("gets no reminder at any stage, and every refusal says who disputed it and why", async () => {
     const counted = counting(finishedBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS, ZONE);
     await asPerson(harness, root.id, (ledger) =>
       dispute(ledger, "1042", {
         reason: "The customer says the second visit was never agreed",
@@ -971,9 +1032,9 @@ describe("a disputed invoice (RASF-3394)", () => {
   it("resumes at the stage the invoice's age calls for once a person clears it", async () => {
     const counted = counting(overdueBooks());
     const { harness, root, api } = await withHarness();
-    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS);
+    const tools = bookkeeperTools(counted.books, SYSTEM_CLOCK, () => CADENCE_LIMITS, ZONE);
     // Twenty days overdue: the firm stage is the one the cadence names, not the first one.
-    const overdueBy = daysOverdue(day(-20), SYSTEM_CLOCK());
+    const overdueBy = daysOverdue(day(-20), day(0));
     if (overdueBy === undefined) throw new Error("the seeded due date is not a date");
     expect(collectionsStage(overdueBy, CADENCE)).toBe("firm");
 
@@ -1028,6 +1089,7 @@ describe("a disputed invoice (RASF-3394)", () => {
       counted.books,
       SYSTEM_CLOCK,
       () => CADENCE_LIMITS,
+      ZONE,
     ).sendReminder.execute({ invoice: "1044", tone: "final" }, api("paid"), BACKGROUND_CONTEXT);
     expect(paid.isError).toBe(true);
     expect(text(paid)).toContain("it is paid");
@@ -1099,6 +1161,29 @@ describe("the host clock (RASF-3484)", () => {
       BACKGROUND_CONTEXT,
     );
     expect(text(listed)).toContain("due 2026-10-01 — 123 days overdue");
+  });
+
+  it("counts the day in the company's time zone: after 16:00 Pacific it is still the Pacific date", async () => {
+    // 01:30 UTC on 2 February is 17:30 on 1 February in Portland, where the company keeps its day.
+    const evening = new Date("2027-02-02T01:30:00.000Z");
+    const pacific = bookkeeper({ quickbooks: fixedBooks(), now: () => evening });
+    const { api } = await withHarness();
+    const listed = await toolNamed(pacific, "list_invoices").execute(
+      {},
+      api("list-evening"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(listed)).toContain("due 2026-10-01 — 123 days overdue");
+    const created = await toolNamed(pacific, "create_invoice").execute(
+      {
+        customer: "customer-1",
+        lines: [{ description: "On-site support", quantity: 1, unitPriceCents: 4000 }],
+        dueInDays: 30,
+      },
+      api("create-evening"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(created)).toContain("due 2027-03-03");
   });
 
   it("stamps a reminder's sentAt from the host clock", async () => {

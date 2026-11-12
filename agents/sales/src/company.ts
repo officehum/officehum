@@ -11,7 +11,29 @@
  * `dist` and `skills` side by side, and this path is the one thing that must survive that layout.
  */
 
-import { loadCompanyFacts as loadFacts } from "@officehum/sdk";
+import {
+  type CompanyAddress,
+  type CompanyDiscountLadderStep,
+  type CompanyDiscountPolicy,
+  type CompanyEscalationRule,
+  type CompanyFieldStaff,
+  type CompanyGlossaryEntry,
+  type CompanyHours,
+  type CompanyInsurance,
+  type CompanyPolicies,
+  type CompanyPriceBookItem,
+  type CompanyProfile,
+  type CompanyQuoting,
+  type CompanyRecord,
+  type CompanyRecordPerson,
+  type CompanyRefundPolicy,
+  type CompanyService,
+  type CompanyTone,
+  escalationRule,
+  loadCompanyFacts as loadFacts,
+  money,
+  personById as person,
+} from "@officehum/sdk";
 
 /** Where the generated facts live, from either `src/company.ts` or `dist/company.js`. */
 export const COMPANY_FACTS_URL = new URL(
@@ -19,179 +41,48 @@ export const COMPANY_FACTS_URL = new URL(
   import.meta.url,
 );
 
-export interface Address {
-  readonly street: string;
-  readonly city: string;
-  readonly region: string;
-  readonly postalCode: string;
-  readonly country: string;
-}
-
-export interface Insurance {
-  readonly kind: string;
-  readonly limitCents: number;
-}
-
-export interface Field {
-  readonly cleaningCrews: number;
-  readonly cleanersPerCrew: number;
-  readonly maintenanceTechnicians: number;
-  readonly office: number;
-}
-
-export interface Profile {
-  readonly legalName: string;
-  readonly tradingName: string;
-  readonly tagline: string;
-  readonly founded: number;
-  readonly headcount: number;
-  readonly field: Field;
-  readonly address: Address;
-  readonly phone: string;
-  readonly email: string;
-  readonly website: string;
-  readonly registration: string;
-  readonly serviceArea: string;
-  readonly insurance: readonly Insurance[];
-  readonly clients: string;
-}
-
-export interface Hours {
-  readonly timezone: string;
-  readonly office: string;
-  readonly crews: string;
-  readonly emergencyLine: string;
-  readonly closedOn: string;
-  readonly note: string;
-}
-
-export interface Person {
-  readonly id: string;
-  readonly name: string;
-  readonly title: string;
-  readonly department: string;
-  readonly email: string;
-  readonly phone: string;
-  readonly decides: readonly string[];
-}
-
-export interface Service {
-  readonly id: string;
-  readonly name: string;
-  readonly summary: string;
-  readonly priceBookIds: readonly string[];
-  readonly leadTimeDays: number;
-}
-
+export type Address = CompanyAddress;
+export type Insurance = CompanyInsurance;
+export type Field = CompanyFieldStaff;
+export type Profile = CompanyProfile;
+export type Hours = CompanyHours;
+export type Person = CompanyRecordPerson;
+export type Service = CompanyService;
 /** One line of the price book: the only place a price in this role comes from. */
-export interface PriceBookItem {
-  readonly id: string;
-  readonly name: string;
-  readonly category: string;
-  readonly unit: string;
-  /** The unit price in integer cents, never a float. */
-  readonly unitPriceCents: number;
-  /** The least a line of this item may come to, in integer cents, or `null` for none. */
-  readonly minimumCents: number | null;
-  readonly notes: string;
-}
-
+export type PriceBookItem = CompanyPriceBookItem;
 /** How the company counts a quote, where that is a rule of its own rather than a price. */
-export interface Quoting {
-  /**
-   * The weeks in a month a recurring per-visit line is counted with: the desk multiplies the visits
-   * a week by it, so the model never does that arithmetic.
-   */
-  readonly weeksPerMonth: number;
-}
-
-export interface RefundPolicy {
-  readonly summary: string;
-  readonly recleanWindowDays: number;
-  readonly serviceRecoveryCreditCents: number;
-  readonly creditNeeds: string;
-  readonly refundNeeds: string;
-  readonly complaintOwner: string;
-}
-
-export interface DiscountLadderStep {
-  readonly commitmentMonths: number;
-  readonly percent: number;
-}
-
-export interface DiscountPolicy {
-  readonly summary: string;
-  readonly approver: string;
-  readonly ownerApprover: string;
-  readonly ownerAbovePercent: number;
-  readonly ladder: readonly DiscountLadderStep[];
-}
-
-export interface Policies {
-  readonly refunds: RefundPolicy;
-  readonly discounts: DiscountPolicy;
-  readonly safety: readonly string[];
-  readonly dataHandling: readonly string[];
-  readonly commitments: readonly string[];
-}
-
-export interface Tone {
-  readonly summary: string;
-  readonly always: readonly string[];
-  readonly never: readonly string[];
-}
-
-export interface EscalationRule {
-  /** What a request is about, e.g. `discount-request`. */
-  readonly topic: string;
-  /** The person who decides it, by `people[].id`. */
-  readonly toPersonId: string;
-  readonly when: string;
-}
-
-export interface GlossaryEntry {
-  readonly term: string;
-  readonly meaning: string;
-}
+export type Quoting = CompanyQuoting;
+export type RefundPolicy = CompanyRefundPolicy;
+export type DiscountLadderStep = CompanyDiscountLadderStep;
+export type DiscountPolicy = CompanyDiscountPolicy;
+export type Policies = CompanyPolicies;
+export type Tone = CompanyTone;
+export type EscalationRule = CompanyEscalationRule;
+export type GlossaryEntry = CompanyGlossaryEntry;
 
 /** Everything the company records, as this role reads it. */
-export interface CompanyFacts {
-  readonly profile: Profile;
-  readonly hours: Hours;
-  readonly people: readonly Person[];
-  readonly services: readonly Service[];
-  readonly priceBook: readonly PriceBookItem[];
-  readonly quoting: Quoting;
-  readonly policies: Policies;
-  readonly tone: Tone;
-  readonly escalation: readonly EscalationRule[];
-  readonly glossary: readonly GlossaryEntry[];
-  readonly approvalLimits: { readonly quoteOverCents: number };
-}
+export type CompanyFacts = Pick<
+  CompanyRecord,
+  | "profile"
+  | "hours"
+  | "people"
+  | "services"
+  | "priceBook"
+  | "quoting"
+  | "policies"
+  | "tone"
+  | "escalation"
+  | "glossary"
+>;
 
 /** The company facts generated into this package. Throws when the copy is missing or is not JSON. */
 export const loadCompanyFacts = (): CompanyFacts => loadFacts<CompanyFacts>(COMPANY_FACTS_URL);
 
-const CURRENCY = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-
-/** Integer cents as the money a person reads, never a recomputed amount. */
-export function money(cents: number): string {
-  return CURRENCY.format(cents / 100);
-}
+export { escalationRule, money, person };
 
 /** One price book item by id, or `undefined` when the book has no such line. */
 export function priceBookItem(company: CompanyFacts, id: string): PriceBookItem | undefined {
   return company.priceBook.find((item) => item.id === id);
-}
-
-/** One person by id, or `undefined` when nobody here has that id. */
-export function person(company: CompanyFacts, id: string): Person | undefined {
-  return company.people.find((candidate) => candidate.id === id);
-}
-
-/** The escalation rule for a request, or `undefined` when the company has not named one. */
-export function escalationRule(company: CompanyFacts, topic: string): EscalationRule | undefined {
-  return company.escalation.find((rule) => rule.topic === topic);
 }
 
 /** A price and its minimum, in one phrase: what a client sees beside a line. */

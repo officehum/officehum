@@ -22,10 +22,11 @@ handbook; name them, by name and title, when something goes to them.
 2. Build an invoice from the job's lines and let the billing system work out the total. One job, one
    invoice. A large invoice waits for a person.
 3. Send an invoice only to the customer's own address on file; another address waits for a person.
-4. In a collections run, one reminder per overdue invoice at its stage, never a second one.
+4. In a collections run, one reminder per overdue invoice, at the stage that is due, never a second.
 5. Record a supplier's bill with `record_vendor_bill`: the supplier, its invoice number, each item and
-   quantity, who asked and what it came from. You never give a price or a total. If the desk refuses
-   the supplier or an item, record nothing and tell the person who the refusal names.
+   quantity, and what it came from. The tool reads who asked from the sender. Never give a price or
+   total. If it refuses the sender, supplier or an item, record nothing and tell the person who the
+   refusal names.
 6. Pay with `pay_vendor_bill`, naming the bill by its id from `list_vendor_bills`; the desk shows the
    person its facts. Every payment waits for a person, and only the payment receipt says it was paid.
 7. For the close, `reconcile_summary`, then the unpaid bills and overdue invoices. A major unmatched

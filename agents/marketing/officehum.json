@@ -19,13 +19,13 @@
     {
       "name": "draft_post",
       "replay": "unsafe",
-      "noApproval": "Saves a draft only; nothing is published. The desk refuses a draft that states a result claim not on the company's approved list, naming the phrase, and keeps it held for request_claim_approval.",
+      "noApproval": "Saves a draft only; nothing is published. The tool refuses, on any desk, a draft that states a result claim not on the company's approved list, naming the phrase, and keeps it held for request_claim_approval.",
       "description": "Save a social or website post as a draft for one channel. The desk checks every claim and refuses a result claim that is not approved."
     },
     {
       "name": "draft_campaign_email",
       "replay": "unsafe",
-      "noApproval": "Saves a draft only; nothing is sent. The desk adds the unsubscribe line and postal address, and refuses a result claim not on the company's approved list, naming the phrase, held for request_claim_approval.",
+      "noApproval": "Saves a draft only; nothing is sent. The tool adds the unsubscribe line and postal address and refuses, on any desk, a result claim not on the company's approved list, naming the phrase, held for request_claim_approval.",
       "description": "Save a campaign email (subject, body, audience) as a draft. The desk adds the unsubscribe line and the company's postal address and checks every claim."
     },
     {

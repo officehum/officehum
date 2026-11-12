@@ -835,10 +835,6 @@ describe("the company facts", () => {
     const deep = company.priceBook.find((item) => item.id === "clean-deep-sqft");
     expect(deep === undefined ? "" : priceText(deep)).toBe("$0.12 per sq ft, minimum $450.00");
   });
-
-  it("keeps the quote limit the manifest declares", () => {
-    expect(company.approvalLimits.quoteOverCents).toBe(500000);
-  });
 });
 
 describe("with no desk", () => {

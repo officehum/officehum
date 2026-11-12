@@ -1,11 +1,14 @@
 /**
- * The demonstration desk's rules, in code: every draft is checked for result claims, a campaign email
- * always carries the unsubscribe line and postal address, a claim grant covers one claim in one draft,
- * and a publication happens only for a ready draft whose channel and text are exactly what the
- * approval named. Every write is replayed under the same request id and must happen once.
+ * The rules a draft meets on the demonstration desk, in code, as the tools reach it: through the
+ * role's checks (`checkedDesk`). Every draft is checked for result claims, a campaign email always
+ * carries the unsubscribe line and postal address, a claim grant covers one claim in one draft, and a
+ * publication happens only for a ready draft whose channel and text are exactly what the approval
+ * named. Every write is replayed under the same request id and must happen once. The same checks on
+ * a host desk that checks nothing are in `tools.test.ts`.
  */
 
 import { describe, expect, it } from "vitest";
+import { type CheckedMarketingDesk, checkedDesk } from "./checks.js";
 import { type CompanyFacts, loadCompanyFacts, money, postalAddress } from "./company.js";
 import {
   campaignFooter,
@@ -14,13 +17,14 @@ import {
   demoDrafts,
   fakeMarketingDesk,
   heldDraftFacts,
-  type MarketingDesk,
   MarketingDeskError,
   readyDraftFacts,
 } from "./desk.js";
 
 const company = loadCompanyFacts();
-const desk = (): MarketingDesk => fakeMarketingDesk({ now: () => new Date(DEMO_NOW) });
+type MarketingDesk = CheckedMarketingDesk;
+const desk = (): MarketingDesk =>
+  checkedDesk(fakeMarketingDesk({ now: () => new Date(DEMO_NOW) }), company);
 
 async function refusal(promise: Promise<unknown>): Promise<MarketingDeskError> {
   try {
@@ -200,19 +204,22 @@ describe("fakeMarketingDesk: drafting a post", () => {
       const [seed] = demoDrafts(company);
       if (seed === undefined) throw new Error("no demonstration draft");
       const text = `${invented} Our floors are 2x cleaner.`;
-      const marketing = fakeMarketingDesk({
-        now: () => new Date(DEMO_NOW),
-        drafts: [
-          {
-            ...seed,
-            id: "D-300",
-            status: "held",
-            text,
-            finalText: text,
-            heldClaims: [{ claim: "Our floors are 2x cleaner.", phrase: "2x cleaner" }],
-          },
-        ],
-      });
+      const marketing = checkedDesk(
+        fakeMarketingDesk({
+          now: () => new Date(DEMO_NOW),
+          drafts: [
+            {
+              ...seed,
+              id: "D-300",
+              status: "held",
+              text,
+              finalText: text,
+              heldClaims: [{ claim: "Our floors are 2x cleaner.", phrase: "2x cleaner" }],
+            },
+          ],
+        }),
+        company,
+      );
       const grant = await approvedClaims(marketing, "D-300");
       expect((await refusal(marketing.approveClaim(grant, { requestId: "g" }))).code).toBe(
         "unrecorded_testimonial",
@@ -225,20 +232,23 @@ describe("fakeMarketingDesk: drafting a post", () => {
       const [seed] = demoDrafts(company);
       if (seed === undefined) throw new Error("no demonstration draft");
       const held = `${invented} Our floors are 2x cleaner.`;
-      const marketing = fakeMarketingDesk({
-        now: () => new Date(DEMO_NOW),
-        drafts: [
-          {
-            ...seed,
-            id: "D-300",
-            status: "held",
-            text: held,
-            finalText: held,
-            heldClaims: [{ claim: "Our floors are 2x cleaner.", phrase: "2x cleaner" }],
-          },
-          { ...seed, id: "D-301", status: "draft", text: invented, finalText: invented },
-        ],
-      });
+      const marketing = checkedDesk(
+        fakeMarketingDesk({
+          now: () => new Date(DEMO_NOW),
+          drafts: [
+            {
+              ...seed,
+              id: "D-300",
+              status: "held",
+              text: held,
+              finalText: held,
+              heldClaims: [{ claim: "Our floors are 2x cleaner.", phrase: "2x cleaner" }],
+            },
+            { ...seed, id: "D-301", status: "draft", text: invented, finalText: invented },
+          ],
+        }),
+        company,
+      );
       const grant = await refusal(
         marketing.approveClaim(await approvedClaims(marketing, "D-300"), { requestId: "g" }),
       );
@@ -383,7 +393,8 @@ describe("fakeMarketingDesk: drafting a post", () => {
     const refusedAgain = await refusal(
       marketing.draftPost({ channel: "linkedin", text: POST }, { requestId: "claim" }),
     );
-    expect(refusedAgain).toBe(refused);
+    expect(refusedAgain).toEqual(refused);
+    expect(refusedAgain.draftId).toBe(refused.draftId);
     expect(await marketing.listDrafts()).toHaveLength(7);
   });
 });
@@ -602,13 +613,29 @@ describe("fakeMarketingDesk: publishing", () => {
   });
 });
 
+describe("fakeMarketingDesk: the company's own day", () => {
+  it("dates a draft and a publication by the company's time zone, not UTC", async () => {
+    // 17:00 on Monday 9 November on the US west coast is already Tuesday in UTC.
+    const marketing = fakeMarketingDesk({ now: () => new Date("2026-11-10T01:00:00.000Z") });
+    expect(company.hours.timezone).toBe("America/Los_Angeles");
+    const draft = await marketing.draftPost(
+      { channel: "facebook", text: "Day porters on site during business hours.", heldClaims: [] },
+      { requestId: "late" },
+    );
+    expect(draft.createdOn).toBe("2026-11-09");
+    await marketing.publish(await approvedPublication(marketing, draft.id), { requestId: "p" });
+    const [published] = await marketing.listDrafts({ id: draft.id });
+    expect(published?.publishedOn).toBe("2026-11-09");
+  });
+});
+
 describe("fakeMarketingDesk: another company's data", () => {
   it("checks claims against that company's approved list", async () => {
     const other: CompanyFacts = {
       ...company,
       marketing: { ...company.marketing, approvedClaims: [CLAIM] },
     };
-    const draft = await fakeMarketingDesk({ company: other }).draftPost(
+    const draft = await checkedDesk(fakeMarketingDesk({ company: other }), other).draftPost(
       { channel: "linkedin", text: POST },
       { requestId: "r" },
     );

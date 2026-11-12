@@ -8,8 +8,9 @@ company has approved, and takes each piece to publication with a person's approv
 It ships with the company's facts — the services and price book, the approved claims, the postal
 address, the tone of voice, and who approves what is published — as a generated skill inside the
 package. Three things it will not do: publish anything without a person approving that exact text,
-state a result the company has not approved (the desk refuses it in code), and send a campaign email
-without the unsubscribe line and postal address (the desk adds them).
+state a result the company has not approved (the tools refuse it in code), and send a campaign email
+without the unsubscribe line and postal address (the tools add them). Both hold on whatever desk the
+host binds.
 
 ## Try it
 
@@ -61,16 +62,16 @@ who decided, and a paid influencer post the role cannot agree, never claimed as 
 | Tool | Replay | Gate | What it is for |
 | --- | --- | --- | --- |
 | `read_services` | safe | — | The services, what each covers, and its price book lines and prices |
-| `draft_post` | unsafe | `noApproval`; the desk refuses an unapproved result claim and holds the draft | Save a post for linkedin, facebook, instagram or website |
-| `draft_campaign_email` | unsafe | `noApproval`; the desk adds the footer and checks claims | Save an email (subject, body, audience) |
+| `draft_post` | unsafe | `noApproval`; an unapproved result claim is refused and the draft held | Save a post for linkedin, facebook, instagram or website |
+| `draft_campaign_email` | unsafe | `noApproval`; the footer is added and claims are checked | Save an email (subject, body, audience) |
 | `request_claim_approval` | unsafe | approval `claim`, every call | Approve a held draft's refused claims, for that draft only, named by its id |
 | `publish` | unsafe | approval `publish`, every call; demonstration backend only | Publish one ready draft, named by its id |
 | `list_drafts` | safe | — | Drafts and publications with status and full text, and the audience lists |
 | `read_company` | safe | — | One section of the company record, including marketing |
 
 **What counts as a result claim** is defined in code, in `src/claims.ts`, and tested both ways in
-`src/claims.test.ts`. The desk checks each sentence of a draft (an email's subject and body) and
-refuses one that holds:
+`src/claims.test.ts`. The tools check each sentence of a draft (an email's subject and body) before
+the desk saves it, and refuse one that holds:
 
 - a percentage or a numeric result, in digits or words: "cuts sick days 30%", "thirty percent",
   "ninety-nine per-cent", "30pc", "2x cleaner", "3 times cleaner", "twice as clean", "half of", "in
@@ -101,15 +102,18 @@ equals them (`draft_changed` otherwise); the same claim in a new draft is refuse
 no approved facts approves nothing (`not_approved`).
 
 **Campaign emails** always end with a line saying how to unsubscribe and the company's postal address,
-built by the desk from the company record. The model writes only the subject and body, and `publish`
-publishes the text the desk holds, so the footer cannot be dropped.
+built from the company record before the desk saves the email. The model writes only the subject and
+body, `publish` publishes the text the desk holds, and it refuses an email that no longer ends with
+that footer, so the footer cannot be dropped.
 
 **Publishing** is approved on every call. The model names only the draft; the facts reader
 (`publishApprovalFacts`) reads its channel, audience and full final text, footer included
 (`readyDraftFacts`), and the person approves those. The desk publishes only when the draft still
 equals them, and otherwise refuses with `draft_changed` and the text it holds. So the person sees
 what goes out, and a grant never covers a draft that changed after they were asked. A held draft is
-refused until its claims are approved, and is never put to a person for publishing.
+refused until its claims are approved, and is never put to a person for publishing. A draft the desk
+calls ready is checked once more on the way out: one that states a result claim neither approved nor
+granted for it is refused, whatever the desk says.
 
 The demonstration backend records the publication and posts nothing; a host that binds a real
 channel must refuse the same way.
@@ -119,13 +123,16 @@ D-105 on LinkedIn for "30%". The eval scenarios' stubbed refusals name those dra
 reads from the desk the draft the scenario is about.
 
 **Testimonials** are quoted only from the company record (`marketing.testimonials`, a list of
-`{ quote, attribution }`), and `read_company` says when there are none. The desk refuses a draft that
+`{ quote, attribution }`), and `read_company` says when there are none. The tools refuse a draft that
 holds a quoted passage of six words or more attributed to someone ("— Name", "says Name", "Name said")
 that is not exactly a recorded `quote`, with `unrecorded_testimonial`. It saves no draft, so there is
 no held claim for `request_claim_approval` to grant; a person cannot approve an invented quote. A
 recorded testimonial that states a result is still a result claim.
 
 **Brand and tone** come from the handbook (`read_company` tone), not from this package.
+
+**Dates** (a draft's `createdOn` and `publishedOn`, and "today" in the prompt) are the company's own
+day, read from the host's clock in the record's `hours.timezone`, not the UTC day.
 
 The person who approves is the company's `marketing.approverId`. Paid posts and influencers,
 advertising contracts and budgets, the media, legal questions and pricing have no tool: the manifest's
@@ -137,9 +144,16 @@ The role ships no social or email connection. `fakeMarketingDesk` is the demonst
 binds a `MarketingDesk` (`src/desk.ts`): `listDrafts`, `listAudiences`, `draftPost`,
 `draftCampaignEmail`, `approveClaim` and `publish`. Every write carries a `requestId` derived from the
 durable call identity, so a retried call returns what it already did, including a refusal that held a
-draft. The desk owns the claim check, the footer and the publish check; a refusal is a
-`MarketingDeskError` with a `code` the tools turn into the next step. `findResultClaims` is exported
-for a host desk to use.
+draft.
+
+The claim check, the testimonial check and the footer are not the desk's: the tools reach every desk
+through `checkedDesk` (`src/checks.ts`), so they run on a host desk exactly as on the demonstration
+one. `draftPost` and `draftCampaignEmail` are handed `heldClaims`, the result claims found that nobody
+approved: save the draft as `held` with them, or as a ready `draft` with none. `draftCampaignEmail`
+is also handed `finalText`, the email with its footer, to store as it is. The desk owns the record:
+it grants or publishes a draft only when it still equals the facts the person approved
+(`draft_changed` otherwise). A refusal, the desk's or a check's, is a `MarketingDeskError` with a
+`code` the tools turn into the next step.
 
 ```ts
 import marketing from "@officehum/marketing";
@@ -170,6 +184,7 @@ const root = await harness.root(context, { agent: role.agent });
 | `src/claims.ts` | What counts as a result claim |
 | `src/testimonials.ts` | Which quoted, attributed passages are testimonials on the company's record |
 | `src/company.ts` | The company facts as the role reads them |
+| `src/checks.ts` | The checks every draft passes on its way to and from any desk |
 | `src/desk.ts` | The `MarketingDesk` interface, `fakeMarketingDesk` and the demonstration drafts |
 | `src/*.test.ts` | The claim detector, the desk's rules, each tool, the approval gates on a real harness, the package and the scenarios |
 | `skills/` | `checking-claims`, `writing-posts`, `campaign-emails`, and the generated `company-handbook` |

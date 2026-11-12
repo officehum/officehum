@@ -3,10 +3,12 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-durable";
 import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
+import { BookingsDoc, discountsByBooking, recordBookingDiscount } from "./bookings.js";
 import { contactTools, linkBookingContact, pinBookingContact } from "./contacts.js";
 import { firstContactCondition, type Messenger, messagingTools } from "./messaging.js";
 import { inboundCustomerToolGuard, type ReplyMessenger, repliesTools } from "./replies.js";
 
+export { type BookingDiscount, BookingsDoc, type BookingsDocument } from "./bookings.js";
 export { type Contact, ContactsDoc } from "./contacts.js";
 export {
   type DeliveryReceipt,
@@ -106,22 +108,45 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
             );
       const booking = await options.calendar.book(args.start, pinned?.name ?? args.customer, key);
       if (pinned !== undefined) await linkBookingContact(pinned, booking.id, api, context);
+      // A discount that reaches this point is within the business's rate or a person approved it
+      // (`discount_booking`); either way the booking was made with it, so it is recorded on it.
+      const discount =
+        args.discountPercent !== undefined && args.discountPercent > 0
+          ? args.discountPercent
+          : undefined;
+      if (discount !== undefined) await recordBookingDiscount(booking.id, discount, api, context);
       return {
-        output: [{ type: "text", text: `Booked ${booking.id} at ${booking.start}` }],
-        details: { ...booking },
+        output: [
+          {
+            type: "text",
+            text: `Booked ${booking.id} at ${booking.start}${discount === undefined ? "" : ` with a ${discount}% discount`}`,
+          },
+        ],
+        details: { ...booking, ...(discount === undefined ? {} : { discountPercent: discount }) },
       };
     },
   });
   const listBookings = defineTool({
     name: "list_bookings",
     description:
-      "List active managed appointments in UTC, including the exact booking IDs needed for changes.",
+      "List active managed appointments in UTC, including the exact booking IDs needed for changes and any discount a booking was made with.",
     parameters: Type.Object({}),
     replay: "safe",
-    execute: async () => {
-      const bookings = [...(await options.calendar.listBookings())].sort(
-        (left, right) => left.start.localeCompare(right.start) || left.id.localeCompare(right.id),
-      );
+    execute: async (_args, api, context) => {
+      const discounts = discountsByBooking(await api.snapshot(BookingsDoc, context));
+      const bookings = [...(await options.calendar.listBookings())]
+        .sort(
+          (left, right) => left.start.localeCompare(right.start) || left.id.localeCompare(right.id),
+        )
+        .map(({ id, start, customer }) => {
+          const discountPercent = discounts.get(id);
+          return {
+            id,
+            start,
+            customer,
+            ...(discountPercent === undefined ? {} : { discountPercent }),
+          };
+        });
       return {
         output: [
           {
@@ -130,13 +155,14 @@ export default function frontdesk(options: FrontDeskOptions): DefinedRole {
               bookings.length === 0
                 ? "No active bookings"
                 : `Bookings:\n${bookings
-                    .map(({ id, start, customer }) => `${id} — ${start} — ${customer}`)
+                    .map(
+                      ({ id, start, customer, discountPercent }) =>
+                        `${id} — ${start} — ${customer}${discountPercent === undefined ? "" : ` — ${discountPercent}% discount`}`,
+                    )
                     .join("\n")}`,
           },
         ],
-        details: {
-          bookings: bookings.map(({ id, start, customer }) => ({ id, start, customer })),
-        },
+        details: { bookings },
       };
     },
   });

@@ -2,17 +2,18 @@
  * The Marketing role's seven tools.
  *
  * `read_services`, `list_drafts` and `read_company` only read. `draft_post` and
- * `draft_campaign_email` save drafts through the desk with no approval: nothing goes out, the desk
- * checks every claim and holds a draft that states one not on the approved list, and it adds the
- * unsubscribe line and postal address to every email. `request_claim_approval` and `publish` wait for
+ * `draft_campaign_email` save drafts through the desk with no approval: nothing goes out. Every tool
+ * reaches the desk through `checkedDesk` (`checks.ts`), which checks every claim, has the desk hold a
+ * draft that states one not on the approved list, refuses an invented testimonial and adds the
+ * unsubscribe line and postal address to every email, whatever desk the host bound. `request_claim_approval` and `publish` wait for
  * a person on every call; their approvals are `officehum.json`'s, evaluated by the SDK's gate before
  * the tool runs. Each one names only the draft: `claimApprovalFacts` and `publishApprovalFacts` read
  * what the person approves (the full text, the held phrases, the channel) from the desk, the gate
  * hands those facts to the tool on a yes, and the desk refuses when the draft no longer equals them,
  * so a person never approves one thing and gets another.
  *
- * Every price a tool speaks comes from the price book, every claim rule from the desk, and every name
- * from the company record.
+ * Every price a tool speaks comes from the price book, every claim rule from `checks.ts`, and every
+ * name from the company record.
  */
 
 import { Type } from "@earendil-works/pi-ai";
@@ -22,12 +23,21 @@ import {
   type ApprovalFactsReader,
   approvedFacts,
   approvedFactsParameter,
+  companyEscalationText,
+  companyGlossaryText,
+  companyPeopleText,
+  companyPoliciesText,
+  companyProfileText,
+  companyToneText,
   deskRefusal,
+  readCompanyTool,
   refusal,
   requestId,
+  requireDesk,
   textResult,
 } from "@officehum/sdk";
-import { type CompanyFacts, marketingApprover, money, person, personLabel } from "./company.js";
+import { checkedDesk } from "./checks.js";
+import { type CompanyFacts, marketingApprover, money, personLabel } from "./company.js";
 import {
   type DeskRefusal,
   type Draft,
@@ -77,28 +87,7 @@ export type CompanySection =
   | "escalation"
   | "glossary";
 
-const SECTIONS: readonly CompanySection[] = [
-  "profile",
-  "hours",
-  "people",
-  "marketing",
-  "policies",
-  "tone",
-  "escalation",
-  "glossary",
-];
-
 const STATUSES: readonly DraftStatus[] = ["held", "draft", "published"];
-
-/** The desk, or a refusal: a host with no desk gets no read and no write. */
-function requireDesk(dependencies: MarketingToolDependencies): MarketingDesk {
-  if (dependencies.desk === undefined) {
-    throw new Error(
-      "No marketing desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
-    );
-  }
-  return dependencies.desk;
-}
 
 /** A draft's full text between markers, so it can be copied exactly into an approval. */
 function block(text: string): string {
@@ -133,68 +122,24 @@ function details(draft: Draft): JsonObject {
   };
 }
 
-/** The company record as one section reads: prose the model can answer with. */
-function companySection(company: CompanyFacts, section: CompanySection): string {
-  switch (section) {
-    case "profile": {
-      const { profile } = company;
-      return [
-        `${profile.legalName} — trading as ${profile.tradingName}. ${profile.tagline}`,
-        `${profile.address.street}, ${profile.address.city}, ${profile.address.region} ${profile.address.postalCode}. Phone ${profile.phone}. Email ${profile.email}.`,
-        `Service area: ${profile.serviceArea}`,
-        `Clients: ${profile.clients}`,
-      ].join("\n");
-    }
-    case "hours": {
-      const { hours } = company;
-      return [`Office: ${hours.office} (${hours.timezone}).`, `Closed: ${hours.closedOn}.`].join(
-        "\n",
-      );
-    }
-    case "people":
-      return company.people
-        .map(
-          (worker) =>
-            `${worker.name} — ${worker.title} — ${worker.email} — decides: ${worker.decides.join("; ")}`,
-        )
-        .join("\n");
-    case "marketing": {
-      const testimonials = company.marketing.testimonials ?? [];
-      return [
-        "Approved claims, the only results and facts marketing states without a person's approval, word for word:",
-        ...company.marketing.approvedClaims.map((claim) => `- ${claim}`),
-        testimonials.length === 0
-          ? "Testimonials on file: none. There is no customer quote to use, and none is written or invented."
-          : "Testimonials on file, quoted only word for word:",
-        ...testimonials.map((entry) => `- "${entry.quote}" — ${entry.attribution}`),
-        `Who approves every publication and any claim not on the list: ${personLabel(marketingApprover(company))}.`,
-      ].join("\n");
-    }
-    case "policies":
-      return [
-        "Safety:",
-        ...company.policies.safety.map((rule) => `- ${rule}`),
-        "Never promised:",
-        ...company.policies.commitments.map((rule) => `- ${rule}`),
-      ].join("\n");
-    case "tone":
-      return [
-        company.tone.summary,
-        "Always:",
-        ...company.tone.always.map((rule) => `- ${rule}`),
-        "Never:",
-        ...company.tone.never.map((rule) => `- ${rule}`),
-      ].join("\n");
-    case "escalation":
-      return company.escalation
-        .map((rule) => {
-          const owner = person(company, rule.toPersonId);
-          return `${rule.topic} — ${owner?.name ?? rule.toPersonId}${owner === undefined ? "" : `, ${owner.title}`} — ${rule.when}`;
-        })
-        .join("\n");
-    case "glossary":
-      return company.glossary.map((entry) => `${entry.term}: ${entry.meaning}`).join("\n");
-  }
+/** The office's hours and closures: all of the hours a post or an email ever states. */
+function hoursText(company: CompanyFacts): string {
+  const { hours } = company;
+  return [`Office: ${hours.office} (${hours.timezone}).`, `Closed: ${hours.closedOn}.`].join("\n");
+}
+
+/** What marketing may say: the approved claims, the testimonials on file and who approves the rest. */
+function marketingText(company: CompanyFacts): string {
+  const testimonials = company.marketing.testimonials ?? [];
+  return [
+    "Approved claims, the only results and facts marketing states without a person's approval, word for word:",
+    ...company.marketing.approvedClaims.map((claim) => `- ${claim}`),
+    testimonials.length === 0
+      ? "Testimonials on file: none. There is no customer quote to use, and none is written or invented."
+      : "Testimonials on file, quoted only word for word:",
+    ...testimonials.map((entry) => `- "${entry.quote}" — ${entry.attribution}`),
+    `Who approves every publication and any claim not on the list: ${personLabel(marketingApprover(company))}.`,
+  ].join("\n");
 }
 
 function servicesText(company: CompanyFacts): string {
@@ -218,6 +163,9 @@ function servicesText(company: CompanyFacts): string {
  */
 export function marketingTools(dependencies: MarketingToolDependencies): MarketingToolset {
   const { company } = dependencies;
+  // The tools reach the desk only through the role's checks, so a host desk gets every one of them.
+  const checked =
+    dependencies.desk === undefined ? undefined : checkedDesk(dependencies.desk, company);
   const approver = personLabel(marketingApprover(company));
 
   const NOT_READY = ` Next: each held claim needs request_claim_approval first, which asks ${approver}; or draft it again without the claim.`;
@@ -285,7 +233,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(checked, "marketing");
       try {
         const draft = await desk.draftPost(
           { channel: args.channel as PostChannel, text: args.text },
@@ -317,7 +265,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(checked, "marketing");
       try {
         const draft = await desk.draftCampaignEmail(
           { subject: args.subject, body: args.body, audienceId: args.audienceId },
@@ -332,7 +280,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
 
   /** One draft from the desk for an approval reader, or a refusal that asks nobody. */
   const readDraft = async (args: Readonly<Record<string, unknown>>, what: string) => {
-    const desk = requireDesk(dependencies);
+    const desk = requireDesk(checked, "marketing");
     const draftId = String(args.draftId);
     const [draft] = await desk.listDrafts({ id: draftId });
     if (draft === undefined) {
@@ -376,7 +324,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(checked, "marketing");
       const approved = approvedFacts(args);
       if (approved === undefined) {
         return refusal(
@@ -422,7 +370,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     let summary = `Publish ${draft.id} on ${draft.channel}, exactly as below:\n${draft.finalText}`;
     if (draft.kind === "email") {
       // The person reads the list's name as the desk holds it, not its id.
-      const audiences = await requireDesk(dependencies).listAudiences();
+      const audiences = await requireDesk(checked, "marketing").listAudiences();
       const audience = audiences.find((entry) => entry.id === draft.audienceId);
       const to =
         audience === undefined
@@ -447,7 +395,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(checked, "marketing");
       const approved = approvedFacts(args);
       if (approved === undefined) {
         return refusal(
@@ -494,7 +442,7 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     ),
     replay: "safe",
     execute: async (args) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(checked, "marketing");
       const drafts = await desk.listDrafts({
         ...(args.draftId === undefined ? {} : { id: args.draftId }),
         ...(args.status === undefined ? {} : { status: args.status as DraftStatus }),
@@ -521,23 +469,19 @@ export function marketingTools(dependencies: MarketingToolDependencies): Marketi
     },
   });
 
-  const readCompany = defineTool({
-    name: "read_company",
+  const readCompany = readCompanyTool<CompanyFacts, CompanySection>({
+    company,
     description:
       "Read one section of the company record: the profile, the office hours, the people and what each decides, marketing (the approved claims, any testimonials on file, and who approves), the policies, the tone of voice and brand rules, the escalation path or the glossary.",
-    parameters: Type.Object(
-      {
-        section: Type.Union(
-          SECTIONS.map((section) => Type.Literal(section)),
-          { description: "Which part of the record to read" },
-        ),
-      },
-      { additionalProperties: false },
-    ),
-    replay: "safe",
-    execute: async (args) => {
-      const section = args.section as CompanySection;
-      return { ...textResult(companySection(company, section)), details: { section } };
+    sections: {
+      profile: companyProfileText,
+      hours: hoursText,
+      people: (record) => companyPeopleText(record, "email"),
+      marketing: marketingText,
+      policies: companyPoliciesText,
+      tone: companyToneText,
+      escalation: companyEscalationText,
+      glossary: companyGlossaryText,
     },
   });
 
