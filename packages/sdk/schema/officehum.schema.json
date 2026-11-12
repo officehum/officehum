@@ -150,6 +150,9 @@
               "unsafe"
             ]
           },
+          "writes": {
+            "type": "boolean"
+          },
           "skill": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",

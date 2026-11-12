@@ -84,8 +84,8 @@ Each bug fix marked (test) has a regression test that failed before the fix.
 > `docs/superpowers/plans/2026-11-11-audit-part-2.md`. Still open after that work:
 >
 > - **B7 was a wrong finding.** Front Desk's writing tools are correctly `replay: "safe"`: its
->   exactly-once design relies on an interrupted call being re-run. What is misleading is that the
->   docs and the sub-agent rules read "safe" as "does not write".
+>   exactly-once design relies on an interrupted call being re-run. Resolved in RASF-3570: a tool
+>   that writes says so with `writes: true`, and the sub-agent and evidence rules key on that.
 > - **D1, approval inbox.** Resolved in RASF-3569: the runtime's approvals, ticket work included,
 >   are decided through the gateway, and the board's gate is not installed there.
 > - **A12.** Multi-output Paper commits check everything first and finish on replay, but are not

@@ -366,6 +366,65 @@ describe("validateManifest", () => {
     ]);
   });
 
+  describe("a tool that writes, whatever its replay policy", () => {
+    // `replay: "safe"` says only that an interrupted call may be run again. A tool can be safe to
+    // re-run and still change something, as an idempotent booking is.
+    const tools = [
+      { name: "check_schedule", replay: "safe" },
+      { name: "book_appointment", replay: "safe", writes: true },
+    ];
+    const approvals = [
+      { id: "booking", tool: "book_appointment", description: "Approve this booking" },
+    ];
+
+    it("is accepted when it is safe to re-run and gated", () => {
+      expect(messages(withFields({ tools, approvals }))).toEqual([]);
+    });
+
+    it("must say so when an approval names a safe tool", () => {
+      const silent = [tools[0], { name: "book_appointment", replay: "safe" }];
+      expect(messages(withFields({ tools: silent, approvals }))).toEqual([
+        'officehum.json › tools[1]: "book_appointment" is named by an approval, so it changes something; add "writes": true (replay "safe" only says an interrupted call may be run again)',
+      ]);
+    });
+
+    it("states exactly one approval decision, like an unsafe tool", () => {
+      expect(messages(withFields({ tools, approvals: [] }))).toEqual([
+        'officehum.json › tools[1]: "book_appointment" writes and states no approval decision; add an approval in approvals[], or a noApproval note saying why it needs none',
+      ]);
+    });
+
+    it("is never a sub-agent's tool", () => {
+      const contextPlan = {
+        subagents: [
+          {
+            id: "summarise",
+            purpose: "Summarise a thread",
+            model: "small",
+            tools: ["check_schedule", "book_appointment"],
+            output: { type: "object" },
+          },
+        ],
+      };
+      expect(messages(withFields({ tools, approvals, contextPlan }))).toEqual([
+        'officehum.json › contextPlan.subagents[0].tools[1]: "book_appointment" writes; a sub-agent runs only the role\'s tools that change nothing',
+      ]);
+    });
+
+    it("is never completion evidence", () => {
+      const accepts = [
+        {
+          type: "booking.request",
+          description: "Book",
+          done: [{ tool: "book_appointment", args: {}, expect: "found" }],
+        },
+      ];
+      expect(messages(withFields({ tools, approvals, accepts }))).toEqual([
+        'officehum.json › accepts[0].done[0].tool: "book_appointment" writes; completion evidence runs a declared tool that changes nothing, in the host, never the model',
+      ]);
+    });
+  });
+
   it("requires a sub-agent's model to be small or default", () => {
     const contextPlan = {
       subagents: [
@@ -413,7 +472,7 @@ describe("validateManifest", () => {
       { name: "book_appointment", replay: "unsafe" },
     ];
     expect(messages(withFields({ tools }))).toEqual([
-      'officehum.json › tools[0].noApproval: "check_schedule" is safe, so noApproval does not apply; remove it (noApproval explains an unsafe tool that needs no approval)',
+      'officehum.json › tools[0].noApproval: "check_schedule" is safe, so noApproval does not apply; remove it (noApproval explains a tool that writes but needs no approval)',
     ]);
   });
 
