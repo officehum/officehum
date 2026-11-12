@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { canonicalJson } from "@officehum/sdk";
 import { convert } from "html-to-text";
 import { controls, exact } from "./shared/validation.js";
 
@@ -492,7 +493,21 @@ export function normalizeReceivedEmail(
   };
 }
 
-export function canonicalJson(value: unknown): string {
+export { canonicalJson };
+
+/**
+ * Whether `text`, read back from a store, is exactly the canonical text of the value it parses to.
+ *
+ * The inbox refuses a row whose JSON is not byte-for-byte what it would have written. Versions before
+ * 2026-11-12 ordered keys by `localeCompare`, so a row one of them wrote may be canonical in that
+ * order instead; it is accepted as written. Nothing new is written in that order.
+ */
+export function storedCanonical(text: string, parsed: unknown): boolean {
+  return text === canonicalJson(parsed) || text === localeOrderedJson(parsed);
+}
+
+/** The key order versions before 2026-11-12 wrote. Only for reading what they stored. */
+function localeOrderedJson(value: unknown): string {
   const sort = (item: unknown): unknown => {
     if (Array.isArray(item)) return item.map(sort);
     if (item !== null && typeof item === "object") {

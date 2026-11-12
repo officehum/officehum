@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { canonicalJson, sameCanonical } from "@officehum/sdk";
 import { transact as inTransaction } from "../shared/transact.js";
 import { MICROS_PER_CENT } from "../spend/prices.js";
 import { type ApprovalStore, openApprovalStore } from "./approvals.js";
@@ -405,26 +406,6 @@ function objectOf(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
-}
-
-/**
- * Sorted-key JSON, so the same request written with its fields in a different order dedupes to the
- * same caller key. The board owes that to RASF-3067's relay, which re-sends after a restart with
- * whatever order its own encoder produced.
- */
-function canonicalJson(value: unknown): string {
-  const sort = (item: unknown): unknown => {
-    if (Array.isArray(item)) return item.map(sort);
-    if (item !== null && typeof item === "object") {
-      return Object.fromEntries(
-        Object.entries(item as Record<string, unknown>)
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([key, nested]) => [key, sort(nested)]),
-      );
-    }
-    return item;
-  };
-  return JSON.stringify(sort(value));
 }
 
 function optionalCount(value: unknown, label: string): number | null {
@@ -962,13 +943,15 @@ export function openBoard(file: string): Board {
     create(input, callerKey) {
       const key = bounded(callerKey, "Caller key");
       const request = normalizeCreate(input);
+      // Sorted-key JSON, so the same request written with its fields in another order dedupes to
+      // the same caller key: the relay re-sends after a restart in whatever order its encoder used.
       // The canonical form covers what the caller asked for, not what the board resolved it to: a
       // repeat of the same request is the same request, even after the parent's budget has moved.
       const requestJson = canonicalJson(request.request);
       return transact(() => {
         const seen = findKey.get(key) as KeyRow | undefined;
         if (seen !== undefined) {
-          if (seen.request_json !== requestJson) {
+          if (!sameCanonical(seen.request_json, requestJson)) {
             throw fail(
               "duplicate_key",
               `Caller key ${key} already created ticket ${seen.ticket_id} with a different request.`,

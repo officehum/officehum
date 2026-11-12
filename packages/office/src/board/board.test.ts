@@ -542,6 +542,42 @@ describe("workboard", () => {
     board.close();
   });
 
+  it("still recognises a request an older version stored with its keys in locale order", () => {
+    const file = boardFile();
+    const board = openBoard(file);
+    const input: NewTicket = {
+      type: "invoice.create",
+      title: "Invoice",
+      createdBy: "front-desk",
+      provenance: INTERNAL,
+      payload: { weekStart: "2026-11-09", weeklyHoursCap: 40 },
+    };
+    const first = board.create(input, "old-order-key");
+    // Before 2026-11-12 keys were ordered by `localeCompare`, which puts these two the other way.
+    withRaw(file, (database) => {
+      const row = database
+        .prepare("SELECT request_json FROM ticket_keys WHERE caller_key = ?")
+        .get("old-order-key") as { request_json: string };
+      const today = '"weekStart":"2026-11-09","weeklyHoursCap":40';
+      const older = '"weeklyHoursCap":40,"weekStart":"2026-11-09"';
+      expect(row.request_json).toContain(today);
+      database
+        .prepare("UPDATE ticket_keys SET request_json = ? WHERE caller_key = ?")
+        .run(row.request_json.replace(today, older), "old-order-key");
+    });
+
+    expect(board.create(input, "old-order-key").id).toBe(first.id);
+    const conflict = thrown(() =>
+      board.create(
+        { ...input, payload: { weekStart: "2026-11-09", weeklyHoursCap: 41 } },
+        "old-order-key",
+      ),
+    );
+    expect(conflict.kind).toBe("duplicate_key");
+    expect(count(file, "tickets")).toBe(1);
+    board.close();
+  });
+
   it("same key, different payload throws duplicate_key", () => {
     const file = boardFile();
     const board = openBoard(file);

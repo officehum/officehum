@@ -2,7 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { closeSync, mkdirSync, openSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { ApprovalDecision, ApprovalRequest, Approver } from "@officehum/sdk";
+import {
+  type ApprovalDecision,
+  type ApprovalRequest,
+  type Approver,
+  sameCanonical,
+} from "@officehum/sdk";
 import {
   canonicalJson,
   canonicalMailbox,
@@ -10,6 +15,7 @@ import {
   normalizeReceivedEmail,
   parseReceivingEvent,
   type ReceivingEvent,
+  storedCanonical,
   terminalRejection,
 } from "./resend-inbound.js";
 import { readBoundedJsonObject } from "./shared/bounded-http.js";
@@ -232,7 +238,7 @@ function parsedObject(value: string | null): Record<string, unknown> | null {
   if (value === null) return null;
   const parsed = JSON.parse(value) as unknown;
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-  if (canonicalJson(parsed) !== value) throw new Error();
+  if (!storedCanonical(value, parsed)) throw new Error();
   return parsed as Record<string, unknown>;
 }
 
@@ -417,7 +423,7 @@ function validateEventRow(row: Record<string, unknown>): { emailId: string; cano
     const raw = Uint8Array.from(row.raw_payload);
     if (createHash("sha256").update(raw).digest("hex") !== row.raw_sha256) throw new Error();
     const decoded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw)) as unknown;
-    if (canonicalJson(decoded) !== row.canonical_event_json) throw new Error();
+    if (!storedCanonical(row.canonical_event_json, decoded)) throw new Error();
     const event = parseReceivingEvent(raw);
     if (event.data.email_id !== row.email_id) throw new Error();
     return { emailId: row.email_id, canonical: row.canonical_event_json };
@@ -440,12 +446,12 @@ function validateApprovalRow(row: Record<string, unknown>): void {
       request === null ||
       typeof request !== "object" ||
       Array.isArray(request) ||
-      canonicalJson(request) !== row.request_json
+      !storedCanonical(row.request_json, request)
     ) {
       throw new Error();
     }
     const decision = JSON.parse(row.decision_json) as ApprovalDecision;
-    if (canonicalJson(validDecision(decision)) !== row.decision_json) throw new Error();
+    if (!storedCanonical(row.decision_json, validDecision(decision))) throw new Error();
   } catch {
     throw new Error("Malformed inbound reply approval.");
   }
@@ -697,7 +703,7 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
           if (
             priorEvent.raw_sha256 !== rawHash ||
             Buffer.compare(Buffer.from(priorEvent.raw_payload), Buffer.from(raw)) !== 0 ||
-            priorEvent.canonical_event_json !== canonicalEventJson ||
+            !sameCanonical(priorEvent.canonical_event_json, canonicalEventJson) ||
             priorEvent.email_id !== event.data.email_id
           ) {
             throw new Error("Webhook event identity conflict.");
@@ -857,8 +863,10 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
         if (row === undefined) throw new Error("Inbound receipt was not found.");
         if (row.fetched_json !== null || row.normalized_json !== null) {
           if (
-            row.fetched_json !== canonicalJson(fetched) ||
-            row.normalized_json !== canonicalJson(normalized)
+            row.fetched_json === null ||
+            row.normalized_json === null ||
+            !sameCanonical(row.fetched_json, canonicalJson(fetched)) ||
+            !sameCanonical(row.normalized_json, canonicalJson(normalized))
           )
             throw new Error("Inbound prepared snapshot conflict.");
           return;
@@ -894,7 +902,7 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
         const routeJson = canonicalJson(route);
         if (row.route_snapshot_json !== null) {
           if (
-            row.route_snapshot_json !== routeJson ||
+            !sameCanonical(row.route_snapshot_json, routeJson) ||
             row.conversation_id !== conversationId ||
             row.request_id !== requestId ||
             row.envelope !== envelope
@@ -919,7 +927,8 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
       const result = markSettled.run(json, emailId);
       if (result.changes === 0) {
         const row = findReceipt.get(emailId) as ReceiptRow | undefined;
-        if (row?.settlement_json !== json) throw new Error("Inbound settlement binding conflict.");
+        if (typeof row?.settlement_json !== "string" || !sameCanonical(row.settlement_json, json))
+          throw new Error("Inbound settlement binding conflict.");
       }
     },
     defer(emailId, reason) {
@@ -935,7 +944,7 @@ export function openResendInbox(path: string, options: ResendInboundOptions): In
         | { request_json: string; decision_json: string }
         | undefined;
       if (row === undefined) return undefined;
-      if (row.request_json !== canonicalJson(request))
+      if (!sameCanonical(row.request_json, canonicalJson(request)))
         throw new Error("Approval identity was already bound to a different reply.");
       return validDecision(JSON.parse(row.decision_json) as ApprovalDecision);
     },
