@@ -321,11 +321,11 @@ logs go to stderr. `docs/superpowers/plans/2026-11-10-runtime-process.md` record
   protocol message.
 
   Status of what the board does not reach yet:
-  - A gated call made while an agent works a ticket is recorded on the board by the office's
-    approval gate, addressed to the office's first person, and blocked. Nothing in this protocol
-    lists or decides a board approval (`approve` and `watch_approvals` are the remote approvals
-    store's), and no command or screen opens the board's approval inbox, so such a call cannot be
-    approved today. Gated calls in a request a principal submitted are unchanged.
+  - The board's own approval gate and inbox are not used by the runtime (RASF-3569). A gated call
+    made while an agent works a ticket goes to the remote approvals store like any other: it is
+    announced as an `approval` message and decided with `approve`. It belongs to no principal's
+    request, so no request stream carries `approval_requested` for it; approvers hear of it
+    through `watch_approvals`.
   - A ticket an agent opens carries the provenance `internal`, `gateway`: it does not name the
     principal, so a role cannot yet tell which person a handed-on ticket came from.
 

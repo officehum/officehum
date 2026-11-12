@@ -684,9 +684,12 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
     await approvals?.bind({
       office,
       callerOf: (conversationId) => {
-        const known = byConversationId.get(conversationId);
-        if (known === undefined) return undefined;
-        const { agent } = known;
+        // A conversation the runtime opened for a caller, or one the relay opened for a ticket: the
+        // board knows which agent is working it.
+        const agent =
+          byConversationId.get(conversationId)?.agent ??
+          agents.get(options.board?.conversationTicket(Number(conversationId))?.agent ?? "");
+        if (agent === undefined) return undefined;
         return {
           agent: agent.name,
           declarations: agent.role.manifest.approvals,
