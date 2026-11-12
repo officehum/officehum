@@ -168,8 +168,8 @@ that buys or registers a number, and `listen` refuses to start with the token se
 text from a saved contact's number reaches the Front Desk, which may check availability and answer by
 email, with the usual approval for a first contact. A text from any other number becomes a
 `phone.callback` ticket on the board for a person: whoever the company record routes that type to, or
-else its first person. Unknown numbers are limited to three texts an hour, and for now so are saved
-contacts. There is no outbound SMS path and no provider account behind it yet. Twilio signs the public
+else its first person. Unknown numbers are limited to three texts an hour; a saved contact's number
+is not. There is no outbound SMS path and no provider account behind it yet. Twilio signs the public
 URL it called. Behind a proxy or tunnel, name that address in the same config, beside the number
 (`"sms":{"businessNumber":"+15035550142","publicBaseUrl":"https://office.example.com"}`), and the
 signature is checked against `<publicBaseUrl>/hooks/twilio`; `listen` refuses to start if the value is

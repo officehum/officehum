@@ -66,7 +66,7 @@ export interface SmsGatewayOptions {
    * Is this sender a number a contact owns? A host with no answer gets the conservative one: every
    * sender is a stranger, and the ceiling applies to all of them.
    */
-  readonly isRegistered?: (from: E164) => boolean;
+  readonly isRegistered?: (from: E164) => boolean | Promise<boolean>;
   /** The ceiling for a sender this office has not registered. Three messages an hour otherwise. */
   readonly rateLimit?: RateLimit;
   /** What became of the message, for a host that routes, logs or counts it. */
@@ -93,9 +93,9 @@ export function smsGateway(options: SmsGatewayOptions): ChannelGateway {
     resolve:
       isRegistered === undefined
         ? UNKNOWN_SENDERS
-        : resolveBy((from) => {
+        : resolveBy(async (from) => {
             const number = parseE164(from);
-            return number !== undefined && isRegistered(number);
+            return number !== undefined && (await isRegistered(number));
           }),
     ceiling: {
       window: options.rateLimit ?? DEFAULT_SMS_RATE_LIMIT,

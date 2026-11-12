@@ -352,3 +352,13 @@ describe("outbound registry", () => {
     expect(() => registry.register(webChat())).toThrow(/already registered/);
   });
 });
+
+describe("a resolver that answers later", () => {
+  it("says registered or unknown once its lookup has answered", async () => {
+    const { resolveBy } = await import("./resolve.js");
+    const resolver = resolveBy(async (from) => from === "visitor-7");
+    const message = { from: "visitor-7" } as Parameters<typeof resolver>[0];
+    expect(await resolver(message)).toEqual({ kind: "registered", contactId: null });
+    expect(await resolver({ ...message, from: "stranger" })).toEqual({ kind: "unknown" });
+  });
+});

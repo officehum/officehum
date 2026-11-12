@@ -932,6 +932,8 @@ function smsHook(options: {
     // Twilio signs the public URL it called. Behind a proxy or tunnel the request cannot say what
     // that was, so the office config names it; without one the route goes by the request's headers.
     ...(publicBaseUrl === undefined ? {} : { signedUrl: `${publicBaseUrl}/hooks/twilio` }),
+    // A saved contact is a customer, not a stranger, so the stranger's ceiling does not apply.
+    isRegistered: (from) => intake.isContact(from),
     onInbound: (outcome) => intake.accept(outcome),
   };
 }

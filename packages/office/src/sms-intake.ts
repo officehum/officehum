@@ -173,6 +173,12 @@ export interface SmsIntake {
    * ticket created — so a caller can answer the provider only after the work is durable.
    */
   accept(outcome: InboundOutcome): Promise<void>;
+  /**
+   * Is this number one a saved contact owns? The route's `isRegistered`, answered from the same
+   * contact list `accept` routes by. While the office is not attached nobody can be looked up, and
+   * the answer is the conservative one: a stranger.
+   */
+  isContact(from: string): Promise<boolean>;
 }
 
 export function openSmsIntake(options: SmsIntakeOptions): SmsIntake {
@@ -314,6 +320,12 @@ export function openSmsIntake(options: SmsIntakeOptions): SmsIntake {
       });
       queue = result.catch(() => {});
       return result;
+    },
+    async isContact(from) {
+      const harness = options.harness();
+      if (harness === undefined) return false;
+      const contacts = await harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT);
+      return contacts?.contacts.some((candidate) => candidate.phone === from) ?? false;
     },
   };
 }
