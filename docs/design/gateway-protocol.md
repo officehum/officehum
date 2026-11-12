@@ -110,7 +110,10 @@ follows the result.
 
 Asks for the state of the office, or of one agent with `agent`. `data.agents` lists each agent as
 `list_agents` does, plus `status` (`busy` while any of its requests is unsettled, else `idle`) and
-`openRequests`.
+`openRequests`. In an office with a workboard each agent also has `tickets`: the unfinished tickets
+it holds (`relation` `assigned`) or opened (`opened`), newest first, each with `id`, `type`, `title`
+and `status`. A request that stays open is usually waiting on one of them, for example one that is
+`awaiting_confirmation`.
 
 ```json
 {"type":"get_state","id":"c4","agent":"front-desk"}
@@ -164,13 +167,25 @@ only approvals for agents the caller has an `approve` rule for.
 ```
 
 An approval has `approvalId`, `agent`, `tool`, `summary` (what is asked, in words), `status`
-(`pending`, `approved` or `declined`), `requestedAt` and `expiresAt` (ISO 8601). It also has `amount`
+(`pending`, `approved` or `declined`), `requestedAt` and, when it has a deadline, `expiresAt` (ISO
+8601). It also has `amount`
 when the role's approval declares one (`amount` in `officehum.json`, in cents, such as an invoice's
 line total), and once decided `decidedAt`, `by` (the approver's principal id; absent for a timeout or
 a stopped run) and `note`. An unanswered approval is declined at `expiresAt` with the note
 `timed out`; one whose run is aborted while it waits is declined with `the run was stopped`.
 Approval limits are in cents too, so an approval with no declared amount can be approved only by
 someone with no limit.
+
+**Ticket confirmations.** In an office with a workboard, a ticket whose type asks for a person
+waits until someone confirms it is done (see "Completion evidence" in `agent-package.md`). The
+runtime lists and announces each such request as an approval too: `tool` is `agent_reply`, `agent`
+is the agent whose ticket it is, `summary` names the ticket and the agent's result, and
+`approvalId` starts with `ticket-confirmation:`. `approve` answers it: `approve` completes the
+ticket, and `decline` returns it to the agent with the `note` as the reason. It differs from a
+gated call in two ways. It has no `expiresAt` and never times out, because nothing is running
+while it waits. And it has no `amount` and is not checked against an approval limit, because
+confirming a ticket spends nothing. An answer given at `officehum board` instead is announced to
+watchers the same way; a cancelled ticket's request is announced as `declined`.
 
 ### `ping`
 
@@ -321,7 +336,9 @@ logs go to stderr. `docs/superpowers/plans/2026-11-10-runtime-process.md` record
   protocol message.
 
   Status of what the board does not reach yet:
-  - The board's own approval gate and inbox are not used by the runtime (RASF-3569). A gated call
+  - A ticket waiting for a person's confirmation is announced and answered as an approval (see
+    `watch_approvals`). It also belongs to no principal's request.
+  - The board's own approval gate is not used by the runtime (RASF-3569). A gated call
     made while an agent works a ticket goes to the remote approvals store like any other: it is
     announced as an `approval` message and decided with `approve`. It belongs to no principal's
     request, so no request stream carries `approval_requested` for it; approvers hear of it

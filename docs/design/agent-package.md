@@ -786,8 +786,8 @@ What happens next:
 - **Every check passes, no person asked:** the ticket is `done`, and the `completed` event carries
   the evidence.
 - **Every check passes, a person is asked:** the ticket waits. The person answers in
-  `officehum board` (`y <ticket>`, or `n <ticket> <why>`), or through anything else that decides
-  the Inbox request. A yes completes the ticket, with their confirmation beside the other evidence.
+  `officehum board` (`y <ticket>`, or `n <ticket> <why>`), through the gateway as an approval
+  (`docs/design/gateway-protocol.md`), or through anything else that decides the Inbox request. A yes completes the ticket, with their confirmation beside the other evidence.
   A no returns it to the agent with their reason, and counts as a failed attempt.
 - **A check fails:** the reply is a tool error naming each failed check and what it found, an
   `evidence_failed` event is recorded, and the ticket stays with the agent.
@@ -800,8 +800,9 @@ What happens next:
 A ticket an agent dispatched with `wait: true` returns to it only once the ticket is `done`, so the
 asker waits for the person too.
 
-The runtime passes each role's engine to the checker. It has no file store yet, so `file` evidence
-cannot pass there.
+The runtime passes each role's engine to the checker, and the file store `officehum runtime` opens
+in `files/` beside the board. No catalog role has a tool that puts a file there yet, so in practice
+`file` evidence can pass only for a role that brings one.
 
 ## Validation
 

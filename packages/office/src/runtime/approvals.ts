@@ -51,6 +51,8 @@ export const TIMED_OUT = "timed out";
 export const RUN_STOPPED = "the run was stopped";
 
 type Stored = ApprovalInfo & {
+  /** A gated call always has a deadline; only a ticket confirmation (`./confirmations.ts`) has none. */
+  readonly expiresAt: string;
   /** The Pi Durable conversation the call belongs to, so its events reach the right stream. */
   readonly conversationId: string;
   readonly description: string;

@@ -294,7 +294,8 @@ export const ApprovalInfoSchema = Type.Object(
     summary: Type.String(),
     status: Type.Enum(["pending", "approved", "declined"]),
     requestedAt: Type.String(),
-    expiresAt: Type.String(),
+    /** When an unanswered approval is declined. Absent for one that waits until someone answers. */
+    expiresAt: Type.Optional(Type.String()),
     /** The number an approver's limit is checked against, when the approval declares one. */
     amount: Type.Optional(Type.Number()),
     /** Who decided: a principal id, absent for a timeout. */

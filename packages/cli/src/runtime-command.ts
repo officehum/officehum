@@ -11,7 +11,7 @@
  * through `io.error`; `io.output` is never used here.
  */
 
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { ModelRef } from "@earendil-works/pi-durable";
 import {
@@ -23,6 +23,7 @@ import {
   serveRuntime,
 } from "@officehum/office";
 import { openOfficeBoard } from "@officehum/office/board";
+import { localFileStore } from "@officehum/sdk";
 import type { CliDependencies, CliIo } from "./cli.js";
 import { modelsFor, parseModelRef } from "./run.js";
 import { UsageError } from "./usage-error.js";
@@ -138,7 +139,13 @@ export async function runRuntimeCommand(
       storage: { sqlite: parsed.database },
       ...(board === undefined || company === undefined
         ? {}
-        : { board, people: company.people, personRoutes: company.personRoutes }),
+        : {
+            board,
+            people: company.people,
+            personRoutes: company.personRoutes,
+            // Beside the board: where a ticket reply's attached files are looked up.
+            files: localFileStore(join(dirname(resolve(parsed.board ?? "")), "files")),
+          }),
       approvals,
       approvalTimeoutsMs: approvalTimeoutsMs(file, roles),
       models,
