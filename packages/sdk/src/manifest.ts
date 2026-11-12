@@ -136,7 +136,18 @@ const ParameterDeclaration = Type.Object(
 const ToolDeclaration = Type.Object(
   {
     name: SnakeName,
+    /**
+     * Pi Durable's replay policy and nothing more: `"safe"` means an interrupted call may be run
+     * again (it reads, or it is idempotent); `"unsafe"` means it must not be. It does not say
+     * whether the tool changes anything; `writes` does.
+     */
     replay: Type.Enum(["safe", "unsafe"]),
+    /**
+     * True for a tool that changes something and is still safe to run again, such as an idempotent
+     * booking. An unsafe tool always counts as writing and need not say so. A tool that writes
+     * states an approval decision, and is never a sub-agent's tool or completion evidence.
+     */
+    writes: Type.Optional(Type.Boolean()),
     skill: Type.Optional(KebabId),
     /** What the model reads about the tool. Required for engine tools, which have no code. */
     description: Type.Optional(Text(1000)),
@@ -146,9 +157,9 @@ const ToolDeclaration = Type.Object(
     /** Rules for using the tool, added to its description. */
     guidelines: Type.Optional(Type.Array(Text(300))),
     /**
-     * Why this unsafe tool needs no approval, e.g. "internal note; no outside effect". An unsafe
-     * tool states exactly one of the two: an approval in `approvals`, or this note. A safe tool
-     * states neither.
+     * Why this writing tool needs no approval, e.g. "internal note; no outside effect". A tool that
+     * writes (unsafe, or `writes: true`) states exactly one of the two: an approval in `approvals`,
+     * or this note. A tool that changes nothing states neither.
      */
     noApproval: Type.Optional(Text(300)),
   },
@@ -621,9 +632,20 @@ function crossFieldIssues(manifest: AgentManifest, source: string): Issue[] {
   return issues;
 }
 
+/** Whether a declared tool changes something: every unsafe tool, and a safe one that says so. */
+function writes(tool: AgentManifest["tools"][number]): boolean {
+  return tool.replay === "unsafe" || tool.writes === true;
+}
+
+/** How a message describes a writing tool: by its replay policy when that alone makes it one. */
+function writing(tool: AgentManifest["tools"][number]): string {
+  return tool.replay === "unsafe" ? "is unsafe" : "writes";
+}
+
 /**
- * The wisdom rule, for every role: an unsafe tool states exactly one approval decision — an approval
- * in `approvals`, or a `noApproval` note saying why it needs none — and a safe tool states neither.
+ * The wisdom rule, for every role: a tool that writes states exactly one approval decision — an
+ * approval in `approvals`, or a `noApproval` note saying why it needs none — and a tool that changes
+ * nothing states neither. A safe tool an approval names changes something, so it must say `writes`.
  */
 function decisionIssues(manifest: AgentManifest, add: (path: string, message: string) => void) {
   const approved = new Set(manifest.approvals.map((approval) => approval.tool));
@@ -631,32 +653,39 @@ function decisionIssues(manifest: AgentManifest, add: (path: string, message: st
     const at = `tools[${index}]`;
     const approval = approved.has(tool.name);
     const note = tool.noApproval !== undefined;
-    if (tool.replay === "unsafe" && approval && note) {
+    if (approval && !writes(tool)) {
       add(
         at,
-        `${show(tool.name)} is unsafe and states two approval decisions; keep an approval in approvals[], or noApproval, never both`,
+        `${show(tool.name)} is named by an approval, so it changes something; add "writes": true (replay "safe" only says an interrupted call may be run again)`,
       );
       return;
     }
-    if (tool.replay === "unsafe" && !approval && !note) {
+    if (writes(tool) && approval && note) {
       add(
         at,
-        `${show(tool.name)} is unsafe and states no approval decision; add an approval in approvals[], or a noApproval note saying why it needs none`,
+        `${show(tool.name)} ${writing(tool)} and states two approval decisions; keep an approval in approvals[], or noApproval, never both`,
       );
       return;
     }
-    if (tool.replay === "safe" && note) {
+    if (writes(tool) && !approval && !note) {
+      add(
+        at,
+        `${show(tool.name)} ${writing(tool)} and states no approval decision; add an approval in approvals[], or a noApproval note saying why it needs none`,
+      );
+      return;
+    }
+    if (!writes(tool) && note) {
       add(
         `${at}.noApproval`,
-        `${show(tool.name)} is safe, so noApproval does not apply; remove it (noApproval explains an unsafe tool that needs no approval)`,
+        `${show(tool.name)} is safe, so noApproval does not apply; remove it (noApproval explains a tool that writes but needs no approval)`,
       );
     }
   });
 }
 
 /**
- * A sub-agent's declared references must resolve: it runs only the role's declared **safe** tools,
- * and only the role's declared skills. Part of `validateManifest`; `checkAgent` applies it too.
+ * A sub-agent's declared references must resolve: it runs only the role's declared tools that are
+ * safe to re-run and change nothing, and only the role's declared skills. Part of `validateManifest`; `checkAgent` applies it too.
  */
 export function subagentIssues(
   manifest: AgentManifest,
@@ -678,6 +707,11 @@ export function subagentIssues(
           `${at}.tools[${toolIndex}]`,
           `${show(name)} is unsafe; a sub-agent runs only the role's safe tools, never one that changes something`,
         );
+      } else if (writes(tool)) {
+        add(
+          `${at}.tools[${toolIndex}]`,
+          `${show(name)} writes; a sub-agent runs only the role's tools that change nothing`,
+        );
       }
     });
     subagent.skills?.forEach((id, skillIndex) => {
@@ -693,7 +727,8 @@ const INTERPOLATION =
   /^\{ticket\.(?:id|data\.[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\}$/;
 
 /**
- * Completion evidence must name a tool of this role that is safe — the host runs it, never the model
+ * Completion evidence must name a tool of this role that is safe to re-run and changes nothing — the
+ * host runs it, never the model
  * — and interpolate only `{ticket.id}` and `{ticket.data.<path>}`.
  */
 function doneIssues(manifest: AgentManifest, add: (path: string, message: string) => void) {
@@ -712,6 +747,11 @@ function doneIssues(manifest: AgentManifest, add: (path: string, message: string
           add(
             `${at}.tool`,
             `${show(entry.tool)} is unsafe; completion evidence runs a declared safe tool in the host, never the model`,
+          );
+        else if (writes(tool))
+          add(
+            `${at}.tool`,
+            `${show(entry.tool)} writes; completion evidence runs a declared tool that changes nothing, in the host, never the model`,
           );
       }
       if (!("args" in entry) || entry.args === undefined) return;

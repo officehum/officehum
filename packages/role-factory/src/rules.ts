@@ -252,7 +252,7 @@ export function wisdomIssues(frontmatter: Mapping, source: string): Issue[] {
     } else if (replay === "safe" && note) {
       add(
         joinPath(at, "noApproval"),
-        `${show(name)} is safe, so noApproval does not apply; remove it (noApproval explains an unsafe tool that needs no approval)`,
+        `${show(name)} is safe, so noApproval does not apply; remove it (noApproval explains a tool that writes but needs no approval)`,
       );
     }
   });

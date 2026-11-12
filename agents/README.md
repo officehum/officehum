@@ -99,11 +99,14 @@ Rules, enforced by `@officehum/sdk` (`validatePackage`, `checkAgent`, `checkFour
 
 - Pi Durable and pi-ai are peer dependencies (`1.3.x`); no dependency on `@officehum/office` or `@officehum/cli`.
 - Every tool states `replay` explicitly and matches the manifest.
-- Every **unsafe** tool states exactly one approval decision: an approval in `approvals`, or a
+- `replay` is Pi Durable's replay policy only: `"safe"` means an interrupted call may be run again,
+  not that the tool changes nothing. A tool that changes something and is safe to re-run states
+  `"writes": true`; an unsafe tool always counts as writing.
+- Every tool that **writes** states exactly one approval decision: an approval in `approvals`, or a
   `noApproval` note (at most 300 characters) saying why it needs none. Never both, never neither; a
-  safe tool states neither. The rule holds whichever way the role was written.
+  tool that changes nothing states neither. The rule holds whichever way the role was written.
 - Every accepted ticket type declares `done` completion evidence, which the **host** runs, never the
-  model: an engine check that returns findings, a declared **safe** tool whose result reports
+  model: an engine check that returns findings, a declared tool that is safe to re-run and does not write, whose result reports
   `found`, a file the result attaches, or `{ "person": true }`. All entries must pass.
   `{ticket.id}` and `{ticket.data.<path>}` are the only interpolation.
 - Gated actions are blocked unless the host supplies an approver.
