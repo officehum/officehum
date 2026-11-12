@@ -110,6 +110,15 @@ export interface VersionedFileStore extends FileStore {
   info(id: string): Promise<VersionedFileRef | undefined>;
   create(input: CreateVersionInput): Promise<VersionCommitReceipt>;
   putVersion(input: PutVersionInput): Promise<VersionCommitReceipt>;
+  /**
+   * Commits several new files and new versions together: every one lands, or none does. Each input
+   * keeps its own operation ID and receipt, so a replay of the same inputs returns the same receipts
+   * and writes nothing. One edit whose source is no longer the head refuses the whole commit with
+   * `VERSION_CONFLICT`.
+   */
+  commitVersions(
+    inputs: readonly (CreateVersionInput | PutVersionInput)[],
+  ): Promise<VersionCommitReceipt[]>;
   getVersion(
     fileId: string,
     versionId: string,

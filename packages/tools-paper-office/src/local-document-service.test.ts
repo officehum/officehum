@@ -466,7 +466,7 @@ describe("the durable document run", () => {
     expect(worker.calls).toHaveLength(1);
   });
 
-  it("a crash between two outputs is finished by the replay, even after the lease expired", async () => {
+  it("a crash while committing two outputs leaves neither, and the replay commits both, even after the lease expired", async () => {
     const { store, ref } = await seeded(docxPackage(), "brief.docx", "docx");
     const worker = fakeWorker([
       declaredOutput("figures.xlsx", "xlsx", docxPackage()),
@@ -479,16 +479,19 @@ describe("the durable document run", () => {
       code: "documents.result(12)",
       arguments: {},
     };
-    // The host dies after the first output landed and before the second was written.
+    // The host dies as the outputs are committed: they land together or not at all, so none has.
     const dying: VersionedFileStore = {
       ...store,
-      async putVersion() {
-        throw new DocumentError("incomplete-run", "the host died between two outputs");
+      async commitVersions() {
+        throw new DocumentError("incomplete-run", "the host died committing the outputs");
       },
     };
     const first = refused(await service(dying, worker).runDocumentPython(request));
     expect(first.code).toBe("incomplete-run");
     expect((await store.getHead(ref.id))?.versionId).toBe(ref.versionId);
+    expect(
+      await store.lookupOperation(outputOperationId("conv:12b", "figures.xlsx", "xlsx")),
+    ).toBeUndefined();
 
     const receipt = committed(
       await service(store, worker, "2026-10-25T00:00:00.000Z").runDocumentPython(request),
@@ -530,6 +533,56 @@ describe("the durable document run", () => {
     // The new file that came before the conflicting edit was not created either.
     expect(
       await store.lookupOperation(outputOperationId("conv:12d", "figures.xlsx", "xlsx")),
+    ).toBeUndefined();
+  });
+
+  it("commits no output at all when another edit lands after the checks and before the write", async () => {
+    const { store, ref } = await seeded(docxPackage(), "brief.docx", "docx");
+    // Someone else's edit of the leased file lands right after this run saw it was still the head.
+    let raced = false;
+    const racing: VersionedFileStore = {
+      ...store,
+      async getHead(fileId) {
+        const head = await store.getHead(fileId);
+        if (!raced && fileId === ref.id) {
+          raced = true;
+          await store.putVersion({
+            operationId: "someone-else",
+            fileId: ref.id,
+            sourceVersionId: ref.versionId,
+            bytes: docxPackage(),
+            name: ref.name,
+            mimeType: ref.mimeType,
+            metadata: { createdBy: "host", source: "uploaded" },
+            context: {
+              taskId: "task:other",
+              policyVersion: POLICY_VERSION,
+              worker: { image: "other", libraries: {} },
+              argumentsSha256: "b".repeat(64),
+            },
+          });
+        }
+        return head;
+      },
+    };
+    const worker = fakeWorker([
+      declaredOutput("figures.xlsx", "xlsx", docxPackage()),
+      declaredOutput("b.docx", "docx", docxLike({ targets: ["settings.xml"] }), ref.versionId),
+    ]);
+    const outcome = refused(
+      await service(racing, worker).runDocumentPython({
+        operationId: "conv:12e",
+        taskId: "task:1",
+        lease: leaseFor(ref),
+        code: "documents.result('b')",
+        arguments: {},
+      }),
+    );
+    expect(raced).toBe(true);
+    expect(outcome.code).toBe("version-conflict");
+    // The new file listed before the conflicting edit was not created: nothing is half-committed.
+    expect(
+      await store.lookupOperation(outputOperationId("conv:12e", "figures.xlsx", "xlsx")),
     ).toBeUndefined();
   });
 
@@ -704,12 +757,8 @@ function crashAfterCommit(store: VersionedFileStore): VersionedFileStore {
   };
   return {
     ...store,
-    async create(input) {
-      await store.create(input);
-      return die();
-    },
-    async putVersion(input) {
-      await store.putVersion(input);
+    async commitVersions(inputs) {
+      await store.commitVersions(inputs);
       return die();
     },
   };

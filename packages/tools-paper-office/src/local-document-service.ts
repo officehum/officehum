@@ -13,23 +13,24 @@
  * 4. Inspect every declared output, keep its staged bytes, and write the plan (so a crash after the
  *    worker but before the commit can be resumed without a second execution).
  * 5. Check every output (staged bytes intact, operation unused, edited source still the head), and
- *    only then commit each as a new immutable FileStore version under a derived operation ID, write
- *    the receipt and drop the staged bytes. A crash between two outputs leaves the plan, and the
- *    replay finishes it, also after the lease has expired.
+ *    only then commit them together, each as a new immutable FileStore version under a derived
+ *    operation ID, write the receipt and drop the staged bytes. A crash before the receipt leaves
+ *    the plan, and the replay finishes it, also after the lease has expired.
  *
  * A refusal or a timeout returns before step 4 and writes nothing, so sources are untouched. Two
  * concurrent edits of one file are settled by the FileStore's head compare-and-swap: the loser gets
- * `version-conflict`, never a silent overwrite. The FileStore commits one file at a time, so an edit
- * that lands between the check and the write of a later output can still leave earlier outputs
- * committed; closing that needs a multi-file commit in the store.
+ * `version-conflict`, never a silent overwrite. A run's outputs go to the FileStore as one commit, so
+ * a run with several outputs lands all of them or none.
  */
 
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import {
+  type CreateVersionInput,
   type FileMetadata,
   type FileOperationReceipt,
   FileStoreError,
+  type PutVersionInput,
   type VersionContext,
   type VersionedFileRef,
   type VersionedFileStore,
@@ -271,15 +272,21 @@ export function localDocumentService(options: LocalDocumentServiceOptions): Docu
   }
 
   async function commit(plan: RunPlan, lease: DocumentLease): Promise<DocumentRunOutcome> {
-    // All or nothing: every output is checked before the first one is written, so a missing staged
-    // file, a reused operation or an edit whose source is no longer the head refuses the whole run
-    // with nothing committed. A crash part-way through the writes leaves the plan, and the replay
-    // finishes the outputs that are missing.
+    // All or nothing. Every output is checked first, so a missing staged file, a reused operation or
+    // an edit whose source is no longer the head refuses the run with a message that says which.
+    // The outputs still to write then go to the FileStore as one commit: an edit that lands after
+    // the check refuses all of them, and a crash leaves none, so the replay commits them all.
     const pending = await prepare(plan, lease);
-    const commits: FileOperationReceipt[] = [];
-    for (const item of pending) {
-      commits.push("kind" in item ? item : await write(item.output, plan, lease, item.bytes));
-    }
+    const staged = pending.filter((item): item is StagedOutput => !("kind" in item));
+    const written =
+      staged.length === 0
+        ? []
+        : await options.store.commitVersions(
+            staged.map((item) => versionInput(item.output, plan, lease, item.bytes)),
+          );
+    const commits = pending.map((item) =>
+      "kind" in item ? item : (written[staged.indexOf(item)] as FileOperationReceipt),
+    );
     const receipt = receiptOf(plan, lease, commits);
     await options.ledger.write(receipt);
     // The receipt is durable; the staged bytes are only a resume aid, so failing to drop them must
@@ -365,12 +372,12 @@ export function localDocumentService(options: LocalDocumentServiceOptions): Docu
     return bytes;
   }
 
-  async function write(
+  function versionInput(
     output: PlannedOutput,
     plan: RunPlan,
     lease: DocumentLease,
     bytes: Uint8Array,
-  ): Promise<FileOperationReceipt> {
+  ): CreateVersionInput | PutVersionInput {
     const metadata = metadataFor(plan, lease, output);
     const context: VersionContext = {
       taskId: plan.taskId,
@@ -386,16 +393,12 @@ export function localDocumentService(options: LocalDocumentServiceOptions): Docu
       metadata,
       context,
     };
-    if (output.editOf === null) return options.store.create({ ...common });
+    if (output.editOf === null) return common;
     const source = findLeasedInput(lease, output.editOf);
     if (source === undefined) {
       throw refusal("ungranted-input", "an output proposes an edit of a version outside the lease");
     }
-    return options.store.putVersion({
-      ...common,
-      fileId: source.fileId,
-      sourceVersionId: source.versionId,
-    });
+    return { ...common, fileId: source.fileId, sourceVersionId: source.versionId };
   }
 
   function metadataFor(plan: RunPlan, lease: DocumentLease, output: PlannedOutput): FileMetadata {

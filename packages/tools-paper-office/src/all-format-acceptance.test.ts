@@ -172,12 +172,8 @@ function crashAfterCommit(store: VersionedFileStore): VersionedFileStore {
   };
   return {
     ...store,
-    async create(input) {
-      await store.create(input);
-      return die();
-    },
-    async putVersion(input) {
-      await store.putVersion(input);
+    async commitVersions(inputs) {
+      await store.commitVersions(inputs);
       return die();
     },
   };

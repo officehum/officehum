@@ -331,11 +331,10 @@ versions. Then:
   editing twice.
 - A run with **several outputs commits all of them or none**. Every output is checked first (its
   staged bytes intact, its operation unused, an edited source still the head, no two outputs editing
-  one file), and only then is the first one written, so a `version-conflict` on the last output leaves
-  nothing committed. A crash between two outputs leaves the plan in the ledger and the replay finishes
-  the rest, also after the lease has expired. One window remains: the FileStore commits one file at a
-  time, so an edit by someone else that lands between the check and the write of a later output can
-  leave the earlier ones committed with no receipt. Closing it needs a multi-file commit in the store.
+  one file), and the outputs then go to the FileStore as one commit (`commitVersions`), so a
+  `version-conflict` on any output, including from an edit by someone else that lands after the
+  check, leaves nothing committed. A crash before the receipt leaves the plan in the ledger and the
+  replay finishes it, also after the lease has expired.
 - Outputs are **immortal**: a new call produces a new immutable version. Editing a leased file
   proposes a new version; two concurrent edits are settled by the FileStore's head compare-and-swap
   (`version-conflict`), never a silent overwrite.
