@@ -482,7 +482,8 @@ export function limitName(value: ConditionDeclaration["value"]): string | undefi
 
 /**
  * Validates parsed `officehum.json` content: the schema, then the rules that span fields (no
- * duplicates, no reserved tool names, approvals and skills that refer to what the manifest declares).
+ * duplicates, no reserved tool names, approvals, skills and sub-agents that refer to what the
+ * manifest declares).
  */
 export function validateManifest(
   value: unknown,
@@ -615,6 +616,7 @@ function crossFieldIssues(manifest: AgentManifest, source: string): Issue[] {
   });
 
   doneIssues(manifest, add);
+  subagentIssues(manifest, add);
   engineIssues(manifest, add);
   return issues;
 }
@@ -649,6 +651,40 @@ function decisionIssues(manifest: AgentManifest, add: (path: string, message: st
         `${show(tool.name)} is safe, so noApproval does not apply; remove it (noApproval explains an unsafe tool that needs no approval)`,
       );
     }
+  });
+}
+
+/**
+ * A sub-agent's declared references must resolve: it runs only the role's declared **safe** tools,
+ * and only the role's declared skills. Part of `validateManifest`; `checkAgent` applies it too.
+ */
+export function subagentIssues(
+  manifest: AgentManifest,
+  add: (path: string, message: string) => void,
+): void {
+  const tools = new Map(manifest.tools.map((tool) => [tool.name, tool]));
+  const skills = new Set(manifest.skills.map((skill) => skill.id));
+  (manifest.contextPlan?.subagents ?? []).forEach((subagent, index) => {
+    const at = `contextPlan.subagents[${index}]`;
+    subagent.tools.forEach((name, toolIndex) => {
+      const tool = tools.get(name);
+      if (tool === undefined) {
+        add(
+          `${at}.tools[${toolIndex}]`,
+          `${show(name)} is not a declared tool; a sub-agent runs only the role's declared safe tools`,
+        );
+      } else if (tool.replay !== "safe") {
+        add(
+          `${at}.tools[${toolIndex}]`,
+          `${show(name)} is unsafe; a sub-agent runs only the role's safe tools, never one that changes something`,
+        );
+      }
+    });
+    subagent.skills?.forEach((id, skillIndex) => {
+      if (!skills.has(id)) {
+        add(`${at}.skills[${skillIndex}]`, `${show(id)} is not a declared skill`);
+      }
+    });
   });
 }
 
@@ -750,6 +786,23 @@ function engineIssues(manifest: AgentManifest, add: (path: string, message: stri
   const declaredLimits = new Set(Object.keys(manifest.limits ?? {}));
   manifest.approvals.forEach((approval, index) => {
     const parameters = toolsByName.get(approval.tool)?.parameters;
+    // The amount is read from the call's arguments as a condition's left-hand side is, so the same
+    // two rules hold: a declared parameter list must have the argument, and `times` needs `field`.
+    if (approval.amount !== undefined) {
+      const at = `approvals[${index}].amount`;
+      if (parameters !== undefined && !(approval.amount.arg in parameters)) {
+        add(
+          `${at}.arg`,
+          `${show(approval.amount.arg)} is not a parameter of ${show(approval.tool)}`,
+        );
+      }
+      if (approval.amount.field === undefined && approval.amount.times !== undefined) {
+        add(
+          `${at}.times`,
+          'needs "field": it multiplies the summed field, so on its own it has nothing to multiply',
+        );
+      }
+    }
     approval.when?.forEach((condition, conditionIndex) => {
       const at = `approvals[${index}].when[${conditionIndex}]`;
       if (parameters !== undefined && !(condition.arg in parameters)) {

@@ -2,7 +2,8 @@
  * Helpers every role package shares for reading the company record generated into it.
  *
  * Each role keeps its own `COMPANY_FACTS_URL` (the path is relative to that package) and its own
- * `CompanyFacts` type; only the loading, the person lookup and the label format are common.
+ * `CompanyFacts` type, picked from `CompanyRecord` (`./company-record.ts`); the loading, the lookups
+ * by id, topic and department, the label format and the money format are common.
  */
 
 import { readFileSync } from "node:fs";
@@ -128,6 +129,54 @@ export function companyHead<P extends CompanyPerson>(company: {
     company.people.find((candidate) => HEAD_TITLE.test(candidate.title)) ??
     company.people.find((candidate) => DIRECTOR_TITLE.test(candidate.title))
   );
+}
+
+/** One person by id, or `undefined` when nobody on the record has that id. */
+export function personById<P extends { readonly id: string }>(
+  company: { readonly people: readonly P[] },
+  id: string,
+): P | undefined {
+  return company.people.find((candidate) => candidate.id === id);
+}
+
+/** The escalation rule for a topic, or `undefined` when the company has not named one. */
+export function escalationRule<R extends { readonly topic: string }>(
+  company: { readonly escalation: readonly R[] },
+  topic: string,
+): R | undefined {
+  return company.escalation.find((rule) => rule.topic === topic);
+}
+
+/**
+ * The person an escalation topic goes to: `undefined` when the record has no such topic, or names
+ * someone who is not on it.
+ */
+export function escalationOwner<P extends { readonly id: string }>(
+  company: {
+    readonly people: readonly P[];
+    readonly escalation: readonly { readonly topic: string; readonly toPersonId: string }[];
+  },
+  topic: string,
+): P | undefined {
+  const rule = escalationRule(company, topic);
+  return rule === undefined ? undefined : personById(company, rule.toPersonId);
+}
+
+/**
+ * The person who decides purchasing: whoever the record puts in the `purchasing` department, so a
+ * retitled job still finds them and the name comes from the company.
+ */
+export function purchasingLead<P extends { readonly department: string }>(company: {
+  readonly people: readonly P[];
+}): P | undefined {
+  return company.people.find((candidate) => candidate.department === "purchasing");
+}
+
+const CURRENCY = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+/** Integer cents as the money a person reads, never a recomputed amount. */
+export function money(cents: number): string {
+  return CURRENCY.format(cents / 100);
 }
 
 /** "Name, Title", or the fallback when the company names nobody. */

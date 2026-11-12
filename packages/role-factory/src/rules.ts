@@ -307,6 +307,9 @@ export function workflowIssues(frontmatter: Mapping, source: string): Issue[] {
   return issues;
 }
 
+/** A limit's name, as `validateManifest` holds it: a record's keys are not in the manifest schema. */
+const SNAKE_NAME = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
+
 /**
  * Declarations: every name and reference inside the spec, held to what the merged manifest must
  * satisfy. `validateManifest` reports these too, but it stops at the first problem it finds, and a
@@ -376,7 +379,8 @@ export function declarationIssues(frontmatter: Mapping, source: string): Issue[]
   );
   duplicate(
     list(role?.channels),
-    (channel) => text(channel),
+    // A channel is its name, or a declaration that carries the name.
+    (channel) => text(channel) ?? text(mapping(channel)?.channel),
     "role.channels",
     "channel",
     undefined,
@@ -405,6 +409,15 @@ export function declarationIssues(frontmatter: Mapping, source: string): Issue[]
   });
 
   const declaredLimits = new Set(Object.keys(mapping(role?.limits) ?? {}));
+  for (const name of declaredLimits) {
+    if (!SNAKE_NAME.test(name)) {
+      add(
+        "wisdom",
+        joinPath("role.limits", name),
+        'must be named in snake_case, like "large_invoice"',
+      );
+    }
+  }
   approvals.forEach((approval, index) => {
     const at = joinPath("wisdom.approvals", index);
     const tool = text(approval.tool);

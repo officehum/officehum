@@ -325,17 +325,14 @@ export function localBoardExtension(options: LocalBoardOptions): Extension {
         if (ticket.status === "done") {
           return refusalText("reply", "invalid_status", `Ticket ${ticket.id} is already done.`);
         }
-        // A ticket just delivered is open and unheld: taking it is the claim before completing it.
-        // One held by anyone else is left alone, and refused below.
-        const held =
-          ticket.status === "open" && (ticket.assignee === null || ticket.assignee === role)
-            ? role
-            : ticket.assignee;
-        if (held !== role) {
+        // A ticket nobody has taken belongs to the role it is routed to: that role's reply is the
+        // claim before completing it. Anyone else, the dispatcher included, is refused.
+        const holder = ticket.assignee ?? ticket.target;
+        if (holder !== role) {
           return refusalText(
             "reply",
             "unauthorized",
-            `Ticket ${ticket.id} is assigned to ${held ?? "nobody"}; only the assignee can complete it.`,
+            `Ticket ${ticket.id} is assigned to ${holder}; only the assignee can complete it.`,
           );
         }
         board.tickets[ticket.id] = {

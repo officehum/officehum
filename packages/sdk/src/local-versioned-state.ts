@@ -25,6 +25,15 @@ export interface VersionedState {
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 const EMPTY_STATE = (): VersionedState => ({ schema: 1, files: {}, versions: {}, operations: {} });
 
+/**
+ * The last manifest validated at each path, with the hash of its bytes. A manifest whose bytes
+ * are unchanged is not parsed and validated again; one changed in any way, by anyone, is. Readers
+ * get a copy, so nothing they do to it reaches the next reader.
+ */
+const validated = new Map<string, { sha256: string; state: VersionedState }>();
+
+const sha256 = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex");
+
 export async function readState(root: string): Promise<VersionedState> {
   const manifestPath = join(root, "manifest.json");
   let rootStat: Stats;
@@ -47,19 +56,25 @@ export async function readState(root: string): Promise<VersionedState> {
     throw integrity("Invalid manifest entry");
 
   const handle = await open(manifestPath, constants.O_RDONLY | NOFOLLOW);
-  let parsed: unknown;
+  let contents: string;
   try {
     if (!(await handle.stat()).isFile()) throw integrity("Invalid manifest entry");
-    const contents = await handle.readFile("utf8");
-    try {
-      parsed = JSON.parse(contents) as unknown;
-    } catch {
-      throw integrity("Corrupt manifest JSON");
-    }
+    contents = await handle.readFile("utf8");
   } finally {
     await handle.close();
   }
-  return validateState(parsed);
+  const hash = sha256(contents);
+  const known = validated.get(manifestPath);
+  if (known?.sha256 === hash) return structuredClone(known.state);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(contents) as unknown;
+  } catch {
+    throw integrity("Corrupt manifest JSON");
+  }
+  const state = validateState(parsed);
+  validated.set(manifestPath, { sha256: hash, state: structuredClone(state) });
+  return state;
 }
 
 export async function mutateState<T>(
@@ -104,16 +119,21 @@ export async function mutateState<T>(
     const result = await change(state);
     const checked = validateState(state);
     const detachedResult = structuredClone(result);
+    const contents = JSON.stringify(checked);
     tempPath = join(root, `.manifest-${randomBytes(16).toString("hex")}.json`);
     const handle = await open(tempPath, "wx", 0o600);
     try {
-      await handle.writeFile(JSON.stringify(checked), "utf8");
+      await handle.writeFile(contents, "utf8");
       await handle.sync();
     } finally {
       await handle.close();
     }
-    await rename(tempPath, join(root, "manifest.json"));
+    const manifestPath = join(root, "manifest.json");
+    await rename(tempPath, manifestPath);
     tempPath = undefined;
+    // What was just validated and written is what the next read finds, so it need not check it
+    // again. Kept as its own copy: `checked` shares objects with the caller's `state`.
+    validated.set(manifestPath, { sha256: sha256(contents), state: structuredClone(checked) });
     return detachedResult;
   } finally {
     if (tempPath)
@@ -223,6 +243,10 @@ function validateState(value: unknown): VersionedState {
       if (!initial || initial.sourceVersionId !== null)
         throw new Error("Initial version has a source");
     }
+    // Versions whose chain of sources is known to end, so each link is walked once however long
+    // the chain. Every version checks its own source is in the same file, which keeps a whole
+    // chain in one file.
+    const ended = new Set<string>();
     for (const [versionId, ref] of Object.entries(versions)) {
       if (!Object.hasOwn(files, ref.id)) throw new Error("Version has no file state");
       const sourceId = ref.sourceVersionId;
@@ -230,17 +254,16 @@ function validateState(value: unknown): VersionedState {
         const source = own(versions, sourceId);
         if (!source || source.id !== ref.id || source.versionId === versionId)
           throw new Error("Invalid source version chain");
-        const visited = new Set([versionId]);
-        let ancestor: VersionedFileRef | undefined = source;
-        while (ancestor) {
-          if (visited.has(ancestor.versionId)) throw new Error("Cyclic source version chain");
-          visited.add(ancestor.versionId);
-          ancestor =
-            ancestor.sourceVersionId === null ? undefined : own(versions, ancestor.sourceVersionId);
-          if (ancestor && ancestor.id !== ref.id)
-            throw new Error("Cross-file source version chain");
-        }
       }
+      const walked = new Set<string>();
+      let ancestor: VersionedFileRef | undefined = ref;
+      while (ancestor && !ended.has(ancestor.versionId)) {
+        if (walked.has(ancestor.versionId)) throw new Error("Cyclic source version chain");
+        walked.add(ancestor.versionId);
+        ancestor =
+          ancestor.sourceVersionId === null ? undefined : own(versions, ancestor.sourceVersionId);
+      }
+      for (const id of walked) ended.add(id);
       if (ref.operationId !== null) {
         const receipt = own(operations, operationDigest(ref.operationId));
         if (

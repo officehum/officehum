@@ -6,7 +6,12 @@
 import type { AgentChange, Extension } from "@earendil-works/pi-durable";
 import { isApprovalGate } from "./approvals.js";
 import { type Issue, show, type Validation } from "./issues.js";
-import { type AgentManifest, DEFAULT_PROMPT_BUDGET_TOKENS, SDK_TOOL_NAMES } from "./manifest.js";
+import {
+  type AgentManifest,
+  DEFAULT_PROMPT_BUDGET_TOKENS,
+  SDK_TOOL_NAMES,
+  subagentIssues,
+} from "./manifest.js";
 
 /** Pi Durable renders the agent's `instructions` under this section key; roles may not use it. */
 export const INSTRUCTIONS_SECTION_KEY = "instructions";
@@ -158,6 +163,7 @@ export async function checkAgent(
   }
 
   checkAgentSettings(bundle.agent, manifest, toolSkills, add);
+  // `validateManifest` applies the same rules; a manifest built in code reaches only this check.
   subagentIssues(manifest, add);
   await promptBudgetIssues(bundle, manifest, options.strict ?? false, issues);
 
@@ -211,40 +217,6 @@ function checkAgentSettings(
       );
     }
   }
-}
-
-/**
- * A sub-agent's declared references must resolve: it runs only the role's declared **safe** tools,
- * and only the role's declared skills.
- */
-function subagentIssues(
-  manifest: AgentManifest,
-  add: (path: string, message: string) => void,
-): void {
-  const tools = new Map(manifest.tools.map((tool) => [tool.name, tool]));
-  const skills = new Set(manifest.skills.map((skill) => skill.id));
-  (manifest.contextPlan?.subagents ?? []).forEach((subagent, index) => {
-    const at = `contextPlan.subagents[${index}]`;
-    subagent.tools.forEach((name, toolIndex) => {
-      const tool = tools.get(name);
-      if (tool === undefined) {
-        add(
-          `${at}.tools[${toolIndex}]`,
-          `${show(name)} is not a declared tool; a sub-agent runs only the role's declared safe tools`,
-        );
-      } else if (tool.replay !== "safe") {
-        add(
-          `${at}.tools[${toolIndex}]`,
-          `${show(name)} is unsafe; a sub-agent runs only the role's safe tools, never one that changes something`,
-        );
-      }
-    });
-    subagent.skills?.forEach((id, skillIndex) => {
-      if (!skills.has(id)) {
-        add(`${at}.skills[${skillIndex}]`, `${show(id)} is not a declared skill`);
-      }
-    });
-  });
 }
 
 /**

@@ -335,6 +335,45 @@ describe("the local board", () => {
     }
   });
 
+  it("refuses the dispatcher completing its own dispatch; only the role it is routed to may", async () => {
+    // The colleague's turn ends without a reply, so the ticket is still open and unheld.
+    const office = await openOffice("memory", () => ({ text: "I looked at it." }));
+    try {
+      await call(office, office.front, "agent_dispatch", {
+        type: TYPE,
+        title: "Invoice job 42",
+        detail: REQUEST,
+        wait: true,
+      });
+      const [id = ""] = Object.keys((await board(office)).tickets);
+      const own = await call(office, office.front, "agent_reply", {
+        ticketId: id,
+        result: "Done it myself.",
+      });
+      expect(own.isError).toBe(true);
+      expect(callText(own)).toContain("The board refused the reply (unauthorized)");
+      expect(callText(own)).toContain(BOOK);
+      expect((await board(office)).tickets[id]).toMatchObject({
+        status: "open",
+        assignee: null,
+        result: null,
+      });
+
+      const reply = await call(office, office.book, "agent_reply", {
+        ticketId: id,
+        result: DELEGATE_RESULT,
+      });
+      expect(reply.isError).toBeUndefined();
+      expect((await board(office)).tickets[id]).toMatchObject({
+        status: "done",
+        assignee: BOOK,
+        result: DELEGATE_RESULT,
+      });
+    } finally {
+      await office.close();
+    }
+  });
+
   it("queues a dispatch it cannot deliver yet, and lists it in the assignee's inbox", async () => {
     const office = await openOffice("memory");
     try {

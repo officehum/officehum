@@ -1,7 +1,8 @@
 import type { PromptSection } from "@earendil-works/pi-durable";
 import { describe, expect, it } from "vitest";
 import sampleDesk from "../fixtures/sample-desk/src/index.js";
-import { isoDate, todaySection, todayText } from "./today.js";
+import { isoDate } from "./dates.js";
+import { todaySection, todayText } from "./today.js";
 
 const calendar = { freeSlots: async () => [], book: async () => ({ id: "A1" }) };
 
@@ -30,6 +31,27 @@ describe("today", () => {
     expect(section.key).toBe("today");
     const text = await section.render({} as never, {} as never);
     expect(text).toMatch(/^Today is 2026-11-30 \(Monday\)\.\nTue 2026-12-01, /);
+  });
+
+  it("names the day in the time zone it is given: the company's evening is not tomorrow", async () => {
+    // 17:30 on Wednesday 11 November in Portland, which is already Thursday in UTC.
+    const evening = new Date("2026-11-12T01:30:00.000Z");
+    expect(todayText(evening).split("\n")[0]).toBe("Today is 2026-11-12 (Thursday).");
+    const lines = todayText(evening, "America/Los_Angeles").split("\n");
+    expect(lines[0]).toBe("Today is 2026-11-11 (Wednesday).");
+    expect(lines[1]).toMatch(/^Thu 2026-11-12, Fri 2026-11-13, .*, Wed 2026-11-25$/);
+    const section = todaySection(() => evening, "America/Los_Angeles");
+    expect(await section.render({} as never, {} as never)).toMatch(/^Today is 2026-11-11 /);
+  });
+
+  it("defineRole renders today in the time zone it is given", async () => {
+    const role = sampleDesk({
+      calendar,
+      now: () => new Date("2026-11-12T01:30:00.000Z"),
+      timeZone: "America/Los_Angeles",
+    });
+    const sections = await renderKeys(role.extensions[0]?.sections);
+    expect(sections.today).toMatch(/^Today is 2026-11-11 \(Wednesday\)\./);
   });
 
   it("renders from the clock at every request, not once", async () => {

@@ -11,15 +11,13 @@
 
 import {
   type AgentManifest,
-  CHANNELS,
-  DEPARTMENTS,
   type FourLayer,
   type Issue,
   MANIFEST_SCHEMA_VERSION,
+  ManifestSchema,
   OverlaySettingsSchema,
   ScenarioSchema,
   schemaIssues,
-  THINKING_LEVELS,
   type Validation,
 } from "@officehum/sdk";
 import { type Static, Type } from "typebox";
@@ -48,177 +46,17 @@ export const ROLE_SPEC_SCHEMA_VERSION = 1;
 export const EVALS_DIR = "evals";
 
 const Text = (maxLength: number) => Type.String({ minLength: 1, maxLength });
-const KebabId = Type.String({
-  pattern: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
-  maxLength: 64,
-  "x-hint": 'kebab-case, like "note-keeper"',
-});
-const SnakeName = Type.String({
-  pattern: "^[a-z][a-z0-9]*(_[a-z0-9]+)*$",
-  maxLength: 64,
-  "x-hint": 'snake_case, like "search_notes"',
-});
-const TicketType = Type.String({
-  pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
-  maxLength: 64,
-  "x-hint": 'a dotted ticket type, like "note.add"',
-});
-
-/** Words passed to the role's engine, e.g. `["variance", "--summary"]`. */
-const EngineArgs = Type.Array(Type.String({ minLength: 1 }), { minItems: 1 });
-
-/** One parameter of an engine tool; it reaches the engine as `--name value`. */
-const ParameterDeclaration = Type.Object(
-  {
-    type: Type.Enum(["string", "number", "integer", "boolean"]),
-    description: Text(300),
-    required: Type.Optional(Type.Boolean()),
-    enum: Type.Optional(Type.Array(Type.Union([Type.String(), Type.Number()]), { minItems: 1 })),
-  },
-  { additionalProperties: false },
-);
-
-/** A tool the role registers: a code tool, or an engine tool built from its declaration. */
-const ToolDeclaration = Type.Object(
-  {
-    name: SnakeName,
-    replay: Type.Enum(["safe", "unsafe"]),
-    skill: Type.Optional(KebabId),
-    /** What the model reads about the tool. Required for engine tools, which have no code. */
-    description: Type.Optional(Text(1000)),
-    engine: Type.Optional(EngineArgs),
-    parameters: Type.Optional(Type.Record(Type.String(), ParameterDeclaration)),
-    guidelines: Type.Optional(Type.Array(Text(300))),
-    /** Why this unsafe tool needs no approval, e.g. "internal note; no outside effect". */
-    noApproval: Type.Optional(Text(300)),
-  },
-  { additionalProperties: false },
-);
-
-/** A program the host must provide, e.g. `{ "name": "python3", "version": ">=3.10" }`. */
-const RuntimeDeclaration = Type.Object(
-  {
-    name: Type.String({
-      pattern: "^[a-z][a-z0-9._+-]*$",
-      maxLength: 64,
-      "x-hint": 'a program name, like "python3"',
-    }),
-    version: Type.String({ minLength: 1, maxLength: 64 }),
-  },
-  { additionalProperties: false },
-);
-
-/** The role's deterministic engine: a command run from the package root. */
-const EngineDeclaration = Type.Object(
-  { command: EngineArgs, description: Type.Optional(Text(300)) },
-  { additionalProperties: false },
-);
-
-const ModelDeclaration = Type.Object(
-  {
-    provider: Text(64),
-    modelId: Text(128),
-    thinkingLevel: Type.Optional(Type.Enum([...THINKING_LEVELS])),
-  },
-  { additionalProperties: false },
-);
 
 /**
- * A number the business sets: the role declares the limit with a description and a default; the
- * business's value for it goes in `business.settings`.
+ * The fields the spec shares with `officehum.json` are the SDK's own schemas, taken from the manifest
+ * schema field by field: a spec accepts exactly what the manifest does, and cannot drift from it.
  */
-const LimitDeclaration = Type.Object(
-  { description: Text(300), default: Type.Number() },
-  { additionalProperties: false },
-);
-
-/** A condition's value that names a limit, e.g. `{ "limit": "long_note" }`, instead of a number. */
-const LimitReference = Type.Object({ limit: SnakeName }, { additionalProperties: false });
-
-/** A condition on a tool call's arguments, e.g. `{ "arg": "amount", "op": "gt", "value": 2500 }`. */
-const ConditionDeclaration = Type.Object(
-  {
-    arg: Type.String({ minLength: 1 }),
-    // `present` and `absent` take no value: they say what an absent argument means.
-    op: Type.Enum(["gt", "gte", "lt", "lte", "eq", "ne", "in", "present", "absent"]),
-    value: Type.Optional(
-      Type.Union([
-        Type.Number(),
-        Type.String(),
-        Type.Boolean(),
-        Type.Array(Type.Union([Type.Number(), Type.String()])),
-        LimitReference,
-      ]),
-    ),
-  },
-  { additionalProperties: false },
-);
-
-/** An approval an unsafe tool's call waits for, with the conditions that make it apply. */
-const ApprovalDeclaration = Type.Object(
-  {
-    id: SnakeName,
-    tool: SnakeName,
-    description: Text(200),
-    when: Type.Optional(Type.Array(ConditionDeclaration, { minItems: 1 })),
-  },
-  { additionalProperties: false },
-);
-
-/** Values a completion-evidence entry passes; a string may interpolate the ticket. */
-const EvidenceArguments = Type.Record(
-  Type.String(),
-  Type.Union([Type.String(), Type.Number(), Type.Boolean()]),
-);
-
-/** One piece of completion evidence: something that must check out before a ticket is done. */
-const CompletionEvidence = Type.Union(
-  [
-    Type.Object(
-      { engine: EngineArgs, args: Type.Optional(EvidenceArguments) },
-      { additionalProperties: false },
-    ),
-    Type.Object(
-      { tool: SnakeName, args: Type.Optional(EvidenceArguments), expect: Type.Literal("found") },
-      { additionalProperties: false },
-    ),
-    Type.Object({ file: Text(128) }, { additionalProperties: false }),
-    Type.Object({ person: Type.Literal(true) }, { additionalProperties: false }),
-  ],
-  {
-    "x-hint":
-      'must be one of: { "engine": ["subcommand", …], "args": { "flag": "{ticket.data.<path>}" } }, { "tool": "NAME", "args": {…}, "expect": "found" }, { "file": "NAME" }, or { "person": true }',
-  },
-);
-
-/** A ticket type the role accepts, with the evidence that makes one done. */
-const AcceptDeclaration = Type.Object(
-  {
-    type: TicketType,
-    description: Text(200),
-    /** Every entry must pass before a ticket of this type is done. */
-    done: Type.Optional(Type.Array(CompletionEvidence)),
-  },
-  { additionalProperties: false },
-);
-
-/** An operator view: runs the engine and shows the result, without the model. */
-const CommandDeclaration = Type.Object(
-  { name: KebabId, description: Text(200), engine: EngineArgs },
-  { additionalProperties: false },
-);
-
-/** One reference file a skill points to, written below `skills/<id>/references/`. */
-const ReferenceDeclaration = Type.Object(
-  { path: Text(128), content: Type.String({ minLength: 1 }) },
-  { additionalProperties: false },
-);
+const Manifest = ManifestSchema.properties;
 
 /** One thing to try, and what it did instead, with the enforcement that makes it hold. */
 const MayNotDeclaration = Type.Object(
   {
-    action: Text(200),
-    instead: Text(300),
+    ...Manifest.mayNot.items.properties,
     /** `approval:<id>`, `no_tool` or `person_only`; see docs/design/role-spec.md. */
     enforced_by: Type.String({
       pattern: "^(approval:[a-z][a-z0-9]*(_[a-z0-9]+)*|no_tool|person_only)$",
@@ -241,18 +79,24 @@ const AuthorityDeclaration = Type.Object(
  */
 const RoleBlock = Type.Object(
   {
-    id: KebabId,
-    name: Text(64),
-    department: Type.Enum([...DEPARTMENTS]),
-    role: Text(120),
-    defaultModel: ModelDeclaration,
-    runtimes: Type.Optional(Type.Array(RuntimeDeclaration)),
-    engine: Type.Optional(EngineDeclaration),
-    tools: Type.Array(ToolDeclaration),
-    connectors: Type.Array(KebabId),
-    channels: Type.Array(Type.Enum([...CHANNELS])),
-    limits: Type.Optional(Type.Record(SnakeName, LimitDeclaration)),
+    id: Manifest.id,
+    name: Manifest.name,
+    department: Manifest.department,
+    role: Manifest.role,
+    defaultModel: Manifest.defaultModel,
+    runtimes: Manifest.runtimes,
+    engine: Manifest.engine,
+    tools: Manifest.tools,
+    connectors: Manifest.connectors,
+    channels: Manifest.channels,
+    limits: Manifest.limits,
   },
+  { additionalProperties: false },
+);
+
+/** One reference file a skill points to, written below `skills/<id>/references/`. */
+const ReferenceDeclaration = Type.Object(
+  { path: Text(128), content: Type.String({ minLength: 1 }) },
   { additionalProperties: false },
 );
 
@@ -265,7 +109,7 @@ const ContextBlock = Type.Object(
 /** A bundled skill: `skills/<id>/SKILL.md`, and the reference files it points to. */
 const SkillDeclaration = Type.Object(
   {
-    id: KebabId,
+    id: Manifest.skills.items.properties.id,
     /** The Agent Skills description: what the skill does and when to use it. */
     description: Text(1024),
     enabled_by_default: Type.Boolean(),
@@ -281,15 +125,12 @@ const KnowledgeBlock = Type.Object(
 );
 
 const WisdomBlock = Type.Object(
-  { approvals: Type.Array(ApprovalDeclaration), authority: AuthorityDeclaration },
+  { approvals: Manifest.approvals, authority: AuthorityDeclaration },
   { additionalProperties: false },
 );
 
 const WorkflowBlock = Type.Object(
-  {
-    accepts: Type.Array(AcceptDeclaration),
-    commands: Type.Optional(Type.Array(CommandDeclaration)),
-  },
+  { accepts: Manifest.accepts, commands: Manifest.commands },
   { additionalProperties: false },
 );
 

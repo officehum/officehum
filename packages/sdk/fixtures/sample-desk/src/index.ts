@@ -28,6 +28,8 @@ export interface SampleDeskOptions {
   readonly approve?: Approver;
   /** The host's clock, for the prompt's `today` section. Omitted: no section. */
   readonly now?: () => Date;
+  /** The business's IANA time zone, for which day `today` is. Omitted: UTC. */
+  readonly timeZone?: string;
 }
 
 export default function sampleDesk(options: SampleDeskOptions): DefinedRole {
@@ -63,6 +65,7 @@ export default function sampleDesk(options: SampleDeskOptions): DefinedRole {
     overlays: options.overlays,
     approve: options.approve,
     now: options.now,
+    timeZone: options.timeZone,
     tools: [checkSchedule, bookAppointment],
     when: { book_after_hours: (args) => Number(String(args.start).slice(11, 13)) >= 18 },
   });
