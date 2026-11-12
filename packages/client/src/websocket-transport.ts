@@ -308,28 +308,42 @@ export class WebSocketTransport implements Transport {
     for (const pending of waiting) this.#dispatch(pending);
     this.#resubscribe();
     // Approvals asked for or decided while the socket was down: watch again, and pass on what waits.
-    if (this.#approvalListeners.size > 0) {
-      this.#dispatch({
-        command: { type: "watch_approvals" },
-        run: undefined,
-        added: false,
-        resolve: (reply) => this.#tellApprovals(reply),
-        reject: () => {},
-        attempts: 0,
-      });
-    }
+    if (this.#approvalListeners.size > 0 && this.#socket !== undefined) this.#rewatch(this.#socket);
+  }
+
+  /**
+   * Watches approvals again on a new socket. Until the gateway takes the watch it sends this
+   * connection no approvals, so a `busy` answer (its runtime is restarting) is tried again, with
+   * backoff, for as long as this socket lasts; the next socket starts over.
+   */
+  #rewatch(socket: WebSocket, attempt = 0): void {
+    this.#dispatch({
+      command: { type: "watch_approvals" },
+      run: undefined,
+      added: false,
+      resolve: (reply) => this.#tellApprovals(reply),
+      reject: (error) => {
+        if (!isGatewayError(error, "busy")) return;
+        const delay = backoffDelay(attempt, this.#options.backoff);
+        void sleep(delay, this.#stop.signal).then(() => {
+          if (this.#socket === socket && !this.#closed) this.#rewatch(socket, attempt + 1);
+        });
+      },
+      attempts: 0,
+    });
   }
 
   async watchApprovals(
     listener: (approval: ApprovalInfo) => void,
   ): Promise<readonly ApprovalInfo[]> {
-    const first = this.#approvalListeners.size === 0;
+    const added = !this.#approvalListeners.has(listener);
     this.#approvalListeners.add(listener);
     try {
       const reply = await this.request({ type: "watch_approvals" });
       return approvalsOf(reply);
     } catch (error) {
-      if (first) this.#approvalListeners.delete(listener);
+      // A listener whose own watch failed is not left hearing through someone else's.
+      if (added) this.#approvalListeners.delete(listener);
       throw error;
     }
   }

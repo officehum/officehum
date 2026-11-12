@@ -10,7 +10,9 @@
  * - `GET /healthz`: whether the runtime is up. No sign-in needed.
  *
  * Every other route needs a bearer token. A client never sets `principal`: one in a message is
- * stripped, and the token's is attached. Each command is written to the audit log.
+ * stripped, and the token's is attached. Each command is written to the audit log. A `hello` asking
+ * for a protocol version the gateway does not speak is answered `unsupported_version` and the
+ * WebSocket is closed (1002).
  *
  * Connections are limited per principal, per remote address and in total (`limits` in
  * `gateway.json`): one over a limit is refused with 429, or 503 for the total, and the refusal is
@@ -442,15 +444,18 @@ export async function startGateway(options: GatewayOptions): Promise<Gateway> {
           }
         }
         const serverId = router.serverId;
-        sink.send(
-          serverId === undefined
-            ? {
-                type: "error",
-                code: "busy",
-                message: "The office is starting; send hello again in a moment.",
-              }
-            : handshake(message, serverId),
-        );
+        if (serverId === undefined) {
+          sink.send({
+            type: "error",
+            code: "busy",
+            message: "The office is starting; send hello again in a moment.",
+          });
+          return;
+        }
+        const answer = handshake(message, serverId);
+        sink.send(answer);
+        // A client speaking another version cannot be understood from here on.
+        if (answer.type === "error") ws.close(1002, "Unsupported protocol version.");
         return;
       }
       if (identity === undefined || identity.expiresAt <= Date.now()) {

@@ -31,7 +31,6 @@ export {
   UNTRUSTED_BEGIN,
   UNTRUSTED_END,
 } from "./gateway.js";
-export type { InboundIntake } from "./intake.js";
 export { type OptOutState, optOutCommand, START_KEYWORDS, STOP_KEYWORDS } from "./optout.js";
 export {
   type DeliveryReceipt,
@@ -68,7 +67,6 @@ export {
   formParams,
   TWILIO_FORM_CONTENT_TYPE,
   TWIML_CONTENT_TYPE,
-  type TwilioAcceptResult,
   TwilioAdapter,
   type TwilioAdapterOptions,
 } from "./twilio.js";

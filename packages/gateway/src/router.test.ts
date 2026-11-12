@@ -1,5 +1,5 @@
 import type { ServerMessage } from "@officehum/protocol";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Permissions } from "./config.js";
 import { type AuditEntry, type ClientSink, Router } from "./router.js";
 
@@ -352,6 +352,96 @@ describe("Router", () => {
       message: expect.stringContaining("lost track of request r1"),
     });
     expect(router.snapshot(ada, "r1")).toBeUndefined();
+  });
+
+  describe("forgetting settled requests", () => {
+    afterEach(() => vi.useRealTimers());
+
+    /** Submits `requestId` on `sink` and has the runtime settle it at once. */
+    function settle(
+      { router, toRuntime }: ReturnType<typeof setup>,
+      sink: ClientSink,
+      requestId: string,
+    ) {
+      router.handle(sink, ada, { ...submit, requestId });
+      const id = toRuntime.at(-1)?.id;
+      const scoped = `ada/${requestId}`;
+      router.onRuntimeFrame({ type: "accepted", id, requestId: scoped, disposition: "started" });
+      router.onRuntimeFrame(event(1, "settled", scoped));
+    }
+
+    it("forgets one when its replay window closes, though its client is still connected", () => {
+      vi.useFakeTimers();
+      const office = setup();
+      const { router, toRuntime, client } = office;
+      const a = client();
+      settle(office, a.sink, "r1");
+      vi.advanceTimersByTime(5 * 60_000 - 1);
+      expect(router.snapshot(ada, "r1")).toMatchObject({ settled: true, eventCount: 1 });
+      vi.advanceTimersByTime(1);
+      expect(router.snapshot(ada, "r1")).toBeUndefined();
+
+      // Asked about again, it is the runtime's story that is told, numbered from 1.
+      const b = client();
+      router.handle(b.sink, ada, { type: "subscribe", id: "s1", requestId: "r1" });
+      router.onRuntimeFrame({ type: "result", id: toRuntime.at(-1)?.id, ok: true });
+      router.onRuntimeFrame(event(1, "settled"));
+      expect(b.received).toEqual([
+        { type: "result", id: "s1", ok: true },
+        expect.objectContaining({
+          requestId: "r1",
+          seq: 1,
+          event: { kind: "settled", status: "done", answer: "ok" },
+        }),
+      ]);
+    });
+
+    it("keeps a request that is still running, however long it takes", () => {
+      vi.useFakeTimers();
+      const { router, client } = setup();
+      router.handle(client().sink, ada, submit);
+      router.onRuntimeFrame({
+        type: "accepted",
+        id: "g1",
+        requestId: "ada/r1",
+        disposition: "started",
+      });
+      vi.advanceTimersByTime(60 * 60_000);
+      expect(router.snapshot(ada, "r1")).toMatchObject({ settled: false });
+    });
+
+    it("keeps at most 1,000 settled requests, the latest, for one long-lived connection", () => {
+      const office = setup();
+      const a = office.client();
+      for (let n = 0; n <= 1_000; n++) settle(office, a.sink, `r${n}`);
+      expect(office.router.snapshot(ada, "r0")).toBeUndefined();
+      expect(office.router.snapshot(ada, "r1")).toBeDefined();
+      expect(office.router.snapshot(ada, "r1000")).toBeDefined();
+    });
+  });
+
+  it("answers a command with an error when the runtime's reply to it cannot be used", () => {
+    const { router, client } = setup();
+    const a = client();
+    router.handle(a.sink, ada, submit);
+    // An id over the protocol's limit: the reply fails validation.
+    router.onRuntimeFrame({
+      type: "accepted",
+      id: "g1",
+      requestId: `ada/${"r".repeat(300)}`,
+      disposition: "started",
+    });
+    expect(a.received).toEqual([
+      {
+        type: "error",
+        id: "c1",
+        code: "internal",
+        message: expect.stringContaining("the gateway cannot use"),
+      },
+    ]);
+    // Answered once: nothing is left to answer `busy` when the runtime goes down.
+    router.onRuntimeDown();
+    expect(a.received).toHaveLength(1);
   });
 
   it("stops sending to a client that left", () => {

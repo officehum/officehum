@@ -300,6 +300,44 @@ describe("GatewayClient approvals", () => {
     expect(decided).toMatchObject({ status: "approved", by: "fake-approver" });
   });
 
+  it("stops telling a listener whose watch was refused, though another is already watching", async () => {
+    const { fake, client } = await setup();
+    const first: string[] = [];
+    const second: string[] = [];
+    await client.watchApprovals((approval) => first.push(approval.approvalId));
+    fake.refuse.set("watch_approvals", "forbidden");
+    const refused = await client
+      .watchApprovals((approval) => second.push(approval.approvalId))
+      .catch((error: unknown) => error);
+    expect(isGatewayError(refused, "forbidden")).toBe(true);
+    fake.refuse.delete("watch_approvals");
+
+    fake.broadcast({ type: "approval", approval: waiting });
+    await until(() => expect(first).toEqual([waiting.approvalId]));
+    expect(second).toEqual([]);
+  });
+
+  it("watches again until it is taken when the watch after a reconnect is answered busy", async () => {
+    const { fake, client } = await setup();
+    const heard: string[] = [];
+    await client.watchApprovals((approval) => heard.push(approval.approvalId));
+    const watches = () => fake.received.filter((m) => m.type === "watch_approvals").length;
+
+    // The gateway's runtime is restarting when the client comes back.
+    fake.refuse.set("watch_approvals", "busy");
+    fake.approvals.push(waiting);
+    fake.drop();
+    await until(() => expect(watches()).toBeGreaterThanOrEqual(3));
+    expect(heard).toEqual([]);
+    fake.refuse.delete("watch_approvals");
+    await until(() => expect(heard).toEqual([waiting.approvalId]));
+
+    // Taken once: the retries stop.
+    const taken = watches();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(watches()).toBe(taken);
+  });
+
   it("refuses to watch approvals over HTTP", async () => {
     const { client } = await setup({ transport: "http" });
     await expect(client.watchApprovals(() => {})).rejects.toThrow(/WebSocket transport/);

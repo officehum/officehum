@@ -23,7 +23,9 @@ export const ERROR_CODES = [
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
-const Id = Type.String({ minLength: 1, maxLength: 256 });
+/** The longest an id may be: message, request, principal and approval ids alike. */
+const ID_MAX_LENGTH = 256;
+const Id = Type.String({ minLength: 1, maxLength: ID_MAX_LENGTH });
 const Name = Type.String({ minLength: 1 });
 const Decision = Type.Enum(["approve", "decline"]);
 
@@ -552,9 +554,28 @@ export function replyId(json: unknown): string | undefined {
  * The runtime's key for a principal's request: `<principal id, URI-encoded>/<request id>`. The runtime
  * carries it in `accepted` and `event`, and the gateway maps it back to the client's own request id.
  * Encoding keeps `a/b` + `c` apart from `a` + `b/c`.
+ *
+ * The key is itself an id on the wire, so one that would pass the id limit (two long ids, or a
+ * principal id that grows when encoded) is replaced by `sha256:<its SHA-256, in hex>`. That is the
+ * same every time, so a retry still finds its request, and it has no `/`, so it is never a key a
+ * shorter pair has.
  */
 export function scopedRequestId(principal: Pick<Principal, "id">, requestId: string): string {
-  return `${encodeURIComponent(principal.id)}/${requestId}`;
+  const key = `${encodeURIComponent(principal.id)}/${requestId}`;
+  return key.length <= ID_MAX_LENGTH ? key : `sha256:${sha256Hex(key)}`;
+}
+
+/**
+ * Only the gateway and the runtime scope request ids, and both run on Node. Its hash is looked up
+ * when needed rather than imported, so this module still loads in a browser for the client.
+ */
+function sha256Hex(text: string): string {
+  const crypto =
+    typeof process === "undefined" ? undefined : process.getBuiltinModule?.("node:crypto");
+  if (crypto === undefined) {
+    throw new Error("A request id this long can only be scoped on Node (it needs node:crypto).");
+  }
+  return crypto.createHash("sha256").update(text).digest("hex");
 }
 
 /** Answers a client's `hello`: `welcome` for version 1, `unsupported_version` for any other. */

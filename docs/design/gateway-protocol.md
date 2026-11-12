@@ -34,7 +34,7 @@ client ──(Gateway Protocol)──▶ gateway ──(Gateway Protocol + princ
 
 The first message on a connection is the client's `hello`. The server answers `welcome` when it speaks
 the requested version, or `error unsupported_version` for any other `version` value (and then closes
-the connection).
+the connection; the gateway closes a WebSocket with code 1002).
 
 ```json
 {"type":"hello","version":1,"client":"studio-web"}
@@ -260,9 +260,11 @@ authenticated session:
 | `roles` | The caller's roles in this office. |
 | `approvalLimit` | Optional: the most this caller may approve. |
 
-**A client may never send `principal`.** The gateway refuses a client message that carries one with
-`invalid_message`, and the runtime refuses a forwarded command without one. Approver identity always
-comes from the session, never from a message the caller wrote.
+**A client may never set `principal`.** The gateway removes one from any client message before it
+reads the message and attaches the signed-in session's instead, so a `principal` a caller wrote
+changes nothing. The runtime refuses a forwarded command without one. Approver identity always comes
+from the session, never from a message the caller wrote. (`validateMessage(json, "client")` itself
+reports a `principal` as a problem; the gateway strips it before validating.)
 
 ## The runtime process
 
@@ -279,7 +281,9 @@ stderr. `docs/superpowers/plans/2026-11-10-runtime-process.md` records how it is
   `<principal id, URI-encoded>/<request id>`, and `accepted` and every `event` carry that scoped id.
   Two principals can use the same request id without meeting; the gateway rewrites the scoped id back
   to the client's own. `subscribe` and `abort` take the client's request id and find only that
-  principal's request.
+  principal's request. A scoped id is an identifier too: one that would be longer than 256
+  characters is replaced by `sha256:` and the SHA-256 of it in hex, which is the same every time, so
+  a retry still finds its request (`scopedRequestId` in `@officehum/protocol`).
 - **Exactly once.** The scoped id is kept in a durable index beside the office, so the same request id
   again, even after a restart, gets `accepted` with `existing` and no new work. The index records
   the request's conversation before the work is admitted, so a retry after a crash goes back to the
@@ -352,12 +356,17 @@ restarts. The gateway drops events the current runtime has already sent it and f
 once. A run resumed after a runtime restart does its unfinished steps again, so its `tool_start` for a
 step that was interrupted can appear twice; an unsafe tool is not run again. The gateway keeps the
 latest 2,000 events of a request in memory; a client resuming from further back than that gets the
-kept ones, with a gap before them, and `settled`. Numbering and replay last as long as the gateway
+kept ones, with a gap before them, and `settled`. A request that is running is kept until it settles.
+A settled one is kept for five minutes (and at most the latest 1,000 settled are kept), whether or
+not a client that watched it is still connected; after that, asking about it again gets the
+runtime's account of it, numbered from 1, so an `afterSeq` or `Last-Event-ID` from before does not
+apply, and `settled` is always sent. Numbering and replay also last only as long as the gateway
 process: after a gateway restart, `Last-Event-ID` from before it does not apply (RASF-3106).
 
 **Restarts.** The gateway restarts the runtime after any exit it did not ask for, not only a failing
 one, and answers `busy` meanwhile. If the restarted runtime no longer knows a request, its
-subscribers get an `error` saying so.
+subscribers get an `error` saying so. A reply from the runtime that does not validate is logged and
+its command is answered `error internal`, so the caller is never left waiting.
 
 **Sessions.** A WebSocket that has not signed in within 30 seconds is closed. When a connection's
 token expires, its subscriptions stop and it gets `unauthorized` until it sends `hello` with a fresh

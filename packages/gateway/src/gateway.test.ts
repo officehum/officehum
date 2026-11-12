@@ -62,6 +62,17 @@ describe("gateway over WebSocket", () => {
     expect(await client.find((m) => m.id === "p2")).toEqual({ type: "result", id: "p2", ok: true });
   }, 30_000);
 
+  it("answers a hello for another version with unsupported_version and closes the connection", async () => {
+    const { gateway } = await start();
+    const client = await connect(gateway, await token("ada", ["staff"]));
+    const closed = new Promise<number>((resolve) => client.socket.once("close", resolve));
+    client.send({ type: "hello", version: 2, client: "from-the-future" });
+    expect(await client.find((m) => m.type === "error")).toMatchObject({
+      code: "unsupported_version",
+    });
+    expect(await closed).toBe(1002);
+  }, 30_000);
+
   it("refuses a bad or expired token", async () => {
     const { gateway } = await start();
     const stranger = await generateKeyPair("ES256");
