@@ -50,12 +50,14 @@ import {
   scopedRequestId,
   validateMessage,
 } from "@officehum/protocol";
+import type { FileStore } from "@officehum/sdk";
 import { type Office, type OfficeEvent, type OfficeStorage, openOffice } from "../adapter/index.js";
 import type { Board, Person } from "../board/index.js";
 import type { PersonRoute } from "../extension/index.js";
 import type { LoadedRole } from "../roles/load-role.js";
 import { answerText } from "../roles/run-role.js";
 import { DEFAULT_APPROVAL_TIMEOUT_MS, type RemoteApprovals } from "./approvals.js";
+import { openTicketConfirmations } from "./confirmations.js";
 import { RuntimeError } from "./errors.js";
 import { FrameWriter } from "./frame-writer.js";
 import { openTeamwork } from "./teamwork.js";
@@ -91,6 +93,11 @@ export interface RuntimeOptions {
   readonly people?: readonly Person[];
   /** Ticket types no agent accepts that go to a person on the board. Read only with a `board`. */
   readonly personRoutes?: readonly PersonRoute[];
+  /**
+   * The office's file store, where a ticket reply's attached files are looked up for `file`
+   * completion evidence. Read only with a `board`. Omitted: `file` evidence cannot pass.
+   */
+  readonly files?: FileStore;
 }
 
 export interface Runtime {
@@ -118,6 +125,21 @@ export interface AgentInfo {
   readonly status?: "idle" | "busy";
   /** `get_state` only: how many of the agent's requests are unsettled. */
   readonly openRequests?: number;
+  /**
+   * `get_state` only, in an office with a workboard: the unfinished tickets this agent holds or
+   * opened, newest first. A request that is still open is usually waiting on one of these.
+   */
+  readonly tickets?: readonly AgentTicketInfo[];
+}
+
+/** One unfinished ticket of an agent's, as `get_state` reports it. */
+export interface AgentTicketInfo {
+  readonly id: string;
+  readonly type: string;
+  readonly title: string;
+  readonly status: string;
+  /** `assigned` when the agent holds the ticket, `opened` when it only asked for the work. */
+  readonly relation: "assigned" | "opened";
 }
 
 /**
@@ -243,6 +265,16 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
             agents: hosted,
             ...(options.people === undefined ? {} : { people: options.people }),
             ...(options.personRoutes === undefined ? {} : { personRoutes: options.personRoutes }),
+            ...(options.files === undefined ? {} : { files: options.files }),
+            log,
+          });
+    // A person signed in at the gateway answers the board's confirmation requests as approvals.
+    const confirmations =
+      options.board === undefined
+        ? undefined
+        : openTicketConfirmations({
+            board: options.board,
+            broadcast: (approval) => send({ type: "approval", approval }),
             log,
           });
     const agents = new Map<string, AgentEntry>(
@@ -571,7 +603,12 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
       const open = [...tracked.values()].filter(
         (request) => request.agent === agent.name && !request.settling,
       ).length;
-      return { ...info, status: open > 0 ? "busy" : "idle", openRequests: open };
+      return {
+        ...info,
+        status: open > 0 ? "busy" : "idle",
+        openRequests: open,
+        ...(options.board === undefined ? {} : { tickets: ticketsOf(options.board, agent.name) }),
+      };
     };
 
     const answer = async (command: ForwardedCommand): Promise<void> => {
@@ -620,6 +657,16 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
           return;
         }
         case "approve": {
+          if (confirmations?.owns(command.approvalId) === true) {
+            const approval = confirmations.decide(
+              command.principal,
+              command.approvalId,
+              command.decision,
+              command.note,
+            );
+            send({ type: "result", id: command.id, ok: true, data: { approval } });
+            return;
+          }
           if (approvals === undefined) {
             throw new RuntimeError(
               "not_found",
@@ -640,7 +687,9 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
             type: "result",
             id: command.id,
             ok: true,
-            data: { approvals: approvals?.pending() ?? [] },
+            data: {
+              approvals: [...(approvals?.pending() ?? []), ...(confirmations?.pending() ?? [])],
+            },
           });
           return;
         case "ping":
@@ -706,6 +755,8 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
     office.resume();
     teamwork?.start();
     send({ type: "welcome", version: 1, serverId: options.serverId });
+    // After `welcome`, so the gateway hears of what is still waiting from a run before this one.
+    confirmations?.start();
 
     return {
       async handle(json) {
@@ -754,6 +805,7 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
       },
       async close() {
         closing ??= (async () => {
+          confirmations?.stop();
           const relayStopped = teamwork?.stop();
           // Let settles already under way read their answer before the office goes.
           await Promise.allSettled([...settlements]);
@@ -770,6 +822,32 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
     await office.close();
     throw error;
   }
+}
+
+/** The statuses a ticket is still unfinished in: everything but `done` and `cancelled`. */
+const OPEN_TICKETS = ["open", "claimed", "waiting", "awaiting_confirmation", "blocked"] as const;
+
+/** The unfinished tickets an agent holds or opened, newest first, each listed once. */
+function ticketsOf(board: Board, agent: string): AgentTicketInfo[] {
+  const seen = new Set<string>();
+  const tickets: AgentTicketInfo[] = [];
+  for (const [relation, filter] of [
+    ["assigned", { assignee: agent }],
+    ["opened", { createdBy: agent }],
+  ] as const) {
+    for (const ticket of board.list({ ...filter, status: OPEN_TICKETS })) {
+      if (seen.has(ticket.id)) continue;
+      seen.add(ticket.id);
+      tickets.push({
+        id: ticket.id,
+        type: ticket.type,
+        title: ticket.title,
+        status: ticket.status,
+        relation,
+      });
+    }
+  }
+  return tickets;
 }
 
 function manifestModel(role: LoadedRole): ModelRef | undefined {

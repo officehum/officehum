@@ -14,6 +14,7 @@
  */
 
 import type { AgentChange } from "@earendil-works/pi-durable";
+import type { FileStore } from "@officehum/sdk";
 import type { Office } from "../adapter/index.js";
 import type { Board, Person } from "../board/index.js";
 import {
@@ -59,6 +60,8 @@ export interface TeamworkOptions {
   readonly people?: readonly Person[];
   /** Ticket types no agent accepts that go to a person on the board. */
   readonly personRoutes?: readonly PersonRoute[];
+  /** The office's file store, where a reply's files are looked up for `file` completion evidence. */
+  readonly files?: FileStore;
   readonly log: (line: string) => void;
 }
 
@@ -114,7 +117,10 @@ export function openTeamwork(options: TeamworkOptions): Teamwork {
       ...(options.personRoutes === undefined ? {} : { personRoutes: options.personRoutes }),
       hooks: budgetHooks({ board }),
       // What the agent's completion evidence is checked with when it replies to a ticket.
-      ...(agent.role.engine === undefined ? {} : { evidence: { engine: agent.role.engine } }),
+      evidence: {
+        ...(agent.role.engine === undefined ? {} : { engine: agent.role.engine }),
+        ...(options.files === undefined ? {} : { files: options.files }),
+      },
       // The runtime's approvals are decided through its gateway (`./approvals.ts`), for direct
       // requests and ticket work alike, so the board's gate is not installed beside the role's own.
       approvals: "role",

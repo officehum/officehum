@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
-import type { EventMessage, ServerMessage } from "@officehum/protocol";
+import type { ApprovalInfo, EventMessage, ServerMessage } from "@officehum/protocol";
 import {
   type AgentManifest,
   APPROVED_FACTS_ARG,
@@ -16,6 +16,7 @@ import {
   approvalGate,
   approvedFacts,
   approvedFactsParameter,
+  localFileStore,
 } from "@officehum/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -81,7 +82,9 @@ function role(
 async function open(
   home: string,
   script: ScriptedScript,
-  options: Partial<Pick<RuntimeOptions, "roles" | "people" | "personRoutes" | "approvals">> = {},
+  options: Partial<
+    Pick<RuntimeOptions, "roles" | "people" | "personRoutes" | "approvals" | "files">
+  > = {},
 ) {
   const scripted = scriptedProvider(script);
   const board: Board = createWorkboard(join(home, "office.sqlite"));
@@ -101,6 +104,7 @@ async function open(
       ...(options.people === undefined ? {} : { people: options.people }),
       ...(options.personRoutes === undefined ? {} : { personRoutes: options.personRoutes }),
       ...(options.approvals === undefined ? {} : { approvals: options.approvals }),
+      ...(options.files === undefined ? {} : { files: options.files }),
     });
   } catch (error) {
     board.close();
@@ -503,6 +507,229 @@ describe("the runtime's workboard", () => {
       await second.decide(again.approvalId, "approve");
       expect(await second.payAnswered()).toBe("paid");
       expect(paid).toEqual([{ amount: 500 }]);
+    });
+  });
+
+  describe("a ticket whose type asks for a person", () => {
+    const EILEEN = { id: "eileen-hart", name: "Eileen Hart" };
+    const CONFIRMED: AgentManifest = {
+      ...BOOK_MANIFEST,
+      accepts: [{ type: TYPE, description: "Invoice a completed job", done: [{ person: true }] }],
+    };
+    const roles = () => [role(FRONT_MANIFEST), role(CONFIRMED)];
+    const confirmingOffice = async (home: string) => {
+      const office = await open(home, delegatingScript(), { roles: roles(), people: [EILEEN] });
+      const approvals = (): ApprovalInfo[] =>
+        office.sent.flatMap((message) => (message.type === "approval" ? [message.approval] : []));
+      /** The confirmation the gateway was last told about in `status`, once it has been. */
+      const approval = (status: ApprovalInfo["status"], after = 0) =>
+        vi.waitFor(
+          () => {
+            const found = approvals()
+              .slice(after)
+              .find((candidate) => candidate.status === status);
+            if (found === undefined) throw new Error(`no ${status} confirmation yet`);
+            return found;
+          },
+          { timeout: 10_000, interval: 20 },
+        );
+      const resultOf = (id: string) =>
+        office.sent.find(
+          (message) => (message.type === "result" || message.type === "error") && message.id === id,
+        );
+      return { ...office, approvals, approval, resultOf };
+    };
+
+    it("is announced to the gateway's approvers, and an approval completes it", async () => {
+      const office = await confirmingOffice(directory());
+      await office.runtime.handle(submit("c1", "r1"));
+
+      const asked = await office.approval("pending");
+      const [ticket] = office.board.list({ type: TYPE });
+      expect(asked).toEqual({
+        approvalId: asked.approvalId,
+        agent: BOOK,
+        tool: "agent_reply",
+        summary: `Confirm "Invoice job 42" (${TYPE}) is done: ${DELEGATE_RESULT}`,
+        status: "pending",
+        requestedAt: asked.requestedAt,
+      });
+      expect(asked.approvalId).toMatch(/^ticket-confirmation:/);
+      expect(ticket?.status).toBe("awaiting_confirmation");
+
+      // Someone who starts watching now is told of it, and the office's state says what is waiting.
+      await office.runtime.handle({ type: "watch_approvals", id: "w1", principal: ada });
+      expect(office.resultOf("w1")).toMatchObject({ ok: true, data: { approvals: [asked] } });
+      await office.runtime.handle({ type: "get_state", id: "s1", principal: ada });
+      const waiting = {
+        id: ticket?.id,
+        type: TYPE,
+        title: "Invoice job 42",
+        status: "awaiting_confirmation",
+      };
+      expect(office.resultOf("s1")).toMatchObject({
+        data: {
+          agents: [
+            { name: FRONT, status: "busy", tickets: [{ ...waiting, relation: "opened" }] },
+            { name: BOOK, tickets: [{ ...waiting, relation: "assigned" }] },
+          ],
+        },
+      });
+
+      await office.runtime.handle({
+        type: "approve",
+        id: "a1",
+        approvalId: asked.approvalId,
+        decision: "approve",
+        principal: { ...ada, approvalLimit: 1 },
+      });
+      // A limit caps spending, and confirming spends nothing, so a limited approver may confirm.
+      expect(office.resultOf("a1")).toMatchObject({
+        ok: true,
+        data: { approval: { approvalId: asked.approvalId, status: "approved", by: "ada" } },
+      });
+      const settled = await office.settledFor("ada/r1");
+      expect(settled.event).toEqual({ kind: "settled", status: "done", answer: DELEGATOR_FINAL });
+      expect(office.board.get(ticket?.id ?? "")).toMatchObject({
+        status: "done",
+        result: DELEGATE_RESULT,
+      });
+      expect(office.board.events(ticket?.id ?? "").at(-1)).toMatchObject({
+        kind: "completed",
+        actor: "ada",
+      });
+      // Asked once and answered once: the watcher did not announce the answer a second time.
+      expect(office.approvals().map((approval) => approval.status)).toEqual([
+        "pending",
+        "approved",
+      ]);
+
+      await office.runtime.handle({
+        type: "approve",
+        id: "a2",
+        approvalId: asked.approvalId,
+        decision: "decline",
+        principal: ada,
+      });
+      expect(office.resultOf("a2")).toMatchObject({ type: "error", code: "conflict" });
+      await office.runtime.handle({
+        type: "approve",
+        id: "a3",
+        approvalId: "ticket-confirmation:nope",
+        decision: "approve",
+        principal: ada,
+      });
+      expect(office.resultOf("a3")).toMatchObject({ type: "error", code: "not_found" });
+      await office.runtime.handle({ type: "get_state", id: "s2", agent: BOOK, principal: ada });
+      expect(office.resultOf("s2")).toMatchObject({ data: { agents: [{ tickets: [] }] } });
+    });
+
+    it("returns to the agent with the note when declined, and the next reply asks again", async () => {
+      const office = await confirmingOffice(directory());
+      await office.runtime.handle(submit("c1", "r1"));
+      const first = await office.approval("pending");
+      await office.runtime.handle({
+        type: "approve",
+        id: "a1",
+        approvalId: first.approvalId,
+        decision: "decline",
+        note: "The total is wrong.",
+        principal: ada,
+      });
+      expect(office.resultOf("a1")).toMatchObject({
+        data: { approval: { status: "declined", by: "ada", note: "The total is wrong." } },
+      });
+
+      // The relay tells the agent, which replies again: a second question, not the first reopened.
+      const second = await office.approval("pending", 2);
+      expect(second.approvalId).not.toBe(first.approvalId);
+      const [ticket] = office.board.list({ type: TYPE });
+      expect(office.board.events(ticket?.id ?? "").map((event) => event.kind)).toEqual([
+        "created",
+        "claimed",
+        "awaiting_confirmation",
+        "evidence_failed",
+        "awaiting_confirmation",
+      ]);
+      const told = office.scripted.requests
+        .flatMap((request) => request.messages)
+        .filter((message) => message.role === "user")
+        .map(textOf);
+      expect(told.some((text) => text.includes("ada did not confirm this ticket is done"))).toBe(
+        true,
+      );
+
+      await office.runtime.handle({
+        type: "approve",
+        id: "a2",
+        approvalId: second.approvalId,
+        decision: "approve",
+        principal: ada,
+      });
+      expect((await office.settledFor("ada/r1")).event).toMatchObject({ status: "done" });
+    });
+
+    it("is still listed after a restart, and hears an answer given at the board", async () => {
+      const home = directory();
+      const first = await confirmingOffice(home);
+      await first.runtime.handle(submit("c1", "r1"));
+      const asked = await first.approval("pending");
+      await first.close();
+
+      const second = await confirmingOffice(home);
+      // Announced again at start, so a gateway that also restarted knows what is waiting.
+      expect(await second.approval("pending")).toEqual(asked);
+      await second.runtime.handle({ type: "watch_approvals", id: "w1", principal: ada });
+      expect(second.resultOf("w1")).toMatchObject({ data: { approvals: [asked] } });
+
+      // The person answers in `officehum board` instead: the gateway's watchers are told all the same.
+      const [ticket] = second.board.list({ type: TYPE });
+      second.board.confirm(ticket?.id ?? "", EILEEN.id, { confirmed: true });
+      expect(await second.approval("approved")).toMatchObject({
+        approvalId: asked.approvalId,
+        by: EILEEN.id,
+      });
+      await second.runtime.handle(submit("c2", "r1"));
+      expect((await second.settledFor("ada/r1")).event).toMatchObject({ status: "done" });
+    });
+
+    it("passes file evidence when the reply attaches a file the office's store holds", async () => {
+      const home = directory();
+      const files = localFileStore(join(home, "files"));
+      const report = await files.put({
+        bytes: new TextEncoder().encode("October report"),
+        name: "report.txt",
+        mimeType: "text/plain",
+        metadata: { createdBy: BOOK, source: "generated" },
+      });
+      const FILED: AgentManifest = {
+        ...BOOK_MANIFEST,
+        accepts: [
+          { type: TYPE, description: "Invoice a completed job", done: [{ file: "report" }] },
+        ],
+      };
+      const base = delegatingScript();
+      const office = await open(
+        home,
+        (messages) => {
+          const turn = base(messages);
+          if (!("toolCalls" in turn)) return turn;
+          return {
+            toolCalls: turn.toolCalls.map((call) =>
+              call.name === "agent_reply"
+                ? { ...call, args: { ...call.args, files: { report: report.id } } }
+                : call,
+            ),
+          };
+        },
+        { roles: [role(FRONT_MANIFEST), role(FILED)], files },
+      );
+      await office.runtime.handle(submit("c1", "r1"));
+      expect((await office.settledFor("ada/r1")).event).toMatchObject({ status: "done" });
+      const [ticket] = office.board.list({ type: TYPE });
+      expect(office.board.events(ticket?.id ?? "").at(-1)?.payload).toMatchObject({
+        evidence: [{ kind: "file", check: "report", passed: true, found: { fileId: report.id } }],
+      });
     });
   });
 
