@@ -11,6 +11,7 @@ import { backoffDelay, sleep } from "./backoff.js";
 import { GatewayError, isGatewayError } from "./errors.js";
 import type { Run } from "./run.js";
 import {
+  type ApprovalsLost,
   type Outgoing,
   retryable,
   type Transport,
@@ -54,8 +55,14 @@ export class WebSocketTransport implements Transport {
   readonly #waiting = new Map<Pending, ReturnType<typeof setTimeout>>();
   /** Unfinished runs, by request id, which this connection's events are delivered to. */
   readonly #runs = new Map<string, Run>();
-  /** Who hears of approvals asked for and decided; non-empty once `watchApprovals` was called. */
-  readonly #approvalListeners = new Set<(approval: ApprovalInfo) => void>();
+  /**
+   * Who hears of approvals asked for and decided, each with whom to tell if the watch is lost;
+   * non-empty once `watchApprovals` was called.
+   */
+  readonly #approvalListeners = new Map<
+    (approval: ApprovalInfo) => void,
+    ApprovalsLost | undefined
+  >();
 
   private constructor(options: TransportOptions) {
     this.#options = options;
@@ -206,7 +213,7 @@ export class WebSocketTransport implements Transport {
 
   #onMessage(message: ServerMessage): void {
     if (message.type === "approval") {
-      for (const listener of this.#approvalListeners) listener(message.approval);
+      for (const listener of this.#approvalListeners.keys()) listener(message.approval);
       return;
     }
     if (message.type === "event") {
@@ -314,7 +321,9 @@ export class WebSocketTransport implements Transport {
   /**
    * Watches approvals again on a new socket. Until the gateway takes the watch it sends this
    * connection no approvals, so a `busy` answer (its runtime is restarting) is tried again, with
-   * backoff, for as long as this socket lasts; the next socket starts over.
+   * backoff, for as long as this socket lasts; the next socket starts over. Any other refusal
+   * (`forbidden`: the caller may no longer approve) will not get better by asking again, so the
+   * watch is over: every listener is dropped and told why.
    */
   #rewatch(socket: WebSocket, attempt = 0): void {
     this.#dispatch({
@@ -323,7 +332,12 @@ export class WebSocketTransport implements Transport {
       added: false,
       resolve: (reply) => this.#tellApprovals(reply),
       reject: (error) => {
-        if (!isGatewayError(error, "busy")) return;
+        // Not the gateway's answer: the client is closing.
+        if (!isGatewayError(error)) return;
+        if (error.code !== "busy") {
+          this.#loseApprovals(error);
+          return;
+        }
         const delay = backoffDelay(attempt, this.#options.backoff);
         void sleep(delay, this.#stop.signal).then(() => {
           if (this.#socket === socket && !this.#closed) this.#rewatch(socket, attempt + 1);
@@ -335,22 +349,32 @@ export class WebSocketTransport implements Transport {
 
   async watchApprovals(
     listener: (approval: ApprovalInfo) => void,
+    onLost?: ApprovalsLost,
   ): Promise<readonly ApprovalInfo[]> {
     const added = !this.#approvalListeners.has(listener);
-    this.#approvalListeners.add(listener);
+    const before = this.#approvalListeners.get(listener);
+    this.#approvalListeners.set(listener, onLost);
     try {
       const reply = await this.request({ type: "watch_approvals" });
       return approvalsOf(reply);
     } catch (error) {
       // A listener whose own watch failed is not left hearing through someone else's.
       if (added) this.#approvalListeners.delete(listener);
+      else if (this.#approvalListeners.has(listener)) this.#approvalListeners.set(listener, before);
       throw error;
     }
   }
 
+  /** Ends the watch for every listener, so none is left registered as if it still heard. */
+  #loseApprovals(error: GatewayError): void {
+    const lost = [...this.#approvalListeners.values()];
+    this.#approvalListeners.clear();
+    for (const onLost of lost) onLost?.(error);
+  }
+
   #tellApprovals(reply: Accepted | Result): void {
     for (const approval of approvalsOf(reply)) {
-      for (const listener of this.#approvalListeners) listener(approval);
+      for (const listener of this.#approvalListeners.keys()) listener(approval);
     }
   }
 

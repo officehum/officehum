@@ -10,9 +10,13 @@
  * take it past its weekly hours cap, and how many overtime hours that would need are worked out here
  * and returned in the receipt or the refusal, never by the model. A refusal that a person can lift
  * names the approval-gated tool that asks them.
+ *
+ * The two gated writes are bound to what the person approved. The approval gate reads the facts below
+ * (`overtimeFacts`, `contractRescheduleFacts`) from this desk and shows them; the write carries them
+ * back as `approved`, and the desk refuses with `changed` when the schedule no longer equals them.
  */
 
-import { localDate, parseDate, weekOf as weekContaining } from "@officehum/sdk";
+import { localDate, parseDate, sameFacts, weekOf as weekContaining } from "@officehum/sdk";
 import type { Crew } from "./company.js";
 import { loadCompanyFacts } from "./company.js";
 
@@ -123,16 +127,38 @@ export interface OperationsDesk {
     input: { readonly jobId: string; readonly crewId: string },
     options: { readonly requestId: string },
   ): Promise<Assignment>;
+  /**
+   * Records overtime for a crew and assigns it the job. `approved` is the facts the approval gate
+   * read from this desk and showed a person (`overtimeFacts`); a host desk must refuse with `changed`
+   * when the job, the crew's week or the hours no longer equal them. It is `undefined` only when the
+   * company does not require approval for overtime, so nobody was asked and there is nothing to
+   * compare.
+   */
   requestOvertime(
-    input: { readonly crewId: string; readonly jobId: string; readonly hours: number },
+    input: {
+      readonly crewId: string;
+      readonly jobId: string;
+      readonly hours: number;
+      readonly approved: Readonly<Record<string, unknown>> | undefined;
+    },
     options: { readonly requestId: string },
   ): Promise<OvertimeGrant>;
   rescheduleJob(
     input: { readonly jobId: string; readonly newDate: string },
     options: { readonly requestId: string },
   ): Promise<Reschedule>;
+  /**
+   * Moves a visit on a recurring contract. Called only once a person approved it, with the facts the
+   * approval gate read from this desk and showed them (`contractRescheduleFacts`). A host desk must
+   * refuse with `changed` when the visit, the new date or the reason no longer equal `approved`.
+   */
   requestContractReschedule(
-    input: { readonly jobId: string; readonly newDate: string; readonly reason: string },
+    input: {
+      readonly jobId: string;
+      readonly newDate: string;
+      readonly reason: string;
+      readonly approved: Readonly<Record<string, unknown>>;
+    },
     options: { readonly requestId: string },
   ): Promise<Reschedule>;
   recordCallout(
@@ -151,7 +177,8 @@ export type DeskRefusal =
   | "time_off"
   | "fits"
   | "recurring"
-  | "one_off";
+  | "one_off"
+  | "changed";
 
 /** A refusal the model reads: a job that does not exist, a week that is full, a contract visit. */
 export class OperationsDeskError extends Error {
@@ -165,6 +192,53 @@ export class OperationsDeskError extends Error {
     this.code = code;
     this.overtimeHoursNeeded = overtimeHoursNeeded;
   }
+}
+
+/**
+ * The facts a person approves on an overtime request: the crew and its week as booked, the job with
+ * the crew it has now, and the overtime hours asked for.
+ */
+export function overtimeFacts(job: Job, crew: CrewWeek, overtimeHours: number) {
+  return {
+    crewId: crew.crewId,
+    crewName: crew.name,
+    jobId: job.id,
+    client: job.client,
+    site: job.site,
+    service: job.service,
+    date: job.date,
+    crewHours: job.crewHours,
+    // Who has the job now: an approval to give it to this crew does not cover taking it from another.
+    assignedCrewId: job.crewId,
+    overtimeHours,
+    weekStart: crew.weekStart,
+    bookedHours: crew.bookedHours,
+    weeklyHoursCap: crew.weeklyHoursCap,
+  };
+}
+
+/**
+ * The facts a person approves on a contract visit's move: the visit as it stands, its crew's week
+ * (`undefined` when it has no crew yet), and the new date and reason as they were asked.
+ */
+export function contractRescheduleFacts(
+  job: Job,
+  crew: CrewWeek | undefined,
+  move: { readonly newDate: string; readonly reason: string },
+) {
+  return {
+    jobId: job.id,
+    client: job.client,
+    site: job.site,
+    service: job.service,
+    contractId: job.contractId,
+    crewId: job.crewId,
+    crewName: crew?.name ?? "no crew yet",
+    fromDate: job.date,
+    toDate: move.newDate.trim(),
+    // Without the closing full stop, so the summary can end the sentence itself.
+    reason: move.reason.trim().replace(/[.\s]+$/, ""),
+  };
 }
 
 export interface FakeOperationsDeskOptions {
@@ -438,6 +512,28 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
         .reduce((total, grant) => total + grant.hours, 0),
     );
 
+  const crewWeek = (
+    crew: Crew,
+    week: { readonly start: string; readonly end: string },
+  ): CrewWeek => {
+    const bookedHours = booked(crew.id, week.start);
+    const overtimeHours = overtimeFor(crew.id, week.start);
+    return {
+      crewId: crew.id,
+      name: crew.name,
+      members: crew.members,
+      weekStart: week.start,
+      weekEnd: week.end,
+      bookedHours,
+      weeklyHoursCap: crew.weeklyHoursCap,
+      overtimeHours,
+      hoursLeft: round(Math.max(0, crew.weeklyHoursCap + overtimeHours - bookedHours)),
+      timeOff: timeOff.filter(
+        (entry) => entry.crewId === crew.id && entry.date >= week.start && entry.date <= week.end,
+      ),
+    };
+  };
+
   /** A recurring contract promises the same crew each visit, so a different one is a person's call. */
   const refuseContractCrew = (job: Job, crew: Crew): void => {
     if (job.contractId !== null && job.crewId !== null && job.crewId !== crew.id) {
@@ -555,25 +651,7 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
 
     async listCrews(listOptions: { readonly weekOf?: string } = {}): Promise<readonly CrewWeek[]> {
       const week = weekOf(listOptions.weekOf?.trim() ?? today());
-      return crews.map((crew) => {
-        const bookedHours = booked(crew.id, week.start);
-        const overtimeHours = overtimeFor(crew.id, week.start);
-        return {
-          crewId: crew.id,
-          name: crew.name,
-          members: crew.members,
-          weekStart: week.start,
-          weekEnd: week.end,
-          bookedHours,
-          weeklyHoursCap: crew.weeklyHoursCap,
-          overtimeHours,
-          hoursLeft: round(Math.max(0, crew.weeklyHoursCap + overtimeHours - bookedHours)),
-          timeOff: timeOff.filter(
-            (entry) =>
-              entry.crewId === crew.id && entry.date >= week.start && entry.date <= week.end,
-          ),
-        };
-      });
+      return crews.map((crew) => crewWeek(crew, week));
     },
 
     async assignCrew(input, { requestId }): Promise<Assignment> {
@@ -607,6 +685,21 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
 
       const job = findJob(input.jobId);
       const crew = findCrew(input.crewId);
+      // The person approved the job and the crew's week as the gate read them; anything else is not
+      // what they approved.
+      if (
+        input.approved !== undefined &&
+        !sameFacts(
+          input.approved,
+          overtimeFacts(job, crewWeek(crew, weekOf(job.date)), input.hours),
+        )
+      ) {
+        const week = weekOf(job.date).start;
+        throw new OperationsDeskError(
+          "changed",
+          `This is not the overtime the person approved: ${job.id} or ${crew.name}'s week changed after its facts were read. ${job.id} is now on ${job.date} with ${job.crewId === null ? "no crew" : `crew ${job.crewId}`}, and ${crew.name} has ${hoursText(booked(crew.id, week))} of its ${hoursText(crew.weeklyHoursCap)} hours booked for the week of ${week}. Nothing was recorded.`,
+        );
+      }
       // Overtime assigns the job too, so it keeps the rule an assignment keeps.
       refuseContractCrew(job, crew);
       refuseTimeOff(crew, job.date, job);
@@ -664,6 +757,20 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
         throw new OperationsDeskError(
           "one_off",
           `${job.id} is a one-off job, not a visit on a recurring contract: move it with reschedule_job.`,
+        );
+      }
+      // The person approved the visit, the new date and the reason as the gate read them; anything
+      // else is not what they approved.
+      const crew = job.crewId === null ? undefined : findCrew(job.crewId);
+      const current = contractRescheduleFacts(
+        job,
+        crew === undefined ? undefined : crewWeek(crew, weekOf(job.date)),
+        input,
+      );
+      if (!sameFacts(input.approved, current)) {
+        throw new OperationsDeskError(
+          "changed",
+          `This is not the move the person approved: ${job.id} or the request changed after its facts were read. ${job.id} is now on ${job.date} with ${job.crewId === null ? "no crew" : `crew ${job.crewId}`}. Nothing was moved.`,
         );
       }
       const reason = input.reason.trim();

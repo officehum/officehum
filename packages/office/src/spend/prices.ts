@@ -124,7 +124,13 @@ export function microsFor(
   );
 }
 
-/** Micro-dollars as a person writes money, rounded to the cent only here, at the edge. */
+/**
+ * Micro-dollars as a person writes money, rounded to the cent only here, at the edge.
+ *
+ * An amount that is spent but rounds to no cents is written `<$0.01`: `$0.00` is kept for nothing at
+ * all, so a ticket that has been charged never reads as one that has not.
+ */
 export function formatMicros(micros: number): string {
-  return `$${(Math.max(0, micros) / (100 * MICROS_PER_CENT)).toFixed(2)}`;
+  const dollars = (Math.max(0, micros) / (100 * MICROS_PER_CENT)).toFixed(2);
+  return micros > 0 && dollars === "0.00" ? "<$0.01" : `$${dollars}`;
 }

@@ -36,7 +36,7 @@ import {
 } from "../../../packages/office/src/testing/scripted-model.js";
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
-import { fakeOperationsDesk, type OperationsDesk } from "./desk.js";
+import { contractRescheduleFacts, fakeOperationsDesk, type OperationsDesk } from "./desk.js";
 import operations from "./index.js";
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
@@ -327,6 +327,57 @@ describe("operations approval gates", () => {
     );
     expect(lastToolText(move.messages)).toContain("Approved and done. Moved J-1034");
     expect(await dateOf(desk, "J-1034")).toBe("2026-11-14");
+  });
+
+  it("refuses an approved call when the schedule changed between the ask and the yes", async () => {
+    // The approver says yes, but by then the job has gone to another crew.
+    const overtimeDesk = fakeOperationsDesk();
+    const overtime = await attempt({
+      turns: one("request_overtime", OVERTIME),
+      desk: overtimeDesk,
+      approver: async () => {
+        await overtimeDesk.assignCrew(
+          { jobId: "J-2101", crewId: "cleaning-north" },
+          { requestId: "meanwhile" },
+        );
+        return { approved: true, by: "eval" };
+      },
+    });
+    expect(lastToolText(overtime.messages)).toContain("not the overtime the person approved");
+    expect(lastToolText(overtime.messages)).toContain("Nothing was recorded");
+    expect(await crewOf(overtimeDesk, "J-2101")).toBe("cleaning-north");
+    const central = (await overtimeDesk.listCrews()).find(
+      (crew) => crew.crewId === "cleaning-central",
+    );
+    expect(central).toMatchObject({ bookedHours: 135, overtimeHours: 0 });
+
+    // The approver says yes to Saturday, but by then another approved move took the visit to Sunday.
+    const moveDesk = fakeOperationsDesk();
+    const move = await attempt({
+      turns: one("request_contract_reschedule", CONTRACT_MOVE),
+      desk: moveDesk,
+      approver: async () => {
+        const facts = (await moveDesk.listJobs({ client: "J-1034" }))[0];
+        if (facts === undefined) throw new Error("no J-1034");
+        await moveDesk.requestContractReschedule(
+          {
+            jobId: "J-1034",
+            newDate: "2026-11-15",
+            reason: "Client asked",
+            approved: contractRescheduleFacts(
+              facts,
+              (await moveDesk.listCrews()).find((crew) => crew.crewId === facts.crewId),
+              { newDate: "2026-11-15", reason: "Client asked" },
+            ),
+          },
+          { requestId: "meanwhile" },
+        );
+        return { approved: true, by: "eval" };
+      },
+    });
+    expect(lastToolText(move.messages)).toContain("not the move the person approved");
+    expect(lastToolText(move.messages)).toContain("Nothing was moved");
+    expect(await dateOf(moveDesk, "J-1034")).toBe("2026-11-15");
   });
 
   it("asks nobody about a job that is not there, or a move that is not a contract visit's", async () => {

@@ -441,7 +441,7 @@ describe("officehum board", () => {
     // Dollars with no calls and no tokens behind them: the micro-dollar figure alone must keep the
     // line, and a dollar ceiling alone must too.
     board.chargeUsage(cheap.id, "turn-1", { usdMicros: 450 });
-    expect(spendLine(board.budget(cheap.id))).toBe("0 calls · 0 tok · $0.00");
+    expect(spendLine(board.budget(cheap.id))).toBe("0 calls · 0 tok · <$0.01");
     const capped = create(board, { title: "Capped", budget: { maxUsdCents: 5 } });
     expect(spendLine(board.budget(capped.id))).toBe("0 calls · 0 tok · $0.00");
     expect(spendLine(board.budget(create(board, { title: "Untouched" }).id))).toBeUndefined();

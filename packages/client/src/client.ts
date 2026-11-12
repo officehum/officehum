@@ -1,7 +1,7 @@
 import type { ApprovalInfo, Approve, Result, Submit } from "@officehum/protocol";
 import { HttpTransport } from "./http-transport.js";
 import { Run } from "./run.js";
-import type { Transport, TransportOptions } from "./transport.js";
+import type { ApprovalsLost, Transport, TransportOptions } from "./transport.js";
 import { WebSocketTransport } from "./websocket-transport.js";
 
 export interface ConnectOptions extends TransportOptions {
@@ -92,12 +92,15 @@ export class GatewayClient {
   /**
    * The approvals waiting for someone like the caller, then each one asked for or decided as it
    * happens, passed to `listener` (WebSocket only). After a reconnect the client watches again and
-   * passes on whatever is waiting then.
+   * passes on whatever is waiting then. If the gateway refuses that watch (`forbidden`: the caller
+   * may no longer approve), `listener` is dropped and `onLost` is called once with the gateway's
+   * error; a `busy` answer is not a loss, and is asked again.
    */
   async watchApprovals(
     listener: (approval: ApprovalInfo) => void,
+    onLost?: ApprovalsLost,
   ): Promise<readonly ApprovalInfo[]> {
-    return await this.#transport.watchApprovals(listener);
+    return await this.#transport.watchApprovals(listener, onLost);
   }
 
   /** Stops a request; its run ends with `settled` and `status: "aborted"`. */

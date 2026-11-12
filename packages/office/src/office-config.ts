@@ -27,7 +27,7 @@ export const OFFICE_CONFIG_FILE = "office.config.json";
 /** What the file holds. `version` is there so a later shape can refuse an older one knowingly. */
 export type OfficeConfigFile = {
   readonly version: 1;
-  readonly sms?: { readonly businessNumber?: string };
+  readonly sms?: { readonly businessNumber?: string; readonly publicBaseUrl?: string };
 };
 
 export interface OfficeConfig {
@@ -39,6 +39,12 @@ export interface OfficeConfig {
   smsBusinessNumber(): E164 | undefined;
   /** Write the number a provisioner handed out. This is the `NumberSink` a provisioner takes. */
   setSmsBusinessNumber(number: E164): void;
+  /**
+   * The office's public base URL (`sms.publicBaseUrl`), without a trailing slash, or `undefined` when
+   * the file names none. Twilio signs the URL it was configured to call, and behind a proxy or tunnel
+   * that is not the address the listener sees, so an operator states it here, beside the number.
+   */
+  smsPublicBaseUrl(): string | undefined;
 }
 
 function readFile(path: string): OfficeConfigFile {
@@ -67,6 +73,19 @@ function readFile(path: string): OfficeConfigFile {
   return parsed as OfficeConfigFile;
 }
 
+/** The base URL as written, checked; a signature compared against a malformed URL would never match. */
+function publicBaseUrlOf(path: string, value: unknown): string {
+  const refuse = (problem: string): Error =>
+    new Error(
+      `Office config ${path} holds an sms.publicBaseUrl that ${problem}: ${JSON.stringify(value)}. Write the public address as an http(s) URL, such as https://office.example.com.`,
+    );
+  if (typeof value !== "string" || !URL.canParse(value)) throw refuse("is not a URL");
+  const url = new URL(value);
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw refuse("is not http(s)");
+  if (url.search !== "" || url.hash !== "") throw refuse("carries a query or fragment");
+  return `${url.origin}${url.pathname}`.replace(/\/+$/u, "");
+}
+
 /**
  * Open the config at `path`, creating nothing until something is written.
  *
@@ -90,14 +109,20 @@ export function openOfficeConfig(path: string): OfficeConfig {
     },
     setSmsBusinessNumber(number) {
       mkdirSync(dirname(path), { recursive: true });
+      const current = readFile(path);
       const next: OfficeConfigFile = {
-        ...readFile(path),
+        ...current,
         version: 1,
-        sms: { businessNumber: number },
+        // Spread first: the public base URL is an operator's setting and outlives a new number.
+        sms: { ...current.sms, businessNumber: number },
       };
       const temporary = `${path}.tmp`;
       writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, "utf8");
       renameSync(temporary, path);
+    },
+    smsPublicBaseUrl() {
+      const value: unknown = readFile(path).sms?.publicBaseUrl;
+      return value === undefined ? undefined : publicBaseUrlOf(path, value);
     },
   };
 }
