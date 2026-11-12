@@ -79,6 +79,23 @@ Each bug fix marked (test) has a regression test that failed before the fix.
 
 ## 2. For your review
 
+> **Update, 2026-11-12.** Most of this part has since been worked through on branch
+> `claude/audit-part-2`; the decision for each item is in
+> `docs/superpowers/plans/2026-11-11-audit-part-2.md`. Still open after that work:
+>
+> - **B7 was a wrong finding.** Front Desk's writing tools are correctly `replay: "safe"`: its
+>   exactly-once design relies on an interrupted call being re-run. What is misleading is that the
+>   docs and the sub-agent rules read "safe" as "does not write".
+> - **D1, approval inbox.** With `officehum runtime --board`, a gated call inside ticket work is
+>   recorded and blocked, and nothing can decide it. Needs a decision on which authority (board or
+>   gateway) governs approvals for ticket work.
+> - **A12.** Multi-output Paper commits check everything first and finish on replay, but are not
+>   atomic against a concurrent edit; that needs a multi-file commit in the SDK's file store.
+> - **A21.** Errors other than `busy` on the approval re-watch after a reconnect are still dropped.
+> - **B8.** Operations approval facts are shown to the approver but not re-checked at the write.
+> - **Left by decision:** B9, B13, C2 (its own PR), C4, C10, D2, D5, canonical JSON ordering (E2),
+>   Python helper duplication (E3).
+
 ### A. Likely bugs that need a design decision
 
 1. **Relay deadlocks on a nested wait.** `pollOnce` awaits a delegate's whole turn; if that turn

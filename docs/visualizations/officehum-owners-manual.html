@@ -300,15 +300,15 @@
 
   <main>
     <div class="cover">
-      <div class="eyebrow">Owner's Manual · Edition of 15 October 2026</div>
+      <div class="eyebrow">Owner's Manual · Edition of 11 November 2026</div>
       <h1>Office Hum</h1>
       <p class="lede">How the office fits together: the Pi Durable harness that runs every agent, the
         role packages that do the work, the Paper Instruments model and document libraries they use,
         and the Office Hum layer that hosts, coordinates and configures them.</p>
       <dl class="plate">
-        <div><dt>Source checked</dt><dd><code>main</code> @ 5790a71</dd></div>
+        <div><dt>Source checked</dt><dd><code>main</code> @ 4de6c7a + <code>claude/audit-part-2</code></dd></div>
         <div><dt>Pi Durable</dt><dd>1.3.0, pinned</dd></div>
-        <div><dt>Linear project</dt><dd>officehum · 209 issues</dd></div>
+        <div><dt>Linear project</dt><dd>officehum · 239 issues</dd></div>
         <div><dt>Roles built</dt><dd>9 built (3 in M1)</dd></div>
       </dl>
       <div class="keyline">
@@ -340,16 +340,16 @@
               <code>Harness</code> over JSONL storage (<code>packages/office/src/solo.ts</code>).
               Pi Durable 1.3.0 is pinned exactly and is a peer dependency of every role. The Paper design
               states it “remains the only agent harness and the authority for conversation state, task
-              checkpoints, approvals, and recovery.” Linear plans one Pi Durable harness per office
-              (RASF-3101, RASF-3104).</p>
+              checkpoints, approvals, and recovery.” One runtime process hosts one Pi Durable harness per
+              office (RASF-3104, built; RASF-3101 is still planned).</p>
             <ul>
               <li>Pi Durable is marked experimental upstream, so every runtime call goes
-                through one adapter in <code>@officehum/office</code>. That adapter epic (RASF-3065) has
-                landed its M0 foundation: solo mode (<code>officehum run</code>) and
-                <code>officehum eval</code>, which grades a role's evals on a bare harness. The
-                workboard, relay and office extension are still M2.</li>
+                through one adapter in <code>@officehum/office</code>. That adapter epic (RASF-3065) is
+                done: solo mode (<code>officehum run</code>), <code>officehum eval</code>, which
+                grades a role's evals on a bare harness, and the team runtime
+                (<code>officehum runtime</code>) with the workboard, relay and office extension.</li>
               <li>Office Hum adds what Pi Durable lacks: approval gates (built as Pi Durable hooks), and
-                the planned workboard and relay. Pi Durable itself has no multi-agent board.</li>
+                the workboard and relay (built). Pi Durable itself has no multi-agent board.</li>
             </ul>
           </div>
         </article>
@@ -387,22 +387,24 @@
                 <p><b>Ultramarine 1 Flash is the default.</b> Merged in PR #14 (RASF-3282, Done). New Front
                   Desk conversations start on <code>paper/ultramarine-1-flash</code> at maximum thinking.
                   A saved conversation keeps its original model, and a Paper failure never silently falls
-                  back to another provider. The provider is registered by the CLI host, so a bare Pi
-                  Durable user gets the model choice from the manifest but must register the provider
-                  themselves until it moves into its own package (RASF-3297, M1).</p></div>
+                  back to another provider. The provider is its own portable package,
+                  <code>@officehum/provider-paper</code> (RASF-3297, built), so a bare Pi Durable user
+                  can register the model a role names without Office Hum.</p></div>
               <div><div class="stamp s-part">Now planned</div>
                 <p><b>A model marketplace was not in the Office Hum plan</b> when this was checked. It is
                   now epic RASF-3296 (M4): a provider catalog with acceptance tests (RASF-3298) and a
                   Studio marketplace screen (RASF-3299), building on bring-your-own-key (RASF-3175). Today
-                  the CLI still accepts only <code>paper</code> or <code>openai</code>, though pi-ai 1.0.2
-                  already ships 44 provider adapters.</p></div>
+                  the CLI still accepts only <code>paper</code> or <code>openai</code>, though pi-ai 1.3.0
+                  already ships about 40 other provider adapters.</p></div>
               <div><div class="stamp s-ok">Built</div>
                 <p><b>The Paper Office tools are built.</b> The restricted worker, the document service
                   and the Word, PowerPoint and Excel adapters are merged (PRs #43 to #47), and the
                   all-format acceptance suite is the gate that says so (PR #51). Rendering is structural,
                   not pictorial: a receipt names what it could not verify instead of implying it.
                   Recalculation and bitmaps need a system library the worker does not carry, so those two
-                  are disclosed rather than promised.</p></div>
+                  are disclosed rather than promised. The pack is a package a host registers: no
+                  catalog role or CLI host registers it yet, and the worker is a bounded workspace,
+                  not a sandbox, until the container profile lands (RASF-3111).</p></div>
             </div>
           </div>
         </article>
@@ -420,19 +422,22 @@
           record of each conversation and tool call so work survives a crash. Office Hum hosts these
           agents, lets them hand work to one another through a shared workboard, asks people for
           approval before anything risky, and lets each business adjust the agents in plain language
-          without editing their code. The hosted version at officehum.com runs one office per business
-          on its own small server.</p>
+          without editing their code. The hosted version at officehum.com, not deployed yet, is planned
+          to run one office per business on its own small server.</p>
         <h3>What comes in the box</h3>
         <div class="tablewrap"><table>
           <thead><tr><th>Part</th><th>Path</th><th>What it does</th><th>State</th></tr></thead>
           <tbody>
             <tr><td>Front Desk role</td><td><code>agents/frontdesk</code></td><td>Contacts, messages, bookings, reschedules, cancellations and approved email replies</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>SDK</td><td><code>packages/sdk</code></td><td>Role manifest, <code>defineRole</code>, overlays, approval gate, engines, evals, versioned file store</td><td><span class="chip built">Built</span></td></tr>
-            <tr><td>Office host</td><td><code>packages/office</code></td><td>Solo runtime on Pi Durable, calendar, console and Resend messaging, signed inbound email, single-owner lock</td><td><span class="chip built">Solo only</span></td></tr>
-            <tr><td>CLI</td><td><code>packages/cli</code></td><td>Commands, approvals and state selection for one office</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Office host</td><td><code>packages/office</code></td><td>Solo and team runtime on Pi Durable: the adapter, workboard, relay, office extension, approvals, budgets and the runtime process; calendar, console and Resend messaging, signed inbound email and SMS, single-owner lock</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>CLI</td><td><code>packages/cli</code></td><td>Operator commands: run one role, run an office runtime, grade evals, watch the board, review documents, and the Front Desk solo commands</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Paper provider</td><td><code>packages/provider-paper</code></td><td>Portable <code>pi-ai</code> provider for Ultramarine 1 Flash, so a role's default model resolves in a bare Pi Durable install</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Google Calendar client</td><td><code>packages/google-calendar</code></td><td>Portable REST client and fake for tests</td><td><span class="chip built">Built</span></td></tr>
-            <tr class="planned"><td>Workboard, relay, office extension</td><td>none yet</td><td>The team runtime that lets roles hand work to each other</td><td><span class="chip planned">M2</span></td></tr>
+            <tr><td>Workboard, relay, office extension</td><td><code>packages/office/src/board</code>, <code>relay</code>, <code>extension</code>, <code>runtime</code></td><td>The team runtime that lets roles hand work to each other; <code>officehum runtime --board FILE</code> runs it. Approvals raised on ticket work cannot be answered yet</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Gateway, protocol, client</td><td><code>packages/gateway</code>, <code>packages/protocol</code>, <code>packages/client</code></td><td>The authenticated WebSocket and HTTP edge that supervises a runtime, the Gateway Protocol v1 messages, and a TypeScript client; carries remote approvals</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Channels</td><td><code>packages/channels</code></td><td>The channel plugin contract and the inbound SMS (Twilio) channel</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Role Factory</td><td><code>packages/role-factory</code></td><td><code>ROLE_SPEC.md</code> parser, interview and <code>officehum-role generate</code></td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Bookkeeper role</td><td><code>agents/bookkeeper</code></td><td>Invoices completed jobs, chases overdue invoices, answers billing questions; records supplier bills and pays them with approval; QuickBooks client and fake</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Office Manager role</td><td><code>agents/office-manager</code></td><td>Triages requests and writes the daily digest; no tools of its own</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Sales role</td><td><code>agents/sales</code></td><td>Qualifies leads, quotes from the price book, follows up and keeps the pipeline</td><td><span class="chip built">Built</span></td></tr>
@@ -441,7 +446,7 @@
             <tr><td>Marketing role</td><td><code>agents/marketing</code></td><td>Drafts posts and campaign emails from approved claims; a person approves each new claim and every publication</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Support role</td><td><code>agents/support</code></td><td>Logs client complaints as cases, books re-cleans, asks a person for every credit, and escalates safety and refunds</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>People Ops role</td><td><code>agents/people-ops</code></td><td>Keeps hiring and onboarding moving, records time off for a person to answer, and hands pay and discipline to a person</td><td><span class="chip built">Built</span></td></tr>
-            <tr><td>Paper Office tool pack and worker</td><td><code>packages/tools-paper-office</code></td><td>Word, PowerPoint and Excel tools for every role</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Paper Office tool pack and worker</td><td><code>packages/tools-paper-office</code></td><td>Word, PowerPoint and Excel tools as a pack a host registers; no role is wired to it yet</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Studio, Inbox, hosted servers</td><td>none yet</td><td>Web interface, approvals inbox, one server per business</td><td><span class="chip planned">M4</span></td></tr>
           </tbody>
         </table></div>
@@ -466,18 +471,18 @@
 
           <!-- Row 1: channels -->
           <g><rect x="20" y="16" width="146" height="50" rx="6" class="bx"/><text x="93" y="37" text-anchor="middle" class="t">Operator CLI</text><text x="93" y="55" text-anchor="middle" class="ts">built</text></g>
-          <g><rect x="178" y="16" width="146" height="50" rx="6" class="bx"/><text x="251" y="37" text-anchor="middle" class="t">Customer email</text><text x="251" y="55" text-anchor="middle" class="ts">Resend, built</text></g>
+          <g><rect x="178" y="16" width="146" height="50" rx="6" class="bx"/><text x="251" y="37" text-anchor="middle" class="t">Email · inbound SMS</text><text x="251" y="55" text-anchor="middle" class="ts">Resend · Twilio, built</text></g>
           <g class="planned"><rect x="336" y="16" width="146" height="50" rx="6" class="bx dash"/><text x="409" y="37" text-anchor="middle" class="t">Studio · Inbox</text><text x="409" y="55" text-anchor="middle" class="ts">planned, M4</text></g>
-          <g class="planned"><rect x="494" y="16" width="146" height="50" rx="6" class="bx dash"/><text x="567" y="37" text-anchor="middle" class="t">Teams · Slack · SMS</text><text x="567" y="55" text-anchor="middle" class="ts">planned, M4–M5</text></g>
+          <g class="planned"><rect x="494" y="16" width="146" height="50" rx="6" class="bx dash"/><text x="567" y="37" text-anchor="middle" class="t">Teams · Slack · chat</text><text x="567" y="55" text-anchor="middle" class="ts">planned, M4–M5</text></g>
           <path d="M330 66V100" class="ln" marker-end="url(#ah1)"/>
 
           <!-- Row 2: Office Hum -->
           <rect x="20" y="104" width="620" height="152" rx="8" class="bx-o"/>
           <text x="36" y="126" class="tl c-o">OFFICE HUM<tspan class="ts" dx="8">host · coordination · configuration</tspan></text>
-          <g class="planned"><rect x="36" y="138" width="140" height="48" rx="5" class="bx dash"/><text x="106" y="158" text-anchor="middle" class="t">Workboard</text><text x="106" y="176" text-anchor="middle" class="ts">tickets · events</text></g>
-          <g class="planned"><rect x="186" y="138" width="140" height="48" rx="5" class="bx dash"/><text x="256" y="158" text-anchor="middle" class="t">Relay</text><text x="256" y="176" text-anchor="middle" class="ts">exactly-once delivery</text></g>
-          <g class="planned"><rect x="336" y="138" width="140" height="48" rx="5" class="bx dash"/><text x="406" y="158" text-anchor="middle" class="t">Office extension</text><text x="406" y="176" text-anchor="middle" class="ts">dispatch · hooks</text></g>
-          <g><rect x="486" y="138" width="140" height="48" rx="5" class="bx"/><text x="556" y="158" text-anchor="middle" class="t">Approver</text><text x="556" y="176" text-anchor="middle" class="ts">CLI prompt today</text></g>
+          <g><rect x="36" y="138" width="140" height="48" rx="5" class="bx"/><text x="106" y="158" text-anchor="middle" class="t">Workboard</text><text x="106" y="176" text-anchor="middle" class="ts">tickets · events</text></g>
+          <g><rect x="186" y="138" width="140" height="48" rx="5" class="bx"/><text x="256" y="158" text-anchor="middle" class="t">Relay</text><text x="256" y="176" text-anchor="middle" class="ts">exactly-once delivery</text></g>
+          <g><rect x="336" y="138" width="140" height="48" rx="5" class="bx"/><text x="406" y="158" text-anchor="middle" class="t">Office extension</text><text x="406" y="176" text-anchor="middle" class="ts">dispatch · hooks</text></g>
+          <g><rect x="486" y="138" width="140" height="48" rx="5" class="bx"/><text x="556" y="158" text-anchor="middle" class="t">Approver</text><text x="556" y="176" text-anchor="middle" class="ts">CLI prompt · gateway</text></g>
           <g><rect x="36" y="196" width="290" height="48" rx="5" class="bx"/><text x="181" y="216" text-anchor="middle" class="t">Host adapters</text><text x="181" y="234" text-anchor="middle" class="ts">calendar · contacts · email · state lock</text></g>
           <g><rect x="336" y="196" width="290" height="48" rx="5" class="bx"/><text x="481" y="216" text-anchor="middle" class="t">Overlays and configuration</text><text x="481" y="234" text-anchor="middle" class="ts">SDK resolver built · Studio planned</text></g>
 
@@ -505,7 +510,7 @@
           <!-- Row 5: providers -->
           <g><rect x="20" y="512" width="220" height="56" rx="6" class="bx-v"/><text x="130" y="535" text-anchor="middle" class="t">Paper · Ultramarine 1 Flash</text><text x="130" y="554" text-anchor="middle" class="ts">default for new conversations</text></g>
           <g><rect x="252" y="512" width="180" height="56" rx="6" class="bx"/><text x="342" y="535" text-anchor="middle" class="t">OpenAI · gpt-6-sol</text><text x="342" y="554" text-anchor="middle" class="ts">explicit override</text></g>
-          <g class="planned"><rect x="444" y="512" width="196" height="56" rx="6" class="bx dot"/><text x="542" y="535" text-anchor="middle" class="t">43 other pi-ai providers</text><text x="542" y="554" text-anchor="middle" class="ts">in the library, not wired</text></g>
+          <g class="planned"><rect x="444" y="512" width="196" height="56" rx="6" class="bx dot"/><text x="542" y="535" text-anchor="middle" class="t">Other pi-ai providers</text><text x="542" y="554" text-anchor="middle" class="ts">in the library, not wired</text></g>
 
           <!-- Column B: Paper -->
           <g><rect x="670" y="16" width="270" height="50" rx="6" class="bx-v"/><text x="805" y="37" text-anchor="middle" class="t">Paper Instruments</text><text x="805" y="55" text-anchor="middle" class="ts">a supplier of model and libraries</text></g>
@@ -513,8 +518,8 @@
           <g><rect x="670" y="138" width="270" height="50" rx="6" class="bx"/><text x="805" y="159" text-anchor="middle" class="t">Paper Office tool pack</text><text x="805" y="177" text-anchor="middle" class="ts">typed tools + run_document_python</text></g>
           <g><rect x="670" y="208" width="270" height="50" rx="6" class="bx-o"/><text x="805" y="229" text-anchor="middle" class="t">DocumentService</text><text x="805" y="247" text-anchor="middle" class="ts">leases · ledger · validation · review</text></g>
           <g><rect x="670" y="278" width="270" height="50" rx="6" class="bx-o"/><text x="805" y="299" text-anchor="middle" class="t">Versioned FileStore</text><text x="805" y="317" text-anchor="middle" class="ts">immutable versions · receipts · built</text></g>
-          <g><rect x="670" y="348" width="270" height="50" rx="6" class="bx"/><text x="805" y="369" text-anchor="middle" class="t">Restricted Python worker</text><text x="805" y="387" text-anchor="middle" class="ts">no network · no credentials</text></g>
-          <g class="planned"><rect x="670" y="418" width="270" height="50" rx="6" class="bx-v dash"/><text x="805" y="439" text-anchor="middle" class="t">paper-docx · pptx · xlsx</text><text x="805" y="457" text-anchor="middle" class="ts">pinned 0.2.x · not installed yet</text></g>
+          <g><rect x="670" y="348" width="270" height="50" rx="6" class="bx"/><text x="805" y="369" text-anchor="middle" class="t">Restricted Python worker</text><text x="805" y="387" text-anchor="middle" class="ts">bounded workspace · sandbox planned</text></g>
+          <g><rect x="670" y="418" width="270" height="50" rx="6" class="bx-v"/><text x="805" y="439" text-anchor="middle" class="t">paper-docx · pptx · xlsx</text><text x="805" y="457" text-anchor="middle" class="ts">pinned 0.2.x · host provisions the interpreter</text></g>
           <path d="M805 188V204" class="ln" marker-end="url(#ah1)"/>
           <path d="M805 258V274" class="ln" marker-end="url(#ah1)"/>
           <path d="M940 233H952V373H944" class="ln" marker-end="url(#ah1)"/>
@@ -529,8 +534,8 @@
         </div>
         <figcaption><b>Figure 2.1</b> The stack. Read it top to bottom: people reach Office Hum, Office Hum
           installs role packages, roles run inside Pi Durable, and Pi Durable calls a model through pi-ai.
-          The right column is the planned document path, where Paper's libraries run in a sandbox that
-          the Office Hum host controls.</figcaption>
+          The right column is the document path, where Paper's libraries run in a bounded worker that
+          the Office Hum host controls (the container sandbox is planned, RASF-3111).</figcaption>
       </figure>
 
       <h3>Who owns what</h3>
@@ -599,20 +604,20 @@
         <div class="tablewrap"><table>
           <thead><tr><th>Pi Durable term</th><th>Meaning</th><th>How Office Hum uses it</th></tr></thead>
           <tbody>
-            <tr><td>Harness</td><td>One open store plus the machinery that runs agents on it</td><td>Solo mode: one per state folder. Planned: one per office, hosting every role.</td></tr>
+            <tr><td>Harness</td><td>One open store plus the machinery that runs agents on it</td><td>Solo mode: one per state folder. Team runtime: one per office, hosting every role.</td></tr>
             <tr><td>Conversation</td><td>A transcript of immutable entries; can be forked or owned by a task</td><td>Each role session is a conversation. Inbound email gets its own.</td></tr>
             <tr><td>Agent</td><td>Model, thinking level, extensions, tools and instructions, stored per conversation</td><td>A role's <code>agent</code> settings. The model is pinned when the conversation is created.</td></tr>
             <tr><td>Extension</td><td>A named bundle of tools, prompt sections, hooks and tasks</td><td><code>defineRole</code> turns a role package into extensions.</td></tr>
             <tr><td>Task</td><td>A durable state machine that checkpoints every step</td><td>Every tool call is a task, so an approval decision survives a restart.</td></tr>
             <tr><td>Hook</td><td>Code that runs before or after a tool, request or compaction</td><td>The approval gate is a <code>beforeTool</code> hook. Context and memory hooks are designed.</td></tr>
-            <tr><td>Submission + requestId</td><td>Input admitted durably, deduplicated by request ID</td><td>The CLI's <code>--request-id</code>; the planned relay uses the event ID.</td></tr>
+            <tr><td>Submission + requestId</td><td>Input admitted durably, deduplicated by request ID</td><td>The CLI's <code>--request-id</code>; the relay uses the ticket event's ID.</td></tr>
             <tr><td>Task-owned conversation</td><td>A child conversation owned by a task: a subagent</td><td>Designed for narrow helper sub-agents inside one role (RASF-3235).</td></tr>
           </tbody>
         </table></div>
         <div class="note caution"><span class="label">Caution</span>Pi Durable's API is experimental and
           can change between releases. Office Hum pins one exact version (1.3.0), lets Dependabot propose
-          upgrades, and routes runtime calls through one adapter. The upgrade to 1.1.x is its own ticket
-          (RASF-3237).</div>
+          upgrades, and routes runtime calls through one adapter. An upgrade is its own ticket, never part of a
+          feature; the move to 1.3 was RASF-3237.</div>
       </div>
     </section>
 
@@ -640,7 +645,7 @@
             <tr><td>Context</td><td><code>AGENTS.md</code>, <code>APPEND_SYSTEM.md</code></td><td>Informs. Who the role is. No amounts or thresholds.</td></tr>
             <tr><td>Knowledge</td><td>Skills and their reference files</td><td>Informs. Loaded only when needed.</td></tr>
             <tr><td>Wisdom</td><td>Replay class, approval rules, overlay limits</td><td>Controls, in code. A prompt edit cannot switch it off.</td></tr>
-            <tr><td>Workflow</td><td><code>accepts</code> with completion evidence</td><td>Controls. A ticket is done only when its evidence checks out.</td></tr>
+            <tr><td>Workflow</td><td><code>accepts</code> with completion evidence</td><td>Controls. A ticket is done only when its evidence checks out. The evidence is declared and validated today; nothing runs it yet.</td></tr>
           </tbody>
         </table></div>
 
@@ -655,7 +660,7 @@
         <div class="tablewrap"><table>
           <thead><tr><th>Role</th><th>Accepts</th><th>Approval gates</th><th>State</th></tr></thead>
           <tbody>
-            <tr><td>Front Desk</td><td><code>booking.request</code>, <code>customer.reply</code></td><td>Contact create and update, first contact, booking, discount over the set rate, reschedule, cancel</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Front Desk</td><td><code>booking.request</code>, <code>customer.reply</code></td><td>Contact create and update, first contact, inbound reply, booking, discount over the set rate, reschedule, cancel</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Bookkeeper</td><td><code>invoice.create</code>, <code>invoice.question</code>, <code>collections.run</code>, <code>payables.bill</code>, <code>books.close</code></td><td><code>large_invoice</code> (over $5,000 by default), <code>new_recipient</code>, <code>final_notice</code>, <code>any_payment</code></td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Office Manager</td><td><code>triage.request</code>, <code>digest.request</code></td><td>No tools of its own; the office's front door for unrouted work</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Sales</td><td><code>quote.request</code>, <code>lead.qualify</code>, <code>pipeline.review</code></td><td><code>quote_approval</code> (a discounted quote, or one whose desk total is over $5,000 by default)</td><td><span class="chip built">Built</span></td></tr>
@@ -670,7 +675,8 @@
         <p>The roster is meant to grow into a free catalog covering every department of a company
           (RASF-3293), with the owner choosing departments, roles and order in RASF-3294. Most roles are
           meant to come from the Role Factory (RASF-3096): an interview produces a
-          <code>ROLE_SPEC.md</code>, which a generator turns into a role package of exactly this shape.
+          <code>ROLE_SPEC.md</code>, which a generator turns into a role package of exactly this shape
+          (the parser, interview and generator are built in <code>packages/role-factory</code>).
           Every catalog role passes the same SDK checks and its evals in a bare Pi Durable harness.</p>
       </div>
     </section>
@@ -694,9 +700,11 @@
             <code>defaultProvider</code>, <code>defaultModel</code> and <code>defaultThinkingLevel</code>.
             Studio's model picker will edit this (planned).</span></div></li>
           <li><div><b>Operator override</b><span>Today the CLI's <code>--provider paper|openai</code> and
-            <code>--model</code>.</span></div></li>
+            <code>--model</code>; <code>run</code>, <code>runtime</code> and <code>eval</code> take
+            <code>--model provider/model</code>.</span></div></li>
           <li><div><b>Pinned at creation</b><span>The choice is stored in the conversation. Resuming
-            later always uses the same provider and model, even if the default has changed.</span></div></li>
+            later always uses the same provider and model, even if the default has changed;
+            <code>/reload</code> re-applies an overlay's other settings, never its model.</span></div></li>
         </ol>
 
         <h3>Provider availability</h3>
@@ -708,23 +716,24 @@
             <tr class="planned"><td>Bring your own key</td><td><span class="chip planned">M4</span></td><td>RASF-3175: providers pi-ai supports that Office Hum lists</td></tr>
             <tr class="planned"><td>Per-agent model picker</td><td><span class="chip planned">M4</span></td><td>Studio Agents screen, RASF-3150</td></tr>
             <tr class="planned"><td>Model tiers and cheaper sub-agent models</td><td><span class="chip planned">M2</span></td><td><code>contextPlan</code>, RASF-3232 and RASF-3235</td></tr>
-            <tr class="planned"><td>Portable Paper provider package</td><td><span class="chip planned">M1</span></td><td>RASF-3297: register Ultramarine in any Pi Durable install</td></tr>
+            <tr><td>Portable Paper provider package</td><td><span class="chip built">Built</span></td><td><code>packages/provider-paper</code>, RASF-3297: register Ultramarine in any Pi Durable install</td></tr>
             <tr class="planned"><td>Model marketplace</td><td><span class="chip planned">M4</span></td><td>Epic RASF-3296: provider catalog RASF-3298, Studio screen RASF-3299</td></tr>
           </tbody>
         </table></div>
-        <div class="note"><span class="label">Note</span>The marketplace epic covers the three missing
-          pieces: a tested catalog of the pi-ai providers and models Office Hum lists, provider
-          registration in a portable package rather than in the CLI, and a Studio screen to connect keys
-          and pick a model per agent. One decision stays open: bundled usage versus bring-your-own-key
-          billing (RASF-3184). Since pi-ai already supports 44 providers, most of the work is the
-          catalog, testing and billing rather than new adapters.</div>
+        <div class="note"><span class="label">Note</span>The marketplace epic covers the two missing
+          pieces: a tested catalog of the pi-ai providers and models Office Hum lists, and a Studio
+          screen to connect keys and pick a model per agent. The third, provider registration in a
+          portable package rather than in the CLI, is done for Paper (RASF-3297). One decision stays
+          open: bundled usage versus bring-your-own-key billing (RASF-3184). Since pi-ai already
+          supports about 40 providers, most of the work is the catalog, testing and billing rather
+          than new adapters.</div>
       </div>
     </section>
 
     <!-- 06 -->
     <section class="chapter" id="documents">
       <div class="chapter-head"><div class="num">06</div><h2>Paper Office documents</h2>
-        <div class="eyebrow">Approved design · file store built · tools not built</div></div>
+        <div class="eyebrow">File store, worker, tools and review built · container sandbox not built</div></div>
       <div class="col">
         <p>The design gives every role two ways to work on Word, PowerPoint and Excel files: small typed
           tools (<code>inspect_document</code>, <code>read_document</code>, <code>edit_document</code>,
@@ -733,10 +742,16 @@
           sandboxed Python workspace with the three pinned Paper libraries. Both ship as a portable tool
           pack. Office Hum supplies the document service behind it; a bare Pi Durable user can supply
           their own.</p>
-        <div class="note warning"><span class="label">Not yet available</span>None of the tools below
-          exist on main. What exists is the versioned file store they will write to:
-          immutable versions, operation receipts and replay, stale-edit conflicts, and a publish pointer
-          that only moves if nobody changed the file first.</div>
+        <div class="note caution"><span class="label">Built, with limits</span>The tool pack, the document
+          service, the worker and the review gate are in <code>packages/tools-paper-office</code>, on
+          the versioned file store: immutable versions, operation receipts and replay, stale-edit
+          conflicts, and a publish pointer that only moves if nobody changed the file first. Three
+          limits. The worker needs a provisioned Python 3.13 interpreter named in
+          <code>OFFICEHUM_PAPER_PYTHON</code>; without it there is no document workspace. Until the
+          container profile lands (RASF-3111) the worker is a bounded workspace with Python-level
+          guards, not a sandbox, so a host can leave <code>run_document_python</code> out of the pack
+          (<code>includePythonWorkspace: false</code>). And no catalog role or CLI host registers the
+          pack yet; the person's side is <code>officehum review</code>.</div>
 
         <h3>The life of a document edit</h3>
         <ol class="flow">
@@ -765,37 +780,42 @@
         </ol>
         <p>Numbers in a document or deck must trace back to spreadsheet or engine results, never to model
           arithmetic. Paper Rubric may score layout and clarity, but it cannot approve publication.</p>
-        <p>Delivery order: provider (done), file foundation (SDK done; office store and worker not
-          started), the three format adapters, then review and publish. Each format has its own
-          adapter ticket in M3: Word (RASF-3300), PowerPoint (RASF-3284) and Excel (RASF-3301).</p>
+        <p>Delivery order was: provider, file foundation, the worker (RASF-3283), the three format
+          adapters (Word RASF-3300, PowerPoint RASF-3284, Excel RASF-3301), then review and publish
+          (RASF-3285). All are merged (PRs #43 to #47). Still open: the container sandbox (RASF-3111)
+          and the office's own file store (RASF-3193).</p>
       </div>
     </section>
 
     <!-- 07 -->
     <section class="chapter" id="team">
       <div class="chapter-head"><div class="num">07</div><h2>Running a team of agents</h2>
-        <div class="eyebrow">Front Desk, Sales, Bookkeeper and Office Manager in one office · designed for M2, not built</div></div>
+        <div class="eyebrow">Front Desk, Sales, Bookkeeper and Office Manager in one office · team runtime built · approvals on ticket work not answerable yet</div></div>
       <div class="col">
-        <p>In a running office, one runtime process hosts one Pi Durable harness and every role in it, all
-          in one SQLite file. Roles never call each other. They post <b>tickets</b> of a declared type to
+        <p>In a running office, one runtime process hosts one Pi Durable harness and every role in it. The
+          harness is one SQLite file and the workboard a second
+          (<code>officehum runtime --db FILE --board FILE</code>; without <code>--board</code> each
+          agent works alone). Roles never call each other. They post <b>tickets</b> of a declared type to
           a shared <b>workboard</b>, and a <b>relay</b> delivers each ticket exactly once to the role whose
-          manifest <code>accepts</code> that type. Work nobody accepts goes to the Office Manager's triage,
-          then to a person.</p>
+          manifest <code>accepts</code> that type. A type nobody accepts is refused when an agent tries
+          to dispatch it, unless the company record routes that type to a person; a ticket of such a
+          type that arrives another way goes to the Office Manager's triage, or to a person when no
+          triage role is installed. At start the runtime loads the company's people onto the board.</p>
       </div>
 
-      <figure class="figure wide planned-fig">
+      <figure class="figure wide">
         <div class="scroll">
         <svg viewBox="0 0 960 490" role="img" aria-labelledby="hubTitle">
           <title id="hubTitle">Four roles connected only through the workboard and relay, with people approving in the Inbox</title>
           <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
 
-          <g><rect x="360" y="16" width="240" height="56" rx="6" class="bx"/><text x="480" y="39" text-anchor="middle" class="t">Customers and channels</text><text x="480" y="58" text-anchor="middle" class="ts">email today · SMS and web chat later</text></g>
+          <g><rect x="360" y="16" width="240" height="56" rx="6" class="bx"/><text x="480" y="39" text-anchor="middle" class="t">Customers and channels</text><text x="480" y="58" text-anchor="middle" class="ts">email and inbound SMS · web chat later</text></g>
           <path d="M360 52C330 60 316 76 300 96" class="ln" marker-end="url(#ah2)"/>
           <path d="M600 52C630 60 644 76 660 96" class="ln dash" marker-end="url(#ah2)"/>
 
           <!-- Front Desk -->
           <g><rect x="40" y="96" width="260" height="110" rx="6" class="bx"/>
-            <text x="56" y="120" class="tb">Front Desk</text><text x="284" y="120" text-anchor="end" class="tl c-ok">BUILT SOLO</text>
+            <text x="56" y="120" class="tb">Front Desk</text><text x="284" y="120" text-anchor="end" class="tl c-ok">BUILT</text>
             <text x="56" y="144" class="tm">accepts</text><text x="132" y="144" class="tm" style="fill: var(--ink)">booking.request</text>
             <text x="132" y="162" class="tm" style="fill: var(--ink)">customer.reply</text>
             <text x="56" y="184" class="tm">hands off</text><text x="132" y="184" class="tm" style="fill: var(--ink)">invoice.question</text>
@@ -810,7 +830,7 @@
             <text x="752" y="216" class="tm" style="fill: var(--ink)">operations.schedule</text></g>
           <!-- Office Manager -->
           <g><rect x="40" y="320" width="260" height="110" rx="6" class="bx"/>
-            <text x="56" y="344" class="tb">Office Manager</text><text x="284" y="344" text-anchor="end" class="tl c-ok">BUILT SOLO</text>
+            <text x="56" y="344" class="tb">Office Manager</text><text x="284" y="344" text-anchor="end" class="tl c-ok">BUILT</text>
             <text x="56" y="368" class="tm">accepts</text><text x="132" y="368" class="tm" style="fill: var(--ink)">triage.request</text>
             <text x="132" y="386" class="tm" style="fill: var(--ink)">digest.request</text>
             <text x="56" y="410" class="ts">Catches tickets no role accepts</text></g>
@@ -822,7 +842,7 @@
             <text x="676" y="410" class="ts">QuickBooks Online · never moves money</text></g>
 
           <!-- Hub -->
-          <g class="planned"><rect x="360" y="206" width="240" height="114" rx="8" class="bx-o dash"/>
+          <g><rect x="360" y="206" width="240" height="114" rx="8" class="bx-o"/>
             <text x="480" y="230" text-anchor="middle" class="tl c-o">WORKBOARD + RELAY</text>
             <text x="480" y="252" text-anchor="middle" class="ts">tickets with append-only events</text>
             <text x="480" y="270" text-anchor="middle" class="ts">routes by ticket type</text>
@@ -845,14 +865,14 @@
           <text x="480" y="180" text-anchor="middle" class="tm halo" style="fill: var(--no)">no direct calls between roles</text>
 
           <!-- People -->
-          <g><rect x="360" y="380" width="240" height="70" rx="6" class="bx"/><text x="480" y="406" text-anchor="middle" class="t">Owner and staff</text><text x="480" y="426" text-anchor="middle" class="ts">approve in the Inbox (CLI today)</text><text x="480" y="442" text-anchor="middle" class="ts">receive escalations</text></g>
+          <g><rect x="360" y="380" width="240" height="70" rx="6" class="bx"/><text x="480" y="406" text-anchor="middle" class="t">Owner and staff</text><text x="480" y="426" text-anchor="middle" class="ts">approve at the CLI or via the gateway</text><text x="480" y="442" text-anchor="middle" class="ts">receive escalations</text></g>
           <path d="M480 320V376" class="ln" marker-end="url(#ah2)"/>
           <text x="40" y="474" class="tm">All four roles are conversations in one Pi Durable harness per office. Sales is built; its ticket types are in its manifest.</text>
         </svg>
         </div>
         <figcaption><b>Figure 7.1</b> The office as a hub. Each role knows its colleagues from a short
-          <code>team</code> section and can look up an agent card (what it accepts, what it never does), but
-          it hands work over only by ticket type, through host tools. Nothing lets one agent run another
+          <code>team</code> section (an agent card to look up, with what a colleague accepts and never
+          does, is planned), but it hands work over only by ticket type, through host tools. Nothing lets one agent run another
           agent's tools.</figcaption>
       </figure>
 
@@ -860,21 +880,26 @@
       <div class="tablewrap"><table>
         <thead><tr><th>Rule</th><th>Why it matters</th><th>Ticket</th></tr></thead>
         <tbody>
-          <tr><td>Dispatch by type, never by name</td><td>You can replace or add a role without rewiring the others</td><td>RASF-3109</td></tr>
-          <tr><td>Exactly-once delivery</td><td>The relay uses the event ID as the Pi Durable request ID, so a crash cannot deliver a ticket twice</td><td>RASF-3067</td></tr>
-          <tr><td>Provenance and budget are inherited</td><td>A child ticket carries where the work came from (customer email is <i>external</i>) and what budget remains</td><td>RASF-3066, 3142</td></tr>
-          <tr><td>Hop limit</td><td>After four hand-offs a ticket goes to a person, so agents cannot loop</td><td>RASF-3066</td></tr>
-          <tr><td>Evidence to close</td><td>A ticket is done only when its declared evidence checks out, such as an invoice ID in QuickBooks</td><td>RASF-3230</td></tr>
-          <tr><td>Install-time check</td><td>The office warns when a role hands off a ticket type nobody accepts</td><td>RASF-3236</td></tr>
-          <tr><td>Shared memory and files</td><td>Facts are shared office-wide; a file one agent makes is handed to another by ID</td><td>RASF-3222, 3193</td></tr>
-          <tr><td>Askers' permissions</td><td>An agent answering a staff member acts with that person's approval limits, not its own</td><td>RASF-3089</td></tr>
+          <tr><td>Dispatch by type, never by name</td><td>You can replace or add a role without rewiring the others</td><td>RASF-3109 · built</td></tr>
+          <tr><td>Exactly-once delivery</td><td>The relay uses the event ID as the Pi Durable request ID, so a crash cannot deliver a ticket twice</td><td>RASF-3067 · built</td></tr>
+          <tr><td>Provenance and budget are inherited</td><td>A child ticket carries where the work came from (customer email is <i>external</i>) and what budget remains</td><td>RASF-3066, 3142 · built</td></tr>
+          <tr><td>Hop limit</td><td>After four hand-offs a ticket goes to a person, so agents cannot loop</td><td>RASF-3066 · built</td></tr>
+          <tr><td>Evidence to close</td><td>A ticket is done only when its declared evidence checks out, such as an invoice ID in QuickBooks</td><td>RASF-3230 · planned</td></tr>
+          <tr><td>Install-time check</td><td>The office warns when a role hands off a ticket type nobody accepts</td><td>RASF-3236 · planned</td></tr>
+          <tr><td>Shared memory and files</td><td>Facts are shared office-wide; a file one agent makes is handed to another by ID</td><td>RASF-3222, 3193 · planned</td></tr>
+          <tr><td>Askers' permissions</td><td>An agent answering a staff member acts with that person's approval limits, not its own</td><td>RASF-3089 · planned</td></tr>
+          <tr><td>Approvals on ticket work</td><td>A gated tool called while working a ticket is recorded on the board for a person and does not run</td><td>RASF-3138 · recorded, but no command or screen answers it yet</td></tr>
         </tbody>
       </table></div>
 
       <h3>Worked example: a prospect becomes an invoice</h3>
       <p class="col">A prospect emails asking for a meeting on Tuesday and for onboarding pricing. Four
-        agents and the owner handle it. Steps 5 to 12 depend on the M2 team runtime; the roles
-        themselves are built (RASF-3295), but their hand-offs do not yet form this chain as drawn (RASF-3490).</p>
+        agents and the owner handle it. The team runtime that steps 5 to 12 depend on is built, and so
+        are the roles. The chain still does not run as drawn: the Front Desk's manifest declares only
+        an <code>invoice.question</code> hand-off, Sales declares none for <code>invoice.create</code>,
+        the runtime binds no calendar or other app client to a role (only demonstration desks), no
+        role is wired to the Paper Office pack, an approval raised while working a ticket (step 10)
+        cannot be answered yet, and nothing checks completion evidence (step 12).</p>
 
       <figure class="figure wide">
         <div class="scroll">
@@ -884,9 +909,9 @@
           <g>
             <rect x="12" y="16" width="136" height="44" rx="6" class="bx"/><text x="80" y="43" text-anchor="middle" class="t">Customer</text>
             <rect x="172" y="16" width="136" height="44" rx="6" class="bx"/><text x="240" y="43" text-anchor="middle" class="t">Front Desk</text>
-            <rect x="332" y="16" width="136" height="44" rx="6" class="bx dash planned"/><text x="400" y="43" text-anchor="middle" class="t">Sales</text>
-            <rect x="492" y="16" width="136" height="44" rx="6" class="bx-o dash planned"/><text x="560" y="43" text-anchor="middle" class="t">Board + relay</text>
-            <rect x="652" y="16" width="136" height="44" rx="6" class="bx dash planned"/><text x="720" y="43" text-anchor="middle" class="t">Bookkeeper</text>
+            <rect x="332" y="16" width="136" height="44" rx="6" class="bx"/><text x="400" y="43" text-anchor="middle" class="t">Sales</text>
+            <rect x="492" y="16" width="136" height="44" rx="6" class="bx-o"/><text x="560" y="43" text-anchor="middle" class="t">Board + relay</text>
+            <rect x="652" y="16" width="136" height="44" rx="6" class="bx"/><text x="720" y="43" text-anchor="middle" class="t">Bookkeeper</text>
             <rect x="812" y="16" width="136" height="44" rx="6" class="bx"/><text x="880" y="43" text-anchor="middle" class="t">Owner</text>
           </g>
           <path d="M80 60V700M240 60V700M400 60V700M560 60V700M720 60V700M880 60V700" class="life"/>
@@ -908,8 +933,10 @@
         </svg>
         </div>
         <figcaption><b>Figure 7.2</b> Steps 1 to 4 work today in solo mode: inbound email, approval and
-          an approved reply. Step 7 needs the Paper Office pack. Steps 5, 6, 8, 9 and 12 need the
-          workboard and relay. Steps 10 and 11 need the workboard to carry the invoice to the Bookkeeper.</figcaption>
+          an approved reply. Steps 5, 6, 8 and 9 use the workboard and relay, which are built, but the
+          catalog roles do not declare these two hand-offs. Step 7 needs a role wired to the Paper
+          Office pack. Steps 10 and 11 need a way to answer an approval raised on ticket work. Step 12
+          needs completion evidence. Those three are not built.</figcaption>
       </figure>
 
       <ol class="flow" style="--paper: var(--office)">
@@ -949,26 +976,30 @@
           <thead><tr><th>Guardrail</th><th>How it is enforced</th><th>State</th></tr></thead>
           <tbody>
             <tr><td>Gated tools wait for a person</td><td><code>approvalGate()</code>, a Pi Durable <code>beforeTool</code> hook. With no approver supplied, gated actions are refused.</td><td><span class="chip built">Built</span></td></tr>
+            <tr><td>Remote approvals</td><td>In the team runtime a gated call in a direct request waits for a signed-in person to decide through the gateway, within that person's approval limit; unanswered after four hours it is declined</td><td><span class="chip built">Built</span></td></tr>
+            <tr class="planned"><td>Approvals on ticket work</td><td>Recorded on the board and the tool does not run; no command or screen can answer them yet</td><td><span class="chip planned">No host yet</span></td></tr>
             <tr><td>Decisions survive restarts</td><td>Stored as task memos; a declined call stays declined after recovery</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Customer text cannot approve</td><td>Inbound email conversations only get schedule and reply tools</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>Receipts, not words</td><td>A write is complete only when its tool returns a receipt</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>One owner per state folder</td><td>A SQLite lock rejects a second live process</td><td><span class="chip built">Built</span></td></tr>
             <tr><td>No shell or file-writing tools</td><td>Package validation rejects them; the Paper workspace is the one sandboxed exception</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Protected memory</td><td>Bank details, approval limits and permissions can be set only by a person</td><td><span class="chip planned">M3</span></td></tr>
-            <tr class="planned"><td>Budgets, hop limits, provenance</td><td>Enforced by the board</td><td><span class="chip planned">M2–M3</span></td></tr>
+            <tr><td>Budgets, hop limits, provenance</td><td>Enforced by the board and relay on handed-on work: spend ceilings set in dollars and recorded in micro-dollars, a four-hop limit, and provenance copied to every child ticket</td><td><span class="chip built">Built</span></td></tr>
             <tr class="planned"><td>Kill switch and escalation</td><td>Stop an agent or route stale approvals upward</td><td><span class="chip planned">M3</span></td></tr>
           </tbody>
         </table></div>
         <div class="note warning"><span class="label">Warning</span>The versioned file store records an
-          approval ID when it publishes, but it does not verify that approval. Until the document service
-          exists, do not treat a publish call on its own as proof that a person reviewed the file.</div>
+          approval ID when it publishes, but it does not verify that approval. The check is the document
+          service's publication gate (<code>officehum review</code>), which binds a person's decision to
+          the exact source and proposed versions. A publish call that did not go through that gate is
+          not proof that a person reviewed the file.</div>
       </div>
     </section>
 
     <!-- 09 -->
     <section class="chapter" id="operate">
       <div class="chapter-head"><div class="num">09</div><h2>Operating it today</h2>
-        <div class="eyebrow">The Front Desk, solo, on your machine</div></div>
+        <div class="eyebrow">The Front Desk solo, one role, or a whole office, on your machine</div></div>
       <div class="col">
         <p>The credential-free demo runs a synthetic model and leaves a resumable state folder. Requires
           Node 22.19 or later.</p>
@@ -990,9 +1021,13 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
           and reads lines from the terminal. Each line becomes an idempotent submission; gated actions
           wait for a <code>y</code>/<code>n</code> answer; <code>/reload</code> re-reads overlays and
           <code>/commands</code> lists the package's operator views. Role packages are portable, so the
-          same command runs any of them.</p>
-<pre class="cmd">officehum run agents/frontdesk \
-  --model paper/ultramarine-1-flash</pre>
+          same command runs any of them. Nothing is published, so <code>officehum</code> here is
+          <code>npx officehum</code> from the repository root after the build. The Front Desk ships no
+          calendar, so it needs one in a <code>--clients</code> file (the README shows the two small
+          files); without it every calendar tool fails when called.</p>
+<pre class="cmd">npx officehum run agents/frontdesk \
+  --model paper/ultramarine-1-flash \
+  --clients ./clients.json</pre>
 
         <p>A role that keeps its records behind a desk (Bookkeeper's payables, Marketing, Operations,
           People Ops, Purchasing, Sales, Support) runs on its demonstration records only when asked:
@@ -1000,8 +1035,15 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
           the business's own system instead. With neither, the role starts, the banner says
           <code>Desk: none bound</code>, and its desk tools refuse and say how to bind one, so a
           forgotten connection never shows made-up records.</p>
-<pre class="cmd">officehum run agents/sales --demo \
+<pre class="cmd">npx officehum run agents/sales --demo \
   --model paper/ultramarine-1-flash</pre>
+
+        <p>A whole office runs as one runtime process that speaks the Gateway Protocol on stdin and
+          stdout. Give it a workboard and its agents hand work to each other; the README's "Agents
+          working together" lists what that does and what is still missing.</p>
+<pre class="cmd">npx officehum runtime --db .officehum/harness.sqlite \
+  --board .officehum/office.sqlite --office office.json --demo
+npx officehum board --office .officehum</pre>
 
         <h3>Commands</h3>
         <div class="tablewrap"><table>
@@ -1012,8 +1054,13 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
             <tr><td><code>start</code></td><td>Submits a durable request; asks for <code>allow</code> or <code>deny</code> on gated actions</td></tr>
             <tr><td><code>resume</code></td><td>Continues interrupted work from storage</td></tr>
             <tr><td><code>bookings</code>, <code>contacts</code></td><td>Read-only lists; no model is loaded</td></tr>
-            <tr><td><code>listen</code></td><td>Local webhook listener for inbound Resend email on 127.0.0.1</td></tr>
+            <tr><td><code>listen</code></td><td>Local webhook listener for inbound Resend email on 127.0.0.1; also serves the signed Twilio SMS webhook when <code>TWILIO_AUTH_TOKEN</code> is set</td></tr>
             <tr><td><code>inbox</code></td><td>Inbound receipts without sender, subject or body</td></tr>
+            <tr><td><code>runtime</code></td><td>Hosts one office behind the Gateway Protocol; with <code>--board FILE</code> it loads the company's people and runs the relay and office extension</td></tr>
+            <tr><td><code>board</code></td><td>Shows the office's workboard as a kanban; comment, assign, cancel</td></tr>
+            <tr><td><code>eval</code></td><td>Grades a role's eval suites on a bare harness, or with <code>--mode office</code> behind the office's approval gate</td></tr>
+            <tr><td><code>review</code></td><td>Lists, shows, decides and publishes document reviews</td></tr>
+            <tr><td><code>verify-role</code></td><td>Checks a role's <code>role.md</code> against its cited sources; <code>--online</code> re-fetches them</td></tr>
           </tbody>
         </table></div>
 
@@ -1035,26 +1082,26 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
     <!-- 10 -->
     <section class="chapter" id="status">
       <div class="chapter-head"><div class="num">10</div><h2>Status and roadmap</h2>
-        <div class="eyebrow">Linear project officehum, read 15 October 2026</div></div>
+        <div class="eyebrow">Linear project officehum, read 11 November 2026</div></div>
       <div class="col">
         <h3 style="margin-top: 0">Milestone progress</h3>
-        <div class="bars" role="img" aria-label="Milestone progress: M0 28%, M1 34%, M2 0%, M3 3%, M4 1%, M5 0%">
-          <div class="bar"><span>M0 · Foundations</span><div class="track"><div class="fill" style="width:28%"></div></div><span class="val">28%</span></div>
-          <div class="bar"><span>M1 · First agents</span><div class="track"><div class="fill" style="width:34%"></div></div><span class="val">34%</span></div>
-          <div class="bar"><span>M2 · Office runtime</span><div class="track"><div class="fill" style="width:0%"></div></div><span class="val">0%</span></div>
-          <div class="bar"><span>M3 · Workflows, approvals</span><div class="track"><div class="fill" style="width:3%"></div></div><span class="val">3%</span></div>
-          <div class="bar"><span>M4 · Hosted alpha</span><div class="track"><div class="fill" style="width:1%"></div></div><span class="val">1%</span></div>
+        <div class="bars" role="img" aria-label="Milestone progress: M0 100%, M1 92%, M2 39%, M3 34%, M4 5%, M5 0%">
+          <div class="bar"><span>M0 · Foundations</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="val">100%</span></div>
+          <div class="bar"><span>M1 · First agents</span><div class="track"><div class="fill" style="width:92%"></div></div><span class="val">92%</span></div>
+          <div class="bar"><span>M2 · Office runtime</span><div class="track"><div class="fill" style="width:39%"></div></div><span class="val">39%</span></div>
+          <div class="bar"><span>M3 · Workflows, approvals</span><div class="track"><div class="fill" style="width:34%"></div></div><span class="val">34%</span></div>
+          <div class="bar"><span>M4 · Hosted alpha</span><div class="track"><div class="fill" style="width:5%"></div></div><span class="val">5%</span></div>
           <div class="bar"><span>M5 · Pilot and launch</span><div class="track"><div class="fill" style="width:0%"></div></div><span class="val">0%</span></div>
         </div>
         <div class="axis"><div></div><div><span>0</span><span>25</span><span>50</span><span>75</span><span>100%</span></div><div></div></div>
 
         <h3>Issues</h3>
-        <div class="stack" role="img" aria-label="209 issues: 44 done, 5 in progress, 160 backlog">
-          <div class="d" style="width:21.1%">44</div>
-          <div class="i" style="width:2.4%">5</div>
-          <div class="b" style="width:76.6%">160 backlog</div>
+        <div class="stack" role="img" aria-label="239 issues: 104 done, 3 in progress, 132 backlog">
+          <div class="d" style="width:43.5%">104</div>
+          <div class="i" style="width:1.3%">3</div>
+          <div class="b" style="width:55.2%">132 backlog</div>
         </div>
-        <div class="legend"><span><i style="background: var(--ok)"></i>Done 44</span><span><i style="background: var(--part)"></i>In progress 5</span><span><i style="background: var(--muted)"></i>Backlog 160</span></div>
+        <div class="legend"><span><i style="background: var(--ok)"></i>Done 104</span><span><i style="background: var(--part)"></i>In progress 3</span><span><i style="background: var(--muted)"></i>Backlog 132</span></div>
 
         <h3>What shipped</h3>
         <div class="tablewrap"><table>
@@ -1069,12 +1116,23 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
             <tr><td>#13</td><td>RASF-3264</td><td>Inbound email and threaded replies</td></tr>
             <tr><td>#14</td><td>RASF-3282</td><td>Ultramarine provider and default model</td></tr>
             <tr><td>#15, #16</td><td>RASF-3192</td><td>Immutable and versioned file store</td></tr>
+            <tr><td>#20 to #34</td><td>RASF-3102, 3237, 3297, 3120 to 3124, 3229, 3233</td><td><code>AGENTS.md</code>, Pi Durable 1.3, the portable Paper provider, the office adapter, scripted model, role loading, eval runner, limits, the four-layer check, agent cards in the SDK</td></tr>
+            <tr><td>#35 to #42</td><td>RASF-3129 to 3132, 3091, 3126 to 3128</td><td>Front Desk, Bookkeeper (with the QuickBooks client and collections) and Office Manager as role packages</td></tr>
+            <tr><td>#43 to #47</td><td>RASF-3283, 3300, 3284, 3301, 3285</td><td>Paper worker, Word, PowerPoint and Excel adapters, review and publish</td></tr>
+            <tr><td>#48 to #50</td><td>RASF-3098 to 3100</td><td>Role spec, generator and interview (the Role Factory)</td></tr>
+            <tr><td>#56, #58 to #61</td><td>RASF-3066, 3067, 3109, 3133, 3134</td><td>Workboard, relay, the three communication tools, office assembly, the CLI board</td></tr>
+            <tr><td>#67 to #70, #74</td><td>RASF-3141, 3142, 3138, 3143</td><td>Budgets, provenance, board approvals, the red-team suite</td></tr>
+            <tr><td>#75</td><td>RASF-3162</td><td>Inbound SMS</td></tr>
+            <tr><td>#82 to #92</td><td>RASF-3293, 3468 to 3472, 3070</td><td>The default company and its departments; Operations, Purchasing, Marketing, Support and People Ops; Bookkeeper as the Accounting agent; the role catalog</td></tr>
+            <tr><td>#93 to #114</td><td>RASF-3482 to 3491, 3459 to 3465</td><td>Role hardening: shared helpers, the host's "today", person routes, approval facts, verified sender, Sales desk fixes</td></tr>
+            <tr><td>#115 to #122</td><td>RASF-3103 to 3108, 3559, 3112</td><td>Gateway Protocol, runtime process, gateway, exactly-once requests through the gateway, client, remote approvals, connection limits, the SDK's local board</td></tr>
+            <tr><td>#123</td><td>none</td><td>Codebase audit, part 1</td></tr>
           </tbody>
         </table></div>
         <p>No package has been published, nothing is deployed, and no live customer message has been
           sent. The v1 success test is one design partner running Front Desk and Bookkeeper on a hosted
           instance for 30 days with no lost or duplicated work.</p>
-        <p>Worktrees: every branch and worktree, including Codex's <code>paper-provider-rasf-3282</code>
+        <p>Worktrees, as of 15 October: every branch and worktree, including Codex's <code>paper-provider-rasf-3282</code>
           checkout, is fully merged into main. That Codex worktree was created at the handoff commit and
           never used; the provider was built on another branch and merged as PR #14.</p>
       </div>
@@ -1089,18 +1147,19 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
           Linear project: small businesses. RASF-3199 and 3205: mid-market.<span class="fix">The project
           description, RASF-3199 and RASF-3205 now say medium-sized companies.</span></li>
         <li><b>No model marketplace in the plan. <span class="chip planned">Filed</span></b>Only Paper and OpenAI
-          are wired; the provider is registered inside the CLI.<span class="fix">Epic RASF-3296 with
-          RASF-3297 (portable provider, M1), RASF-3298 (catalog and tests) and RASF-3299 (Studio
-          screen). Billing stays with RASF-3184.</span></li>
+          are wired; the provider was registered inside the CLI.<span class="fix">Epic RASF-3296 with
+          RASF-3297 (portable provider, since built as <code>packages/provider-paper</code>),
+          RASF-3298 (catalog and tests) and RASF-3299 (Studio screen). Billing stays with
+          RASF-3184.</span></li>
         <li><b>No Sales role, no department plan. <span class="chip planned">Filed</span></b>The Linear project
           listed scheduler and marketer; the issues planned Office Manager instead.<span class="fix">Epic
           RASF-3293 (catalog of free roles for every department), RASF-3294 (you choose the department
-          role map) and RASF-3295 (Sales agent).</span></li>
+          role map) and RASF-3295 (Sales agent, since built).</span></li>
         <li><b>Paper Office tickets had no milestone. <span class="chip built">Fixed in Linear</span></b>RASF-3283
           to 3286 floated while their parent sat in M3, and Word and Excel had no adapter tickets.<span class="fix">All
           moved to M3; Word (RASF-3300) and Excel (RASF-3301) adapters added.</span></li>
         <li><b>Reference role order flipped. <span class="chip built">Fixed</span></b>Bookkeeper was called
-          the reference role built first, but Front Desk was built and Bookkeeper has not started.<span class="fix">RASF-3070
+          the reference role built first, but Front Desk was built first and Bookkeeper had not started (it is built now).<span class="fix">RASF-3070
           is corrected, and <code>agents/README.md</code> is now a catalog of the built roles, checked against
           each manifest by <code>scripts/catalog.test.ts</code>.</span></li>
         <li><b>Exit tests were not gating. <span class="chip built">Fixed in Linear</span></b>The M0 exit test is
@@ -1108,8 +1167,8 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
           may start early, but a milestone closes only when its exit test passes.</span></li>
         <li><b>Stale documents. <span class="chip planned">Partly fixed</span></b>RASF-3189 named
           <code>ANTHROPIC_API_KEY</code>; it now names the Paper key.<span class="fix">Still open in the repo:
-          the Paper handoff says implementation has not started, and the agent-package design shows an
-          Anthropic model in its examples.</span></li>
+          the Paper handoff says implementation has not started. The agent-package design no longer
+          shows an Anthropic model in its examples.</span></li>
         <li><b>Reporting stopped at PR #13. <span class="chip built">Fixed in Linear</span></b>PRs #14 to #16 had
           no status update.<span class="fix">A project update now covers them and today's plan changes.
           Milestones still have no dates.</span></li>
@@ -1139,11 +1198,11 @@ node packages/cli/dist/index.js resume --state .officehum/frontdesk-demo</pre>
         <li><code>README.md</code>, <code>agents/README.md</code>, <code>agents/frontdesk/officehum.json</code></li>
         <li><code>docs/design/agent-package.md</code> and <code>docs/design/file-store.md</code></li>
         <li><code>docs/superpowers/specs/2026-10-14-paper-instruments-integration-design.md</code></li>
-        <li><code>packages/office/src/solo.ts</code>, <code>packages/provider-paper/src/paper-provider.ts</code>, <code>packages/cli/src/cli.ts</code></li>
-        <li><code>node_modules/@earendil-works/pi-durable</code> 1.0.2 README and type exports</li>
-        <li>Linear project officehum (P-RASF-8): 196 issues, 6 milestones, 8 status updates</li>
+        <li><code>packages/office/src/solo.ts</code>, <code>packages/office/src/runtime</code>, <code>board</code>, <code>relay</code> and <code>extension</code>, <code>packages/provider-paper/src/paper-provider.ts</code>, <code>packages/cli/src</code>, <code>packages/tools-paper-office</code>, every <code>agents/*/officehum.json</code></li>
+        <li><code>node_modules/@earendil-works/pi-durable</code> 1.3.0 README and type exports</li>
+        <li>Linear project officehum (P-RASF-8): 239 issues and 6 milestones on 11 November</li>
       </ul>
-      <footer>Office Hum Owner's Manual · edition of 15 October 2026 · reflects <code>main</code> at d08fc9f.
+      <footer>Office Hum Owner's Manual · edition of 11 November 2026 · reflects <code>main</code> at 4de6c7a plus the <code>claude/audit-part-2</code> branch.
         Built items were checked in source; planned items reflect design documents and Linear, not running code.</footer>
     </section>
   </main>

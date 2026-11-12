@@ -12,12 +12,17 @@ quote through without a person.
 
 ## Try it
 
-From a machine with no copy of this repository:
+Nothing is published to npm yet, so run it from a checkout of this repository (Node 22.19 or later).
+The package ships compiled JavaScript, so build first:
 
 ```sh
-npm install -g officehum        # or use npx officehum
-officehum run ./sales-account-manager --demo
+npm install
+npm run build
+node packages/cli/dist/index.js run agents/sales --demo --model paper/ultramarine-1-flash
 ```
+
+After `npm install`, `npx officehum` from the repository root is the same program, and that is what
+`officehum` means in the commands below.
 
 Then type a message. With `--demo` the role runs on a **demonstration desk**: five leads in memory,
 the company's own price book, and nothing written anywhere. Without `--demo` and with no desk bound,
@@ -26,14 +31,6 @@ one, so a forgotten CRM never shows made-up leads. Ask it to quote the
 Riverside Dental deep clean and it will price it from the book, apply the minimum, and tell you what
 the quote says. It needs a model key in the environment (`PAPERINSTRUMENTS_API_KEY` for Paper) for
 that conversation, like every role.
-
-From a checkout of this repository:
-
-```sh
-npm install
-npm run build
-node packages/cli/dist/index.js run agents/sales --demo --model paper/ultramarine-1-flash
-```
 
 ## Run its evals
 

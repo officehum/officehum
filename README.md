@@ -264,11 +264,42 @@ then reads lines from the terminal. Each line becomes one durable submission; a 
 in this session or a later one, runs again. Gated actions print their description and arguments and wait for a `y`/`n` answer;
 anything other than `y`/`yes` declines, and the decision is recorded with the OS user as `by`.
 
+Nothing is published yet, so `officehum` in this and the following sections is this repository's
+CLI: after `npm install` and `npm run build`, `npx officehum` from the repository root, or
+`node packages/cli/dist/index.js`. A live model key must be in the environment
+(`PAPERINSTRUMENTS_API_KEY` for Paper, `OPENAI_API_KEY` for OpenAI).
+
+The Front Desk ships no calendar of its own, so give it one through `--clients` (the file format is
+described below); without it the role starts, and every calendar tool fails when it is called. Save
+these two files in the repository root:
+
+```json
+{ "calendar": { "module": "./calendar.mjs" } }
+```
+
+```js
+// calendar.mjs: a stand-in that offers two slots a day and stores nothing.
+// agents/frontdesk/README.md documents the Calendar interface a real one implements.
+export default function createCalendar() {
+  return {
+    freeSlots: async (date) => [`${date}T09:00:00Z`, `${date}T10:00:00Z`],
+    listBookings: async () => [],
+    book: async (start, customer, idempotencyKey) => ({ id: "b1", start, customer }),
+    reschedule: async (id, start, idempotencyKey) => ({ id, start, customer: "Demo Guest" }),
+    cancel: async (id, idempotencyKey) => ({ id, status: "canceled", alreadyCanceled: false }),
+  };
+}
+```
+
 ```sh
-officehum run agents/frontdesk \
+npx officehum run agents/frontdesk \
   --model paper/ultramarine-1-flash \
+  --clients ./clients.json \
   --db .officehum/frontdesk.sqlite
 ```
+
+A role that keeps its records behind a desk needs no client file to try: `npx officehum run
+agents/sales --demo` runs on its demonstration records (see "The desk" below).
 
 Flags:
 
@@ -304,7 +335,9 @@ the same choice to `loadRole` as its reserved `demo` option; the eval runner alw
 that desk's fixed demo date (`DEMO_NOW`) and its prompt has no `today` section.
 
 At the prompt, `/commands` lists the manifest's operator views, `/NAME` runs one (an engine view with
-no model involved), `/reload` re-reads the overlays and re-applies the role's settings, and `/help`,
+no model involved), `/reload` re-reads the overlays and re-applies the role's settings except the model (a saved
+conversation keeps the provider and model it started with; an overlay's model applies to new
+conversations only), and `/help`,
 `/quit` and end of input are available too.
 
 Role loading refuses three things with every problem named at once: an invalid package, a Pi Durable
