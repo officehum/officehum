@@ -30,7 +30,12 @@
 import { createHash, randomBytes } from "node:crypto";
 import { lstat, mkdir, open, readdir, readFile, rename, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { FileStoreError, type PublishReceipt, type VersionedFileStore } from "@officehum/sdk";
+import {
+  canonicalJson,
+  FileStoreError,
+  type PublishReceipt,
+  type VersionedFileStore,
+} from "@officehum/sdk";
 import type { DocumentRefusalCode } from "./errors.js";
 import { DocumentError, refusal } from "./errors.js";
 import { type DocumentFormat, isDocumentFormat } from "./formats.js";
@@ -705,21 +710,6 @@ function refusalOf(error: unknown): ReviewResult<never> {
     return { ok: false, code: error.code, message: error.message };
   }
   return { ok: false, code: "invalid-request", message: messageOf(error) };
-}
-
-function canonicalJson(value: unknown): string {
-  const canonical = (candidate: unknown): unknown => {
-    if (Array.isArray(candidate)) return candidate.map(canonical);
-    if (candidate !== null && typeof candidate === "object") {
-      return Object.fromEntries(
-        Object.entries(candidate as Record<string, unknown>)
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([key, child]) => [key, canonical(child)]),
-      );
-    }
-    return candidate;
-  };
-  return JSON.stringify(canonical(value));
 }
 
 function sha256(value: string): string {

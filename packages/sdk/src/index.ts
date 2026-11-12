@@ -42,6 +42,7 @@ export {
   sameFacts,
   type ToolArguments,
 } from "./approvals.js";
+export { canonicalJson, sameCanonical } from "./canonical-json.js";
 export {
   type AgentCard,
   type AgentCardCapability,

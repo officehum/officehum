@@ -22,6 +22,7 @@ import {
   type ToolHooks,
   ToolTask,
 } from "@earendil-works/pi-durable";
+import { canonicalJson, sameCanonical } from "./canonical-json.js";
 import type { ApprovalDeclaration, ConditionDeclaration } from "./manifest.js";
 import { limitName } from "./manifest.js";
 
@@ -199,23 +200,6 @@ type StoredDecision = { approved: boolean; by: string | null; note: string | nul
 type StoredApplicability = { tool: string; argsJson: string; required: boolean };
 type StoredFacts = { summary: string; facts: JsonObject };
 
-function canonicalJson(value: unknown): string {
-  const canonical = (candidate: unknown): unknown => {
-    if (Array.isArray(candidate)) return candidate.map(canonical);
-    if (candidate !== null && typeof candidate === "object") {
-      return Object.fromEntries(
-        Object.entries(candidate as Record<string, unknown>)
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([key, child]) => [key, canonical(child)]),
-      );
-    }
-    return candidate;
-  };
-  const json = JSON.stringify(canonical(value));
-  if (json === undefined) throw new Error("Approval arguments must be JSON serializable.");
-  return json;
-}
-
 function assertApplicability(stored: StoredApplicability, tool: string, argsJson: string): void {
   if (
     stored === null ||
@@ -226,7 +210,7 @@ function assertApplicability(stored: StoredApplicability, tool: string, argsJson
   ) {
     throw new Error("Malformed stored approval applicability.");
   }
-  if (stored.tool !== tool || stored.argsJson !== argsJson) {
+  if (stored.tool !== tool || !sameCanonical(stored.argsJson, argsJson)) {
     throw new Error(
       "This approval call identity was already used with a different tool or arguments.",
     );

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeReceivedEmail,
   parseReceivingEvent,
+  storedCanonical,
   verifySvixWebhook,
 } from "./resend-inbound.js";
 
@@ -131,5 +132,23 @@ describe("Resend inbound protocol", () => {
     expect(normalizeReceivedEmail(event(), { ...received, html: deep })).toMatchObject({
       truncated: true,
     });
+  });
+});
+
+describe("a canonical text read back from the inbox", () => {
+  const value = { weekStart: "2026-11-09", weeklyHoursCap: 40 };
+  const today = '{"weekStart":"2026-11-09","weeklyHoursCap":40}';
+  // The order versions before 2026-11-12 wrote: `localeCompare` puts lower case first.
+  const older = '{"weeklyHoursCap":40,"weekStart":"2026-11-09"}';
+
+  it("is accepted in today's key order and in the order older versions wrote", () => {
+    expect(storedCanonical(today, value)).toBe(true);
+    expect(storedCanonical(older, value)).toBe(true);
+  });
+
+  it("is refused when it is not exactly either: padded, or another value", () => {
+    expect(storedCanonical(`${today} `, value)).toBe(false);
+    expect(storedCanonical('{"weekStart": "2026-11-09","weeklyHoursCap":40}', value)).toBe(false);
+    expect(storedCanonical(today, { ...value, weeklyHoursCap: 41 })).toBe(false);
   });
 });

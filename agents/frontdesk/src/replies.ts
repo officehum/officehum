@@ -7,7 +7,13 @@ import {
   type ToolRegistration,
   ToolTask,
 } from "@earendil-works/pi-durable";
-import type { ApprovalDecision, ApprovalRequest, Approver } from "@officehum/sdk";
+import {
+  type ApprovalDecision,
+  type ApprovalRequest,
+  type Approver,
+  canonicalJson,
+  sameCanonical,
+} from "@officehum/sdk";
 import { ContactsDoc, markContactSeen } from "./contacts.js";
 
 export type ReplyTarget = {
@@ -193,21 +199,6 @@ function target(value: unknown): ReplyTarget {
   };
 }
 
-function canonicalJson(value: unknown): string {
-  const canonical = (item: unknown): unknown => {
-    if (Array.isArray(item)) return item.map(canonical);
-    if (item !== null && typeof item === "object") {
-      return Object.fromEntries(
-        Object.entries(item as Record<string, unknown>)
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([key, child]) => [key, canonical(child)]),
-      );
-    }
-    return item;
-  };
-  return JSON.stringify(canonical(value));
-}
-
 function delivery(value: ReplyDeliveryReceipt): ReplyDeliveryReceipt {
   if (value?.status !== "accepted") throw new Error("Reply transport returned an invalid receipt.");
   return { id: bounded(value.id, "Reply delivery ID", 200), status: "accepted" };
@@ -280,7 +271,7 @@ export function repliesTools(messenger?: ReplyMessenger, approve?: Approver): To
           const previousTarget = target(previous.target);
           const previousDelivery = delivery(previous.delivery);
           if (
-            previous.argsJson !== argsJson ||
+            !sameCanonical(previous.argsJson, argsJson) ||
             text(previous.text) !== replyText ||
             canonicalJson(previousTarget) !== canonicalJson(previous.target) ||
             canonicalJson(previousDelivery) !== canonicalJson(previous.delivery) ||
@@ -310,7 +301,7 @@ export function repliesTools(messenger?: ReplyMessenger, approve?: Approver): To
         }
         if (
           pinned.key !== key ||
-          pinned.argsJson !== argsJson ||
+          !sameCanonical(pinned.argsJson, argsJson) ||
           pinned.text !== replyText ||
           canonicalJson(target(pinned.target)) !== canonicalJson(pinned.target) ||
           pinned.target.receiptId !== receiptId ||
@@ -350,7 +341,7 @@ export function repliesTools(messenger?: ReplyMessenger, approve?: Approver): To
             context,
           );
         }
-        if (savedDecision.requestJson !== requestJson) {
+        if (!sameCanonical(savedDecision.requestJson, requestJson)) {
           throw new Error("This approval identity was already used with a different reply.");
         }
         if (!savedDecision.approved) throw new Error("The operator declined this inbound reply.");

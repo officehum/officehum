@@ -92,7 +92,9 @@ Each bug fix marked (test) has a regression test that failed before the fix.
 >   (`commitVersions`), and a Paper run's outputs land all or none.
 > - **A21.** Resolved in RASF-3572: a caller of `watchApprovals` is told when the watch is lost.
 > - **B8.** Resolved in RASF-3572: Operations re-checks the approved facts at the write.
-> - **Left by decision:** B9, B13, C2 (its own PR), C4, C10, D2, D5, canonical JSON ordering (E2),
+> - **Canonical JSON ordering (E2).** Resolved in RASF-3572: one `canonicalJson` in the SDK, ordered
+>   by code unit; text an older version stored in locale order is still read and recognised.
+> - **Left by decision:** B9, B13, C2 (its own PR), C4, C10, D2, D5,
 >   Python helper duplication (E3).
 
 ### A. Likely bugs that need a design decision
