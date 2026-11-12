@@ -404,6 +404,10 @@ An overlay's `settings.json` uses Pi's setting names and its `+name` / `-name` e
 Rules:
 
 - Overlays can switch tools **off**, never add them. New tools arrive only in a package release.
+- **A limit lives in one place.** Every amount a business sets is a named limit in a role's
+  `officehum.json`, changed here. The company record holds none, and its handbook names a limit
+  without a figure (the company check refuses an amount it does not record), so what a role says
+  and what it enforces are one number.
 - **Limits change; they are never removed.** An overlay sets a value for a limit the package declares.
   It cannot add a limit, remove one, or switch its approval off: a `null` value is refused, because a
   limit that disappeared would leave the approval it configures with nothing to compare.

@@ -71,8 +71,9 @@ Two things turn a quote into a person's decision, and both are raised by the quo
 
 - **Any discount.** A person approves every discount, however small. The company's usual ladder — a
   longer commitment asked for at the quote — is a habit of Marcus's, not a permission this role has.
-- **A quote whose lines come to more than $5,000.00.** That is the quote limit. A quote exactly at it
-  does not need a person; one cent over does.
+- **A quote whose lines come to more than the quote limit.** The limit is the business's own setting,
+  not a figure in this handbook: the quote tool applies it and states it whenever it holds a quote. A
+  quote exactly at the limit does not need a person; one cent over does.
 
 Anything else that is not in this table needs a person before it is on a quote: a bespoke scope, a
 product we do not stock, a price held from last year, a contract term that is not ours, or anything

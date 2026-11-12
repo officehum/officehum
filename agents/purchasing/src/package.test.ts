@@ -75,7 +75,7 @@ describe("purchasing package", () => {
     expect(note("raise_purchase_order")).toContain("request_po_approval");
     expect(note("raise_purchase_order")).toContain("request_new_supplier");
     expect(note("record_receipt")).toContain("named person");
-    expect(roleManifest.limits ?? {}).toEqual({});
+    expect(Object.keys(roleManifest.limits ?? {})).toEqual(["purchase_order_limit_cents"]);
   });
 
   it("refuses an over-limit approval tool with no approval decision, in memory", () => {
@@ -96,8 +96,9 @@ describe("purchasing package", () => {
     ).toBe(true);
   });
 
-  it("takes the limit, suppliers and catalogue from the company, and its demo data agrees with them", () => {
-    expect(company.approvalLimits.purchaseOrderOverCents).toBeGreaterThan(0);
+  it("takes the suppliers and catalogue from the company, and the limit from its own manifest", () => {
+    expect(roleManifest.limits?.purchase_order_limit_cents?.default).toBe(150000);
+    expect(company).not.toHaveProperty("approvalLimits");
     expect(company.suppliers.some((supplier) => !supplier.approved)).toBe(true);
     const items = new Set(company.supplyCatalog.map((item) => item.id));
     const suppliers = new Set(company.suppliers.map((supplier) => supplier.id));
@@ -216,7 +217,14 @@ describe("purchasing package", () => {
 
 describe("purchasing eval stubs", () => {
   it("read_company stubs match the generated facts", async () => {
-    const tool = purchasingTools({ desk: undefined, company }).readCompany;
+    // The stubs were written at the manifest's default limit, which is what a role with no overlay says.
+    const tool = purchasingTools({
+      desk: undefined,
+      company,
+      limits: () => ({
+        purchase_order_limit_cents: roleManifest.limits?.purchase_order_limit_cents?.default ?? 0,
+      }),
+    }).readCompany;
     const sections = (
       tool.parameters as unknown as { properties: { section: { anyOf: { const: string }[] } } }
     ).properties.section.anyOf.map((option) => option.const);
