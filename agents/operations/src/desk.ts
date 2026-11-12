@@ -12,6 +12,7 @@
  * names the approval-gated tool that asks them.
  */
 
+import { localDate, parseDate, weekOf as weekContaining } from "@officehum/sdk";
 import type { Crew } from "./company.js";
 import { loadCompanyFacts } from "./company.js";
 
@@ -173,6 +174,11 @@ export interface FakeOperationsDeskOptions {
   readonly jobs?: readonly Job[];
   /** Approved time off; the demonstration week's when omitted. */
   readonly timeOff?: readonly TimeOff[];
+  /**
+   * The IANA time zone "today" and "this week" are read in: the company's `hours.timezone`. Omitted:
+   * the generated company's.
+   */
+  readonly timeZone?: string;
   /** The clock. Omitted: the Monday of the demonstration week, so "this week" has work in it. */
   readonly now?: () => Date;
 }
@@ -339,32 +345,16 @@ export function demoTimeOff(): readonly TimeOff[] {
   ];
 }
 
-const DAY_MS = 86_400_000;
-
-/** `YYYY-MM-DD` of a date, in UTC: the only date form a receipt carries. */
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-/** A real calendar date in `YYYY-MM-DD` form, or `undefined`. */
-function parseDate(value: string): Date | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return Number.isNaN(date.getTime()) || isoDate(date) !== value ? undefined : date;
-}
-
 /** Monday and Sunday of the week a date falls in. The week runs Monday to Sunday. */
 function weekOf(value: string): { readonly start: string; readonly end: string } {
-  const date = parseDate(value);
-  if (date === undefined) {
+  const week = weekContaining(value);
+  if (week === undefined) {
     throw new OperationsDeskError(
       "invalid",
       `${JSON.stringify(value)} is not a date (YYYY-MM-DD).`,
     );
   }
-  const sinceMonday = (date.getUTCDay() + 6) % 7;
-  const monday = new Date(date.getTime() - sinceMonday * DAY_MS);
-  return { start: isoDate(monday), end: isoDate(new Date(monday.getTime() + 6 * DAY_MS)) };
+  return week;
 }
 
 /** Hours as a person reads them: whole hours plainly, anything else to two places. */
@@ -381,6 +371,9 @@ function round(hours: number): number {
 export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): OperationsDesk {
   const crews = options.crews ?? loadCompanyFacts().crews;
   const clock = options.now ?? (() => new Date(DEMO_NOW));
+  const timeZone = options.timeZone ?? loadCompanyFacts().hours.timezone;
+  // The company's day, not the UTC one: Sunday evening in the office is still this week.
+  const today = (): string => localDate(clock(), timeZone);
   const jobs: Job[] = (options.jobs ?? demoJobs()).map((job) => ({ ...job }));
   const timeOff = [...(options.timeOff ?? demoTimeOff())];
   const assignments = new Map<string, Assignment>();
@@ -499,11 +492,10 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
     if (newDate.trim() === job.date) {
       throw new OperationsDeskError("invalid", `${job.id} is already on ${job.date}.`);
     }
-    const today = isoDate(clock());
-    if (newDate.trim() < today) {
+    if (newDate.trim() < today()) {
       throw new OperationsDeskError(
         "invalid",
-        `${newDate.trim()} has already passed (today is ${today}). Choose a date from today on.`,
+        `${newDate.trim()} has already passed (today is ${today()}). Choose a date from today on.`,
       );
     }
   };
@@ -562,7 +554,7 @@ export function fakeOperationsDesk(options: FakeOperationsDeskOptions = {}): Ope
     },
 
     async listCrews(listOptions: { readonly weekOf?: string } = {}): Promise<readonly CrewWeek[]> {
-      const week = weekOf(listOptions.weekOf?.trim() ?? isoDate(clock()));
+      const week = weekOf(listOptions.weekOf?.trim() ?? today());
       return crews.map((crew) => {
         const bookedHours = booked(crew.id, week.start);
         const overtimeHours = overtimeFor(crew.id, week.start);

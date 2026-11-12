@@ -599,6 +599,13 @@ describe("support clock", () => {
     expect((await call(role, "log_case", CASE)).details.openedOn).toBe("2027-02-01");
   });
 
+  it("today is the company's day: after 16:00 Pacific it is still the Pacific date", async () => {
+    // 17:30 on Monday 9 November in Portland; Tuesday already in UTC.
+    const role = support({ demo: true, now: () => new Date("2026-11-10T01:30:00.000Z") });
+    expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
+    expect((await call(role, "log_case", CASE)).details.openedOn).toBe("2026-11-09");
+  });
+
   it("the demo desk keeps the demo date without now", async () => {
     const role = support({ demo: true });
     expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);

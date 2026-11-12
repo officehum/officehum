@@ -900,6 +900,40 @@ describe("company data and the verified sender", () => {
     expect(recorded).toMatchObject({ status: "approved", daysNotice: 8 });
   });
 
+  it("counts a declined ask's notice afresh: the refusal never repeats the earlier day's figure", async () => {
+    // Asked on 9 November with 11 days' notice and declined at the gate, which the desk never hears
+    // of. Asked again on 12 November: the refusal states the notice left now, the same figure the
+    // person will then be shown, so the next call is not sent back for a stale one.
+    let now = NOW;
+    const people = fakePeopleOpsDesk({ company, now: () => now });
+    const request = {
+      employee: "Ana Lopez",
+      startDate: "2026-11-20",
+      endDate: "2026-11-20",
+      reasonCategory: "vacation" as const,
+      from: OWNER,
+    };
+    const first = await refusal(people.recordTimeOffRequest(request, { requestId: "ask-1" }));
+    expect(first).toMatchObject({ code: "late_notice", daysNotice: 11 });
+    await people.timeOffExceptionFacts({ ...request, daysNotice: 11, why: "A wedding." });
+
+    now = new Date("2026-11-12T17:00:00.000Z");
+    const second = await refusal(people.recordTimeOffRequest(request, { requestId: "ask-2" }));
+    expect(second).toMatchObject({ code: "late_notice", daysNotice: 8 });
+    expect(second.message).toContain("gives 8 days' notice");
+    expect(second.message).toContain("daysNotice 8");
+    const facts = await people.timeOffExceptionFacts({
+      ...request,
+      daysNotice: 8,
+      why: "A wedding.",
+    });
+    expect(facts.daysNotice).toBe(8);
+    // Still nothing recorded: a decline and two refusals wrote no time off.
+    const balance = await people.leaveBalance({ from: ANA });
+    expect(balance.approved.filter((entry) => entry.startDate === "2026-11-20")).toEqual([]);
+    expect(balance.pending).toBe(0);
+  });
+
   it("counts the notice from the day an exception was first put to the desk, even with no refusal first", async () => {
     let now = NOW;
     const people = fakePeopleOpsDesk({ company, now: () => now });
@@ -1141,5 +1175,71 @@ describe("company data and the verified sender", () => {
       { requestId: "own-3" },
     );
     expect(self.employeeName).toBe(ops.name);
+  });
+});
+
+describe("the company's day", () => {
+  it("counts today, and so the notice, in the company's time zone, not in UTC", async () => {
+    // 17:30 on Monday 9 November in Portland is already Tuesday in UTC.
+    const people = fakePeopleOpsDesk({ company, now: () => new Date("2026-11-10T01:30:00.000Z") });
+    const recorded = await people.recordTimeOffRequest(
+      {
+        employee: "Ana Lopez",
+        startDate: "2026-11-23",
+        endDate: "2026-11-23",
+        reasonCategory: "vacation",
+        from: OWNER,
+      },
+      { requestId: "evening" },
+    );
+    // Fourteen days from Monday the 9th: exactly the notice the company asks for, not a day short.
+    expect(staff.timeOffNoticeDays).toBe(14);
+    expect(recorded).toMatchObject({ status: "pending", daysNotice: 14, recordedOn: "2026-11-09" });
+    expect((await people.listAvailability())[0]).toMatchObject({ weekStart: "2026-11-09" });
+  });
+});
+
+describe("dates that are not dates", () => {
+  it("refuses time off on file with a first day that is not a date, and never loops counting it", async () => {
+    const ana = demoEmployees().find((employee) => employee.name === "Ana Lopez");
+    if (ana === undefined) throw new Error("demo changed");
+    const people = fakePeopleOpsDesk({
+      company,
+      now: () => NOW,
+      timeOff: [
+        {
+          id: "TO-900",
+          employeeId: ana.id,
+          startDate: "2026-11-3x",
+          endDate: "2026-12-02",
+          reasonCategory: "vacation",
+          status: "approved",
+        },
+      ],
+    });
+    const refused = await refusal(people.leaveBalance({ from: ANA }));
+    expect(refused.code).toBe("invalid");
+    expect(refused.message).toBe('"2026-11-3x" is not a date (YYYY-MM-DD).');
+  });
+
+  it("refuses a request, an exception and a week whose date is not one", async () => {
+    const people = desk();
+    const bad = {
+      employee: "Ana Lopez",
+      startDate: "2026-02-30",
+      endDate: "2026-03-02",
+      reasonCategory: "vacation" as const,
+    };
+    expect((await refusal(people.recordTimeOffRequest(bad, { requestId: "b1" }))).code).toBe(
+      "invalid",
+    );
+    expect(
+      (
+        await refusal(
+          people.timeOffExceptionFacts({ ...bad, from: OWNER, daysNotice: 1, why: "x" }),
+        )
+      ).code,
+    ).toBe("invalid");
+    expect((await refusal(people.listAvailability({ weekOf: "next week" }))).code).toBe("invalid");
   });
 });

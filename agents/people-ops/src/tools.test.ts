@@ -492,6 +492,77 @@ describe("get_leave_balance", () => {
   });
 });
 
+describe("who may look people up", () => {
+  /** A crew member writing in from the address the desk holds for her. */
+  const ANA: VerifiedSender = {
+    origin: "external",
+    channel: "email",
+    contact: "ana.lopez@crew.example",
+  };
+  /** The People Ops owner's own address, but from outside the office: not a colleague. */
+  const OUTSIDE_OWNER: VerifiedSender = {
+    origin: "external",
+    channel: "email",
+    contact: (peopleOwner(company) as unknown as { readonly email: string }).email,
+  };
+  const lookups = [
+    ["listCandidates", {}],
+    ["listCandidates", { candidateId: "CAND-202" }],
+    ["listAvailability", {}],
+    ["listAvailability", { crewId: "cleaning-north" }],
+  ] as const;
+
+  it("gives the pipeline and crew availability to a colleague asking from inside the office", async () => {
+    for (const [name, args] of lookups) {
+      const result = await tools(desk())[name].execute(
+        args as never,
+        call("ok"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(isError(result), name).toBe(false);
+      expect(details(result).found, name).toBe(true);
+    }
+  });
+
+  it("gives an unverified sender nothing, and says what to tell them", async () => {
+    for (const [name, args] of lookups) {
+      const result = await tools(desk(), null)[name].execute(
+        args as never,
+        call("unknown"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(isError(result), name).toBe(true);
+      expect(details(result), name).toEqual({ code: "unknown_sender", found: false });
+      expect(text(result), name).toContain("Nobody verified who sent this");
+      expect(text(result), name).toContain("Nothing was shared.");
+      expect(text(result), name).not.toMatch(/CAND-|Ana Lopez|Jamal/);
+    }
+  });
+
+  it("gives a crew member, an outsider and a colleague's outside address nothing", async () => {
+    const stranger: VerifiedSender = {
+      origin: "external",
+      channel: "email",
+      contact: "someone@example.test",
+    };
+    for (const sender of [ANA, stranger, OUTSIDE_OWNER]) {
+      for (const [name, args] of lookups) {
+        const result = await tools(desk(), sender)[name].execute(
+          args as never,
+          call("outside"),
+          BACKGROUND_CONTEXT,
+        );
+        expect(isError(result), name).toBe(true);
+        expect(details(result), name).toEqual({ code: "not_colleague", found: false });
+        expect(text(result), name).toContain(
+          `Next: tell them it is not something you can share, and that ${decider} decides hiring and time off; share nothing about anyone.`,
+        );
+        expect(text(result), name).not.toMatch(/CAND-|Ana Lopez|Jamal/);
+      }
+    }
+  });
+});
+
 describe("no desk", () => {
   it("refuses rather than pretending", async () => {
     await expect(

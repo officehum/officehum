@@ -97,9 +97,11 @@ whose address is a client's contact on the desk sees only that client's cases, a
 case reads as one that does not exist; anyone else gets no case data, only "log it and a person will
 look". The same holds for `find_client` (a client finds only its own record) and for a credit put to
 a person (`offer_credit` and its facts reader answer another client's proposal as one that does not
-exist, and check again before issuing). `log_case` and `escalate_case` stay open to everyone, so an
-unknown sender's complaint still reaches a person, but a client logs only on its own account and an
-unknown sender's hand-off receipt and refusals say nothing about the case. An unknown sender's case is
+exist, and check again before issuing). `log_case` stays open to everyone, so an unknown sender's
+complaint still reaches a person, but a client logs only on its own account. `escalate_case` hands on
+a client's case only for a sender matched to that client (or a colleague): an unknown sender can hand
+on only a case on no client's account, which is where their own are logged, and their receipt and
+refusals say nothing about the case, not even whether it exists. An unknown sender's case is
 logged on no client's account (`clientId: null`, whatever client the model names), with "an
 unverified sender" as who raised it, and its receipt names no client; a re-clean or a credit on it is
 refused with `no_account`, and the role hands it to a person instead. A host desk's `logCase` takes
@@ -112,7 +114,8 @@ company record names for it (`policies.refunds.refundNeeds`) through `escalate_c
 **Re-cleans** are the company's standard remedy for work that fell short, so they need no approval:
 the desk books one only for a `quality` or `missed_visit` complaint, on a date from today to the end of
 the re-clean window (`policies.refunds.recleanWindowDays` business days from the complaint), once per
-case.
+case. When that window has already closed, the refusal says the day it closed and that no date is
+inside it. "Today" is the company's day (`hours.timezone`), in the prompt and on the desk alike.
 
 **Escalation.** The desk picks the person from the company record by the reason: the escalation table
 for safety, legal and data, the refunds policy for refunds, billing and complaints. A case is never
@@ -123,19 +126,26 @@ names the person the reason normally goes to ("for the owner to decide"), the de
 address from a complaint, so it refuses with `note_names_owner` and asks for the person in `about`
 if the complaint is about them, or for a note that addresses no one. A safety case is
 escalated for safety before any other reason. A safety complaint's `log_case` receipt names
-`escalate_case` as the next step, and the desk refuses to close a safety case that was never handed
-on.
+`escalate_case` as the next step, and the desk refuses to close a safety or a damage case that was
+never handed on.
 
 **Closing.** `resolve_case` needs an outcome, and the desk refuses a case with a credit proposal
-pending, a re-clean booked and not done, a safety complaint not escalated, or a case already handed to
-someone (it is theirs to close).
+pending, a re-clean booked and not done, a safety or damage complaint not escalated, or a case already
+handed to someone (it is theirs to close).
+
+**Proposed is not asked.** `propose_credit` asks nobody. The desk records the day a proposal is first
+put to a person (`askedOn`, set through `markCreditAsked` as the approval's facts are read, just
+before the person is asked). Until then `list_cases` reports the credit as proposed with nobody asked
+and names `offer_credit` as the next step; only afterwards does it say the person has it.
 
 ## Bind it to a real support system
 
 The role ships no help desk or CRM connection. `fakeSupportDesk` is the demonstration one; a host binds
 a `SupportDesk` (`src/desk.ts`): `findClient`, `listCases`, `listInvoices`, `listCredits`, `logCase`,
-`bookReclean`, `proposeCredit`, `issueCredit`, `withdrawCredit`, `escalateCase` and `resolveCase`. Every write carries a `requestId` derived from the
-durable call identity, so a retried call returns what it already did. The desk owns the pricing, the
+`bookReclean`, `proposeCredit`, `markCreditAsked`, `issueCredit`, `withdrawCredit`, `escalateCase` and
+`resolveCase`. Every write but `markCreditAsked` carries a `requestId` derived from the durable call
+identity, so a retried call returns what it already did; `markCreditAsked` keeps the first day it
+recorded, so it is the same write however often it runs. The desk owns the pricing, the
 credit, the window, who a case goes to and the refusals; a refusal is a `SupportDeskError` with a
 `code` the tools turn into the next step.
 

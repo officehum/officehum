@@ -283,6 +283,51 @@ describe("list_cases", () => {
     }
   });
 
+  it("an unknown sender cannot hand on a client's case, and learns nothing from the refusal", async () => {
+    for (const sender of [
+      null,
+      { origin: "external" as const, channel: "email", contact: "someone@example.test" },
+    ]) {
+      const support = desk();
+      const refused = await tools(support, sender).escalateCase.execute(
+        { caseId: "C-301", reason: "unresolved", note: "Still unhappy." },
+        call("u-real"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(isError(refused)).toBe(true);
+      expect(details(refused)).toEqual({ caseId: "C-301", code: "unknown_sender" });
+      // The same words as for a case that does not exist.
+      const missing = await tools(support, sender).escalateCase.execute(
+        { caseId: "C-999", reason: "unresolved", note: "Still unhappy." },
+        call("u-missing"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(text(refused)).toBe(text(missing));
+      expect(text(refused)).not.toMatch(/Hawthorne|Grace|Tom Becker/);
+      // Nothing was handed on, also when the call is replayed.
+      await tools(support, sender).escalateCase.execute(
+        { caseId: "C-301", reason: "unresolved", note: "Still unhappy." },
+        call("u-real"),
+        BACKGROUND_CONTEXT,
+      );
+      expect((await support.listCases({ caseId: "C-301" }))[0]).toMatchObject({
+        status: "open",
+        escalations: [],
+      });
+    }
+  });
+
+  it("another client cannot hand on a case that is not theirs", async () => {
+    const support = desk();
+    const refused = await tools(support, MEGAN).escalateCase.execute(
+      { caseId: "C-301", reason: "unresolved", note: "Still unhappy." },
+      call("m-esc"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(refused).code).toBe("not_found");
+    expect((await support.listCases({ caseId: "C-301" }))[0]?.escalations).toEqual([]);
+  });
+
   it("withdraw_credit answers a proposal out of reach exactly like one that does not exist", async () => {
     const support = desk();
     for (const sender of [GRACE, null]) {
@@ -373,6 +418,50 @@ describe("list_cases", () => {
     );
     expect(text(result)).toContain("re-clean: booked for 2026-11-10, not done yet");
     expect(text(result)).not.toContain("propose_credit with caseId C-304");
+  });
+
+  it("reports a credit as proposed until a person has been asked, across a restart of the tools", async () => {
+    const support = desk();
+    await tools(support).proposeCredit.execute(CREDIT, call("p"), BACKGROUND_CONTEXT);
+    const proposed = await tools(support).listCases.execute(
+      { caseId: "C-302" },
+      call("l1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(proposed)).toContain(
+      `credit: CR-402, $150.00 on INV-2042 line 1, proposed and not issued; nobody has been asked yet. Next: call offer_credit with creditId CR-402, which asks ${creditOwner}. Do not call propose_credit for this case.`,
+    );
+    expect(text(proposed)).not.toContain("put to");
+    // The approval gate reads the facts just before it asks a person: from then on, they have it.
+    await tools(support).creditFacts(
+      { creditId: "CR-402" },
+      BACKGROUND_CONTEXT as never,
+      call("cf"),
+    );
+    // A fresh toolset over the same desk, as after a restart: the desk remembers, not the tools.
+    const asked = await tools(support).listCases.execute(
+      { caseId: "C-302" },
+      call("l2"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(asked)).toContain(
+      `credit: CR-402, $150.00 on INV-2042 line 1, proposed and put to ${creditOwner}; not issued.`,
+    );
+    expect((await support.listCredits({ creditId: "CR-402" }))[0]?.askedOn).toBe("2026-11-09");
+  });
+
+  it("a proposal nobody may be asked about is not recorded as asked", async () => {
+    const support = desk();
+    await tools(support).proposeCredit.execute(CREDIT, call("p"), BACKGROUND_CONTEXT);
+    // Grace is not Little Acorns' contact, so her call puts nothing to a person.
+    await expect(
+      tools(support, GRACE).creditFacts(
+        { creditId: "CR-402" },
+        BACKGROUND_CONTEXT as never,
+        call("cf"),
+      ),
+    ).rejects.toThrow("Nothing was put to a person");
+    expect((await support.listCredits({ creditId: "CR-402" }))[0]?.askedOn).toBeNull();
   });
 
   it("lists every case with no filter, and refuses a case that does not exist", async () => {
@@ -594,7 +683,10 @@ describe("propose_credit", () => {
     );
     expect(details(waiting).code).toBe("credit_pending");
     expect(text(waiting)).toContain(`CR-400 on C-304 is proposed and not issued`);
-    expect(text(waiting)).toContain(`otherwise tell the client ${creditOwner} has it`);
+    expect(text(waiting)).toContain(
+      `otherwise read the case with list_cases, which says whether ${creditOwner} has been asked`,
+    );
+    expect(text(waiting)).not.toContain("has it");
   });
 });
 
@@ -820,6 +912,24 @@ describe("resolve_case", () => {
     expect(text(result)).toContain(
       `Next: call escalate_case with caseId ${logged.id} and reason safety, which hands it to ${safetyOwner}.`,
     );
+  });
+  it("points an unescalated damage case at escalate_case, as for safety", async () => {
+    const support = desk();
+    const logged = await support.logCase(
+      { ...SAFETY, kind: "complaint", category: "damage", reportedBy: "Megan Shaw" },
+      { requestId: "log-damage" },
+    );
+    const result = await tools(support).resolveCase.execute(
+      { caseId: logged.id, outcome: "Apologised." },
+      call("g5"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(result).code).toBe("not_escalated");
+    expect(text(result)).toContain(`${logged.id} is a damage complaint that has not been handed`);
+    expect(text(result)).toContain(
+      `Next: call escalate_case with caseId ${logged.id} and reason safety, which hands it to ${safetyOwner}.`,
+    );
+    expect((await support.listCases({ caseId: logged.id }))[0]?.status).toBe("open");
   });
 });
 

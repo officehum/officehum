@@ -312,7 +312,7 @@
           "text": "Handed C-301 (Hawthorne Family Dental) to Tom Becker, Client Services Lead, for unresolved. Note: Client still unhappy. This is an internal hand-off: nothing has been sent to the client. Tell the client that Tom Becker (Client Services Lead) has it."
         },
         "resolve_case": {
-          "text": "C-304 has credit CR-400, $150.00 to Burnside Property Group on INV-2044 line 1, proposed and neither issued nor withdrawn. It stays open until it is issued, or withdrawn with withdraw_credit. Nothing was closed. CR-400 on C-304 is proposed and not issued: if an approval in this conversation returned a decision, say that decision (record a decline with withdraw_credit); otherwise tell the client Eileen Hart, Finance and Billing has it. Do not propose or ask for another. Leave the case open.",
+          "text": "C-304 has credit CR-400, $150.00 to Burnside Property Group on INV-2044 line 1, proposed and neither issued nor withdrawn. It stays open until it is issued, or withdrawn with withdraw_credit. Nothing was closed. CR-400 on C-304 is proposed and not issued: if an approval in this conversation returned a decision, say that decision (record a decline with withdraw_credit); otherwise read the case with list_cases, which says whether Eileen Hart, Finance and Billing has been asked. Do not propose another. Leave the case open.",
           "isError": true
         },
         "read_company": {

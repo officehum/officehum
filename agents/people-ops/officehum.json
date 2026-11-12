@@ -14,7 +14,7 @@
     {
       "name": "list_candidates",
       "replay": "safe",
-      "description": "List the candidates in the hiring pipeline, optionally for one opening, stage or candidate: each one's opening, stage and next step. No contact or personal details."
+      "description": "List the candidates in the hiring pipeline, optionally for one opening, stage or candidate: each one's opening, stage and next step. No contact or personal details. Only for a person on the company record asking from inside the office."
     },
     {
       "name": "update_candidate_stage",
@@ -42,7 +42,7 @@
     {
       "name": "list_availability",
       "replay": "safe",
-      "description": "List crew members' availability for one week: the days each is unavailable. Availability only: no reasons, contact or personal details."
+      "description": "List crew members' availability for one week: the days each is unavailable. Availability only: no reasons, contact or personal details. Only for a person on the company record asking from inside the office."
     },
     {
       "name": "get_leave_balance",

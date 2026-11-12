@@ -10,7 +10,24 @@
  * `company` to the factory instead, and nothing in this file runs.
  */
 
-import { loadCompanyFacts as loadFacts, personLabel as sharedPersonLabel } from "@officehum/sdk";
+import {
+  type CompanyAddress,
+  type CompanyCrew,
+  type CompanyEscalationRule,
+  type CompanyGlossaryEntry,
+  type CompanyHours,
+  type CompanyPolicies,
+  type CompanyProfile,
+  type CompanyRecord,
+  type CompanyRecordPerson,
+  type CompanyService,
+  type CompanyStaffPolicies,
+  type CompanyTone,
+  escalationRule,
+  loadCompanyFacts as loadFacts,
+  personById as person,
+  personLabel as sharedPersonLabel,
+} from "@officehum/sdk";
 
 /** Where the generated facts live, from either `src/company.ts` or `dist/company.js`. */
 export const COMPANY_FACTS_URL = new URL(
@@ -18,118 +35,58 @@ export const COMPANY_FACTS_URL = new URL(
   import.meta.url,
 );
 
-export interface Address {
-  readonly street: string;
-  readonly city: string;
-  readonly region: string;
-  readonly postalCode: string;
-  readonly country: string;
-}
+export type Address = CompanyAddress;
 
-export interface Profile {
-  readonly legalName: string;
-  readonly tradingName: string;
-  readonly tagline: string;
-  readonly address: Address;
-  readonly phone: string;
-  readonly email: string;
-  readonly serviceArea: string;
-  readonly clients: string;
-}
+export type Profile = Pick<
+  CompanyProfile,
+  | "legalName"
+  | "tradingName"
+  | "tagline"
+  | "address"
+  | "phone"
+  | "email"
+  | "serviceArea"
+  | "clients"
+>;
 
-export interface Hours {
-  readonly timezone: string;
-  readonly office: string;
-  readonly crews: string;
-  readonly emergencyLine: string;
-  readonly closedOn: string;
-  readonly note: string;
-}
+export type Hours = CompanyHours;
 
-export interface Person {
-  readonly id: string;
-  readonly name: string;
-  readonly title: string;
-  readonly email: string;
-  readonly decides: readonly string[];
-}
+export type Person = Pick<CompanyRecordPerson, "id" | "name" | "title" | "email" | "decides">;
 
-export interface Service {
-  readonly id: string;
-  readonly name: string;
-  readonly summary: string;
-  readonly leadTimeDays: number;
-}
+export type Service = Omit<CompanyService, "priceBookIds">;
 
-/** One crew as the schedule sees it. `members` is a headcount, not a list of people. */
-export interface Crew {
-  readonly id: string;
-  readonly name: string;
-  /** The person who leads it, by `people[].id`, or `null` when a cleaner leads it. */
-  readonly leadPersonId: string | null;
-  readonly members: number;
-  /** Crew-hours the crew may work in one week before the rest is overtime. */
-  readonly weeklyHoursCap: number;
-}
+/** One crew, with the crew-hours it may work in a week before the rest is overtime. */
+export type Crew = CompanyCrew;
 
-export interface StaffPolicies {
-  readonly timeOffNoticeDays: number;
-  /** Whether overtime needs a person's approval before it is worked. */
-  readonly overtimeNeedsApproval: boolean;
-  readonly payQuestionsTo: string;
-  readonly disciplineTo: string;
-}
+export type StaffPolicies = Pick<
+  CompanyStaffPolicies,
+  "timeOffNoticeDays" | "overtimeNeedsApproval" | "payQuestionsTo" | "disciplineTo"
+>;
 
-export interface Policies {
-  readonly safety: readonly string[];
-  readonly commitments: readonly string[];
-}
+export type Policies = Pick<CompanyPolicies, "safety" | "commitments">;
 
-export interface Tone {
-  readonly summary: string;
-  readonly always: readonly string[];
-  readonly never: readonly string[];
-}
+export type Tone = CompanyTone;
 
-export interface EscalationRule {
-  /** What a request is about, e.g. `start-date`. */
-  readonly topic: string;
-  /** The person who decides it, by `people[].id`. */
-  readonly toPersonId: string;
-  readonly when: string;
-}
+export type EscalationRule = CompanyEscalationRule;
 
-export interface GlossaryEntry {
-  readonly term: string;
-  readonly meaning: string;
-}
+export type GlossaryEntry = CompanyGlossaryEntry;
 
 /** Everything the company records that this role reads. */
-export interface CompanyFacts {
+export type CompanyFacts = Pick<
+  CompanyRecord,
+  "hours" | "tone" | "escalation" | "glossary" | "crews"
+> & {
   readonly profile: Profile;
-  readonly hours: Hours;
   readonly people: readonly Person[];
   readonly services: readonly Service[];
   readonly policies: Policies;
-  readonly tone: Tone;
-  readonly escalation: readonly EscalationRule[];
-  readonly glossary: readonly GlossaryEntry[];
-  readonly crews: readonly Crew[];
   readonly staffPolicies: StaffPolicies;
-}
+};
 
 /** The company facts generated into this package. Throws when the copy is missing or is not JSON. */
 export const loadCompanyFacts = (): CompanyFacts => loadFacts<CompanyFacts>(COMPANY_FACTS_URL);
 
-/** One person by id, or `undefined` when nobody here has that id. */
-export function person(company: CompanyFacts, id: string): Person | undefined {
-  return company.people.find((candidate) => candidate.id === id);
-}
-
-/** The escalation rule for a request, or `undefined` when the company has not named one. */
-export function escalationRule(company: CompanyFacts, topic: string): EscalationRule | undefined {
-  return company.escalation.find((rule) => rule.topic === topic);
-}
+export { escalationRule, person };
 
 /**
  * The person who owns the schedule: whoever the escalation path names for a start date, a crew or a

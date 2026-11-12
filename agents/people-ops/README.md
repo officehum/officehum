@@ -67,12 +67,12 @@ anyone.
 
 | Tool | Replay | Gate | What it is for |
 | --- | --- | --- | --- |
-| `list_candidates` | safe | — | The pipeline by opening, stage or candidate; no contact details |
+| `list_candidates` | safe | — | The pipeline by opening, stage or candidate; no contact details. Only for a colleague asking from inside the office |
 | `update_candidate_stage` | unsafe | `noApproval`; the pipeline is internal, and hired and rejected are refused | Move a candidate between applied, screening, interview and final_review |
 | `onboarding_checklist` | unsafe | `noApproval`; creates a checklist for someone a person hired | Who to tell, orientation, paperwork, first tasks and access, due dates from the start date |
 | `record_time_off_request` | unsafe | `noApproval`; records a request as pending | The sender's own time off (or one a person on the record files for someone), refused for short notice unless the reason may be protected |
 | `request_time_off_exception` | unsafe | approval `time_off_exception`, every call | Short-notice time off, with the notice the desk worked out |
-| `list_availability` | safe | — | The days each crew member has approved time off that week; nothing else |
+| `list_availability` | safe | — | The days each crew member has approved time off that week; nothing else. Only for a colleague asking from inside the office |
 | `get_leave_balance` | safe | — | The sender's own leave this year: allowance, approved days, days left; no employee argument |
 | `refer_to_person` | unsafe | `noApproval`; an internal hand-off to the person the record names | Pay, discipline, termination, a workplace complaint, an accommodation or a records request |
 | `read_company` | safe | — | One section of the company record; people by name, title and what they decide, never contact details |
@@ -90,11 +90,17 @@ not on staff with `not_staff`. `get_leave_balance` takes no arguments at all: it
 their allowance (each demonstration staff record carries one) less the approved business days
 (Monday to Friday) that fall this year, worked out by the desk. A crew member naming themselves in full,
 or by a part of their name no colleague shares, is themselves; a shared first name stays ambiguous.
+`list_candidates` and `list_availability` are the office's own working records, so the tools answer
+them only for a colleague: a sender nobody verified is refused with `unknown_sender`, and a crew
+member, an outsider or a colleague's outside address with `not_colleague`. The check is in the tool,
+before the desk is asked, so it holds with any host desk.
 
 **Time off.** The model gives the dates and the kind of reason the employee gave; the
 desk works out the notice against `staffPolicies.timeOffNoticeDays`. Enough notice: recorded as
 pending for the person who decides time off (the escalation path's `hiring-and-onboarding` owner).
-Short notice for an ordinary reason: refused with `late_notice` and the notice figure, and the role
+Short notice for an ordinary reason: refused with `late_notice` and the notice figure, counted from
+today (the company's day, `hours.timezone`) every time, so a request asked again after a decline
+states the notice left now and not the earlier ask's; the role
 asks with `request_time_off_exception`. The gate's facts reader works the request out on the desk
 before anyone is asked (whose time off, from the verified sender, the dates, the reason and the
 notice figure) and shows exactly that to the person; on a yes those facts reach the tool under the
@@ -130,9 +136,9 @@ everyone it could go to is named the desk refuses with `no_one_left`.
 
 **Privacy.** The desk holds no personal details beyond each staff member's own contact, which it only
 matches against the sender and never returns; `list_availability` returns names and
-unavailable days only (no reason, approved time off only), and `read_company` prints no phone number
-or email. A request for a colleague's details is refused by the prompt, with no tool that could
-answer it.
+unavailable days only (no reason, approved time off only) and only to a colleague, and `read_company`
+prints no phone number or email. A request for a colleague's details is refused by the prompt, with no
+tool that could answer it.
 
 ## Bind it to a real HR system
 

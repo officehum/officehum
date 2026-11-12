@@ -12,9 +12,20 @@
  */
 
 import {
+  type CompanyCrew,
+  type CompanyEscalationRule,
+  type CompanyGlossaryEntry,
+  type CompanyHours,
+  type CompanyProfile,
+  type CompanyRecord,
+  type CompanyRecordPerson,
+  type CompanyStaffPolicies,
+  type CompanyTone,
   companyHead,
+  escalationOwner,
   findPeople,
   loadCompanyFacts as loadFacts,
+  personById as person,
   personLabel,
 } from "@officehum/sdk";
 
@@ -24,101 +35,37 @@ export const COMPANY_FACTS_URL = new URL(
   import.meta.url,
 );
 
-export interface Profile {
-  readonly legalName: string;
-  readonly tradingName: string;
-  readonly tagline: string;
-  readonly serviceArea: string;
-}
+export type Profile = Pick<CompanyProfile, "legalName" | "tradingName" | "tagline" | "serviceArea">;
 
-export interface Hours {
-  readonly timezone: string;
-  readonly office: string;
-  readonly crews: string;
-  readonly closedOn: string;
-  readonly note: string;
-}
+export type Hours = Omit<CompanyHours, "emergencyLine">;
 
-/** A person on the company record, without their contact details. */
-export interface Person {
-  readonly id: string;
-  readonly name: string;
-  readonly title: string;
-  /** Other names colleagues use for them ("DW"); a complaint naming one is kept away from them. */
-  readonly aliases?: readonly string[];
-  readonly decides: readonly string[];
-}
+/**
+ * A colleague as this role reads them: a name, a title and what they decide. The record's email,
+ * phone and department are deliberately left untyped, so no tool here can print them.
+ */
+export type Person = Omit<CompanyRecordPerson, "email" | "phone" | "department">;
 
-/** One crew. `members` is a headcount: the crew members themselves are not on the company record. */
-export interface Crew {
-  readonly id: string;
-  readonly name: string;
-  readonly leadPersonId: string | null;
-  readonly members: number;
-}
+export type Crew = Omit<CompanyCrew, "weeklyHoursCap">;
 
-export interface StaffPolicies {
-  /** How many days ahead time off is asked for. */
-  readonly timeOffNoticeDays: number;
-  /**
-   * How far back, in days, an absence the law may protect is still recorded; an older date is most
-   * likely a wrong year, so the desk refuses it.
-   */
-  readonly pastAbsenceWindowDays: number;
-  readonly payQuestionsTo: string;
-  /** Discipline, and so termination. */
-  readonly disciplineTo: string;
-  /** Leave the law may protect, and accommodation requests: whatever the notice. */
-  readonly protectedLeaveTo: string;
-  /** Complaints about harassment or how someone is treated at work. */
-  readonly employeeRelationsTo: string;
-}
+export type StaffPolicies = Omit<CompanyStaffPolicies, "overtimeNeedsApproval">;
 
-export interface Tone {
-  readonly summary: string;
-  readonly always: readonly string[];
-  readonly never: readonly string[];
-}
+export type Tone = CompanyTone;
 
-export interface EscalationRule {
-  readonly topic: string;
-  readonly toPersonId: string;
-  readonly when: string;
-}
+export type EscalationRule = CompanyEscalationRule;
 
-export interface GlossaryEntry {
-  readonly term: string;
-  readonly meaning: string;
-}
+export type GlossaryEntry = CompanyGlossaryEntry;
 
 /** Everything the company records that this role reads. */
-export interface CompanyFacts {
+export type CompanyFacts = Pick<CompanyRecord, "tone" | "escalation" | "glossary"> & {
   readonly profile: Profile;
   readonly hours: Hours;
   readonly people: readonly Person[];
-  readonly tone: Tone;
-  readonly escalation: readonly EscalationRule[];
-  readonly glossary: readonly GlossaryEntry[];
   readonly crews: readonly Crew[];
   readonly staffPolicies: StaffPolicies;
-}
+};
 
 /** The company facts generated into this package. Throws when the copy is missing or is not JSON. */
 export const loadCompanyFacts = (): CompanyFacts => loadFacts<CompanyFacts>(COMPANY_FACTS_URL);
-
-/** One person by id, or `undefined` when nobody here has that id. */
-export function person(company: Pick<CompanyFacts, "people">, id: string): Person | undefined {
-  return company.people.find((candidate) => candidate.id === id);
-}
-
-/** The person whose escalation topic this is, or `undefined` when the record has no such topic. */
-export function escalationOwner(
-  company: Pick<CompanyFacts, "people" | "escalation">,
-  topic: string,
-): Person | undefined {
-  const rule = company.escalation.find((candidate) => candidate.topic === topic);
-  return rule === undefined ? undefined : person(company, rule.toPersonId);
-}
 
 /**
  * The person who decides hiring and ordinary time off: whoever the escalation path names for a
@@ -133,4 +80,4 @@ export function peopleOwner(
 // `companyHead` is the SDK's one rule for the person at the top of the company: a head title first,
 // a bare director only when nobody holds one. A complaint about the person who would normally take
 // it goes there.
-export { companyHead, findPeople, personLabel };
+export { companyHead, escalationOwner, findPeople, person, personLabel };

@@ -4,8 +4,9 @@
  * `list_candidates`, `list_availability`, `get_leave_balance` and `read_company` only read, and none
  * of them can print a contact or personal detail: the desk returns none and the company section types
  * none. Who is asking comes from the host's verified sender (`SenderResolver`), never from an argument
- * or the message: `get_leave_balance` gives only the sender's own balance, and a time-off request is
- * the sender's own unless a person on the company record files it for someone. The writes go
+ * or the message: `get_leave_balance` gives only the sender's own balance, a time-off request is
+ * the sender's own unless a person on the company record files it for someone, and `list_candidates`
+ * and `list_availability` answer only such a person, asking from inside the office. The writes go
  * through the desk with no approval — a stage move, an onboarding checklist, a pending time-off
  * request, a hand-off to a person — and each refusal comes back with a code the tools turn into the
  * next step. `request_time_off_exception` is the one approval-gated tool; its approval is
@@ -22,13 +23,19 @@ import {
   type ApprovalFactsReader,
   approvedFacts,
   approvedFactsParameter,
+  colleague,
+  companyGlossaryText,
+  companyPeopleText,
+  companyToneText,
   deskRefusal,
+  readCompanyTool,
   refusal,
   requestId,
+  requireDesk,
   type SenderResolver,
   textResult,
 } from "@officehum/sdk";
-import { type CompanyFacts, type Person, peopleOwner, person, personLabel } from "./company.js";
+import { type CompanyFacts, peopleOwner, person, personLabel } from "./company.js";
 import {
   type Candidate,
   type CrewAvailability,
@@ -78,20 +85,9 @@ export type CompanySection =
   | "escalation"
   | "glossary";
 
-const SECTIONS: readonly CompanySection[] = [
-  "profile",
-  "hours",
-  "people",
-  "crews",
-  "staff",
-  "tone",
-  "escalation",
-  "glossary",
-];
-
 const DATE = Type.String({
   description:
-    "A date as YYYY-MM-DD. When the person gives no year, it is the next such date from today: list_availability's heading gives this week's dates",
+    "A date as YYYY-MM-DD. When the person gives no year, it is the next such date from today, as the today section dates it",
 });
 
 const EMPLOYEE =
@@ -107,15 +103,6 @@ const REASON = literals(
   REASON_CATEGORIES,
   "The kind of reason the employee gave, from their own words: medical (illness, injury, surgery, a medical appointment), disability, pregnancy_or_parental (pregnancy, birth, adoption, a new child), military, jury_duty, family_care (caring for a sick family member), bereavement, vacation, personal, other, or unspecified when they gave none",
 );
-
-function requireDesk(dependencies: PeopleOpsToolDependencies): PeopleOpsDesk {
-  if (dependencies.desk === undefined) {
-    throw new Error(
-      "No people desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
-    );
-  }
-  return dependencies.desk;
-}
 
 const reasonWords = (reason: ReasonCategory): string => reason.replaceAll("_", " ");
 
@@ -208,68 +195,68 @@ function balanceText(balance: LeaveBalance): string {
   return `Leave for ${balance.name} (the sender) in ${balance.year}, in business days (Monday to Friday): allowance ${balance.allowanceDays}; approved and taken or booked ${balance.takenDays}; ${balance.remainingDays} left. Approved: ${approved}.${pending} Worked out by the desk; this is the sender's own balance only.`;
 }
 
-function companySection(company: CompanyFacts, section: CompanySection): string {
-  const named = (id: string | null) => {
-    return personLabel(id === null ? undefined : person(company, id));
-  };
-  switch (section) {
-    case "profile": {
-      const { profile } = company;
-      return [
-        `${profile.legalName} — trading as ${profile.tradingName}. ${profile.tagline}`,
-        `Service area: ${profile.serviceArea}`,
-      ].join("\n");
-    }
-    case "hours": {
-      const open = company.hours;
-      return [
-        `Office: ${open.office} (${open.timezone}).`,
-        `Crews: ${open.crews}.`,
-        `Closed: ${open.closedOn}.`,
-        open.note,
-      ].join("\n");
-    }
-    case "people":
-      // Names, titles and what each decides: who to hand something to. Never a phone or an email.
-      return company.people
-        .map(
-          (worker: Person) =>
-            `${worker.name} — ${worker.title} — decides: ${worker.decides.join("; ")}`,
-        )
-        .join("\n");
-    case "crews":
-      return company.crews
-        .map(
-          (crew) =>
-            `${crew.id} — ${crew.name} — ${crew.members} people — led by ${crew.leadPersonId === null ? "a cleaner from the crew" : named(crew.leadPersonId)}`,
-        )
-        .join("\n");
-    case "staff": {
-      const staff = company.staffPolicies;
-      return [
-        `Time off is asked for at least ${staff.timeOffNoticeDays} days ahead. ${named(peopleOwner(company)?.id ?? null)} decides time off and hiring.`,
-        `Leave for a reason the law may protect, and accommodation requests: ${named(staff.protectedLeaveTo)}, whatever the notice.`,
-        `Questions about pay: ${named(staff.payQuestionsTo)}.`,
-        `Discipline and termination: ${named(staff.disciplineTo)}.`,
-        `Complaints about harassment or how someone is treated at work: ${named(staff.employeeRelationsTo)}, never anyone the complaint is about.`,
-      ].join("\n");
-    }
-    case "tone":
-      return [
-        company.tone.summary,
-        "Always:",
-        ...company.tone.always.map((rule) => `- ${rule}`),
-        "Never:",
-        ...company.tone.never.map((rule) => `- ${rule}`),
-      ].join("\n");
-    case "escalation":
-      return company.escalation
-        .map((rule) => `${rule.topic} — ${named(rule.toPersonId)} — ${rule.when}`)
-        .join("\n");
-    case "glossary":
-      return company.glossary.map((entry) => `${entry.term}: ${entry.meaning}`).join("\n");
-  }
+/** "Name, Title" for a person id on the record; "a person" for an id it does not hold. */
+const named = (company: CompanyFacts, id: string | null): string =>
+  personLabel(id === null ? undefined : person(company, id));
+
+/** Who the company is and where it works: no address, phone or email. */
+function profileText(company: CompanyFacts): string {
+  const { profile } = company;
+  return [
+    `${profile.legalName} — trading as ${profile.tradingName}. ${profile.tagline}`,
+    `Service area: ${profile.serviceArea}`,
+  ].join("\n");
 }
+
+function hoursText(company: CompanyFacts): string {
+  const open = company.hours;
+  return [
+    `Office: ${open.office} (${open.timezone}).`,
+    `Crews: ${open.crews}.`,
+    `Closed: ${open.closedOn}.`,
+    open.note,
+  ].join("\n");
+}
+
+function crewsText(company: CompanyFacts): string {
+  return company.crews
+    .map(
+      (crew) =>
+        `${crew.id} — ${crew.name} — ${crew.members} people — led by ${crew.leadPersonId === null ? "a cleaner from the crew" : named(company, crew.leadPersonId)}`,
+    )
+    .join("\n");
+}
+
+/** The notice period, and who takes pay, discipline, protected leave and workplace complaints. */
+function staffText(company: CompanyFacts): string {
+  const staff = company.staffPolicies;
+  return [
+    `Time off is asked for at least ${staff.timeOffNoticeDays} days ahead. ${named(company, peopleOwner(company)?.id ?? null)} decides time off and hiring.`,
+    `Leave for a reason the law may protect, and accommodation requests: ${named(company, staff.protectedLeaveTo)}, whatever the notice.`,
+    `Questions about pay: ${named(company, staff.payQuestionsTo)}.`,
+    `Discipline and termination: ${named(company, staff.disciplineTo)}.`,
+    `Complaints about harassment or how someone is treated at work: ${named(company, staff.employeeRelationsTo)}, never anyone the complaint is about.`,
+  ].join("\n");
+}
+
+function escalationText(company: CompanyFacts): string {
+  return company.escalation
+    .map((rule) => `${rule.topic} — ${named(company, rule.toPersonId)} — ${rule.when}`)
+    .join("\n");
+}
+
+/** Each section `read_company` answers for and how it reads, in the order the model is offered them. */
+const COMPANY_SECTIONS: Readonly<Record<CompanySection, (company: CompanyFacts) => string>> = {
+  profile: profileText,
+  hours: hoursText,
+  // Names, titles and what each decides: who to hand something to. Never a phone or an email.
+  people: (company) => companyPeopleText(company, "none"),
+  crews: crewsText,
+  staff: staffText,
+  tone: companyToneText,
+  escalation: escalationText,
+  glossary: companyGlossaryText,
+};
 
 /**
  * Builds the nine tools over one desk and one company. Every one is plain Pi Durable: they install
@@ -295,6 +282,29 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     Promise.resolve(undefined);
   const hiring = hiringOwner(company);
 
+  /**
+   * The refusal for a lookup that is not a colleague's: the hiring pipeline and the crews' days off
+   * are the office's own working records, so they go only to a person on the company record asking
+   * from inside the office. `undefined` when the call's sender is one.
+   */
+  const notOffice = async (
+    api: { readonly conversationId: unknown; readonly taskId: unknown },
+    what: string,
+  ) => {
+    const sender = await from(api);
+    if (sender === undefined) {
+      return refusal(
+        `Nobody verified who sent this, so ${what}. Nothing was shared.${hints.unknown_sender}`,
+        { code: "unknown_sender", found: false },
+      );
+    }
+    if (colleague(company, sender) !== undefined) return undefined;
+    return refusal(
+      `The sender is not a person on the company record asking from inside the office, so ${what}. Nothing was shared. Next: tell them it is not something you can share, and that ${hiring} decides hiring and time off; share nothing about anyone.`,
+      { code: "not_colleague", found: false },
+    );
+  };
+
   /** A desk refusal as the model reads it, with the next step its code names. */
   const refused = (error: unknown, extra: JsonObject) => {
     if (!(error instanceof PeopleOpsDeskError)) throw error;
@@ -316,7 +326,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
   const listCandidates = defineTool({
     name: "list_candidates",
     description:
-      "List the candidates in the hiring pipeline, optionally for one opening, stage or candidate: each one's id, name, opening, stage, start date once hired, and a note on where they stand. No contact or personal details.",
+      "List the candidates in the hiring pipeline, optionally for one opening, stage or candidate: each one's id, name, opening, stage, start date once hired, and a note on where they stand. No contact or personal details. Only for a person on the company record asking from inside the office: anyone else is refused.",
     parameters: Type.Object(
       {
         opening: Type.Optional(Type.String({ description: "All or part of the opening's name" })),
@@ -326,8 +336,10 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
       { additionalProperties: false },
     ),
     replay: "safe",
-    execute: async (args) => {
-      const desk = requireDesk(dependencies);
+    execute: async (args, api) => {
+      const desk = requireDesk(dependencies.desk, "people");
+      const blocked = await notOffice(api, "no candidate is listed for them");
+      if (blocked !== undefined) return blocked;
       const candidates = await desk.listCandidates({
         ...(args.opening === undefined ? {} : { opening: args.opening }),
         ...(args.stage === undefined ? {} : { stage: args.stage }),
@@ -365,7 +377,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "people");
       try {
         const change = await desk.updateCandidateStage(
           { candidateId: args.candidateId, stage: args.stage },
@@ -394,7 +406,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "people");
       try {
         const checklist = await desk.createOnboardingChecklist(
           { candidateId: args.candidateId },
@@ -433,7 +445,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "people");
       try {
         const entry = await desk.recordTimeOffRequest(
           {
@@ -477,7 +489,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "people");
       const approved = approvedFacts(args);
       if (approved === undefined) {
         // No record exists yet, so the refusal names the request itself: whose, which dates, why.
@@ -506,7 +518,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
   });
 
   const exceptionFacts: ApprovalFactsReader = async (args, _context, call) => {
-    const desk = requireDesk(dependencies);
+    const desk = requireDesk(dependencies.desk, "people");
     let facts: Awaited<ReturnType<PeopleOpsDesk["timeOffExceptionFacts"]>>;
     try {
       facts = await desk.timeOffExceptionFacts({ ...exceptionInput(args), from: await from(call) });
@@ -524,7 +536,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
   const listAvailability = defineTool({
     name: "list_availability",
     description:
-      "List crew members' availability for one week (Monday to Sunday): the days each one has approved time off. Availability only: no reasons, contact or personal details.",
+      "List crew members' availability for one week (Monday to Sunday): the days each one has approved time off. Availability only: no reasons, contact or personal details. Only for a person on the company record asking from inside the office: anyone else is refused.",
     parameters: Type.Object(
       {
         weekOf: Type.Optional(
@@ -537,8 +549,10 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
       { additionalProperties: false },
     ),
     replay: "safe",
-    execute: async (args) => {
-      const desk = requireDesk(dependencies);
+    execute: async (args, api) => {
+      const desk = requireDesk(dependencies.desk, "people");
+      const blocked = await notOffice(api, "nobody's availability is listed for them");
+      if (blocked !== undefined) return blocked;
       try {
         const crews = await desk.listAvailability({
           ...(args.weekOf === undefined ? {} : { weekOf: args.weekOf }),
@@ -570,7 +584,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     parameters: Type.Object({}, { additionalProperties: false }),
     replay: "safe",
     execute: async (_args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "people");
       try {
         const balance = await desk.leaveBalance({ from: await from(api) });
         return {
@@ -604,7 +618,7 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "people");
       try {
         const referral = await desk.referToPerson(
           {
@@ -630,19 +644,11 @@ export function peopleOpsTools(dependencies: PeopleOpsToolDependencies): PeopleO
     },
   });
 
-  const readCompany = defineTool({
-    name: "read_company",
+  const readCompany = readCompanyTool({
+    company,
     description:
       "Read one section of the company record: the profile, the hours, the people (names, titles and what each decides), the crews, the staff policies (notice, and who takes pay, discipline, protected leave and workplace complaints), the tone of voice, the escalation path or the glossary.",
-    parameters: Type.Object(
-      { section: literals(SECTIONS, "Which part of the record to read") },
-      { additionalProperties: false },
-    ),
-    replay: "safe",
-    execute: async (args) => {
-      const section = args.section as CompanySection;
-      return { ...textResult(companySection(company, section)), details: { section } };
-    },
+    sections: COMPANY_SECTIONS,
   });
 
   return {

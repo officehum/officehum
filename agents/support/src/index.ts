@@ -146,6 +146,8 @@ export default function support(options: SupportOptions = {}): DefinedRole {
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
     now,
+    // The prompt's "today" is the company's day, the same one the desk dates its records by.
+    timeZone: company.hours.timezone,
     tools: [
       tools.findClient,
       tools.listCases,

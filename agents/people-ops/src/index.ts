@@ -139,6 +139,8 @@ export default function peopleOps(options: PeopleOpsOptions = {}): DefinedRole {
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
     now,
+    // The prompt's "today" is the company's day, the same one the desk counts notice from.
+    timeZone: company.hours.timezone,
     tools: [
       tools.listCandidates,
       tools.updateCandidateStage,

@@ -112,12 +112,16 @@ export default function operations(options: OperationsOptions = {}): DefinedRole
   const company = options.company ?? loadCompanyFacts();
   // The demonstration desk schedules the company's own crews against their own caps, so a first run
   // and a real one refuse the same week.
-  const desk = demoDesk ? fakeOperationsDesk({ crews: company.crews, now }) : options.desk;
+  const desk = demoDesk
+    ? fakeOperationsDesk({ crews: company.crews, timeZone: company.hours.timezone, now })
+    : options.desk;
   const tools = operationsTools({ desk, company });
   return defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
     now,
+    // The prompt's "today" is the company's day, the same one the desk reads this week from.
+    timeZone: company.hours.timezone,
     tools: [
       tools.listJobs,
       tools.listCrews,
@@ -133,6 +137,12 @@ export default function operations(options: OperationsOptions = {}): DefinedRole
     // code, because it reads the company facts the host passed, which no manifest condition can. The
     // office's manifest-only gate never runs it and keeps asking on every call, which fails safe.
     when: { overtime: () => company.staffPolicies.overtimeNeedsApproval },
+    // What the person is shown: the crew, the client, the dates and the hours, read from the desk
+    // before anyone is asked, so they never approve a bare job id.
+    approvalFacts: {
+      overtime: tools.overtimeFacts,
+      contract_reschedule: tools.contractRescheduleFacts,
+    },
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

@@ -22,8 +22,8 @@ the law may protect is never refused automatically: a person decides it.
    the reason category from their own words, even if they use no legal terms. The request is the
    sender's own: leave `employee` out. Give `employee` (a first name alone is enough; the desk says if
    two people share it) only when someone on the company record files for another employee; the desk
-   refuses a crew member filing for someone else. Never ask for a surname or a year first. When they give no year, take it from this week's dates in
-   `list_availability`'s heading: the next such date from today.
+   refuses a crew member filing for someone else. Never ask for a surname or a year first. When they give no year, take it from the dates in
+   the today section: the next such date from today.
 2. **Pending, not approved.** Tell the employee it is recorded and who decides it, from the receipt.
 3. **Short notice, ordinary reason**: the desk refuses it with the notice it worked out. Ask with
    `request_time_off_exception`, using that figure and the employee's reason. If the person declines,

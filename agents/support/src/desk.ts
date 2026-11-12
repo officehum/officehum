@@ -14,7 +14,7 @@
  * carries a code, and the tools turn the code into the next step.
  */
 
-import { isoDate, sameFacts } from "@officehum/sdk";
+import { addDays, localDate, parseDate, sameFacts } from "@officehum/sdk";
 import {
   type CompanyFacts,
   companyHead,
@@ -31,7 +31,7 @@ export type CaseKind = "complaint" | "question";
 
 /**
  * What a case is about. `quality` and `missed_visit` are work that fell short, the cases a re-clean
- * puts right; `safety` always goes to a person.
+ * puts right; `safety` and `damage` always go to a person before the case is closed.
  */
 export type CaseCategory =
   | "quality"
@@ -157,6 +157,11 @@ export interface Credit {
   /** The line total or the company's usual service-recovery credit, whichever is less. */
   readonly creditCents: number;
   readonly proposedOn: string;
+  /**
+   * The day the proposal was first put to a person, or `null` while nobody has been asked: proposing
+   * a credit asks no one. Until it is set, the credit is only proposed, and nobody "has it".
+   */
+  readonly askedOn: string | null;
   readonly creditNoteId: string | null;
   readonly withdrawnReason: string | null;
 }
@@ -311,6 +316,13 @@ export interface SupportDesk {
     options: { readonly requestId: string },
   ): Promise<Credit>;
   /**
+   * Records that a pending proposal is being put to a person, on the day it first is. The tools call
+   * it as the approval's facts are read, just before the person is asked. It carries no request id
+   * because it is the same write however often it runs: the first day stands. Refuses a proposal
+   * that is not pending.
+   */
+  markCreditAsked(creditId: string): Promise<Credit>;
+  /**
    * Issues a credit note for a pending proposal. Called only once a person approved it, with the
    * facts they were shown; a host desk must refuse with `credit_changed` when the proposal no longer
    * equals them (`creditApprovalFacts`), so a grant never issues a credit nobody saw.
@@ -379,7 +391,10 @@ export class SupportDeskError extends Error {
 
 /** The demonstration clients, invoices and cases; the company's own price book and policies. */
 export interface FakeSupportDeskOptions {
-  readonly company?: Pick<CompanyFacts, "priceBook" | "policies" | "people" | "escalation">;
+  readonly company?: Pick<
+    CompanyFacts,
+    "hours" | "priceBook" | "policies" | "people" | "escalation"
+  >;
   readonly clients?: readonly Client[];
   readonly invoices?: readonly InvoiceRecord[];
   readonly cases?: readonly SupportCase[];
@@ -611,6 +626,7 @@ export function demoCredits(): readonly Credit[] {
       lineName: "Interior window cleaning",
       creditCents: 15000,
       proposedOn: "2026-11-04",
+      askedOn: "2026-11-04",
       creditNoteId: null,
       withdrawnReason: null,
     },
@@ -625,6 +641,7 @@ export function demoCredits(): readonly Credit[] {
       lineName: "Office cleaning, one visit, up to 3,000 sq ft",
       creditCents: 15000,
       proposedOn: "2026-11-09",
+      askedOn: "2026-11-09",
       creditNoteId: null,
       withdrawnReason: null,
     },
@@ -637,27 +654,22 @@ function priorityOf(kind: CaseKind, category: CaseCategory): Priority {
   return kind === "complaint" ? "high" : "normal";
 }
 
+/** The categories nobody closes before a person has the case: safety, and damage to a client's property. */
+const NEEDS_A_PERSON: ReadonlySet<CaseCategory> = new Set(["safety", "damage"]);
+
 /** The categories a re-clean puts right: work that fell short. */
 const RECLEAN_CATEGORIES: ReadonlySet<CaseCategory> = new Set(["quality", "missed_visit"]);
 
-const DAY_MS = 86_400_000;
-
-function parseDate(value: string): Date | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return Number.isNaN(date.getTime()) || isoDate(date) !== value ? undefined : date;
-}
-
 /** `days` business days (Monday to Friday) after `from`. */
 function addBusinessDays(from: string, days: number): string {
-  let date = new Date(`${from}T00:00:00.000Z`);
+  let day = from;
   let left = days;
   while (left > 0) {
-    date = new Date(date.getTime() + DAY_MS);
-    const weekday = date.getUTCDay();
+    day = addDays(day, 1);
+    const weekday = parseDate(day)?.getUTCDay();
     if (weekday !== 0 && weekday !== 6) left -= 1;
   }
-  return isoDate(date);
+  return day;
 }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
@@ -676,7 +688,8 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
   const facts = options.company ?? loadCompanyFacts();
   const refunds = facts.policies.refunds;
   const clock = options.now ?? (() => new Date(DEMO_NOW));
-  const today = () => isoDate(clock());
+  // The company's day, not the UTC one: a complaint taken at 17:00 in the office is still today's.
+  const today = () => localDate(clock(), facts.hours.timezone);
   const clients = [...(options.clients ?? demoClients())];
   const invoices = [...(options.invoices ?? demoInvoices())];
   const cases: CaseState[] = (options.cases ?? demoCases(clients)).map(
@@ -938,8 +951,8 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
           { caseId: entry.id },
         );
       }
-      const date = parseDate(input.date.trim());
-      if (date === undefined) {
+      const wanted = input.date.trim();
+      if (parseDate(wanted) === undefined) {
         throw new SupportDeskError(
           "invalid",
           `${JSON.stringify(input.date)} is not a date: give it as YYYY-MM-DD. Nothing was booked.`,
@@ -949,7 +962,13 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
       // The window is the company's, in business days from when the complaint was made.
       const first = today();
       const last = addBusinessDays(entry.openedOn, refunds.recleanWindowDays);
-      const wanted = isoDate(date);
+      if (last < first) {
+        throw new SupportDeskError(
+          "outside_window",
+          `The re-clean window for ${entry.id} closed on ${last}: ${refunds.recleanWindowDays} business days after the complaint on ${entry.openedOn}. Today is ${first}, so no date is inside it. Nothing was booked.`,
+          { caseId: entry.id },
+        );
+      }
       if (wanted < first || wanted > last) {
         throw new SupportDeskError(
           "outside_window",
@@ -1039,12 +1058,27 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
         lineName: line.name,
         creditCents: line.creditCents,
         proposedOn: today(),
+        askedOn: null,
         creditNoteId: null,
         withdrawnReason: null,
       };
       proposals.push({ ...credit });
       proposed.set(requestId, credit);
       return credit;
+    },
+
+    async markCreditAsked(creditId: string): Promise<Credit> {
+      const credit = findCredit(creditId);
+      if (credit.status !== "pending") {
+        throw new SupportDeskError(
+          "invalid",
+          `${credit.id} is ${credit.status}, so there is nothing to put to a person. Nothing was changed.`,
+          { caseId: credit.caseId, creditId: credit.id },
+        );
+      }
+      // The first day stands, so a replay or a second ask changes nothing.
+      credit.askedOn ??= today();
+      return { ...credit };
     },
 
     async issueCredit(input, { requestId }): Promise<CreditNote> {
@@ -1231,10 +1265,10 @@ export function fakeSupportDesk(options: FakeSupportDeskOptions = {}): SupportDe
           { caseId: entry.id },
         );
       }
-      if (entry.category === "safety" && entry.escalations.length === 0) {
+      if (NEEDS_A_PERSON.has(entry.category) && entry.escalations.length === 0) {
         throw new SupportDeskError(
           "not_escalated",
-          `${entry.id} is a safety complaint that has not been handed to a person. Nothing was closed.`,
+          `${entry.id} is a ${entry.category} complaint that has not been handed to a person. Nothing was closed.`,
           { caseId: entry.id },
         );
       }
