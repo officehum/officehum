@@ -27,7 +27,7 @@ Refusals are ``documents.WorkspaceError`` with a stable code — ``document-prot
 ``malformed-package``, ``unsupported-structure``, ``boundary-violation``, ``target-not-found``,
 ``ambiguous-target`` — or the workspace's own codes for a bad name, a bad lease reference or a
 read-only source. Every one of them leaves the source bytes unchanged: nothing here writes outside the
-staging directory, and the workspace hashes the inputs again after the run.
+staging directory, and after a run that completes the worker hashes the input copies again.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ from docx.errors import (
     PaperRefusal,
     TargetNotFoundError,
 )
-from docx.search import find_one
+from docx.search import find_one, find_text
 from docx.story import iter_blocks, outline, story_parts
 from docx.tableops import delete_row, find_table, insert_row_after, update_cell
 from lxml.etree import XMLSyntaxError
@@ -460,9 +460,11 @@ def _change_set(diff: Any) -> Dict[str, Any]:
     }
 
 
-def _redline(path: str) -> Dict[str, Any]:
-    """The tracked-change view of a saved document, plus what accepting every revision would do."""
-    document = _reopen(path)
+def _redline(path: str, document: "docx.document.Document") -> Dict[str, Any]:
+    """The tracked-change view of a saved document, plus what accepting every revision would do.
+
+    ``document`` is the model already parsed from ``path``, so the package is not opened again here.
+    """
     entries: List[Dict[str, Any]] = []
     insertions = 0
     deletions = 0
@@ -510,9 +512,8 @@ def _written(path: str) -> Tuple[str, int]:
     return hashlib.sha256(data).hexdigest(), len(data)
 
 
-def _reopened(path: str) -> Dict[str, Any]:
-    """Reopen the written document with the pinned library: the check the design wants before a commit."""
-    document = _reopen(path)
+def _reopened(document: "docx.document.Document") -> Dict[str, Any]:
+    """What the written document holds once reopened with the pinned library, before any commit."""
     view = _View(document)
     return {
         "paragraphs": len(view.paragraphs),
@@ -737,7 +738,7 @@ def _create(params: Dict[str, Any]) -> Dict[str, Any]:
         },
         structure=_View(document).counts(),
         provenance={"template": "paper-docx default", "source": None},
-        reopened=_reopened(path),
+        reopened=_reopened(_reopen(path)),
     )
 
 
@@ -777,6 +778,32 @@ def _anchor(document: "docx.document.Document", value: Any, what: str) -> Union[
             "read the document again and edit what is there now",
         )
     return block
+
+
+def _block_span(document: "docx.document.Document", block: Any, what: str) -> Any:
+    """The span covering one block's whole text, which is what a comment on a block attaches to.
+
+    A comment anchors to text. A block with none of its own (an empty paragraph, a table) has no such
+    span, and that is refused by name rather than left to fail inside the library.
+    """
+    spans = (
+        [
+            span
+            for span in _applying(
+                find_text, document, block.text, story=block.story, view="current", match="exact"
+            )
+            if span.anchor == block.anchor
+        ]
+        if block.kind == "paragraph" and block.text != ""
+        else []
+    )
+    if len(spans) != 1:
+        _fail(
+            "unsupported-structure",
+            f"{what} names {block.story} block {block.index} (a {block.kind}), which has no single "
+            "run of text a comment can attach to; anchor the comment with exact text instead",
+        )
+    return spans[0]
 
 
 def _step_fields(spec: Dict[str, Any], kind: str, what: str) -> Dict[str, Any]:
@@ -933,9 +960,11 @@ def _apply(
     if kind == "addComment":
         anchor = _anchor(document, fields["anchor"], f"{what} anchor")
         if isinstance(anchor, str):
-            anchor = _applying(find_one, document, anchor, view="current", match="exact")
+            span = _applying(find_one, document, anchor, view="current", match="exact")
+        else:
+            span = _block_span(document, anchor, f"{what} anchor")
         comment = _applying(
-            anchor.comment, _string(fields["text"], f"{what} text"), author=author, date=date
+            span.comment, _string(fields["text"], f"{what} text"), author=author, date=date
         )
         return {
             "kind": kind,
@@ -1029,6 +1058,8 @@ def _edit(params: Dict[str, Any]) -> Dict[str, Any]:
     change_set = _applying(paper_package.diff_package, source_path, path)
     text_diff = _applying(paper_package.text_diff, source_path, path)
     sha, size = _written(path)
+    # The written document is parsed once, and both the redline and the reopen witness read that model.
+    written = _reopen(path)
     return _envelope(
         "edit",
         source=_source(reference),
@@ -1043,7 +1074,7 @@ def _edit(params: Dict[str, Any]) -> Dict[str, Any]:
         changes=changes,
         changeSet=_change_set(change_set),
         diff=_text_diff(text_diff),
-        redline=_redline(path),
+        redline=_redline(path, written),
         preservation={
             "restoredParts": list(patch.restored_parts),
             "changedParts": list(patch.changed_parts),
@@ -1052,7 +1083,7 @@ def _edit(params: Dict[str, Any]) -> Dict[str, Any]:
             "verbatimCopy": patch.verbatim_copy,
         },
         protection=protection.protection_status(document).to_dict(),
-        reopened=_reopened(path),
+        reopened=_reopened(written),
     )
 
 
@@ -1106,7 +1137,7 @@ def _preview(params: Dict[str, Any]) -> Dict[str, Any]:
         },
         protection=protection.protection_status(document).to_dict(),
         pending=_text_diff(_applying(paper_package.pending_changes, path)),
-        redline=_redline(path),
+        redline=_redline(path, document),
     )
 
 
@@ -1126,7 +1157,7 @@ def _compare(params: Dict[str, Any]) -> Dict[str, Any]:
         sources={"from": _source(from_ref), "to": _source(to_ref)},
         changeSet=_change_set(change_set),
         diff=_text_diff(text_diff),
-        redline=_redline(to_path),
+        redline=_redline(to_path, _reopen(to_path)),
         identical=change_set.is_semantically_empty and text_diff.is_empty,
     )
 

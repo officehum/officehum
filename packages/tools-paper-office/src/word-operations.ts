@@ -17,18 +17,33 @@
  * validator enforces that shape, so a huge document cannot arrive as one unbounded reply.
  */
 
-import { type DocumentError, refusal } from "./errors.js";
-import { type DocumentLease, findLeasedInput, type LeasedInput, permitsFormat } from "./lease.js";
+import { refusal } from "./errors.js";
+import type { DocumentLease, LeasedInput } from "./lease.js";
 import {
-  assertFileId,
-  assertHash,
-  assertLabel,
-  assertPathSegment,
-  assertSize,
-  exactKeys,
-  isRecord,
-  record,
-} from "./validate.js";
+  adapterInstruction,
+  asBoolean,
+  asInteger,
+  asList,
+  asNullableString,
+  asPage,
+  asRecord,
+  asSourceRef,
+  asString,
+  asStrings,
+  type DocumentFileRef,
+  type DocumentPage,
+  fileRefOf,
+  flag,
+  invalid,
+  maybeText,
+  object,
+  pageOf,
+  resolveOutput,
+  resolveRef,
+  text,
+  whole,
+} from "./typed-operation.js";
+import { assertLabel, exactKeys } from "./validate.js";
 
 export const INSPECT_DOCUMENT = "inspect_document";
 export const READ_DOCUMENT = "read_document";
@@ -67,26 +82,17 @@ export const WORD_READ_SECTIONS = [
   "revisions",
 ] as const;
 
-export type WordReadSection = (typeof WORD_READ_SECTIONS)[number];
-
 export const MAX_WORD_PAGE = 50;
-export const DEFAULT_WORD_PAGE = 20;
-export const MAX_WORD_STEPS = 32;
-export const MAX_WORD_BLOCKS = 512;
+const MAX_WORD_STEPS = 32;
+const MAX_WORD_BLOCKS = 512;
 
 /** The one format this adapter owns. */
-export const WORD_FORMAT = "docx";
+const WORD_FORMAT = "docx";
 
 // -- what a caller sends --------------------------------------------------------------------------
 
 /** A leased Word file: the FileStore id and the version, name, hash and size the lease pinned. */
-export interface WordFileRef {
-  readonly fileId: string;
-  readonly versionId: string;
-  readonly name: string;
-  readonly sha256: string;
-  readonly size: number;
-}
+export type WordFileRef = DocumentFileRef;
 
 /** A block anchor: exact paragraph text, or a block reacquired by story, index and content hash. */
 export type WordAnchor =
@@ -236,49 +242,6 @@ export interface WordProgram {
 
 // -- reading the request --------------------------------------------------------------------------
 
-function object(
-  value: unknown,
-  what: string,
-  allowed?: readonly string[],
-): Record<string, unknown> {
-  const entry = record(value, `${what} must be a JSON object`);
-  if (allowed !== undefined) exactKeys(entry, allowed, `${what} carries an unknown field`);
-  return entry;
-}
-
-function text(value: unknown, what: string, limit: number): string {
-  if (
-    typeof value !== "string" ||
-    value.trim() === "" ||
-    Buffer.byteLength(value, "utf8") > limit
-  ) {
-    throw refusal(
-      "invalid-request",
-      `${what} must be a non-empty string of at most ${limit} bytes`,
-    );
-  }
-  return value;
-}
-
-function maybeText(value: unknown, what: string, limit: number): string {
-  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > limit) {
-    throw refusal("invalid-request", `${what} must be a string of at most ${limit} bytes`);
-  }
-  return value;
-}
-
-function flag(value: unknown, what: string): boolean {
-  if (typeof value !== "boolean") throw refusal("invalid-request", `${what} must be true or false`);
-  return value;
-}
-
-function whole(value: unknown, what: string, low: number, high: number): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < low || value > high) {
-    throw refusal("invalid-request", `${what} must be an integer between ${low} and ${high}`);
-  }
-  return value;
-}
-
 function texts(value: unknown, what: string, limit = MAX_WORD_BLOCKS): readonly string[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw refusal("invalid-request", `${what} must be a non-empty list of strings`);
@@ -289,64 +252,14 @@ function texts(value: unknown, what: string, limit = MAX_WORD_BLOCKS): readonly 
   return value.map((item, index) => text(item, `${what} entry ${index}`, 4_000));
 }
 
-/** The shape of a file reference, before the lease is consulted. */
-export function assertWordFileRef(value: unknown, what: string): WordFileRef {
-  const entry = object(value, what, ["fileId", "versionId", "name", "sha256", "size"]);
-  assertFileId(entry.fileId, `${what} fileId`);
-  assertFileId(entry.versionId, `${what} versionId`);
-  assertPathSegment(entry.name, `${what} name`);
-  assertHash(entry.sha256, `${what} sha256`);
-  assertSize(entry.size, `${what} size`);
-  return {
-    fileId: entry.fileId,
-    versionId: entry.versionId,
-    name: entry.name,
-    sha256: entry.sha256,
-    size: entry.size,
-  };
-}
-
-/**
- * The leased input a reference names, or a refusal. Every field is checked against the lease: the
- * lease, not the caller, decides what this operation may read, and a Word operation reads `.docx`.
- */
+/** The leased `.docx` input a reference names, or a refusal: the lease decides, not the caller. */
 export function resolveWordRef(lease: DocumentLease, value: unknown, what: string): LeasedInput {
-  const ref = assertWordFileRef(value, what);
-  const leased = findLeasedInput(lease, ref.versionId);
-  if (leased === undefined) {
-    throw refusal(
-      "ungranted-input",
-      `${what} names version ${ref.versionId}, which this task's lease does not grant`,
-    );
-  }
-  if (
-    leased.fileId !== ref.fileId ||
-    leased.name !== ref.name ||
-    leased.sha256 !== ref.sha256 ||
-    leased.size !== ref.size
-  ) {
-    throw refusal(
-      "ungranted-input",
-      `${what} does not match the version the lease pinned for ${leased.name}`,
-    );
-  }
-  if (leased.format !== WORD_FORMAT) {
-    throw refusal("invalid-request", `${what} is a ${leased.format} file, not a .docx`);
-  }
-  return leased;
+  return resolveRef(lease, value, what, WORD_FORMAT);
 }
 
 /** The output name a request proposes: one path segment, `.docx`, and permitted by the lease. */
 export function resolveWordOutput(lease: DocumentLease, value: unknown): string {
-  const name = text(value, "an output name", 255);
-  assertPathSegment(name, "an output name");
-  if (!name.toLowerCase().endsWith(`.${WORD_FORMAT}`)) {
-    throw refusal("output-format", `an output named ${name} is not a .docx file`);
-  }
-  if (!permitsFormat(lease, WORD_FORMAT)) {
-    throw refusal("output-format", "this task's lease does not permit a docx output");
-  }
-  return name;
+  return resolveOutput(lease, value, WORD_FORMAT);
 }
 
 function anchor(value: unknown, what: string): WordAnchor {
@@ -403,7 +316,7 @@ export const STEP_OPTIONAL: Readonly<Record<string, readonly string[]>> = {
 };
 
 /** Validates one edit step. The Python adapter validates the same shape again on the far side. */
-export function assertWordStep(value: unknown, index: number): WordEditStep {
+function assertWordStep(value: unknown, index: number): WordEditStep {
   const what = `step ${index}`;
   const entry = object(value, what);
   const kind = entry.kind;
@@ -537,7 +450,7 @@ function withoutUndefined(value: Record<string, unknown>): Record<string, unknow
 }
 
 /** Validates one block of a new draft. */
-export function assertWordBlock(value: unknown, index: number): WordCreateBlock {
+function assertWordBlock(value: unknown, index: number): WordCreateBlock {
   const what = `block ${index}`;
   const entry = object(value, what);
   const kind = entry.kind;
@@ -611,28 +524,9 @@ export function assertWordBlock(value: unknown, index: number): WordCreateBlock 
 
 // -- turning a request into a program ---------------------------------------------------------------
 
-function pageOf(entry: Record<string, unknown>, what: string): Record<string, unknown> {
-  return {
-    ...(entry.cursor === undefined
-      ? {}
-      : { cursor: whole(entry.cursor, `${what} cursor`, 0, 1_000_000_000) }),
-    ...(entry.pageSize === undefined
-      ? {}
-      : { pageSize: whole(entry.pageSize, `${what} pageSize`, 1, MAX_WORD_PAGE) }),
-  };
-}
-
-/**
- * The Python program one typed operation runs: a constant per operation, plus the checked arguments.
- * The operation name lives in the code, so a receipt's code hash names the operation and its argument
- * hash names the request.
- */
+/** The fixed Python program one typed Word operation runs; the arguments travel beside it. */
 export function wordInstruction(operation: WordOperation): string {
-  return [
-    "import word_adapter",
-    "",
-    `documents.result(word_adapter.run(${JSON.stringify(operation)}, documents.arguments()))`,
-  ].join("\n");
+  return adapterInstruction("word_adapter", operation);
 }
 
 /**
@@ -655,7 +549,7 @@ export function wordProgram(
       return {
         ...base,
         sources: [source],
-        arguments: { ref: refArgument(source) },
+        arguments: { ref: fileRefOf(source) },
       };
     }
     case "read": {
@@ -682,9 +576,9 @@ export function wordProgram(
         ...base,
         sources: [source],
         arguments: {
-          ref: refArgument(source),
+          ref: fileRefOf(source),
           section,
-          ...pageOf(entry, "read"),
+          ...pageOf(entry, "read", MAX_WORD_PAGE),
           ...(entry.includeCells === undefined
             ? {}
             : { includeCells: flag(entry.includeCells, "read includeCells") }),
@@ -702,7 +596,7 @@ export function wordProgram(
       return {
         ...base,
         sources: [source],
-        arguments: { ref: refArgument(source), ...pageOf(entry, "preview") },
+        arguments: { ref: fileRefOf(source), ...pageOf(entry, "preview", MAX_WORD_PAGE) },
       };
     }
     case "compare": {
@@ -715,7 +609,7 @@ export function wordProgram(
       return {
         ...base,
         sources: [from, to],
-        arguments: { from: refArgument(from), to: refArgument(to) },
+        arguments: { from: fileRefOf(from), to: fileRefOf(to) },
       };
     }
     case "create": {
@@ -765,7 +659,7 @@ export function wordProgram(
         sources: [source],
         output: { name, editOf: source.versionId },
         arguments: {
-          ref: refArgument(source),
+          ref: fileRefOf(source),
           output: name,
           steps,
           author,
@@ -782,17 +676,6 @@ export function wordProgram(
       };
     }
   }
-}
-
-/** The reference the adapter echoes back as its source evidence, exactly as the lease pinned it. */
-function refArgument(leased: LeasedInput): Record<string, unknown> {
-  return {
-    fileId: leased.fileId,
-    versionId: leased.versionId,
-    name: leased.name,
-    sha256: leased.sha256,
-    size: leased.size,
-  };
 }
 
 // -- reading the answer ---------------------------------------------------------------------------
@@ -870,16 +753,7 @@ export interface WordRevisionItem {
 
 export type WordItem = WordBlockItem | WordCommentItem | WordRevisionItem;
 
-export interface WordPage<T> {
-  readonly section: string;
-  readonly pageSize: number;
-  readonly cursor: number;
-  readonly returned: number;
-  readonly total: number;
-  readonly nextCursor: number | null;
-  readonly hasMore: boolean;
-  readonly items: readonly T[];
-}
+export type WordPage<T> = DocumentPage<T>;
 
 export interface WordDiffStory {
   readonly story: string;
@@ -1058,44 +932,6 @@ export type WordResult =
 
 // -- the result validator -------------------------------------------------------------------------
 
-function invalid(what: string): DocumentError {
-  return refusal("output-invalid", `the worker's ${what} is not the shape this operation promises`);
-}
-
-function asRecord(value: unknown, what: string): Record<string, unknown> {
-  if (!isRecord(value)) throw invalid(what);
-  return value;
-}
-
-function asString(value: unknown, what: string): string {
-  if (typeof value !== "string") throw invalid(what);
-  return value;
-}
-
-function asNullableString(value: unknown, what: string): string | null {
-  if (value === null) return null;
-  return asString(value, what);
-}
-
-function asInteger(value: unknown, what: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) throw invalid(what);
-  return value;
-}
-
-function asBoolean(value: unknown, what: string): boolean {
-  if (typeof value !== "boolean") throw invalid(what);
-  return value;
-}
-
-function asList(value: unknown, what: string): readonly unknown[] {
-  if (!Array.isArray(value)) throw invalid(what);
-  return value;
-}
-
-function asStrings(value: unknown, what: string): readonly string[] {
-  return asList(value, what).map((item) => asString(item, what));
-}
-
 function asCounts(value: unknown, what: string): WordCounts {
   const entry = asRecord(value, what);
   return {
@@ -1123,17 +959,6 @@ function asNumberMap(value: unknown, what: string): Readonly<Record<string, numb
   const out: Record<string, number> = {};
   for (const [key, item] of Object.entries(entry)) out[key] = asInteger(item, what);
   return out;
-}
-
-function asSourceRef(value: unknown, what: string): WordSourceEvidence {
-  const entry = asRecord(value, what);
-  return {
-    fileId: asString(entry.fileId, what),
-    versionId: asString(entry.versionId, what),
-    name: asString(entry.name, what),
-    sha256: asString(entry.sha256, what),
-    size: asInteger(entry.size, what),
-  };
 }
 
 function asAnchor(value: unknown, what: string): WordBlockAnchor {
@@ -1219,34 +1044,6 @@ function asItem(value: unknown, what: string): WordItem {
   if (entry.anchor !== undefined) return asBlockItem(value, what);
   if (entry.commentId !== undefined) return asCommentItem(value, what);
   return asRevisionItem(value, what);
-}
-
-function asPage<T>(
-  value: unknown,
-  what: string,
-  item: (value: unknown, what: string) => T,
-): WordPage<T> {
-  const entry = asRecord(value, what);
-  const pageSize = asInteger(entry.pageSize, what);
-  const returned = asInteger(entry.returned, what);
-  if (pageSize < 1 || pageSize > MAX_WORD_PAGE || returned > pageSize) throw invalid(what);
-  const items = asList(entry.items, what).map((entry_) => item(entry_, what));
-  if (items.length !== returned) throw invalid(what);
-  const total = asInteger(entry.total, what);
-  const cursor = asInteger(entry.cursor, what);
-  if (cursor + returned > total) throw invalid(what);
-  const nextCursor = entry.nextCursor === null ? null : asInteger(entry.nextCursor, what);
-  if (nextCursor !== (cursor + returned < total ? cursor + returned : null)) throw invalid(what);
-  return {
-    section: asString(entry.section, what),
-    pageSize,
-    cursor,
-    returned,
-    total,
-    nextCursor,
-    hasMore: asBoolean(entry.hasMore, what),
-    items,
-  };
 }
 
 function asDiff(value: unknown, what: string): WordDiff {
@@ -1453,7 +1250,7 @@ export function parseWordResult(
         operation,
         source,
         document: asCounts(entry.document, what),
-        page: asPage(entry.page, `${what} page`, asItem),
+        page: asPage(entry.page, `${what} page`, asItem, MAX_WORD_PAGE),
       };
     }
     case "create": {
@@ -1493,16 +1290,21 @@ export function parseWordResult(
       return {
         operation,
         source,
-        page: asPage(entry.page, `${what} page`, (item, name) => {
-          const preview = asRecord(item, name);
-          return {
-            story: asString(preview.story, name),
-            kind: asString(preview.kind, name),
-            index: asInteger(preview.index, name),
-            label: asString(preview.label, name),
-            truncated: asBoolean(preview.truncated, name),
-          };
-        }),
+        page: asPage(
+          entry.page,
+          `${what} page`,
+          (item, name) => {
+            const preview = asRecord(item, name);
+            return {
+              story: asString(preview.story, name),
+              kind: asString(preview.kind, name),
+              index: asInteger(preview.index, name),
+              label: asString(preview.label, name),
+              truncated: asBoolean(preview.truncated, name),
+            };
+          },
+          MAX_WORD_PAGE,
+        ),
         structure: {
           ...asCounts(structure, what),
           comments: asInteger(structure.comments, what),
@@ -1529,20 +1331,4 @@ export function parseWordResult(
       };
     }
   }
-}
-
-/** The file reference a typed result reports, as the receipt's lineage records it. */
-export function wordResultRef(leased: LeasedInput): WordSourceEvidence {
-  return {
-    fileId: leased.fileId,
-    versionId: leased.versionId,
-    name: leased.name,
-    sha256: leased.sha256,
-    size: leased.size,
-  };
-}
-
-/** Whether a leased input is a Word file this adapter may open. */
-export function isWordInput(leased: LeasedInput): boolean {
-  return leased.format === WORD_FORMAT;
 }

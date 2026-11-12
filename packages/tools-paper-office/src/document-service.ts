@@ -47,11 +47,3 @@ export interface DocumentService {
    */
   runDocumentPython(request: DocumentRunRequest): Promise<DocumentRunOutcome>;
 }
-
-export function isCommitted(outcome: DocumentRunOutcome): outcome is DocumentRunCommitted {
-  return outcome.kind === "committed";
-}
-
-export function isRefused(outcome: DocumentRunOutcome): outcome is DocumentRunRefused {
-  return outcome.kind === "refused";
-}

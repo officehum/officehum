@@ -6,11 +6,11 @@
  * pack therefore runs in a bare Pi Durable harness with a fake service (see the portability test) and
  * inside Office Hum with the local service.
  *
- * It carries `run_document_python` and, unless withheld, the six typed Word tools from `word-tools.ts`,
- * the seven typed PowerPoint tools from `pptx-tools.ts` and the six typed Excel tools from
- * `xlsx-tools.ts`. The typed tools are the same operation
- * underneath: a fixed program on the same service, so both share the lease, the staging, the package
- * inspection, the operation receipts and the idempotency.
+ * Unless each is withheld, it carries `run_document_python`, the six typed Word tools from
+ * `word-tools.ts`, the seven typed PowerPoint tools from `pptx-tools.ts` and the six typed Excel tools
+ * from `xlsx-tools.ts`. The typed tools are the same operation underneath: a fixed program on the same
+ * service, so both share the lease, the staging, the package inspection, the operation receipts and
+ * the idempotency.
  *
  * The operation ID is derived from the Pi Durable conversation and call identity, never from an
  * argument: a model cannot choose its own replay identity. Every tool is declared `replay: "safe"`,
@@ -25,6 +25,7 @@ import type {
   DocumentRunRefused,
   DocumentService,
 } from "./document-service.js";
+import type { LeaseLookup } from "./document-tool.js";
 import type { DocumentLease } from "./lease.js";
 import { operationIdForCall } from "./operation.js";
 import { pptxTools } from "./pptx-tools.js";
@@ -38,11 +39,7 @@ export const PAPER_OFFICE_PACK_ID = "paper-office";
 const MAX_TOOL_TEXT = 9_000;
 const MAX_CODE_BYTES = 128 * 1024;
 
-/** What the pack needs to find a task's lease. The host owns leases; the pack only asks. */
-export interface LeaseLookup {
-  readonly taskId: string;
-  readonly conversationId: string;
-}
+export type { LeaseLookup } from "./document-tool.js";
 
 export interface PaperOfficeToolPackOptions {
   readonly service: DocumentService;
@@ -51,6 +48,13 @@ export interface PaperOfficeToolPackOptions {
    * still receive no usable lease: the tool then refuses instead of reaching for anything wider.
    */
   readonly leaseFor: (lookup: LeaseLookup) => Promise<DocumentLease | undefined>;
+  /**
+   * Whether the pack carries `run_document_python`, the workspace that runs submitted Python. Defaults
+   * to `true`. Pass `false` for a role that should reach documents only through the typed tools: until
+   * the container profile lands (RASF-3111) the worker is a bounded workspace and not a sandbox, so a
+   * host may prefer not to hand a role arbitrary code at all.
+   */
+  readonly includePythonWorkspace?: boolean;
   /**
    * Whether the pack carries the typed Word tools (`inspect_document`, `read_document`,
    * `create_document`, `edit_document`, `preview_document`, `compare_document`) beside the Python
@@ -138,7 +142,7 @@ export function paperOfficeToolPack(options: PaperOfficeToolPackOptions): PaperO
   return {
     id: options.packId ?? PAPER_OFFICE_PACK_ID,
     tools: [
-      runDocumentPython(options),
+      ...(options.includePythonWorkspace === false ? [] : [runDocumentPython(options)]),
       ...(options.includeWordTools === false ? [] : wordTools(options)),
       ...(options.includePptxTools === false ? [] : pptxTools(options)),
       ...(options.includeXlsxTools === false ? [] : xlsxTools(options)),

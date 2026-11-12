@@ -18,7 +18,7 @@ Typical use::
 Every refusal raises :class:`WorkspaceError`, whose ``code`` is a stable, inspectable reason that
 the worker reports unchanged. The layout this module gives you is:
 
-``<input>/<name>``    a read-only copy of a leased version, hashed again after the run
+``<input>/<name>``    a read-only copy of a leased version, hashed again after a run that completes
 ``<staging>/<name>``  the only writable directory in the workspace
 
 Submitted code runs in a subprocess with a scrubbed environment, so ``documents.environment()``

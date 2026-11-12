@@ -61,7 +61,7 @@ export interface DocumentLease {
   readonly expiresAt: string;
 }
 
-export const MAX_LEASED_INPUTS = 64;
+const MAX_LEASED_INPUTS = 64;
 export const MAX_OUTPUT_FORMATS = 3;
 
 export const DEFAULT_LIMITS: ResourceLimits = {
@@ -138,7 +138,7 @@ export function validateLease(value: unknown): DocumentLease {
   };
 }
 
-export function validateLimits(value: unknown): ResourceLimits {
+function validateLimits(value: unknown): ResourceLimits {
   const limits = record(value, "A lease must carry resource limits", "invalid-lease");
   exactKeys(limits, LIMIT_KEYS, "Unknown resource limit", "invalid-lease");
   const bounded = (name: (typeof LIMIT_KEYS)[number], low: number, high: number): number => {

@@ -20,7 +20,6 @@ import {
   CREATE_PRESENTATION,
   EDIT_PRESENTATION,
   INSPECT_PRESENTATION,
-  isPptxInput,
   MAX_PPTX_PAGE,
   MAX_PPTX_STEPS,
   PPTX_COMPOSE_MODES,
@@ -113,7 +112,7 @@ describe("a PowerPoint operation takes a leased file reference, never a path", (
     const leasedInput = resolvePptxRef(LEASE, refOf(FILE_A), "the ref");
     expect(leasedInput.versionId).toBe(FILE_A);
     expect(leasedInput.writable).toBe(true);
-    expect(isPptxInput(leasedInput)).toBe(true);
+    expect(leasedInput.format).toBe("pptx");
 
     expect(
       refusalOf(() =>

@@ -4,9 +4,10 @@
  * One run gets a fresh directory: `inputs/` holds a read-only copy of every leased version, `staging/`
  * is the only writable place, and `tmp/` is the process's own temporary directory. The interpreter is
  * spawned with an explicit environment — a fixed `PATH`, no `HOME`, no credential — and a wall-clock
- * kill as a backstop under the worker's own alarm. Everything the worker reports is validated here
- * before it can enter a receipt, and the input copies are hashed again afterwards so a refusal or a
- * crash can be shown to have left the sources untouched.
+ * kill as a backstop under the worker's own alarm. That kill is of the worker process, not of a
+ * process group. Everything the worker reports is validated here before it can enter a receipt. The
+ * sources are never at risk from a run: the worker only holds copies, checked against the lease before
+ * the code runs and hashed again by the worker after a run that completes.
  */
 
 import { execFile } from "node:child_process";

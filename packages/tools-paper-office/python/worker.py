@@ -16,7 +16,8 @@ What it does, in order:
    code with a restricted ``__builtins__``.
 5. Collects the declared outputs, refuses anything undeclared, over the byte allowance, over the
    file-count allowance or a symlink, re-hashes the inputs to prove they are untouched, and reopens
-   every output with its pinned library.
+   every output with its pinned library. A run that refuses, times out or crashes stops before this
+   step: its input copies are not hashed again, and nothing it staged is collected.
 
 **What is enforced, and what is not.** The subprocess, the scrubbed environment, the rlimits, the
 lease-scoped workspace API, the import guard and the socket guard are all enforced here, in process,
@@ -285,8 +286,8 @@ def stage_inputs(request: dict) -> dict:
             "writable": bool(leased.get("writable")),
             "path": path,
         }
-    # A speed bump, not a boundary: the same user could chmod them back. The hash check after the
-    # run is the evidence, and the container profile is the boundary.
+    # A speed bump, not a boundary: the same user could chmod them back. The hash check after a run
+    # that completes is the evidence, and the container profile is the boundary.
     try:
         for entry in staged.values():
             os.chmod(entry["path"], 0o400)
@@ -358,7 +359,7 @@ def run(request: dict, staged: dict, identity: dict, enforcement: dict, notes: l
 
 
 def verify_sources(staged: dict) -> None:
-    """Sources must be byte-identical after the run: a refusal or a crash leaves them untouched."""
+    """The input copies must be byte-identical after a run that completed, or its outputs are refused."""
     for entry in staged.values():
         try:
             info = os.lstat(entry["path"])

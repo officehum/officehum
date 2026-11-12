@@ -22,17 +22,14 @@
  *   version is untouched, and one refusal leaves it byte-identical.
  */
 
-import { type TSchema, Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
-import type {
-  DocumentRunCommitted,
-  DocumentRunRefused,
-  DocumentService,
-} from "./document-service.js";
-import { DocumentError } from "./errors.js";
-import type { DocumentLease } from "./lease.js";
-import { operationIdForCall } from "./operation.js";
-import type { LeaseLookup } from "./run-document-python.js";
+import { Type } from "@earendil-works/pi-ai";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import {
+  type DocumentToolFamily,
+  type DocumentToolOptions,
+  documentTool,
+  fileRefSchema,
+} from "./document-tool.js";
 import {
   COMPARE_DOCUMENT,
   CREATE_DOCUMENT,
@@ -44,42 +41,14 @@ import {
   READ_DOCUMENT,
   type WordDiff,
   type WordOperation,
-  type WordProgram,
   type WordRedline,
   type WordResult,
   wordProgram,
-  wordResultRef,
 } from "./word-operations.js";
-
-const MAX_TOOL_TEXT = 16_000;
-
-/** The keys a too-large reply gives up, in the order it gives them up. */
-const DROPPABLE = ["read", "notes", "reopened", "worker", "wrote"] as const;
-
-/** What the Word tools need: the injected service and the host's lease lookup. */
-export interface WordToolOptions {
-  readonly service: DocumentService;
-  readonly leaseFor: (lookup: LeaseLookup) => Promise<DocumentLease | undefined>;
-}
 
 // -- schemas ---------------------------------------------------------------------------------------
 
-const FileRef = Type.Object(
-  {
-    fileId: Type.String({ minLength: 1, description: "The FileStore file id the lease pinned." }),
-    versionId: Type.String({
-      minLength: 1,
-      description: "The immutable version id the lease pinned.",
-    }),
-    name: Type.String({ minLength: 1, description: "The leased file name, e.g. brief.docx." }),
-    sha256: Type.String({
-      minLength: 1,
-      description: "The version's sha256, as the lease pinned it.",
-    }),
-    size: Type.Integer({ minimum: 0, description: "The version's size in bytes." }),
-  },
-  { additionalProperties: false },
-);
+const FileRef = fileRefSchema("brief.docx");
 
 const AnchorText = Type.Object(
   {
@@ -477,187 +446,7 @@ const DESCRIPTIONS: Readonly<Record<WordOperation, string>> = {
   ].join("\n"),
 };
 
-// -- the tool --------------------------------------------------------------------------------------
-
-/**
- * The six typed Word tools. Every one is `replay: "safe"`: the service is idempotent by operation ID, so
- * an interrupted call that reruns resolves to the same committed receipt instead of a second edit.
- */
-export function wordTools(options: WordToolOptions): readonly ToolRegistration[] {
-  return [
-    wordTool("inspect", INSPECT_DOCUMENT, INSPECT_PARAMETERS, options),
-    wordTool("read", READ_DOCUMENT, READ_PARAMETERS, options),
-    wordTool("create", CREATE_DOCUMENT, CREATE_PARAMETERS, options),
-    wordTool("edit", EDIT_DOCUMENT, EDIT_PARAMETERS, options),
-    wordTool("preview", PREVIEW_DOCUMENT, PREVIEW_PARAMETERS, options),
-    wordTool("compare", COMPARE_DOCUMENT, COMPARE_PARAMETERS, options),
-  ];
-}
-
-/** A type alias, not an interface, so it keeps the implicit index signature `JsonValue` needs. */
-type WordToolDetails = {
-  operationId: string;
-  operation: string;
-  files?: string[];
-  worker?: string;
-  truncated?: boolean;
-  code?: string;
-};
-
-type WordToolResult = {
-  readonly output: { readonly type: "text"; readonly text: string }[];
-  readonly isError?: boolean;
-  readonly details: WordToolDetails;
-};
-
-function wordTool(
-  operation: WordOperation,
-  name: string,
-  parameters: TSchema,
-  options: WordToolOptions,
-): ToolRegistration {
-  return defineTool({
-    name,
-    description: DESCRIPTIONS[operation],
-    parameters,
-    replay: "safe",
-    execute: async (args: unknown, api): Promise<WordToolResult> => {
-      const taskId = String(api.taskId);
-      const conversationId = String(api.conversationId);
-      const operationId = operationIdForCall({ conversationId, callId: api.callId });
-
-      const lease = await options.leaseFor({ taskId, conversationId });
-      if (lease === undefined) {
-        return refusalResult(
-          operation,
-          operationId,
-          "no-lease",
-          "this task has no document lease, so no Word document was granted. Ask the host for one.",
-        );
-      }
-
-      let program: WordProgram;
-      try {
-        program = wordProgram(operation, args, lease);
-      } catch (error) {
-        return refused(error, operation, operationId);
-      }
-
-      const outcome = await options.service.runDocumentPython({
-        operationId,
-        taskId,
-        lease,
-        code: program.code,
-        arguments: program.arguments,
-      });
-      if (outcome.kind === "refused") return refusedOutcome(outcome, operation);
-
-      try {
-        const result = parseWordResult(
-          operation,
-          outcome.receipt.result,
-          program.sources.map(wordResultRef),
-        );
-        return committed(operation, operationId, taskId, outcome, result);
-      } catch (error) {
-        return refused(error, operation, operationId);
-      }
-    },
-  }) as unknown as ToolRegistration;
-}
-
-function committed(
-  operation: WordOperation,
-  operationId: string,
-  taskId: string,
-  outcome: DocumentRunCommitted,
-  result: WordResult,
-): WordToolResult {
-  const receipt = outcome.receipt;
-  const compose = (value: WordResult | null): Record<string, unknown> => ({
-    ok: true,
-    operation,
-    operationId,
-    taskId,
-    ...(value === null ? {} : { result: value }),
-    wrote: receipt.outputs.map((entry) => ({
-      fileId: entry.fileId,
-      versionId: entry.versionId,
-      name: entry.name,
-      format: entry.format,
-      size: entry.size,
-      sha256: entry.sha256,
-      versionOf: entry.sourceVersionId,
-    })),
-    read: receipt.reads.map((entry) => ({
-      fileId: entry.fileId,
-      versionId: entry.versionId,
-      name: entry.name,
-      sha256: entry.sha256,
-    })),
-    reopened: receipt.reopen,
-    worker: { python: receipt.worker.python, libraries: receipt.worker.libraries },
-    notes: receipt.notes,
-  });
-  const { text, truncated } = boundedBody(compose, result);
-  return {
-    output: [{ type: "text", text }],
-    details: {
-      operationId,
-      operation,
-      files: receipt.outputs.map((entry) => entry.fileId),
-      worker: receipt.worker.image,
-      ...(truncated ? { truncated: true } : {}),
-    },
-  };
-}
-
-/**
- * A reply a model reads is JSON, so trimming it must keep it JSON. When a body does not fit, the verbose
- * review *lines* go first — their counts, the change set, the hashes and the file ids all stay — then the
- * droppable keys in priority order, and the body names what it left out. Slicing the string instead would
- * leave a model with a document it cannot parse and no way to tell.
- */
-function boundedBody(
-  compose: (value: WordResult | null) => Record<string, unknown>,
-  result: WordResult,
-): { text: string; truncated: boolean } {
-  const full = compose(result);
-  if (JSON.stringify(full, null, 2).length <= MAX_TOOL_TEXT) {
-    return { text: JSON.stringify(full, null, 2), truncated: false };
-  }
-  const omitted: string[] = [
-    "the diff lines and redline entries, which compare_document and read_document page",
-    "the per-step change evidence",
-  ];
-  const body = compose(reviewed(result));
-  for (const key of DROPPABLE) {
-    if (JSON.stringify(body, null, 2).length <= MAX_TOOL_TEXT) break;
-    if (key in body) {
-      delete body[key];
-      omitted.push(key);
-    }
-  }
-  if (JSON.stringify(body, null, 2).length > MAX_TOOL_TEXT) {
-    return {
-      text: JSON.stringify(
-        {
-          ok: true,
-          operation: result.operation,
-          truncated: true,
-          omitted:
-            "every field; the run ledger holds the receipt and the versions hold the artifacts",
-        },
-        null,
-        2,
-      ),
-      truncated: true,
-    };
-  }
-  body.omitted = omitted;
-  body.truncated = true;
-  return { text: JSON.stringify(body, null, 2), truncated: true };
-}
+// -- trimming an oversized reply -------------------------------------------------------------------
 
 /** The same result with its line-by-line artifacts reduced to the counts that describe them. */
 function reviewed(result: WordResult): WordResult {
@@ -702,33 +491,46 @@ function withoutEntries(redline: WordRedline): WordRedline {
   return { ...redline, entries: [], pendingLines: [], truncated: true };
 }
 
-function refusedOutcome(outcome: DocumentRunRefused, operation: WordOperation): WordToolResult {
-  return refusalResult(operation, outcome.operationId, outcome.code, outcome.message);
-}
+// -- the tools -------------------------------------------------------------------------------------
 
-function refused(error: unknown, operation: WordOperation, operationId: string): WordToolResult {
-  if (error instanceof DocumentError) {
-    return refusalResult(operation, operationId, error.code, error.message);
-  }
-  throw error;
-}
-
-function refusalResult(
-  operation: WordOperation,
-  operationId: string,
-  code: string,
-  message: string,
-): WordToolResult {
-  return {
-    output: [
+const FAMILY: DocumentToolFamily<WordOperation, WordResult> = {
+  subject: "Word document",
+  descriptions: DESCRIPTIONS,
+  program: wordProgram,
+  parse: parseWordResult,
+  trim: {
+    maxText: 16_000,
+    reductions: [
       {
-        type: "text",
-        text: JSON.stringify({ ok: false, operation, operationId, code, message }, null, 2),
+        omits: [
+          "the diff lines and redline entries, which compare_document and read_document page",
+          "the per-step change evidence",
+        ],
+        apply: reviewed,
       },
     ],
-    isError: true,
-    details: { operationId, operation, code },
-  };
+    resultKeys: [],
+  },
+  narrow: {
+    inspect: "Read the document a section at a time with read_document.",
+    read: "Ask for a smaller pageSize.",
+    create: "Read the draft back in pages with read_document.",
+    edit: "Read the proposal back in pages with read_document, or edit in fewer steps per call.",
+    preview: "Ask for a smaller pageSize.",
+    compare: "Read each version in pages with read_document.",
+  },
+};
+
+/** The six typed Word tools, each replay-safe on the shared `documentTool` path. */
+export function wordTools(options: DocumentToolOptions): readonly ToolRegistration[] {
+  return [
+    documentTool(FAMILY, "inspect", INSPECT_DOCUMENT, INSPECT_PARAMETERS, options),
+    documentTool(FAMILY, "read", READ_DOCUMENT, READ_PARAMETERS, options),
+    documentTool(FAMILY, "create", CREATE_DOCUMENT, CREATE_PARAMETERS, options),
+    documentTool(FAMILY, "edit", EDIT_DOCUMENT, EDIT_PARAMETERS, options),
+    documentTool(FAMILY, "preview", PREVIEW_DOCUMENT, PREVIEW_PARAMETERS, options),
+    documentTool(FAMILY, "compare", COMPARE_DOCUMENT, COMPARE_PARAMETERS, options),
+  ];
 }
 
 /** The typed tools' names, in the order they are registered. */

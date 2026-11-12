@@ -8,15 +8,20 @@
  *    with different intent fails closed.
  * 2. Read every leased version from the FileStore, check it against the lease's hash, and inspect its
  *    package structure *before* any parser sees the bytes.
- * 3. Run the worker on a copy. Only staging is writable; the input copies are hashed again after.
+ * 3. Run the worker on a copy. Only staging is writable; the worker hashes the input copies again
+ *    after a run that completes.
  * 4. Inspect every declared output, keep its staged bytes, and write the plan (so a crash after the
  *    worker but before the commit can be resumed without a second execution).
- * 5. Commit each output as a new immutable FileStore version under a derived operation ID, then write
- *    the receipt and drop the staged bytes.
+ * 5. Check every output (staged bytes intact, operation unused, edited source still the head), and
+ *    only then commit each as a new immutable FileStore version under a derived operation ID, write
+ *    the receipt and drop the staged bytes. A crash between two outputs leaves the plan, and the
+ *    replay finishes it, also after the lease has expired.
  *
  * A refusal or a timeout returns before step 4 and writes nothing, so sources are untouched. Two
  * concurrent edits of one file are settled by the FileStore's head compare-and-swap: the loser gets
- * `version-conflict`, never a silent overwrite.
+ * `version-conflict`, never a silent overwrite. The FileStore commits one file at a time, so an edit
+ * that lands between the check and the write of a later output can still leave earlier outputs
+ * committed; closing that needs a multi-file commit in the store.
  */
 
 import { createHash } from "node:crypto";
@@ -78,6 +83,12 @@ export interface LocalDocumentServiceOptions {
   readonly now?: () => Date;
 }
 
+/** One planned output, checked and ready to be written. */
+interface StagedOutput {
+  readonly output: PlannedOutput;
+  readonly bytes: Uint8Array;
+}
+
 const MIME_FORMAT: Readonly<Record<string, DocumentFormat>> = Object.fromEntries(
   Object.entries(FORMAT_MIME).map(([format, mime]) => [mime, format as DocumentFormat]),
 );
@@ -108,10 +119,6 @@ export function localDocumentService(options: LocalDocumentServiceOptions): Docu
     if (!isRecord(request.arguments)) {
       throw refusal("invalid-request", "run arguments must be a JSON object");
     }
-    if (isLeaseExpired(lease, now())) {
-      throw refusal("lease-expired", "this task's lease has expired; ask the host for a new one");
-    }
-
     const intent = intentForRun({
       operationId: request.operationId,
       taskId: request.taskId,
@@ -132,6 +139,12 @@ export function localDocumentService(options: LocalDocumentServiceOptions): Docu
       }
       if (known.kind === "run") return committed(known);
       return commit(known, lease);
+    }
+
+    // Expiry stops new work only. It is checked after the ledger so a replay of a run this lease
+    // already admitted still gets its receipt, and a half-committed plan can still be finished.
+    if (isLeaseExpired(lease, now())) {
+      throw refusal("lease-expired", "this task's lease has expired; ask the host for a new one");
     }
 
     const sources = await readSources(lease);
@@ -258,8 +271,47 @@ export function localDocumentService(options: LocalDocumentServiceOptions): Docu
   }
 
   async function commit(plan: RunPlan, lease: DocumentLease): Promise<DocumentRunOutcome> {
+    // All or nothing: every output is checked before the first one is written, so a missing staged
+    // file, a reused operation or an edit whose source is no longer the head refuses the whole run
+    // with nothing committed. A crash part-way through the writes leaves the plan, and the replay
+    // finishes the outputs that are missing.
+    const pending = await prepare(plan, lease);
     const commits: FileOperationReceipt[] = [];
+    for (const item of pending) {
+      commits.push("kind" in item ? item : await write(item.output, plan, lease, item.bytes));
+    }
+    const receipt = receiptOf(plan, lease, commits);
+    await options.ledger.write(receipt);
+    // The receipt is durable; the staged bytes are only a resume aid, so failing to drop them must
+    // not turn a committed run into a refusal.
+    await options.ledger.discardStaging(plan.operationId).catch(() => undefined);
+    return committed(receipt);
+  }
+
+  async function prepare(
+    plan: RunPlan,
+    lease: DocumentLease,
+  ): Promise<readonly (FileOperationReceipt | StagedOutput)[]> {
+    // An output the FileStore already holds stands as its receipt; the rest wait as staged bytes.
+    const pending: (FileOperationReceipt | StagedOutput)[] = [];
+    const edited = new Set<string>();
     for (const output of plan.outputs) {
+      const source = output.editOf === null ? undefined : findLeasedInput(lease, output.editOf);
+      if (output.editOf !== null) {
+        if (source === undefined) {
+          throw refusal(
+            "ungranted-input",
+            "an output proposes an edit of a version outside the lease",
+          );
+        }
+        if (edited.has(source.fileId)) {
+          throw refusal(
+            "version-conflict",
+            `two outputs of one run edit ${source.name}; only one new version can follow a source`,
+          );
+        }
+        edited.add(source.fileId);
+      }
       const existing = await options.store.lookupOperation(output.operationId);
       if (existing !== undefined) {
         // The FileStore already holds a version under this derived operation. Accept it only when it
@@ -277,18 +329,21 @@ export function localDocumentService(options: LocalDocumentServiceOptions): Docu
               "will not commit again",
           );
         }
-        commits.push(existing);
+        pending.push(existing);
         continue;
       }
-      const bytes = await stagedBytes(output);
-      commits.push(await write(output, plan, lease, bytes));
+      if (source !== undefined) {
+        const head = await options.store.getHead(source.fileId);
+        if (head?.versionId !== source.versionId) {
+          throw refusal(
+            "version-conflict",
+            `${source.name} has a newer version than the one this run edited, so nothing was committed`,
+          );
+        }
+      }
+      pending.push({ output, bytes: await stagedBytes(output) });
     }
-    const receipt = receiptOf(plan, lease, commits);
-    await options.ledger.write(receipt);
-    // The receipt is durable; the staged bytes are only a resume aid, so failing to drop them must
-    // not turn a committed run into a refusal.
-    await options.ledger.discardStaging(plan.operationId).catch(() => undefined);
-    return committed(receipt);
+    return pending;
   }
 
   async function stagedBytes(output: PlannedOutput): Promise<Uint8Array> {

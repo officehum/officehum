@@ -39,6 +39,12 @@ const pack = paperOfficeToolPack({
 
 A bare harness supplies its own `DocumentService`; see `src/portability.test.ts` for the shape.
 
+**Withholding the Python workspace.** `paperOfficeToolPack({ includePythonWorkspace: false })` leaves
+`run_document_python` out of the pack, so a role reaches documents only through the typed tools. The
+default is `true`. Until the container profile lands (RASF-3111) the worker is a bounded workspace and
+not a sandbox (see "What is *not* enforced yet"), so a host that does not want to hand a role arbitrary
+code can withhold it; the typed tools run their own fixed programs on the same worker either way.
+
 ## A lease, not a directory
 
 A lease grants exactly: immutable input **version IDs with their hashes**, the permitted **output
@@ -110,7 +116,9 @@ moved on. The kinds are `insertSection`, `replaceParagraphs`, `deleteParagraphs`
 `updateCell`, `insertRow`, `deleteRow`, `addComment`, `replyComment`, `resolveComment`, `deleteComment`,
 `acceptRevisions` and `rejectRevisions`. Word-level steps are recorded as **real tracked changes** by
 default, so a reviewer gets a Word redline and not just a text diff; an edit carries an author, and an
-optional ISO date so a host can pin what the revisions are stamped with.
+optional ISO date so a host can pin what the revisions are stamped with. `addComment` takes either
+anchor: a block anchor attaches the comment to that paragraph's whole text, and a block with no text of
+its own (a table, an empty paragraph) refuses with `unsupported-structure`, naming the block.
 
 **What an edit proves.** The proposal's result reports the source and output `sha256`, the structural
 change set (`added`, `removed`, `changed`, and `byteIdenticalCount`), a text diff, a redline, per-step
@@ -152,7 +160,7 @@ relationship-policy refusals and part ledger. The rest mirror the Word adapter o
 | `create_presentation` | A new `.pptx` **draft** from typed slides: a title, paragraphs, bullet lists, tables and speaker notes | a non-`.pptx` name, a ragged table, a layout this deck does not define, a format the lease does not permit |
 | `edit_presentation` | An **unpublished proposal**: a new immutable version of a leased deck, from ordered steps (see below) | a read-only source, a stale or ambiguous anchor, a missing target, a layout rebind whose placeholders cannot be reconciled, a step that would not reopen as a presentation |
 | `preview_presentation` | Bounded **structural** slide previews — `T:`/`B:`/`P:`/`TC:` text lines, `TB<rows>x<columns>:`, `PIC:<ext>:`, `CH:<type>:` — plus notes, media and estimated overflow | the same page rules as `read_presentation` |
-| `compare_presentation` | Structural change set, the fork's own slide-level diff, and a **before/after preview of every changed slide** | an unreadable version of either side |
+| `compare_presentation` | Structural change set, the fork's own slide-level diff, and a **before/after preview of the changed, added and removed slides** (at most 8 of each per call; the change set itself is complete) | an unreadable version of either side |
 | `compose_presentation` | Appends one leased deck's slides into another as an unpublished proposal, by `adopt_theme`, `keep_appearance` or `bake` | a read-only destination, a mode that is not one of the three, a relationship the import cannot carry |
 
 **Edits.** Steps apply in the order given, and each validates its own target before anything is written:
@@ -277,7 +285,10 @@ LibreOffice is installed, and `openpyxl.oracle.available()` is `false` on a mach
   sum of the cells that range names**, reported beside whatever value the file cached. When the splice
   drops a cache because an input changed, `agrees` is `null` with that reason rather than a guess; when
   the file's cache is there to compare against, `agrees` is the comparison (`true` or `false`), and a
-  difference is reported rather than resolved. Every sum names the cells it added.
+  difference is reported rather than resolved. The cached value is a binary double Excel summed
+  (0.1 + 0.2 is stored as 0.30000000000000004), so the comparison allows the rounding a double sum can
+  carry (one part in 10^12 of the size of the numbers added) and nothing more. Every sum names the
+  cells it added.
 - The proposal's own recalculation request is read out of the package and reported
   (`workbookRequest.requestsRecalculation`), so a reviewer knows Excel will recalculate on open.
 
@@ -288,7 +299,12 @@ the workbook does not have, a name that is not defined, a range outside the grid
 to a table that is gone, an `[1]Sheet!A1` reference to another workbook, and the `#REF!` operands and
 cached error values `openpyxl.preserve.hygiene` finds. A source that already has one is **reported, not
 refused and not repaired** — a reviewer needs to see it — while an operation that would *add* one refuses
-with `broken-reference`. The two claims the design makes about preservation and calculation are therefore
+with `broken-reference`. "Added" is judged on the whole lists of broken references before and after; only
+what a reply shows is capped (25), so a source with more than that is neither refused for an old one nor
+let through with a new one. Letters are a column only inside a reference the grid has (`B2`, `B2:C9`,
+`B:D`): a bare `TAX` is a name, defined or missing. A named range is resolved with its `$` signs
+(`Sheet!$B$13`), a name defined by a formula is reported as `formula` and judged by the references in
+it, and a name left at `#REF!` is reported broken. The two claims the design makes about preservation and calculation are therefore
 both checkable: `preservation.byteIdentical` is a sha256 list, and `recalculation.computed` is `false`
 with a reason.
 
@@ -304,6 +320,8 @@ hashes, the permitted formats, the resource limits, the policy version and the w
 versions. Then:
 
 - A **replay** of the same operation returns the same committed receipt, with no second execution.
+  The ledger is consulted before the lease's expiry: an expired lease stops new work (`lease-expired`),
+  never the replay of a run it already admitted.
 - **Changed intent** under a used ID (`operation-collision`) refuses in the run ledger *and* in the
   FileStore, which binds its own receipts to the content hash.
 - A **refusal or a timeout** returns before anything is staged for commit: no ledger entry, no version,
@@ -311,6 +329,13 @@ versions. Then:
 - A **crash** between the commit and the receipt is reconciled from the FileStore's operation lookup —
   one immutable output, or a stable refusal. A lost ledger with different bytes refuses rather than
   editing twice.
+- A run with **several outputs commits all of them or none**. Every output is checked first (its
+  staged bytes intact, its operation unused, an edited source still the head, no two outputs editing
+  one file), and only then is the first one written, so a `version-conflict` on the last output leaves
+  nothing committed. A crash between two outputs leaves the plan in the ledger and the replay finishes
+  the rest, also after the lease has expired. One window remains: the FileStore commits one file at a
+  time, so an edit by someone else that lands between the check and the write of a later output can
+  leave the earlier ones committed with no receipt. Closing it needs a multi-file commit in the store.
 - Outputs are **immortal**: a new call produces a new immutable version. Editing a leased file
   proposes a new version; two concurrent edits are settled by the FileStore's head compare-and-swap
   (`version-conflict`), never a silent overwrite.
@@ -362,7 +387,7 @@ nothing about which bytes would become the published version.
 | CPU seconds | the kernel, in the worker | `RLIMIT_CPU`; the process dies on `SIGXCPU` → `cpu-limit` |
 | Memory bytes | the kernel, in the worker | `RLIMIT_AS`; **not enforceable on macOS** (see below) |
 | Per-file size | the kernel, in the worker | `RLIMIT_FSIZE`; writes fail with `EFBIG` → `file-size-limit` |
-| Wall clock | the worker's `SIGALRM`, then the host | a graceful `timeout`, with the host's kill as backstop |
+| Wall clock | the worker's `SIGALRM`, then the host | a graceful `timeout`, with the host's kill as backstop. The host kills the worker process itself, not a process group: a child the snippet managed to start despite the in-process guards is not reaped until the container profile (RASF-3111) |
 | Total output bytes | the worker and the host, twice | the collector, then the service before any commit |
 | File count | the worker and the host, twice | the workspace API, the collector, then the service |
 | Output formats | the workspace API and the host | the lease's list, re-checked before the commit |
@@ -373,7 +398,7 @@ nothing about which bytes would become the published version.
 | Symlinks | the worker, on staging | `lstat` on every staged entry; a symlink refuses the run |
 | Traversal | the workspace API and the worker | single-path-segment names; the staged path must stay in staging |
 | Undeclared effects | the worker | staging holds only declared names; a directory or stray file refuses |
-| Sources unchanged | the worker and the host | inputs are hashed before and after; a change refuses |
+| Sources unchanged | the host, then the worker | the host checks each source against the lease before staging a copy, the worker checks each copy before the code runs, and after a run that completes it hashes the copies again; a change refuses. A refusal, a timeout or a crash skips that last check: the sources are immutable FileStore versions and the run only ever held copies |
 | Credentials, no `HOME` | the host | the interpreter's environment is built from scratch and stripped |
 | Network, shell, process | the worker, in process | an import guard plus socket and `os` patches (see below) |
 
@@ -391,6 +416,13 @@ is the **last** thing to go: a reply gives up its preview lines first, then each
 delta lines, the byte-identical parts' hash sample and the changed-cell map, and only then the dependency
 list, the per-step evidence and the numeric checks — naming what it left out in an `omitted` list. The
 whole result is always in the receipt.
+
+After that a reply gives up named fields of the result itself (listed as `result.<field>`: the Excel
+edit receipt and preservation block, the PowerPoint patch and overflow totals), then the receipt fields
+beside the result (`read`, `notes`, `reopened`, `worker`, and last `wrote`). If what must stay still
+does not fit, the tool answers `ok: false` with the code `reply-too-large` and says what to ask for
+instead (a smaller `pageSize`, a narrower range, fewer steps). A run that wrote a version is still
+committed in that case, and the refusal lists it under `wrote` so the caller does not repeat it.
 
 ## What is *not* enforced yet
 

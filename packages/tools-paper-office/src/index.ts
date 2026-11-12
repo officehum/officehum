@@ -16,34 +16,26 @@
  * what is enforced in process and what still needs the container profile (RASF-3111).
  */
 
-export {
-  type DocumentRunCommitted,
-  type DocumentRunOutcome,
-  type DocumentRunRefused,
-  type DocumentRunRequest,
-  type DocumentService,
-  isCommitted,
-  isRefused,
+export type {
+  DocumentRunCommitted,
+  DocumentRunOutcome,
+  DocumentRunRefused,
+  DocumentRunRequest,
+  DocumentService,
 } from "./document-service.js";
 export {
   DOCUMENT_REFUSAL_CODES,
   DocumentError,
   type DocumentRefusalCode,
-  isDocumentRefusalCode,
   refusal,
   refusalCodeFromWorker,
 } from "./errors.js";
 export {
-  assertDocumentFormat,
-  DOCUMENT_EXTENSIONS,
-  DOCUMENT_FORMATS,
   type DocumentFormat,
   FORMAT_MIME,
   formatFromName,
   isDocumentFormat,
   mimeTypeFor,
-  PAPER_DOCTOR,
-  PAPER_LIBRARY,
   PAPER_LIBRARY_PINS,
   PAPER_MODULE,
 } from "./formats.js";
@@ -53,11 +45,9 @@ export {
   findLeasedInput,
   isLeaseExpired,
   type LeasedInput,
-  MAX_LEASED_INPUTS,
   permitsFormat,
   type ResourceLimits,
   validateLease,
-  validateLimits,
 } from "./lease.js";
 export {
   type LocalDocumentServiceOptions,
@@ -91,25 +81,16 @@ export {
   workerEnvironment,
 } from "./paper-worker.js";
 export {
-  assertPptxBlock,
-  assertPptxFileRef,
-  assertPptxSlide,
   assertPptxStep,
   COMPARE_PRESENTATION,
   COMPOSE_PRESENTATION,
   CREATE_PRESENTATION,
-  DEFAULT_PPTX_PAGE,
   EDIT_PRESENTATION,
   INSPECT_PRESENTATION,
-  isPptxInput,
-  MAX_PPTX_BLOCKS,
   MAX_PPTX_PAGE,
-  MAX_PPTX_SLIDES,
   MAX_PPTX_STEPS,
-  PPTX_BLOCK_KINDS,
   PPTX_COMPOSE_MODES,
   PPTX_DIFF_DETAILS,
-  PPTX_FORMAT,
   PPTX_OPERATIONS,
   PPTX_READ_SECTIONS,
   PPTX_TOOL_NAMES,
@@ -150,7 +131,6 @@ export {
   type PptxProgram,
   type PptxProposal,
   type PptxReading,
-  type PptxReadSection,
   type PptxRebindLayoutStep,
   type PptxRendering,
   type PptxReplaceTextEverywhereStep,
@@ -168,7 +148,6 @@ export {
   parsePptxResult,
   pptxInstruction,
   pptxProgram,
-  pptxResultRef,
   READ_PRESENTATION,
   resolvePptxOutput,
   resolvePptxRef,
@@ -178,7 +157,6 @@ export {
 export {
   PPTX_TOOL_ORDER,
   PPTX_TOOL_REGISTRATIONS,
-  type PptxToolOptions,
   pptxTools,
 } from "./pptx-tools.js";
 export {
@@ -195,8 +173,6 @@ export {
   type PublicationGateOptions,
   type PublishReviewInput,
   publicationGate,
-  REVIEW_SCHEMA,
-  REVIEW_SCHEMA_VERSION,
   type ReviewArtifact,
   type ReviewBinding,
   type ReviewDecision,
@@ -210,7 +186,6 @@ export {
   reviewBindingOf,
   reviewIdFor,
   reviewLedger,
-  sameBinding,
 } from "./review.js";
 export {
   REVIEW_EVIDENCE_SCHEMA,
@@ -253,18 +228,11 @@ export {
   runLedger,
 } from "./run-ledger.js";
 export {
-  assertWordBlock,
-  assertWordFileRef,
-  assertWordStep,
   COMPARE_DOCUMENT,
   CREATE_DOCUMENT,
-  DEFAULT_WORD_PAGE,
   EDIT_DOCUMENT,
   INSPECT_DOCUMENT,
-  isWordInput,
-  MAX_WORD_BLOCKS,
   MAX_WORD_PAGE,
-  MAX_WORD_STEPS,
   PREVIEW_DOCUMENT,
   parseWordResult,
   READ_DOCUMENT,
@@ -272,7 +240,6 @@ export {
   resolveWordRef,
   STEP_OPTIONAL,
   STEP_REQUIRED,
-  WORD_FORMAT,
   WORD_OPERATIONS,
   WORD_READ_SECTIONS,
   WORD_TOOL_NAMES,
@@ -308,7 +275,6 @@ export {
   type WordProposal,
   type WordProtection,
   type WordReading,
-  type WordReadSection,
   type WordRedline,
   type WordRedlineEntry,
   type WordReplaceParagraphsStep,
@@ -323,23 +289,18 @@ export {
   type WordUpdateCellStep,
   wordInstruction,
   wordProgram,
-  wordResultRef,
 } from "./word-operations.js";
 export {
   WORD_TOOL_REGISTRATIONS,
-  type WordToolOptions,
   wordTools,
 } from "./word-tools.js";
 export {
-  assertXlsxFileRef,
   assertXlsxSheet,
   assertXlsxStep,
   COMPARE_WORKBOOK,
   CREATE_WORKBOOK,
-  DEFAULT_XLSX_PAGE,
   EDIT_WORKBOOK,
   INSPECT_WORKBOOK,
-  isXlsxInput,
   MAX_XLSX_PAGE,
   MAX_XLSX_RANGE_CELLS,
   MAX_XLSX_SHEETS,
@@ -351,7 +312,6 @@ export {
   resolveXlsxRef,
   STEP_OPTIONAL as XLSX_STEP_OPTIONAL,
   STEP_REQUIRED as XLSX_STEP_REQUIRED,
-  XLSX_FORMAT,
   XLSX_OPERATIONS,
   XLSX_READ_SECTIONS,
   XLSX_STEP_KINDS,
@@ -396,7 +356,6 @@ export {
   type XlsxProposal,
   type XlsxProtections,
   type XlsxReading,
-  type XlsxReadSection,
   type XlsxRecalculation,
   type XlsxReferenceCheck,
   type XlsxRemoveNameStep,
@@ -421,11 +380,9 @@ export {
   type XlsxWorkbookCensus,
   xlsxInstruction,
   xlsxProgram,
-  xlsxResultRef,
 } from "./xlsx-operations.js";
 export {
   XLSX_TOOL_ORDER,
   XLSX_TOOL_REGISTRATIONS,
-  type XlsxToolOptions,
   xlsxTools,
 } from "./xlsx-tools.js";

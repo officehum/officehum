@@ -61,8 +61,8 @@ Refusals are ``documents.WorkspaceError`` with a stable code — ``invalid-reque
 ``unsupported-structure``, ``target-not-found``, ``ambiguous-target``, ``relationship-policy``,
 ``boundary-violation``, ``output-format``, ``package-limit`` — or the workspace's own codes for a bad
 name, a bad lease reference or a read-only source. Every one of them leaves the source bytes
-unchanged: nothing here writes outside the staging directory, and the workspace hashes the inputs
-again after the run.
+unchanged: nothing here writes outside the staging directory, and after a run that completes the
+worker hashes the input copies again.
 """
 
 from __future__ import annotations
@@ -71,12 +71,12 @@ import hashlib
 import math
 import re
 import zipfile
+from copy import copy
 from datetime import date, datetime, time as time_of_day, timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, Iterable, List, NoReturn, Optional, Sequence, Tuple
+from typing import Any, Dict, List, NoReturn, Optional, Sequence, Tuple
 from xml.etree import ElementTree
 
-import openpyxl
 import openpyxl.oracle as oracle
 import openpyxl.package as paper_package
 from openpyxl import Workbook, load_workbook
@@ -92,7 +92,7 @@ from openpyxl.formula import Tokenizer
 from openpyxl.formula.tokenizer import TokenizerError
 from openpyxl.preserve import diffreport, hygiene, perception, receipts
 from openpyxl.preserve import references as paper_references
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import PatternFill
 from openpyxl.utils.cell import column_index_from_string, get_column_letter, range_boundaries
 from openpyxl.workbook.defined_name import DefinedName
 
@@ -117,6 +117,8 @@ MAX_BROKEN = 25
 MAX_PART_HASHES = 24
 MAX_NUMERIC_CHECKS = 20
 MAX_SUM_CELLS = 32
+# A double keeps about 16 significant digits; adding up to MAX_RANGE_CELLS of them can lose a few.
+SUM_TOLERANCE = Decimal("1e-12")
 MAX_PREVIEW_LINES = 60
 MAX_CHART_REFERENCES = 8
 MAX_TEXT = 4_000
@@ -301,10 +303,30 @@ def _envelope(operation: str, **fields: Any) -> Dict[str, Any]:
 # -- the package guard: macros, external links, malformed archives ---------------------------------
 
 
+# One call opens and parses each package it only reads once: the open archive, its part hashes and
+# the read-only workbook models are kept here for the length of the call. ``run`` empties it before
+# and after each operation.
+_READ_ONLY: Dict[Tuple[str, str], Any] = {}
+
+
+def _forget_packages() -> None:
+    for (kind, _path), value in _READ_ONLY.items():
+        if kind == "archive":
+            value.close()
+    _READ_ONLY.clear()
+
+
+def _archive(path: str) -> zipfile.ZipFile:
+    """The package as an open archive, opened once per call."""
+    key = ("archive", path)
+    if key not in _READ_ONLY:
+        _READ_ONLY[key] = zipfile.ZipFile(path)
+    return _READ_ONLY[key]
+
+
 def _zip_names(path: str, what: str) -> List[str]:
     try:
-        with zipfile.ZipFile(path) as archive:
-            return list(archive.namelist())
+        return list(_archive(path).namelist())
     except (zipfile.BadZipFile, OSError, ValueError) as error:
         _fail("malformed-package", f"{what} is not a readable Office package: {error}")
 
@@ -318,8 +340,7 @@ def _zip_text(archive: zipfile.ZipFile, name: str) -> str:
 
 def _read_part(path: str, name: str) -> bytes:
     try:
-        with zipfile.ZipFile(path) as archive:
-            return archive.read(name)
+        return _archive(path).read(name)
     except (KeyError, OSError, zipfile.BadZipFile, ValueError):
         return b""
 
@@ -340,7 +361,7 @@ def _guard_package(path: str, what: str) -> Dict[str, Any]:
                 f"{what} holds a VBA project ({part}); this adapter refuses macros rather than "
                 "dropping them, which is what opening one would do",
             )
-    content_types = _zip_text(zipfile.ZipFile(path), "[Content_Types].xml").lower()
+    content_types = _zip_text(_archive(path), "[Content_Types].xml").lower()
     if content_types == "":
         _fail("malformed-package", f"{what} is not an Office package: no [Content_Types].xml")
     if any(token in content_types for token in EXTERNAL_CONTENT_TYPES):
@@ -353,7 +374,7 @@ def _guard_package(path: str, what: str) -> Dict[str, Any]:
         if name.lower().startswith(EXTERNAL_PART_PREFIXES):
             external.append("/" + name)
         if name.lower().endswith(".rels"):
-            payload = _zip_text(zipfile.ZipFile(path), name)
+            payload = _zip_text(_archive(path), name)
             if re.search(r'TargetMode\s*=\s*"External"', payload, re.I) or re.search(
                 r'Target\s*=\s*"[A-Za-z][A-Za-z0-9+.-]*:', payload
             ):
@@ -395,9 +416,20 @@ def _open(reference: Dict[str, Any]) -> Tuple[str, Any, Dict[str, Any]]:
     return path, _load(path, what), facts
 
 
+def _read_only_model(path: str, what: str, data_only: bool) -> Any:
+    key = ("cached-values" if data_only else "model", path)
+    if key not in _READ_ONLY:
+        _READ_ONLY[key] = _load(path, what, data_only=data_only)
+    return _READ_ONLY[key]
+
+
 def _measure(path: str, what: str) -> Any:
-    """A second, independent model of a package — for measuring what was written, not what was meant."""
-    return _load(path, what)
+    """A model of a package that is only read — for measuring what was written, not what was meant.
+
+    It is independent of any workbook this call is editing, and parsed once per call however many
+    reports read it.
+    """
+    return _read_only_model(path, what, False)
 
 
 def _applying(call: Any, *args: Any, **kwargs: Any) -> Any:
@@ -651,7 +683,7 @@ def _present_cells(sheet: Any) -> List[Any]:
 
 def _cached_model(path: str, what: str) -> Any:
     """A second load that keeps the values the file itself cached, so they can be reported as such."""
-    return _load(path, what, data_only=True)
+    return _read_only_model(path, what, True)
 
 
 def _cached_value(cached_wb: Any, title: str, coordinate: str) -> Tuple[Any, bool]:
@@ -723,6 +755,43 @@ def _known_titles(wb: Any) -> Dict[str, str]:
     return titles
 
 
+_CELL_RANGE = re.compile(r"[A-Z]{1,3}[0-9]{1,7}(:[A-Z]{1,3}[0-9]{1,7})?")
+_COLUMN_RANGE = re.compile(r"[A-Z]{1,3}:[A-Z]{1,3}")
+_ROW_RANGE = re.compile(r"[0-9]{1,7}:[0-9]{1,7}")
+
+
+def _grid_problem(target: str) -> Optional[Tuple[str, str]]:
+    """Judge ``target`` (upper-cased, ``$`` removed) as a reference into the grid.
+
+    None for a cell, a cell range, whole columns (``B:D``) or whole rows (``2:9``) inside the grid;
+    otherwise ``(kind, detail)``, where the kind ``not-a-range`` means the text is no grid reference
+    at all. Letters are a column only inside one of these forms: a bare ``TAX`` is a name, since
+    Excel itself has no single-column reference without the colon.
+    """
+    outside = ("out-of-grid-range", f"the range {target} is outside the spreadsheet grid")
+    if _COLUMN_RANGE.fullmatch(target):
+        columns = [column_index_from_string(part) for part in target.split(":")]
+        return outside if max(columns) > EXCEL_MAX_COLUMN else None
+    if _ROW_RANGE.fullmatch(target):
+        rows = [int(part) for part in target.split(":")]
+        return outside if min(rows) < 1 or max(rows) > EXCEL_MAX_ROW else None
+    if not _CELL_RANGE.fullmatch(target):
+        return ("not-a-range", "the reference is not a range")
+    try:
+        min_col, min_row, max_col, max_row = range_boundaries(target)
+    except (TypeError, ValueError, IndexError):
+        return ("unresolvable-range", "the range cannot be read as coordinates")
+    if (
+        None in (min_col, min_row, max_col, max_row)
+        or min_row < 1
+        or min_col < 1
+        or max_row > EXCEL_MAX_ROW
+        or max_col > EXCEL_MAX_COLUMN
+    ):
+        return outside
+    return None
+
+
 def _reference_kind(text: str, titles: Dict[str, str], names: Dict[str, Any], tables: Dict[str, str]) -> Optional[Dict[str, Any]]:
     """Resolve one formula operand against the workbook's own names, sheets and tables.
 
@@ -773,61 +842,10 @@ def _reference_kind(text: str, titles: Dict[str, str], names: Dict[str, Any], ta
                 "detail": "the range names two different sheets",
             }
     target = core.upper().replace("$", "")
-    if re.fullmatch(r"[A-Z]{1,3}(:[A-Z]{1,3})?", target) or re.fullmatch(
-        r"[0-9]{1,7}(:[0-9]{1,7})?", target
-    ):
-        # A whole column or a whole row: a legal reference, and one this adapter cannot call broken.
-        if re.fullmatch(r"[A-Z]{1,3}(:[A-Z]{1,3})?", target) and any(
-            column_index_from_string(part) > EXCEL_MAX_COLUMN for part in target.split(":")
-        ):
-            return {
-                "raw": raw,
-                "kind": "out-of-grid-range",
-                "resolved": False,
-                "detail": f"the range {target} is outside the spreadsheet grid",
-            }
-        if re.fullmatch(r"[0-9]{1,7}(:[0-9]{1,7})?", target) and any(
-            int(part) > EXCEL_MAX_ROW for part in target.split(":")
-        ):
-            return {
-                "raw": raw,
-                "kind": "out-of-grid-range",
-                "resolved": False,
-                "detail": f"the range {target} is outside the spreadsheet grid",
-            }
-        return {
-            "raw": raw,
-            "kind": "cell-range",
-            "resolved": True,
-            "sheet": titles.get(title.lower()) if title is not None else None,
-            "detail": target,
-        }
-    if re.fullmatch(r"[A-Z]{1,3}[0-9]{1,7}(:[A-Z]{1,3}[0-9]{1,7})?", target):
-        try:
-            min_col, min_row, max_col, max_row = range_boundaries(target)
-        except (TypeError, ValueError, IndexError):
-            return {
-                "raw": raw,
-                "kind": "unresolvable-range",
-                "resolved": False,
-                "detail": "the range cannot be read as coordinates",
-            }
-        if (
-            min_row is None
-            or min_col is None
-            or max_row is None
-            or max_col is None
-            or min_row < 1
-            or min_col < 1
-            or max_row > EXCEL_MAX_ROW
-            or max_col > EXCEL_MAX_COLUMN
-        ):
-            return {
-                "raw": raw,
-                "kind": "out-of-grid-range",
-                "resolved": False,
-                "detail": f"the range {target} is outside the spreadsheet grid",
-            }
+    problem = _grid_problem(target)
+    if problem is not None and problem[0] != "not-a-range":
+        return {"raw": raw, "kind": problem[0], "resolved": False, "detail": problem[1]}
+    if problem is None:
         return {
             "raw": raw,
             "kind": "cell-range",
@@ -892,7 +910,16 @@ def _formula_references(formula: str, titles: Dict[str, str], names: Dict[str, A
 
 
 def _reference_check(wb: Any, path: str, what: str) -> Dict[str, Any]:
+    """The reference check as a reply carries it: totals, and a bounded list of what is broken."""
+    return _scan_references(wb, path, what)[0]
+
+
+def _scan_references(wb: Any, path: str, what: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """Every formula reference the model holds, and the ones that cannot resolve.
+
+    Returns the bounded check for the reply and, beside it, the whole list of broken references: a
+    comparison of two workbooks must be made on the whole lists, or a reference that only moved into
+    the shown part reads as new and one beyond it is never seen.
 
     Built on the fork's own ``formula_surfaces`` — cells, defined names, print areas, data validation,
     conditional formatting, table ranges and chart series — so "every reference" means every surface
@@ -936,7 +963,7 @@ def _reference_check(wb: Any, path: str, what: str) -> Dict[str, Any]:
             }
         )
     kept, truncated = _bounded(broken, MAX_BROKEN)
-    return {
+    check = {
         "checkedReferences": checked,
         "checkedSurfaces": surfaces,
         "kinds": kinds,
@@ -949,6 +976,7 @@ def _reference_check(wb: Any, path: str, what: str) -> Dict[str, Any]:
         "scope": what,
         "partsScanned": len(_zip_names(path, what)),
     }
+    return check, broken
 
 
 def _owner_of(surface: Any) -> str:
@@ -961,11 +989,9 @@ def _owner_of(surface: Any) -> str:
     return "formula"
 
 
-def _reference_signature(check: Dict[str, Any]) -> set:
-    """The identity of a broken reference, so a *new* one can be told from a pre-existing one."""
-    return {
-        (item.get("where"), item.get("kind"), item.get("raw")) for item in check.get("broken", [])
-    }
+def _reference_signature(broken: Sequence[Dict[str, Any]]) -> set:
+    """The identity of each broken reference, so a *new* one can be told from a pre-existing one."""
+    return {(item.get("where"), item.get("kind"), item.get("raw")) for item in broken}
 
 
 # -- workbook census, sheets, names, charts and styles ---------------------------------------------
@@ -1040,33 +1066,19 @@ def _declared_names(wb: Any) -> List[Dict[str, Any]]:
         prefix, core = _split_sheet_prefix_loose(text)
         resolved = True
         reason: Optional[str] = None
-        kind = "formula" if text.startswith("=") or "(" in text else "range"
-        if prefix is not None and prefix.lower() not in titles:
+        problem = _grid_problem(core.upper().replace("$", ""))
+        if "#REF!" in text.upper():
+            resolved, reason, kind = False, "what the name pointed at was deleted (#REF!)", "broken-range"
+        elif problem is not None and problem[0] == "not-a-range":
+            # A formula or a multi-area definition. The reference check reads every defined name as a
+            # formula surface, so what it points at is judged there and not guessed at here.
+            kind = "formula"
+        elif prefix is not None and prefix.lower() not in titles:
             resolved, reason, kind = False, f"no sheet named {prefix!r}", "broken-range"
-        elif (
-            prefix is not None
-            and re.fullmatch(r"[A-Z$0-9]{1,4}:[A-Z$0-9]{1,4}", core.upper()) is None
-            and re.fullmatch(r"[A-Z$0-9]{1,4}", core.upper()) is None
-        ):
-            resolved, reason, kind = False, "the reference is not a range", "broken-range"
-        elif prefix is not None:
-            try:
-                min_col, min_row, max_col, max_row = range_boundaries(core.upper())
-            except (TypeError, ValueError, IndexError):
-                resolved, reason, kind = False, "the range cannot be read as coordinates", "broken-range"
-            else:
-                out = (
-                    min_row is None
-                    or max_row is None
-                    or min_col is None
-                    or max_col is None
-                    or min_row < 1
-                    or min_col < 1
-                    or max_row > EXCEL_MAX_ROW
-                    or max_col > EXCEL_MAX_COLUMN
-                )
-                if out:
-                    resolved, reason, kind = False, "the range is outside the grid", "broken-range"
+        elif problem is not None:
+            resolved, reason, kind = False, problem[1], "broken-range"
+        else:
+            kind = "range"
         reference, truncated = _truncate(text, MAX_NAME_REFERENCE)
         return {
             "name": name,
@@ -1324,11 +1336,14 @@ def _recalculation(path: str) -> Dict[str, Any]:
 
 
 def _part_hashes(path: str) -> Dict[str, str]:
-    with zipfile.ZipFile(path) as archive:
-        return {
+    key = ("hashes", path)
+    if key not in _READ_ONLY:
+        archive = _archive(path)
+        _READ_ONLY[key] = {
             info.filename: hashlib.sha256(archive.read(info.filename)).hexdigest()
             for info in archive.infolist()
         }
+    return _READ_ONLY[key]
 
 
 def _change_set(source_path: str, output_path: str) -> Dict[str, Any]:
@@ -1753,7 +1768,11 @@ def _sum_check(
     agrees: Optional[bool] = None
     if cached_known and _exact_decimal(cached_value) is not None:
         try:
-            agrees = Decimal(str(_exact_decimal(cached_value))) == adapter_sum
+            # The cached value is a binary double Excel summed (0.1 + 0.2 is stored as
+            # 0.30000000000000004), so it is compared within the rounding a double sum of these
+            # cells can carry, relative to the size of the numbers added, and not digit for digit.
+            difference = abs(Decimal(str(_exact_decimal(cached_value))) - adapter_sum)
+            agrees = difference <= SUM_TOLERANCE * sum((abs(number) for number in numbers), Decimal(0))
         except (InvalidOperation, ValueError):
             agrees = None
     reason: Optional[str] = None
@@ -1765,7 +1784,8 @@ def _sum_check(
     elif agrees is not None and not agrees:
         reason = (
             "the cached value in the package and this adapter's exact sum of the cells the range "
-            "names differ; both are reported and neither is treated as the answer"
+            "names differ by more than floating-point rounding; both are reported and neither is "
+            "treated as the answer"
         )
     return {
         "function": "SUM",
@@ -2255,6 +2275,10 @@ def _column(value: Any, what: str) -> str:
     return match.group(1)
 
 
+_FONT_FIELDS = ("bold", "italic", "size", "name", "color")
+_ALIGNMENT_FIELDS = {"horizontal": "horizontal", "vertical": "vertical", "wrapText": "wrap_text"}
+
+
 def _apply_style(wb: Any, sheet: Any, spec: Dict[str, Any], what: str) -> List[str]:
     core, _prefix, bounds = _bounded_range(spec["range"], f"{what} range")
     min_col, min_row, max_col, max_row = bounds
@@ -2263,28 +2287,27 @@ def _apply_style(wb: Any, sheet: Any, spec: Dict[str, Any], what: str) -> List[s
     for row in range(min_row, max_row + 1):
         for column in range(min_col, max_col + 1):
             cell = sheet.cell(row=row, column=column)
-            if style.get("bold") is not None or style.get("italic") is not None or style.get("size") is not None or style.get("name") is not None or style.get("color") is not None:
-                cell.font = Font(
-                    bold=style.get("bold"),
-                    italic=style.get("italic"),
-                    size=style.get("size"),
-                    name=style.get("name"),
-                    color=style.get("color"),
-                )
+            # Only the fields the step names change; the rest of the cell's font and alignment stay.
+            font_fields = {key: style[key] for key in _FONT_FIELDS if style.get(key) is not None}
+            if font_fields:
+                font = copy(cell.font)
+                for key, value in font_fields.items():
+                    setattr(font, key, value)
+                cell.font = font
             if style.get("fillColor") is not None:
                 cell.fill = PatternFill("solid", fgColor=style["fillColor"])
             if style.get("numberFormat") is not None:
                 cell.number_format = style["numberFormat"]
-            if (
-                style.get("horizontal") is not None
-                or style.get("vertical") is not None
-                or style.get("wrapText") is not None
-            ):
-                cell.alignment = Alignment(
-                    horizontal=style.get("horizontal"),
-                    vertical=style.get("vertical"),
-                    wrap_text=style.get("wrapText"),
-                )
+            alignment_fields = {
+                attribute: style[key]
+                for key, attribute in _ALIGNMENT_FIELDS.items()
+                if style.get(key) is not None
+            }
+            if alignment_fields:
+                alignment = copy(cell.alignment)
+                for attribute, value in alignment_fields.items():
+                    setattr(alignment, attribute, value)
+                cell.alignment = alignment
             touched.append(cell.coordinate)
     return touched
 
@@ -2704,6 +2727,7 @@ def _report(
     name: str,
     payload: Dict[str, Any],
     source_check: Dict[str, Any],
+    source_broken: Sequence[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Save through the fork's own preserve-mode save, then measure what it wrote."""
     _applying(wb.save, path)
@@ -2712,12 +2736,12 @@ def _report(
     change_set = _change_set(source_path, path)
     source_model = _remember(_measure(source_path, f"the leased input {reference['name']!r}"), source_path)
     output_model = _remember(_measure(path, "the written workbook"), path)
-    output_check = _reference_check(output_model, path, "the written workbook")
+    output_check, output_broken = _scan_references(output_model, path, "the written workbook")
+    known = _reference_signature(source_broken)
     new_broken = [
         item
-        for item in output_check["broken"]
-        if (item.get("where"), item.get("kind"), item.get("raw"))
-        not in _reference_signature(source_check)
+        for item in output_broken
+        if (item.get("where"), item.get("kind"), item.get("raw")) not in known
     ]
     if new_broken:
         _fail(
@@ -2788,7 +2812,7 @@ def _report(
             "outputBroken": output_check["brokenTotal"],
             "newBroken": [],
             "note": (
-                "an operation that would add a broken reference is refused before anything is written, "
+                "an operation that would add a broken reference is refused and produces no proposal, "
                 "so newBroken is always empty in a result that exists"
             ),
         },
@@ -2822,7 +2846,7 @@ def _edit(params: Dict[str, Any]) -> Dict[str, Any]:
     path = documents.declare_output(name, FORMAT, edit_of=reference["versionId"])
     source_path, wb, _facts = _open(reference)
     _remember(wb, source_path)
-    source_check = _reference_check(wb, source_path, "the leased input")
+    source_check, source_broken = _scan_references(wb, source_path, "the leased input")
     changes = [_apply_edit_step(wb, spec) for spec in steps]
     return _report(
         "edit",
@@ -2833,6 +2857,7 @@ def _edit(params: Dict[str, Any]) -> Dict[str, Any]:
         name,
         {"changes": changes, "steps": [spec.get("kind") for spec in steps]},
         source_check,
+        source_broken,
     )
 
 
@@ -2894,8 +2919,8 @@ def _compare(params: Dict[str, Any]) -> Dict[str, Any]:
     to_path = documents.open_input(to_ref["versionId"])
     _guard_package(from_path, f"the leased input {from_ref['name']!r}")
     _guard_package(to_path, f"the leased input {to_ref['name']!r}")
-    from_wb = _remember(_load(from_path, f"the leased input {from_ref['name']!r}"), from_path)
-    to_wb = _remember(_load(to_path, f"the leased input {to_ref['name']!r}"), to_path)
+    from_wb = _remember(_measure(from_path, f"the leased input {from_ref['name']!r}"), from_path)
+    to_wb = _remember(_measure(to_path, f"the leased input {to_ref['name']!r}"), to_path)
     change_set = _change_set(from_path, to_path)
     preserved = _preservation(from_path, to_path, [item["part"] for item in change_set["changed"]])
     changed_cells, changed_total = _cells_diff(from_path, to_path)
@@ -2952,7 +2977,11 @@ def run(operation: str, parameters: Any) -> Dict[str, Any]:
     """Run one typed Excel operation. ``operation`` is fixed by the submitted code."""
     if operation not in OPERATIONS:
         _fail("invalid-request", f"{operation!r} is not an Excel operation")
-    return OPERATIONS[operation](_object(parameters, "operation parameters"))
+    _forget_packages()
+    try:
+        return OPERATIONS[operation](_object(parameters, "operation parameters"))
+    finally:
+        _forget_packages()
 
 
 __all__ = ["run", "SCHEMA", "VERSION", "OPERATIONS", "READ_SECTIONS", "FORMAT"]

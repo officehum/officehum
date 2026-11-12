@@ -32,6 +32,7 @@ import { runLedger } from "./run-ledger.js";
 import {
   buildZip,
   configuredInterpreter,
+  countingLoadsCode,
   docxLike,
   sha256,
   textOf,
@@ -49,6 +50,7 @@ import {
   type WordEdit,
   type WordInspection,
   type WordReading,
+  wordProgram,
 } from "./word-operations.js";
 
 const interpreter = configuredInterpreter();
@@ -540,6 +542,80 @@ suite("the Word adapter drafts and proposes", () => {
     expect(sha256(original?.bytes ?? new Uint8Array())).toBe(source.sha256);
     // Nothing published it.
     expect(await store.getPublished(source.id)).toBeUndefined();
+  });
+
+  it("anchors a comment to a block, and refuses a block a comment cannot attach to", async () => {
+    const { store, service } = harness();
+    const source = await fixture(store, service, { operationId: "conv:comment-block" });
+    const lease = leaseOf([source]);
+    const reading = await body<WordReading>(toolOf(service, READ_DOCUMENT, lease), {
+      ref: refOf(source),
+      section: "blocks",
+      pageSize: 50,
+    });
+    const blocks = reading.result.page.items as unknown as {
+      kind: string;
+      text: string;
+      anchor: { story: string; index: number; contentHash: string };
+    }[];
+    const paragraph = blocks.find((block) => block.text === "Draft prepared by the office.");
+    const table = blocks.find((block) => block.kind === "table");
+    if (paragraph === undefined || table === undefined) throw new Error("the fixture changed");
+
+    const refused = await refuse(toolOf(service, EDIT_DOCUMENT, lease), {
+      ref: refOf(source),
+      output: "close-summary.docx",
+      author: "Office Hum",
+      steps: [{ kind: "addComment", anchor: table.anchor, text: "Check the table." }],
+    });
+    expect(refused.code).toBe("unsupported-structure");
+    expect(refused.message).toContain(`block ${table.anchor.index}`);
+    expect(refused.message).not.toContain("AttributeError");
+
+    const answer = await body<WordEdit>(toolOf(service, EDIT_DOCUMENT, lease), {
+      ref: refOf(source),
+      output: "close-summary.docx",
+      author: "Office Hum",
+      steps: [{ kind: "addComment", anchor: paragraph.anchor, text: "Please confirm." }],
+    });
+    const head = await store.getHead(answer.wrote[0]?.fileId ?? "");
+    if (head === undefined) throw new Error("the edit wrote no version");
+    const comments = await body<WordReading>(toolOf(service, READ_DOCUMENT, leaseOf([head])), {
+      ref: refOf(head),
+      section: "comments",
+    });
+    expect(comments.result.page.items).toContainEqual(
+      expect.objectContaining({
+        text: "Please confirm.",
+        anchoredText: "Draft prepared by the office.",
+      }),
+    );
+  });
+
+  it("parses the source once and the written document once in an edit", async () => {
+    const { store, service } = harness();
+    const source = await fixture(store, service, { operationId: "conv:parse-count" });
+    const lease = leaseOf([source]);
+    const program = wordProgram(
+      "edit",
+      {
+        ref: refOf(source),
+        output: "close-summary.docx",
+        author: "Office Hum",
+        steps: [{ kind: "updateCell", nearText: "Revenue", row: 1, column: 1, text: "1400" }],
+      },
+      lease,
+    );
+    const receipt = committed(
+      await service.runDocumentPython({
+        operationId: "conv:parse-count-edit",
+        taskId: lease.taskId,
+        lease,
+        code: countingLoadsCode("word_adapter", "edit"),
+        arguments: program.arguments,
+      }),
+    );
+    expect(receipt.result).toEqual({ loads: 2 });
   });
 
   it("preserves relationships, styles, headers, footers and untouched sections byte for byte", async () => {
