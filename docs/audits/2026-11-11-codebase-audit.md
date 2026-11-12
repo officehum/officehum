@@ -94,6 +94,17 @@ Each bug fix marked (test) has a regression test that failed before the fix.
 > - **B8.** Resolved in RASF-3572: Operations re-checks the approved facts at the write.
 > - **Canonical JSON ordering (E2).** Resolved in RASF-3572: one `canonicalJson` in the SDK, ordered
 >   by code unit; text an older version stored in locale order is still read and recognised.
+> - **B9, completion evidence.** Resolved in RASF-3572 as far as declarations go: the seven entries
+>   that could not tell a finished ticket from an untouched one (six lists with no arguments, and
+>   Front Desk's argument its tool does not take) are gone, leaving a person's confirmation, and
+>   `checkAgent` refuses evidence that passes a tool an argument it does not take. Running evidence
+>   is RASF-3230.
+> - **B13.** Resolved in RASF-3572: only a ticket's assignee, whoever opened it, or a person may
+>   assign it.
+> - **Client that gives up signing in.** Resolved in RASF-3572: a caller that only watches approvals
+>   is told through `onLost`.
+> - **Red-team hand-off cases.** Kept on the real relay by decision, not moved into the scenario
+>   runner; RT-L1 gained the guard-off control the scenario file's attacks get from the mutation pass.
 > - **Left by decision:** B9, B13, C2 (its own PR), C4, C10, D2, D5,
 >   Python helper duplication (E3).
 

@@ -113,7 +113,7 @@
     {
       "type": "pipeline.review",
       "description": "Review the pipeline and say what needs chasing",
-      "done": [{ "tool": "pipeline_report", "args": {}, "expect": "found" }, { "person": true }]
+      "done": [{ "person": true }]
     }
   ],
   "dispatches": [

@@ -85,14 +85,7 @@
     {
       "type": "booking.request",
       "description": "Book an appointment for a customer",
-      "done": [
-        {
-          "tool": "list_bookings",
-          "args": { "bookingId": "{ticket.data.bookingId}" },
-          "expect": "found"
-        },
-        { "person": true }
-      ]
+      "done": [{ "person": true }]
     },
     {
       "type": "customer.reply",

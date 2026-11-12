@@ -54,7 +54,8 @@ export interface CheckAgentOptions {
 
 /**
  * Checks a role bundle, as its factory returns it with no overlays, against its manifest: extension
- * names, each extension's tools and their `replay` policy, the approval gate, reserved section keys,
+ * names, each extension's tools and their `replay` policy, the arguments its completion evidence
+ * passes, the approval gate, reserved section keys,
  * the recommended agent settings, its declared sub-agents' references, and the size of its stable
  * prompt.
  *
@@ -162,6 +163,7 @@ export async function checkAgent(
     );
   }
 
+  evidenceArgumentIssues(bundle, manifest, add);
   checkAgentSettings(bundle.agent, manifest, toolSkills, add);
   // `validateManifest` applies the same rules; a manifest built in code reaches only this check.
   subagentIssues(manifest, add);
@@ -170,6 +172,42 @@ export async function checkAgent(
   // A warning leaves the role valid, as in the four-layer check; anything else refuses it.
   const errors = issues.filter((issue) => issue.severity !== "warning");
   return errors.length > 0 ? { ok: false, issues } : { ok: true, value: bundle, issues };
+}
+
+/**
+ * Completion evidence runs a tool with the arguments the manifest names. An argument the tool does
+ * not take is refused by its schema or ignored, so the check could never pass or would not test what
+ * it says; only the code knows a tool's parameters, which is why this is not in `validateManifest`.
+ */
+function evidenceArgumentIssues(
+  bundle: RoleBundle,
+  manifest: AgentManifest,
+  add: (path: string, message: string) => void,
+): void {
+  const parameters = new Map<string, readonly string[]>();
+  for (const extension of bundle.extensions) {
+    for (const tool of extension.tools ?? []) {
+      const properties = (tool.parameters as { properties?: unknown }).properties;
+      // A tool whose parameters are not an object schema names nothing to check against.
+      if (typeof properties === "object" && properties !== null) {
+        parameters.set(tool.name, Object.keys(properties));
+      }
+    }
+  }
+  manifest.accepts.forEach((accept, index) => {
+    accept.done?.forEach((entry, doneIndex) => {
+      if (!("tool" in entry) || entry.args === undefined) return;
+      const takes = parameters.get(entry.tool);
+      if (takes === undefined) return;
+      for (const name of Object.keys(entry.args)) {
+        if (takes.includes(name)) continue;
+        add(
+          `accepts[${index}].done[${doneIndex}].args.${name}`,
+          `${show(entry.tool)} takes no ${show(name)} (it takes ${takes.length === 0 ? "no arguments" : takes.map(show).join(", ")}), so this evidence could never pass; pass an argument the tool declares`,
+        );
+      }
+    });
+  });
 }
 
 function checkAgentSettings(

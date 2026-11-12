@@ -369,6 +369,30 @@ describe("GatewayClient approvals", () => {
     expect(watches()).toBe(2);
   });
 
+  it("tells a caller that only watches approvals when sign-in is refused for good", async () => {
+    let issued = 0;
+    const fake = await startFakeGateway();
+    fakes.push(fake);
+    const client = await GatewayClient.connect({
+      url: fake.url,
+      token: () => (++issued === 1 ? "good-1" : "revoked"),
+      backoff: fast,
+      retries: 2,
+    });
+    clients.push(client);
+    const lost: GatewayError[] = [];
+    await client.watchApprovals(
+      () => {},
+      (error) => lost.push(error),
+    );
+
+    // No run is open, so nothing else would tell this caller that the client stopped.
+    fake.drop();
+    await until(() => expect(lost).toHaveLength(1));
+    expect(lost[0]?.code).toBe("unauthorized");
+    await expect(client.ping()).rejects.toThrow();
+  });
+
   it("does not report a watch answered busy after a reconnect as lost", async () => {
     const { fake, client } = await setup();
     const heard: string[] = [];

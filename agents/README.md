@@ -108,7 +108,10 @@ Rules, enforced by `@officehum/sdk` (`validatePackage`, `checkAgent`, `checkFour
 - Every accepted ticket type declares `done` completion evidence, which the **host** runs, never the
   model: an engine check that returns findings, a declared tool that is safe to re-run and does not write, whose result reports
   `found`, a file the result attaches, or `{ "person": true }`. All entries must pass.
-  `{ticket.id}` and `{ticket.data.<path>}` are the only interpolation.
+  `{ticket.id}` and `{ticket.data.<path>}` are the only interpolation. A tool entry passes only
+  arguments its tool takes (`checkAgent` refuses the others), and it should ask about this ticket's
+  work: a list that reads the same before the work as after proves nothing. Where no tool can show
+  the work, declare `{ "person": true }` alone.
 - Gated actions are blocked unless the host supplies an approver.
 - Overlays can switch tools off but never add them; overlay skills hold instructions only.
 - The four layers stay apart, checked by `checkFourLayers`: context under 1,000 words with a

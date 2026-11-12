@@ -234,6 +234,10 @@ export interface Board {
    */
   complete(ticketId: string, actor: string, options?: CompleteOptions): Ticket;
   cancel(ticketId: string, actor: string): Ticket;
+  /**
+   * Hands a ticket to a role or a person. Only the ticket's assignee, whoever opened it, or a person
+   * may; anyone else is refused with `unauthorized`.
+   */
   assign(ticketId: string, assignee: Assignee, actor: string): Ticket;
   get(ticketId: string): Ticket | undefined;
   list(filter?: ListFilter): Ticket[];
@@ -1108,6 +1112,15 @@ export function openBoard(file: string): Board {
         const to: TicketStatus = target.kind === "person" ? "waiting" : "claimed";
         if (TERMINAL.includes(status)) {
           throw fail("invalid_status", `Ticket ${id} is already ${status}.`, { from: status, to });
+        }
+        // Routing a ticket decides who may finish it, so it is held to the same rule plus one: the
+        // role that opened a ticket may say where it goes.
+        if (!authorized(row, by) && row.created_by !== by) {
+          throw fail(
+            "unauthorized",
+            `Ticket ${id} is assigned to ${row.assignee ?? "nobody"}; only its assignee, whoever opened it (${row.created_by}) or a person can assign it.`,
+            { assignee: row.assignee, createdBy: row.created_by, actor: by },
+          );
         }
         if (target.kind === "person" && !isPerson(target.id)) {
           throw fail("invalid_person", `No person ${target.id} on this board.`, { id: target.id });

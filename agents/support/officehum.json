@@ -81,7 +81,7 @@
     {
       "type": "support.request",
       "description": "A client has a question or a complaint about the service, a visit, a member of staff or a bill",
-      "done": [{ "tool": "list_cases", "args": {}, "expect": "found" }, { "person": true }]
+      "done": [{ "person": true }]
     }
   ],
   "dispatches": [

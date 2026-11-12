@@ -16,7 +16,8 @@ const tool = (name: string, replay?: "safe" | "unsafe") =>
   defineTool({
     name,
     description: name,
-    parameters: Type.Object({}),
+    // `date` because the sample manifest's completion evidence passes one to `check_schedule`.
+    parameters: Type.Object({ date: Type.Optional(Type.String()) }),
     ...(replay === undefined ? {} : { replay }),
     execute: async () => ({ output: [{ type: "text", text: "ok" }] }),
   });
@@ -67,6 +68,29 @@ describe("checkAgent", () => {
     });
     expect(await messages(bundle(role))).toEqual([
       'role › sample-desk › book_appointment: replay is "safe" in code but "unsafe" in officehum.json',
+    ]);
+  });
+
+  it("requires completion evidence to pass a tool only arguments it takes", async () => {
+    const role = defineExtension({
+      name: "sample-desk",
+      tools: [tool("check_schedule", "safe"), tool("book_appointment", "unsafe")],
+      hooks: [gate()],
+    });
+    const done = (args: Record<string, string>) => ({
+      ...manifest,
+      accepts: [
+        {
+          type: "booking.request",
+          description: "Book",
+          done: [{ tool: "check_schedule", args, expect: "found" as const }],
+        },
+      ],
+    });
+    expect(await messages(bundle(role), done({ date: "{ticket.data.date}" }))).toEqual([]);
+    // A check the tool would be asked with an argument it does not have could never pass.
+    expect(await messages(bundle(role), done({ bookingId: "{ticket.data.bookingId}" }))).toEqual([
+      'role › accepts[0].done[0].args.bookingId: "check_schedule" takes no "bookingId" (it takes "date"), so this evidence could never pass; pass an argument the tool declares',
     ]);
   });
 

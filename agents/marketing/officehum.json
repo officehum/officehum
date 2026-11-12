@@ -67,7 +67,7 @@
     {
       "type": "marketing.request",
       "description": "Someone in the company wants a post, a campaign email, or a draft published",
-      "done": [{ "tool": "list_drafts", "args": {}, "expect": "found" }, { "person": true }]
+      "done": [{ "person": true }]
     }
   ],
   "dispatches": [

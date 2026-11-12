@@ -26,8 +26,10 @@ export interface TransportOptions {
 
 /**
  * Told, once, that a watch on approvals ended: after a reconnect the gateway refused to take it
- * again (`error.code` is `forbidden` when the caller may no longer approve). The listener hears
- * nothing more; call `watchApprovals` again to start over.
+ * again (`error.code` is `forbidden` when the caller may no longer approve), or sign-in was refused
+ * so often that the client stopped (`unauthorized`). The listener hears nothing more; after
+ * `forbidden`, call `watchApprovals` again to start over, and after `unauthorized`, connect a new
+ * client.
  */
 export type ApprovalsLost = (error: GatewayError) => void;
 
