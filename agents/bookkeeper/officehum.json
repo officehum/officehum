@@ -136,12 +136,12 @@
   "accepts": [
     {
       "type": "invoice.create",
-      "description": "Invoice a completed job",
+      "description": "Invoice a completed job. Name the job in the ticket's payload: { \"jobReference\": \"JOB-1042\" }",
       "done": [
         {
-          "tool": "list_invoices",
+          "tool": "get_invoice",
           "args": {
-            "customer": "{ticket.data.customer}"
+            "invoice": "{ticket.data.jobReference}"
           },
           "expect": "found"
         },

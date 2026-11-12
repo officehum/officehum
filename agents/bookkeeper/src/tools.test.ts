@@ -6,8 +6,10 @@
  * with the durable call identity Pi Durable hands to `execute`.
  */
 
+import { readFileSync } from "node:fs";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { fakeQuickBooks, type QuickBooks } from "@officehum/quickbooks";
+import { type AgentManifest, resolveEvidenceArgs } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import {
   bookkeeperTools,
@@ -279,6 +281,53 @@ describe("get_invoice", () => {
     expect(result.isError).toBe(true);
     expect(result.details).toEqual({ found: false, invoice: null });
     expect(text(result)).toContain("list_invoices");
+  });
+});
+
+describe("the invoice.create ticket's completion evidence", () => {
+  it("fails while only the customer's older invoices exist, and passes once this job is invoiced", async () => {
+    const manifest = JSON.parse(
+      readFileSync(new URL("../officehum.json", import.meta.url), "utf8"),
+    ) as AgentManifest;
+    const evidence = manifest.accepts
+      .find((accept) => accept.type === "invoice.create")
+      ?.done?.find((entry) => "tool" in entry);
+    if (evidence === undefined || !("tool" in evidence)) {
+      throw new Error("invoice.create declares no tool evidence");
+    }
+    expect(evidence.tool).toBe("get_invoice");
+
+    // The check as the office runs it: the manifest's arguments, filled from the ticket's payload.
+    const ticket = { id: "t-1", data: { jobReference: "JOB-2001" } };
+    const resolved = resolveEvidenceArgs(evidence.args, ticket);
+    if (!resolved.ok) throw new Error(`unfilled: ${resolved.missing.join(", ")}`);
+    const tools = bookkeeperTools(seeded(), SYSTEM_CLOCK);
+    const check = async (callId: string) =>
+      (await tools.getInvoice.execute(resolved.args as never, call(callId), BACKGROUND_CONTEXT))
+        .details as { found: boolean; invoice: { number: string } | null };
+
+    // Demo Guest already has three invoices; none of them is this job's.
+    expect((await check("evidence-1")).found).toBe(false);
+
+    await tools.createInvoice.execute(
+      {
+        customer: "customer-1",
+        lines: [{ description: "Deep clean", quantity: 1, unitPriceCents: 25000 }],
+        jobReference: "JOB-2001",
+      },
+      call("evidence-create"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(await check("evidence-2")).toMatchObject({
+      found: true,
+      invoice: { number: "JOB-2001" },
+    });
+
+    // A ticket that names no job cannot be checked, and is not checked against everything instead.
+    expect(resolveEvidenceArgs(evidence.args, { id: "t-2", data: {} })).toEqual({
+      ok: false,
+      missing: ["{ticket.data.jobReference}"],
+    });
   });
 });
 

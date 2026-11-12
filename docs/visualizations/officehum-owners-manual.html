@@ -898,9 +898,9 @@
         are the roles. The chain still does not run as drawn: the Front Desk's manifest declares only
         an <code>invoice.question</code> hand-off, Sales declares none for <code>invoice.create</code>,
         the runtime binds no calendar or other app client to a role (only demonstration desks), and no
-        role is wired to the Paper Office pack. Completion evidence (step 12) is checked, but the
-        catalog's <code>invoice.create</code> evidence asks only whether the customer has any
-        invoice, not for the one this ticket raised.</p>
+        role is wired to the Paper Office pack. Completion evidence (step 12) is checked: the
+        office looks for an invoice numbered with the job reference the ticket names, then a
+        person confirms.</p>
 
       <figure class="figure wide">
         <div class="scroll">
