@@ -240,7 +240,9 @@ export interface PurchasingDesk {
   compareSuppliers(itemId: string): Promise<SupplierComparison>;
   listPurchaseOrders(filter?: OrderFilter): Promise<readonly PurchaseOrder[]>;
   /**
-   * Prices and places an order inside the limit, or refuses it. A host desk must refuse with
+   * Prices and places an order inside `purchaseOrderLimitCents`, or refuses it. A host desk must hold
+   * every order for approval when that limit is `undefined`, never treat a missing limit as no limit.
+   * A host desk must refuse with
    * `unrequested` an order whose reason is `reorder_point` for an item that is not at or below its
    * reorder point or for more than the item's reorder quantity in the company's catalogue, or
    * `request` with no `requestedBy`. When it refuses a split order (`split_order`),
@@ -251,7 +253,7 @@ export interface PurchasingDesk {
    */
   raisePurchaseOrder(
     input: RaisePurchaseOrderInput,
-    options: { readonly requestId: string },
+    options: { readonly requestId: string; readonly purchaseOrderLimitCents: number | undefined },
   ): Promise<PurchaseOrder>;
   /**
    * Places one draft, exactly as it was raised. Called only once a person approved it, with the facts
@@ -322,10 +324,10 @@ export class PurchasingDeskError extends Error {
   }
 }
 
-/** The demonstration stock and orders; the company's own catalogue, suppliers and limit. */
+/** The demonstration stock and orders; the company's own catalogue and suppliers. */
 export interface FakePurchasingDeskOptions {
-  /** The suppliers, catalogue, limit and time zone the day is read in; the company's own when omitted. */
-  readonly company?: Pick<CompanyFacts, "hours" | "suppliers" | "supplyCatalog" | "approvalLimits">;
+  /** The suppliers, catalogue and time zone the day is read in; the company's own when omitted. */
+  readonly company?: Pick<CompanyFacts, "hours" | "suppliers" | "supplyCatalog">;
   /** On-hand quantity by item id; the demonstration stockroom when omitted. */
   readonly stock?: Readonly<Record<string, number>>;
   /** Existing orders; the demonstration ones when omitted. */
@@ -479,7 +481,6 @@ interface OrderState {
 export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): PurchasingDesk {
   const facts = options.company ?? loadCompanyFacts();
   const catalog = facts.supplyCatalog;
-  const limit = facts.approvalLimits.purchaseOrderOverCents;
   const clock = options.now ?? (() => new Date(DEMO_NOW));
   /** Today as `YYYY-MM-DD`, the company's own day: an order's dates and the day a split is counted in. */
   const today = (): string => localDate(clock(), facts.hours.timezone);
@@ -786,7 +787,15 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
       );
     },
 
-    async raisePurchaseOrder(input, { requestId }): Promise<PurchaseOrder> {
+    async raisePurchaseOrder(
+      input,
+      { requestId, purchaseOrderLimitCents },
+    ): Promise<PurchaseOrder> {
+      // The role's resolved limit, as the tool read it for this call. None resolved is not "no limit".
+      const limit =
+        purchaseOrderLimitCents !== undefined && Number.isFinite(purchaseOrderLimitCents)
+          ? purchaseOrderLimitCents
+          : null;
       const prior = raised.get(requestId);
       if (prior instanceof PurchasingDeskError) throw prior;
       if (prior !== undefined) return prior;
@@ -830,7 +839,13 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
       const earlier = placedToday.reduce((total, other) => total + other.totalCents, 0);
 
       let refusal: PurchasingDeskError | undefined;
-      if (totalCents > limit) {
+      if (limit === null) {
+        refusal = new PurchasingDeskError(
+          "over_limit",
+          `Needs approval: no purchase order limit is set for this role, so every order waits for a person. This order to ${supplier.name} comes to ${money(totalCents)}. It is saved as draft ${order.id} and has not been sent; do not raise it again or split it. Nothing was ordered.`,
+          { draftId: order.id, totalCents },
+        );
+      } else if (totalCents > limit) {
         refusal = new PurchasingDeskError(
           "over_limit",
           `Needs approval: this order to ${supplier.name} comes to ${money(totalCents)}, over the ${money(limit)} a purchase order may reach without a person's approval. It is saved as draft ${order.id} and has not been sent; do not raise it again or split it. Nothing was ordered.`,

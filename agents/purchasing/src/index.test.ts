@@ -5,7 +5,9 @@
  * the desk is `fakePurchasingDesk`, and the model is the scripted provider the eval runner uses.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
@@ -29,7 +31,7 @@ import {
   type SenderResolver,
   validatePackage,
 } from "@officehum/sdk";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { piDurableRunner } from "../../../packages/office/src/evals/pi-durable-runner.js";
 import {
   type ScriptedScript,
@@ -77,6 +79,23 @@ const SCENARIOS = [
   "unhandled-request-claims-no-hand-off",
 ];
 
+/** The overlay directories a test made, removed after it. */
+const temps: string[] = [];
+afterEach(() => {
+  for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+/** An overlay that sets the business's purchase order limit. */
+function limitOverlay(cents: number): string {
+  const overlay = mkdtempSync(join(tmpdir(), "officehum-purchasing-limit-"));
+  temps.push(overlay);
+  writeFileSync(
+    join(overlay, "settings.json"),
+    JSON.stringify({ limits: { purchase_order_limit_cents: cents } }),
+  );
+  return overlay;
+}
+
 const tools = (extensions: readonly Extension[]): ToolRegistration[] =>
   extensions.flatMap((extension) => extension.tools ?? []);
 
@@ -119,9 +138,11 @@ async function attempt(options: {
   readonly desk: PurchasingDesk;
   readonly approver?: Approver;
   readonly sender?: SenderResolver;
+  readonly overlays?: readonly string[];
 }): Promise<{ readonly messages: readonly Message[] }> {
   const role = purchasing({
     desk: options.desk,
+    ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.sender === undefined ? {} : { sender: options.sender }),
     ...(options.approver === undefined ? {} : { approve: options.approver }),
   });
@@ -288,6 +309,41 @@ describe("purchasing approval gates", () => {
       approver: recording([], true),
     });
     expect(await approvedSupplier(approved, "sup-quickship-safety")).toBe(true);
+  });
+
+  it("judges an order against the business's own limit when an overlay sets one", async () => {
+    // Four cases of filters: well inside the manifest's $1,500.00, so it is placed as it stands.
+    const order = {
+      reason: "reorder_point",
+      supplierId: "sup-willamette-filters",
+      lines: [{ itemId: "hvac-filter-stock", quantity: 4 }],
+    };
+    const usual = fakePurchasingDesk();
+    const placed = await attempt({ turns: one("raise_purchase_order", order), desk: usual });
+    expect(lastToolText(placed.messages)).toContain("Placed PO-1005");
+    expect(await statusOf(usual, "PO-1005")).toBe("placed");
+
+    // The same order for a business whose overlay lowers the limit to $50.00: it waits for a person.
+    const careful = fakePurchasingDesk();
+    const held = await attempt({
+      turns: one("raise_purchase_order", order),
+      desk: careful,
+      overlays: [limitOverlay(5000)],
+    });
+    expect(lastToolText(held.messages)).toContain(
+      "over the $50.00 a purchase order may reach without a person's approval",
+    );
+    expect(await statusOf(careful, "PO-1005")).toBe("draft");
+
+    // And what the role says about the limit is the figure it enforces.
+    const asked = await attempt({
+      turns: one("read_company", { section: "purchasing" }),
+      desk: careful,
+      overlays: [limitOverlay(5000)],
+    });
+    expect(lastToolText(asked.messages)).toContain(
+      "A purchase order over $50.00 needs a person's approval before it goes out.",
+    );
   });
 
   it("lets an order inside the limit and a named receipt through with no approver", async () => {

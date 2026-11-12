@@ -105,13 +105,11 @@ describe("sales package", () => {
     ).toEqual(["create_quote", "request_quote_approval"]);
   });
 
-  it("quotes under the limit the company records, not a number of its own", () => {
-    // No code in the role reads the record's own quote limit, so the role's type does not carry it;
-    // the record still holds it, and the manifest's default must not drift from it.
-    const recorded = loadFacts<{ approvalLimits: { quoteOverCents: number } }>(COMPANY_FACTS_URL)
-      .approvalLimits.quoteOverCents;
-    expect(roleManifest.limits?.quote_limit_cents?.default).toBe(recorded);
-    expect(recorded).toBe(500000);
+  it("keeps the quote limit in its manifest, the one place a business changes it", () => {
+    // The company record holds no limit (RASF-3575): a second copy there could drift from the one
+    // the desk enforces, which is this manifest's, with the business's overlay on top.
+    expect(roleManifest.limits?.quote_limit_cents?.default).toBe(500000);
+    expect(loadFacts<object>(COMPANY_FACTS_URL)).not.toHaveProperty("approvalLimits");
   });
 
   it("counts a recurring month with the weeks the company records, and has a per-visit item to count", () => {

@@ -60,6 +60,12 @@
     }
   ],
   "connectors": [],
+  "limits": {
+    "purchase_order_limit_cents": {
+      "description": "The amount, in integer cents, above which a purchase order, or one supplier's orders in a day together, waits for a person's approval before it goes out",
+      "default": 150000
+    }
+  },
   "approvals": [
     {
       "id": "po_over_limit",

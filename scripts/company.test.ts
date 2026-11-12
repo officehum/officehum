@@ -127,12 +127,12 @@ describe("the generated company copies", () => {
     const facts = JSON.parse(renderFacts(readSource(root))) as {
       priceBook: { id: string; unitPriceCents: number }[];
       people: { id: string }[];
-      approvalLimits: { quoteOverCents: number };
     };
     expect(facts.priceBook.length).toBeGreaterThan(10);
     expect(facts.priceBook.every((item) => Number.isSafeInteger(item.unitPriceCents))).toBe(true);
     expect(facts.people.map((person) => person.id)).toContain("marcus-oyelaran");
-    expect(facts.approvalLimits.quoteOverCents).toBe(500000);
+    // A limit is a role's manifest setting (RASF-3575); the company record holds none.
+    expect(facts).not.toHaveProperty("approvalLimits");
   });
 });
 
@@ -265,7 +265,6 @@ describe("the company package's own consistency", () => {
       expect(facts.staffPolicies.overtimeNeedsApproval).toBe(true);
       expect(facts.marketing.approvedClaims.length).toBeGreaterThan(3);
       expect(facts.marketing.approverId).toBe("dana-whitfield");
-      expect(facts.approvalLimits.purchaseOrderOverCents).toBe(150000);
       expect(facts.ticketRoutes).toEqual([
         expect.objectContaining({ type: "finance.review", toPersonId: "eileen-hart" }),
       ]);
@@ -522,12 +521,18 @@ describe("the company package's own consistency", () => {
       ).toContain("quoting.weeksPerMonth");
     });
 
-    it("refuses a purchase-order limit the policies do not state", () => {
-      const issues = issuesAfter((c) => {
-        c.approvalLimits.purchaseOrderOverCents = 175000;
-      });
-      expect(issues).toContain("policies.md");
-      expect(issues).toContain("$1,500.00");
+    it("refuses a limit's amount written into the prose, where no overlay could change it", () => {
+      // The limits are the roles' manifest settings, so the record holds no such figure and the
+      // handbook must not state one: a business that changed its limit would leave the prose wrong.
+      for (const [file, line] of [
+        ["policies.md", "A purchase order above $1,500.00 needs a person's approval."],
+        ["pricing.md", "A quote above $5,000.00 needs a person's approval."],
+      ] as const) {
+        const directory = withFile(file, (body) => `${body}\n- ${line}\n`);
+        const issues = companyIssues(readSource(directory)).join("\n");
+        expect(issues).toContain(file);
+        expect(issues).toContain("company.json does not record");
+      }
     });
   });
 

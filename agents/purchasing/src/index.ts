@@ -30,7 +30,6 @@ import { purchasingTools } from "./tools.js";
 
 export {
   type Address,
-  type ApprovalLimits,
   COMPANY_FACTS_URL,
   type CompanyFacts,
   type EscalationRule,
@@ -102,7 +101,7 @@ export interface PurchasingOptions {
    * passes its own, and nothing in `company/default/` is involved.
    */
   readonly company?: CompanyFacts;
-  /** Overlay directories, lowest first: the business's AGENTS.md, skills and settings. */
+  /** Overlay directories, lowest first: the business's AGENTS.md, skills, settings and limits. */
   readonly overlays?: readonly string[];
   /** Decides every gated action. Omitted: an order over the limit and a new supplier are both blocked. */
   readonly approve?: Approver;
@@ -127,15 +126,21 @@ export default function purchasing(options: PurchasingOptions = {}): DefinedRole
   // passes a clock; otherwise the role runs on the system clock. The prompt reads the same clock.
   const now = options.now ?? (demoDesk ? () => new Date(DEMO_NOW) : () => new Date());
   const company = options.company ?? loadCompanyFacts();
-  // The demonstration desk prices and limits from the company's own catalogue and limit, so a first
-  // run and a real one refuse the same order.
+  // The demonstration desk prices from the company's own catalogue, so a first run and a real one
+  // price the same order.
   const desk = demoDesk ? fakePurchasingDesk({ company, now }) : options.desk;
+  // The spending limit is read from the role's own resolved limits at every call, so an overlay's
+  // value is what an order is judged against and a reload needs no rebuild. Before the role exists
+  // no limit resolves, and the desk then holds every order for a person rather than guessing one.
+  let role: DefinedRole | undefined;
+  const limits = () => role?.current().limits ?? {};
   const tools = purchasingTools({
     desk,
     company,
+    limits,
     ...(options.sender === undefined ? {} : { sender: options.sender }),
   });
-  return defineRole({
+  role = defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
     now,
@@ -165,4 +170,5 @@ export default function purchasing(options: PurchasingOptions = {}): DefinedRole
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });
+  return role;
 }

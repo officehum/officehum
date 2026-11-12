@@ -62,7 +62,9 @@ decides, the answer is that person, not a judgement call.
 - Rosa Martinez chooses suppliers. An order goes only to an approved supplier; one that is on file but
   not approved is never used without her word.
 - Stock is reordered when it falls to its reorder point, in the reorder quantity in the company facts.
-- A purchase order above $1,500.00 needs a person's approval before it goes out. Rosa gives it.
+- A purchase order above the purchase order limit needs a person's approval before it goes out. Rosa
+  gives it. The limit is the business's own setting, not a figure in this handbook: the purchasing
+  desk applies it and states it.
 - A substitution for an item we normally stock is Rosa's decision, not the buyer's.
 
 ## Staff, time off and overtime

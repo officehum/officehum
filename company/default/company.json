@@ -534,10 +534,6 @@
       "meaning": "Master services agreement, the contract a recurring client signs. Dana owns the wording."
     }
   ],
-  "approvalLimits": {
-    "quoteOverCents": 500000,
-    "purchaseOrderOverCents": 150000
-  },
   "suppliers": [
     {
       "id": "sup-pacific-janitorial",

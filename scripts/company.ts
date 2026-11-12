@@ -373,7 +373,7 @@ const OVERTIME_NEEDS_NO_APPROVAL =
 
 /**
  * The sections the departmental agents read: suppliers and the supply catalog, crews, staff policies,
- * the approved marketing claims and the purchase-order limit. Each is held to the same promises as
+ * and the approved marketing claims. Each is held to the same promises as
  * the rest: ids are unique, every reference is to something that exists, every crew lead and contact
  * is a person, the crews account for the headcount, and the prose says what the record says.
  */
@@ -597,13 +597,6 @@ function departmentIssues(
         }
       }
     }
-  }
-
-  if (!whole(asRecord(company.approvalLimits)?.purchaseOrderOverCents, 1)) {
-    add(
-      "company.json",
-      "approvalLimits.purchaseOrderOverCents must be a whole, positive number of cents",
-    );
   }
 }
 

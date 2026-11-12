@@ -75,7 +75,18 @@ passed on to anyone.
 **Every amount comes from the desk.** `raise_purchase_order` takes a supplier, item ids and
 quantities; there is no price or total argument. The desk prices each line from the supplier's price
 list (the catalogue's unit cost for the usual supplier), works out the total, and compares it with the
-company's `approvalLimits.purchaseOrderOverCents`. There is no money constant in the code.
+limit the role hands it on that call. There is no money constant in the code.
+
+**The limit is the role's own setting.** It is `officehum.json`'s `purchase_order_limit_cents`, in
+cents (`150000` is $1,500.00), and the only place it lives: the company record holds no limits. A
+business changes it in an overlay's `settings.json`, with no edit to this package and no restart:
+
+```json
+{ "limits": { "purchase_order_limit_cents": 250000 } }
+```
+
+The role reads the resolved limit at every call, so the figure `read_company` states and the figure
+the desk enforces are the same number. With no limit resolved, every order waits for a person.
 
 **Over the limit.** The desk refuses the order, saves it as a draft with its own purchase order
 number, and the refusal names `request_po_approval` with that draft's id and the person who decides.
@@ -90,8 +101,7 @@ refused.
 **Only orders someone asked for, or a capped restock.** `raise_purchase_order` takes a `reason`.
 `reorder_point` is the system's own trigger and needs no sender: the stock level is what asks. It is
 accepted only for items the desk shows at or below their reorder point (on hand plus on order), and
-only for up to each item's `reorderQuantity` in the company record's supply catalogue, the same
-record the spending limit comes from; a line for more is refused as `unrequested`, because more than
+only for up to each item's `reorderQuantity` in the company record's supply catalogue; a line for more is refused as `unrequested`, because more than
 the company's own reorder quantity is something a person has to ask for. It is held to the spending
 limit and the split-order rule like every other order.
 `request` is accepted only when the host's verified sender is a colleague, a person on the company
