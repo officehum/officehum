@@ -20,7 +20,14 @@ import { createHash } from "node:crypto";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { Customer, Invoice, InvoiceDraft, Money, QuickBooks } from "@officehum/quickbooks";
-import { type ApprovalCondition, textResult } from "@officehum/sdk";
+import {
+  type ApprovalCondition,
+  addDays,
+  daysBetween,
+  isoDate,
+  localDate,
+  textResult,
+} from "@officehum/sdk";
 import {
   CollectionsDoc,
   disputed,
@@ -189,14 +196,20 @@ export function collectionsCadence(
 }
 
 /**
- * Whole days from a `YYYY-MM-DD` due date to `now`'s day, in UTC; undefined when the date is not one.
- * `now` is the host's clock, never the system's by default.
+ * Whole days from a `YYYY-MM-DD` due date to `today`, the business's own day; negative before the due
+ * date, and undefined when either is not a date.
  */
-export function daysOverdue(dueOn: string, now: Date): number | undefined {
-  const due = Date.parse(`${dueOn}T00:00:00.000Z`);
-  const today = Date.parse(`${now.toISOString().slice(0, 10)}T00:00:00.000Z`);
-  if (!Number.isFinite(due) || !Number.isFinite(today)) return undefined;
-  return Math.round((today - due) / 86_400_000);
+export function daysOverdue(dueOn: string, today: string): number | undefined {
+  const days = daysBetween(dueOn, today);
+  return Number.isNaN(days) ? undefined : days;
+}
+
+/** Where an invoice stands against its due date, in words: never a negative number of days overdue. */
+function ageText(days: number): string {
+  const count = (value: number): string => `${value} ${value === 1 ? "day" : "days"}`;
+  if (days < 0) return `is due in ${count(-days)}`;
+  if (days === 0) return "is due today";
+  return `is ${count(days)} overdue`;
 }
 
 /** The stage an invoice's age calls for: the latest stage whose day has arrived, else none yet. */
@@ -268,11 +281,6 @@ function alreadySentResult(
   };
 }
 
-/** `YYYY-MM-DD`, `days` from `now` in UTC: the only date form QuickBooks accepts. */
-function dueDate(days: number, now: Date): string {
-  return new Date(now.getTime() + days * 86_400_000).toISOString().slice(0, 10);
-}
-
 /**
  * The customer a tool was handed a reference to: its QuickBooks id, or its exact display name. A name
  * is accepted only when it matches exactly one customer, so a tool never guesses between two
@@ -337,13 +345,20 @@ const lineParameters = Type.Object(
  * `limits` is read at every call, so an overlay's change to the collections cadence takes effect on
  * reload, like the prompt sections. A host that passes none resolves no cadence, and a reminder then
  * refuses rather than guessing a stage. `now` dates new invoices, counts days overdue and stamps
- * reminders; it is required so no caller falls back to the system clock unnoticed.
+ * reminders; it is required so no caller falls back to the system clock unnoticed. `timeZone` is the
+ * company's IANA zone (`hours.timezone`): the day a due date and the days overdue are counted from is
+ * the business's own. Omitted, the day is UTC's.
  */
 export function bookkeeperTools(
   quickbooks: QuickBooks | undefined,
   now: () => Date,
   limits: () => Readonly<Record<string, number>> = () => ({}),
+  timeZone?: string,
 ): BookkeeperToolset {
+  /** Today as `YYYY-MM-DD`, the only date form QuickBooks accepts. */
+  const today = (): string =>
+    timeZone === undefined ? isoDate(now()) : localDate(now(), timeZone);
+
   const findCustomer = defineTool({
     name: "find_customer",
     description:
@@ -414,7 +429,7 @@ export function bookkeeperTools(
    */
   const lateness = (invoice: Invoice): string => {
     if (invoice.status !== "overdue") return "";
-    const days = daysOverdue(invoice.dueOn, now());
+    const days = daysOverdue(invoice.dueOn, today());
     if (days === undefined) return "";
     const late = ` — ${days} ${days === 1 ? "day" : "days"} overdue`;
     const cadence = collectionsCadence(limits());
@@ -579,7 +594,7 @@ export function bookkeeperTools(
           unitPrice: { cents: line.unitPriceCents, currency },
           ...(line.itemId === undefined ? {} : { itemId: line.itemId }),
         })),
-        ...(args.dueInDays === undefined ? {} : { dueOn: dueDate(args.dueInDays, now()) }),
+        ...(args.dueInDays === undefined ? {} : { dueOn: addDays(today(), args.dueInDays) }),
         ...(args.jobReference === undefined ? {} : { number: args.jobReference }),
       };
       const requestId = writeRequestId(api);
@@ -660,7 +675,7 @@ export function bookkeeperTools(
   const sendReminder = defineTool({
     name: "send_reminder",
     description:
-      "Send a collections reminder for an overdue invoice, in a friendly, firm or final tone. One reminder per invoice per stage, at the stage the business's cadence has reached; a final notice waits for a person.",
+      "Send a collections reminder for an overdue invoice, in a friendly, firm or final tone. One reminder per invoice per stage, and only at the stage the invoice's age has reached in the business's cadence: an earlier or a later stage is refused. A final notice waits for a person.",
     parameters: Type.Object(
       {
         invoice: Type.String({
@@ -745,9 +760,11 @@ export function bookkeeperTools(
         };
       }
       // The cadence is the business's, read resolved from its own limits on every call: the numbers
-      // the skill's reference holds are the defaults, not the law. A stage whose day has not arrived
-      // is refused here rather than sent early, and a cadence that did not resolve sends nothing.
-      const days = daysOverdue(invoice.dueOn, now());
+      // the skill's reference holds are the defaults, not the law. Only the stage the invoice's age
+      // calls for goes out: one whose day has not arrived is refused rather than sent early, one the
+      // invoice has passed is refused rather than sent beside the stage that is due, and a cadence
+      // that did not resolve sends nothing.
+      const days = daysOverdue(invoice.dueOn, today());
       const cadence = collectionsCadence(limits());
       if (days === undefined || cadence === undefined) {
         return {
@@ -758,12 +775,12 @@ export function bookkeeperTools(
           details,
         };
       }
-      const startsAt = stageStartDay(args.tone, cadence);
-      if (days < startsAt) {
-        const due = collectionsStage(days, cadence);
+      const due = collectionsStage(days, cadence);
+      if (due !== args.tone) {
+        const startsAt = stageStartDay(args.tone, cadence);
         return {
           ...textResult(
-            `Invoice ${invoiceLabel(invoice)} is ${days} days overdue, and the business sends a ${args.tone} reminder ${startsAt} days after the due date: ${due === undefined ? "no stage is due yet" : `the ${due} stage is the one due`}. Nothing was sent.`,
+            `Invoice ${invoiceLabel(invoice)} ${ageText(days)}, and the business sends a ${args.tone} reminder ${startsAt} days after the due date: ${due === undefined ? "no stage is due yet" : `the ${due} stage is the one due`}. Nothing was sent.`,
           ),
           isError: true,
           details,

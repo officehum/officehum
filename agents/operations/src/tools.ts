@@ -7,14 +7,33 @@
  * names the approval-gated tool that asks a person. `request_overtime` and
  * `request_contract_reschedule` are those tools; their approvals are `officehum.json`'s, evaluated by
  * the SDK's gate before the tool runs (overtime's only while the company's staff policy requires it,
- * a condition `index.ts` passes), so this file holds no hours limit and no approval rule.
+ * a condition `index.ts` passes), so this file holds no hours limit and no approval rule. It does
+ * hold what the person is shown: `overtimeFacts` and `contractRescheduleFacts` read the crew, the
+ * client, the dates and the hours from the desk before the gate asks anyone.
  *
  * Every hours figure a tool speaks comes back from the desk, and every name from the company record.
  */
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
-import { deskRefusal, refusal, requestId, textResult } from "@officehum/sdk";
+import {
+  APPROVED_FACTS_ARG,
+  type ApprovalFactsReader,
+  approvedFactsParameter,
+  companyEscalationText,
+  companyGlossaryText,
+  companyHoursText,
+  companyPeopleText,
+  companyPoliciesText,
+  companyProfileText,
+  companyToneText,
+  deskRefusal,
+  readCompanyTool,
+  refusal,
+  requestId,
+  requireDesk,
+  textResult,
+} from "@officehum/sdk";
 import { type CompanyFacts, person, personLabel, scheduleOwner } from "./company.js";
 import {
   type Assignment,
@@ -42,6 +61,13 @@ export interface OperationsToolset {
   readonly requestContractReschedule: ToolRegistration;
   readonly recordCallout: ToolRegistration;
   readonly readCompany: ToolRegistration;
+  /**
+   * The `overtime` approval's facts: the crew by name, the job's client, date and hours, and the
+   * crew's week, read from the desk before anyone is asked.
+   */
+  readonly overtimeFacts: ApprovalFactsReader;
+  /** The `contract_reschedule` approval's facts: the visit's client, contract, crew and both dates. */
+  readonly contractRescheduleFacts: ApprovalFactsReader;
 }
 
 /** The company section `read_company` can answer for. */
@@ -56,29 +82,7 @@ export type CompanySection =
   | "escalation"
   | "glossary";
 
-const SECTIONS: readonly CompanySection[] = [
-  "profile",
-  "hours",
-  "people",
-  "services",
-  "crews",
-  "policies",
-  "tone",
-  "escalation",
-  "glossary",
-];
-
 const DATE = Type.String({ description: "A date as YYYY-MM-DD, e.g. 2026-11-12" });
-
-/** The desk, or a refusal: a host with no desk gets no read and no write. */
-function requireDesk(dependencies: OperationsToolDependencies): OperationsDesk {
-  if (dependencies.desk === undefined) {
-    throw new Error(
-      "No operations desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
-    );
-  }
-  return dependencies.desk;
-}
 
 /** Hours as a person reads them. */
 function hours(value: number): string {
@@ -125,83 +129,45 @@ function moveText(move: Reschedule): string {
   return `Moved ${move.jobId} (${move.client}${contract}) from ${move.fromDate} to ${move.toDate}.${reason}`;
 }
 
-/** The company record as one section reads: prose the model can answer with. */
-function companySection(company: CompanyFacts, section: CompanySection): string {
-  const named = (id: string) => person(company, id)?.name ?? id;
-  switch (section) {
-    case "profile": {
-      const { profile } = company;
-      return [
-        `${profile.legalName} — trading as ${profile.tradingName}. ${profile.tagline}`,
-        `${profile.address.street}, ${profile.address.city}, ${profile.address.region} ${profile.address.postalCode}. Phone ${profile.phone}. Email ${profile.email}.`,
-        `Service area: ${profile.serviceArea}`,
-        `Clients: ${profile.clients}`,
-      ].join("\n");
-    }
-    case "hours": {
-      const { hours: open } = company;
-      return [
-        `Office: ${open.office} (${open.timezone}).`,
-        `Crews: ${open.crews}.`,
-        `Emergency line: ${open.emergencyLine}.`,
-        `Closed: ${open.closedOn}.`,
-        open.note,
-      ].join("\n");
-    }
-    case "people":
-      return company.people
-        .map(
-          (worker) =>
-            `${worker.name} — ${worker.title} — ${worker.email} — decides: ${worker.decides.join("; ")}`,
-        )
-        .join("\n");
-    case "services":
-      return company.services
-        .map(
-          (service) =>
-            `${service.name} — ${service.summary} Lead time about ${service.leadTimeDays} days.`,
-        )
-        .join("\n");
-    case "crews": {
-      const staff = company.staffPolicies;
-      return [
-        ...company.crews.map(
-          (crew) =>
-            `${crew.id} — ${crew.name} — ${crew.members} people — ${crew.weeklyHoursCap} hours a week before overtime — led by ${crew.leadPersonId === null ? "a cleaner from the crew" : named(crew.leadPersonId)}`,
-        ),
-        staff.overtimeNeedsApproval
-          ? "Overtime needs a person's approval before it is worked."
-          : "Overtime does not need a person's approval before it is worked.",
-        `Time off is requested at least ${staff.timeOffNoticeDays} days ahead.`,
-        `Questions about pay: ${named(staff.payQuestionsTo)}. Discipline: ${named(staff.disciplineTo)}.`,
-      ].join("\n");
-    }
-    case "policies":
-      return [
-        "Safety:",
-        ...company.policies.safety.map((rule) => `- ${rule}`),
-        "Never promised:",
-        ...company.policies.commitments.map((rule) => `- ${rule}`),
-      ].join("\n");
-    case "tone":
-      return [
-        company.tone.summary,
-        "Always:",
-        ...company.tone.always.map((rule) => `- ${rule}`),
-        "Never:",
-        ...company.tone.never.map((rule) => `- ${rule}`),
-      ].join("\n");
-    case "escalation":
-      return company.escalation
-        .map((rule) => {
-          const owner = person(company, rule.toPersonId);
-          return `${rule.topic} — ${owner?.name ?? rule.toPersonId}${owner === undefined ? "" : `, ${owner.title}`} — ${rule.when}`;
-        })
-        .join("\n");
-    case "glossary":
-      return company.glossary.map((entry) => `${entry.term}: ${entry.meaning}`).join("\n");
-  }
+/** The services the company sells, with their lead times. */
+function servicesText(company: CompanyFacts): string {
+  return company.services
+    .map(
+      (service) =>
+        `${service.name} — ${service.summary} Lead time about ${service.leadTimeDays} days.`,
+    )
+    .join("\n");
 }
+
+/** The crews with their weekly hours caps, and the staff policies with who answers each. */
+function crewsText(company: CompanyFacts): string {
+  const named = (id: string) => person(company, id)?.name ?? id;
+  const staff = company.staffPolicies;
+  return [
+    ...company.crews.map(
+      (crew) =>
+        `${crew.id} — ${crew.name} — ${crew.members} people — ${crew.weeklyHoursCap} hours a week before overtime — led by ${crew.leadPersonId === null ? "a cleaner from the crew" : named(crew.leadPersonId)}`,
+    ),
+    staff.overtimeNeedsApproval
+      ? "Overtime needs a person's approval before it is worked."
+      : "Overtime does not need a person's approval before it is worked.",
+    `Time off is requested at least ${staff.timeOffNoticeDays} days ahead.`,
+    `Questions about pay: ${named(staff.payQuestionsTo)}. Discipline: ${named(staff.disciplineTo)}.`,
+  ].join("\n");
+}
+
+/** Each section `read_company` answers for and how it reads, in the order the model is offered them. */
+const COMPANY_SECTIONS: Readonly<Record<CompanySection, (company: CompanyFacts) => string>> = {
+  profile: companyProfileText,
+  hours: companyHoursText,
+  people: (company) => companyPeopleText(company, "email"),
+  services: servicesText,
+  crews: crewsText,
+  policies: companyPoliciesText,
+  tone: companyToneText,
+  escalation: companyEscalationText,
+  glossary: companyGlossaryText,
+};
 
 /**
  * Builds the eight tools over one desk and one company. Every one is plain Pi Durable: they install
@@ -240,6 +206,94 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     });
   };
 
+  /**
+   * The job and crew a gated call names, as the desk holds them. A reader that cannot find one
+   * throws, so the gate asks nobody about something that is not on the schedule.
+   */
+  const jobFor = async (desk: OperationsDesk, jobId: string): Promise<Job> => {
+    const wanted = jobId.trim();
+    const job = (await desk.listJobs({ client: wanted })).find(
+      (candidate) => candidate.id === wanted,
+    );
+    if (job === undefined) {
+      throw new Error(
+        `No job has the id ${JSON.stringify(jobId)}. Nothing was put to a person. Next: find it with list_jobs, by date, crew or client.`,
+      );
+    }
+    return job;
+  };
+
+  const crewFor = async (desk: OperationsDesk, crewId: string, date: string): Promise<CrewWeek> => {
+    const crew = (await desk.listCrews({ weekOf: date })).find(
+      (candidate) => candidate.crewId === crewId.trim(),
+    );
+    if (crew === undefined) {
+      throw new Error(
+        `No crew has the id ${JSON.stringify(crewId)}. Nothing was put to a person. Next: find it with list_crews.`,
+      );
+    }
+    return crew;
+  };
+
+  const overtimeFacts: ApprovalFactsReader = async (args) => {
+    const desk = requireDesk(dependencies.desk, "operations");
+    const job = await jobFor(desk, String(args.jobId));
+    const crew = await crewFor(desk, String(args.crewId), job.date);
+    const overtimeHours = Number(args.hours);
+    const already =
+      crew.overtimeHours === 0
+        ? ""
+        : `, with ${hours(crew.overtimeHours)} ${overtimeLabel(approvalRequired)} already`;
+    return {
+      summary: `Approve ${hours(overtimeHours)} hours of overtime for ${crew.name} so it can take ${job.id}: ${job.client}, ${job.service}, on ${job.date} (${hours(job.crewHours)} crew-hours). In the week of ${crew.weekStart} the crew has ${hours(crew.bookedHours)} of its ${hours(crew.weeklyHoursCap)} hours booked${already}.`,
+      facts: {
+        crewId: crew.crewId,
+        crewName: crew.name,
+        jobId: job.id,
+        client: job.client,
+        site: job.site,
+        service: job.service,
+        date: job.date,
+        crewHours: job.crewHours,
+        overtimeHours,
+        weekStart: crew.weekStart,
+        bookedHours: crew.bookedHours,
+        weeklyHoursCap: crew.weeklyHoursCap,
+      },
+    };
+  };
+
+  const contractRescheduleFacts: ApprovalFactsReader = async (args) => {
+    const desk = requireDesk(dependencies.desk, "operations");
+    const job = await jobFor(desk, String(args.jobId));
+    if (job.contractId === null) {
+      throw new Error(
+        `${job.id} is a one-off job, not a visit on a recurring contract: move it with reschedule_job. Nothing was put to a person.`,
+      );
+    }
+    const crewName =
+      job.crewId === null ? "no crew yet" : (await crewFor(desk, job.crewId, job.date)).name;
+    const toDate = String(args.newDate).trim();
+    const reason = String(args.reason)
+      .trim()
+      .replace(/[.\s]+$/, "");
+    return {
+      summary: `Move ${job.id} (${job.client}, ${job.service}, contract ${job.contractId}, ${crewName}) from ${job.date} to ${toDate}. The client's reason: ${reason}.`,
+      facts: {
+        jobId: job.id,
+        client: job.client,
+        site: job.site,
+        service: job.service,
+        contractId: job.contractId,
+        crewId: job.crewId,
+        crewName,
+        fromDate: job.date,
+        toDate,
+        reason,
+      },
+    };
+  };
+
   const listJobs = defineTool({
     name: "list_jobs",
     description:
@@ -258,7 +312,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     ),
     replay: "safe",
     execute: async (args) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "operations");
       const jobs = await desk.listJobs({
         ...(args.date === undefined ? {} : { date: args.date }),
         ...(args.crewId === undefined ? {} : { crewId: args.crewId }),
@@ -294,7 +348,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     ),
     replay: "safe",
     execute: async (args) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "operations");
       try {
         const crews = await desk.listCrews(
           args.weekOf === undefined ? {} : { weekOf: args.weekOf },
@@ -335,7 +389,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "operations");
       try {
         const assignment = await desk.assignCrew(
           { jobId: args.jobId, crewId: args.crewId },
@@ -365,12 +419,15 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
           exclusiveMinimum: 0,
           description: "The overtime hours, exactly as assign_crew's refusal stated them",
         }),
+        // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared. The
+        // facts are what the person was shown; the desk works out the overtime itself at the write.
+        [APPROVED_FACTS_ARG]: approvedFactsParameter(),
       },
       { additionalProperties: false },
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "operations");
       try {
         const grant = await desk.requestOvertime(
           { crewId: args.crewId, jobId: args.jobId, hours: args.hours },
@@ -405,7 +462,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "operations");
       try {
         const moved = await desk.rescheduleJob(
           { jobId: args.jobId, newDate: args.newDate },
@@ -427,12 +484,14 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
         jobId: Type.String({ description: "The contract visit's job id from list_jobs" }),
         newDate: DATE,
         reason: Type.String({ description: "Why the client wants the visit moved" }),
+        // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared.
+        [APPROVED_FACTS_ARG]: approvedFactsParameter(),
       },
       { additionalProperties: false },
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "operations");
       try {
         const moved = await desk.requestContractReschedule(
           { jobId: args.jobId, newDate: args.newDate, reason: args.reason },
@@ -461,7 +520,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "operations");
       try {
         const callout = await desk.recordCallout(
           { jobId: args.jobId, reason: args.reason },
@@ -479,24 +538,11 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     },
   });
 
-  const readCompany = defineTool({
-    name: "read_company",
+  const readCompany = readCompanyTool({
+    company,
     description:
       "Read one section of the company record: the profile, the hours, the people and what each decides, the services, the crews with their weekly hours caps and the staff policies, the safety rules and what is never promised, the tone of voice, the escalation path or the glossary.",
-    parameters: Type.Object(
-      {
-        section: Type.Union(
-          SECTIONS.map((section) => Type.Literal(section)),
-          { description: "Which part of the record to read" },
-        ),
-      },
-      { additionalProperties: false },
-    ),
-    replay: "safe",
-    execute: async (args) => {
-      const section = args.section as CompanySection;
-      return { ...textResult(companySection(company, section)), details: { section } };
-    },
+    sections: COMPANY_SECTIONS,
   });
 
   return {
@@ -508,5 +554,7 @@ export function operationsTools(dependencies: OperationsToolDependencies): Opera
     requestContractReschedule,
     recordCallout,
     readCompany,
+    overtimeFacts,
+    contractRescheduleFacts,
   };
 }

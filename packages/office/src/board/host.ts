@@ -32,11 +32,11 @@ export {
   openApprovalInbox,
 } from "../approvals/inbox.js";
 /**
- * Money, written the way the board writes it. A host that renders a card prints `$0.01`, and it has to
- * be the same string the block reason used — a second formatter would make the card and the refusal
- * disagree about the same integer.
+ * Money, written the way the board writes it. The board counts micro-dollars; a host that renders a
+ * card prints `$0.01`, and it has to be the same string the block reason used — a second formatter
+ * would make the card and the refusal disagree about the same integer.
  */
-export { formatCents } from "../spend/prices.js";
+export { formatMicros } from "../spend/prices.js";
 export {
   type AgentSpend,
   type Approval,

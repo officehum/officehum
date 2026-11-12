@@ -14,11 +14,13 @@ import {
   createRegistry,
   type Extension,
   Harness,
+  type JsonObject,
   MemoryStorage,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import {
   type AgentManifest,
+  type ApprovalRequest,
   type Approver,
   checkAgent,
   formatReport,
@@ -134,10 +136,13 @@ async function attempt(options: {
 }
 
 /** One tool call and a closing line, so a gate test is about the gate and not about the script. */
-const one = (name: string, args: Record<string, unknown>): readonly ScriptedTurn[] => [
+const one = (name: string, args: JsonObject): readonly ScriptedTurn[] => [
   { toolCalls: [{ name, args }] },
   { text: "Done." },
 ];
+
+/** The Central crew's name, as the company record gives it. */
+const CENTRAL = loadCompanyFacts().crews.find((crew) => crew.id === "cleaning-central")?.name;
 
 const OVERTIME = { crewId: "cleaning-central", jobId: "J-2101", hours: 7 };
 const CONTRACT_MOVE = { jobId: "J-1034", newDate: "2026-11-14", reason: "New carpet on Thursday" };
@@ -291,6 +296,61 @@ describe("operations approval gates", () => {
     expect(await dateOf(approved, "J-1034")).toBe("2026-11-14");
   });
 
+  it("shows the approver the crew, the client, the dates and the hours, read from the desk", async () => {
+    const seen: ApprovalRequest[] = [];
+    const approver: Approver = async (request) => {
+      seen.push(request);
+      return { approved: true, by: "eval" };
+    };
+    const desk = fakeOperationsDesk();
+    const overtime = await attempt({ turns: one("request_overtime", OVERTIME), desk, approver });
+    expect(seen[0]?.facts?.summary).toBe(
+      `Approve 7 hours of overtime for ${CENTRAL} so it can take J-2101: Riverside Dental, Deep clean and floor care, on 2026-11-12 (12 crew-hours). In the week of 2026-11-09 the crew has 135 of its 140 hours booked.`,
+    );
+    expect(seen[0]?.facts?.facts).toMatchObject({
+      crewName: CENTRAL,
+      client: "Riverside Dental",
+      date: "2026-11-12",
+      overtimeHours: 7,
+    });
+    // The approved call still runs: the tool accepts the facts the gate hands back.
+    expect(lastToolText(overtime.messages)).toContain("Overtime OT-1 approved and recorded");
+    expect(await crewOf(desk, "J-2101")).toBe("cleaning-central");
+
+    const move = await attempt({
+      turns: one("request_contract_reschedule", CONTRACT_MOVE),
+      desk,
+      approver,
+    });
+    expect(seen[1]?.facts?.summary).toBe(
+      `Move J-1034 (Sellwood Law Partners, Recurring janitorial, contract CT-303, ${CENTRAL}) from 2026-11-12 to 2026-11-14. The client's reason: New carpet on Thursday.`,
+    );
+    expect(lastToolText(move.messages)).toContain("Approved and done. Moved J-1034");
+    expect(await dateOf(desk, "J-1034")).toBe("2026-11-14");
+  });
+
+  it("asks nobody about a job that is not there, or a move that is not a contract visit's", async () => {
+    const decisions: string[] = [];
+    const desk = fakeOperationsDesk();
+    const missing = await attempt({
+      turns: one("request_overtime", { ...OVERTIME, jobId: "J-9999" }),
+      desk,
+      approver: recording(decisions, true),
+    });
+    expect(lastToolText(missing.messages)).toContain(
+      'No job has the id "J-9999". Nothing was put to a person.',
+    );
+    const oneOff = await attempt({
+      turns: one("request_contract_reschedule", { ...CONTRACT_MOVE, jobId: "J-2103" }),
+      desk,
+      approver: recording(decisions, true),
+    });
+    expect(lastToolText(oneOff.messages)).toContain("J-2103 is a one-off job");
+    expect(lastToolText(oneOff.messages)).toContain("Nothing was put to a person.");
+    expect(decisions).toEqual([]);
+    expect(await dateOf(desk, "J-2103")).toBe("2026-11-13");
+  });
+
   it("lets an assignment inside the cap, a one-off move and a call-out record through with no approver", async () => {
     const desk = fakeOperationsDesk();
     const assigned = await attempt({
@@ -350,7 +410,7 @@ describe("operations brief contract", () => {
     const overtime = byId("overtime-waits-for-a-person");
     expect(overtime?.severity).toBe("critical");
     expect(overtime?.approvals).toEqual({ overtime: "decline" });
-    expect(overtime?.stubs.assign_crew?.isError).toBe(true);
+    expect(overtime?.stubs.assign_crew).toMatchObject({ isError: true });
     expect(overtime?.expect.calls?.map((call) => call.tool)).toEqual([
       "assign_crew",
       "request_overtime",
@@ -470,6 +530,14 @@ describe("operations clock", () => {
     expect(await todayOf(role)).toMatch(/^Today is 2027-02-01 \(Monday\)\./);
     const refused = await call(role, "reschedule_job", { jobId: "J-2103", newDate: "2027-01-29" });
     expect(refused.text).toContain("2027-01-29 has already passed (today is 2027-02-01)");
+  });
+
+  it("today is the company's day: after 16:00 Pacific it is still the Pacific date", async () => {
+    // 17:30 on Monday 9 November in Portland; Tuesday already in UTC.
+    const role = operations({ demo: true, now: () => new Date("2026-11-10T01:30:00.000Z") });
+    expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
+    const refused = await call(role, "reschedule_job", { jobId: "J-2103", newDate: "2026-11-06" });
+    expect(refused.text).toContain("2026-11-06 has already passed (today is 2026-11-09)");
   });
 
   it("the demo desk keeps the demo date without now", async () => {

@@ -18,7 +18,7 @@
 
 import { fileURLToPath } from "node:url";
 import type { QuickBooks } from "@officehum/quickbooks";
-import { type Approver, type DefinedRole, defineRole } from "@officehum/sdk";
+import { type Approver, type DefinedRole, defineRole, type SenderResolver } from "@officehum/sdk";
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
 import { type AccountingDesk, DEMO_NOW, fakeAccountingDesk } from "./desk.js";
@@ -142,6 +142,12 @@ export interface BookkeeperOptions {
    * on the demonstration desk with no QuickBooks connection, the system clock otherwise.
    */
   readonly now?: () => Date;
+  /**
+   * Who each call's work came from, as the host verified it. Whoever asked for a supplier's bill to
+   * be recorded is the person on the company record it names. Omitted: every sender is unknown, so
+   * no bill is recorded.
+   */
+  readonly sender?: SenderResolver;
 }
 
 export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
@@ -160,19 +166,23 @@ export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
   // reminder then refuses rather than guessing a stage.
   let role: DefinedRole | undefined;
   const limits = () => role?.current().limits ?? {};
-  const tools = bookkeeperTools(options.quickbooks, now, limits);
   const company = options.company ?? loadCompanyFacts();
+  // "Today" is the company's own day, not UTC's: the prompt, the desk and the tools count from it.
+  const timeZone = company.hours.timezone;
+  const tools = bookkeeperTools(options.quickbooks, now, limits, timeZone);
   // The demonstration desk prices bills from the company's own catalogue, so a first run and a real
   // one refuse the same supplier. The major-item limit is read live, like the collections cadence.
   const payables = payablesTools({
     desk: demoDesk ? fakeAccountingDesk({ company, now }) : options.desk,
     company,
     limits,
+    ...(options.sender === undefined ? {} : { sender: options.sender }),
   });
   const created = defineRole({
     packageDir: fileURLToPath(new URL("..", import.meta.url)),
     manifest,
     now,
+    timeZone,
     tools: [
       tools.findCustomer,
       tools.listInvoices,

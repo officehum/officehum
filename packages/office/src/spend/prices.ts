@@ -1,5 +1,5 @@
 /**
- * The token → cents price table (RASF-3141).
+ * The token → dollars price table (RASF-3141).
  *
  * A budget in dollars needs a rate, and the only honest rate is a number someone wrote down. Pi's
  * provider catalog reports a cost per response, but it is the *provider's* figure, it is a float in
@@ -8,14 +8,17 @@
  * tokens, per `provider/modelId`, checked in or supplied by the office's operator, and nothing is
  * looked up at charge time.
  *
- * The arithmetic is deterministic on purpose. Each component is rounded to whole cents once
- * (`Math.round` over an exact integer product) and the components are summed; the same tokens and the
- * same model therefore always produce the same number of cents, which is what lets a test assert an
- * exact figure and a person reconcile a bill.
+ * Rates are written in cents; spend is charged in micro-dollars (millionths of a dollar), because a
+ * single turn usually costs less than a cent and a ledger in whole cents recorded it as nothing.
  *
- * A model the table does not price charges `fallback` — zero cents by default. That is a deliberate,
- * stated limit rather than a guess: tokens are always counted (they cannot lie), cents are only as good
- * as the operator's table, and an office that wants a dollar ceiling prices the models it runs.
+ * The arithmetic is deterministic on purpose. Each component is rounded to whole micro-dollars once
+ * (`Math.round` over an exact integer product) and the components are summed; the same tokens and the
+ * same model therefore always produce the same figure, which is what lets a test assert an exact
+ * number and a person reconcile a bill.
+ *
+ * A model the table does not price charges `fallback` — nothing by default. That is a deliberate,
+ * stated limit rather than a guess: tokens are always counted (they cannot lie), dollars are only as
+ * good as the operator's table, and an office that wants a dollar ceiling prices the models it runs.
  */
 import type { Usage } from "@earendil-works/pi-ai";
 
@@ -75,14 +78,6 @@ export function tokensOf(usage: Usage): number {
   );
 }
 
-/** One component's cents: an exact integer product, rounded once, never negative. */
-function componentCents(tokens: number, centsPerMillion: number): number {
-  if (!Number.isFinite(tokens) || !Number.isFinite(centsPerMillion)) return 0;
-  const product = Math.trunc(tokens) * centsPerMillion;
-  if (!Number.isFinite(product)) return 0;
-  return Math.max(0, Math.round(product / 1_000_000));
-}
-
 /** The rate for a model: its own row, or the table's fallback. Never a live lookup. */
 export function priceFor(
   table: PriceTable,
@@ -91,28 +86,45 @@ export function priceFor(
   return table.prices[priceKey(model)] ?? table.fallback;
 }
 
+/** Micro-dollars in one cent: the factor between the ledger's unit and the unit prices are written in. */
+export const MICROS_PER_CENT = 10_000;
+
+/** One component's micro-dollars: an exact integer product, rounded once, never negative. */
+function componentMicros(tokens: number, centsPerMillion: number): number {
+  if (!Number.isFinite(tokens) || !Number.isFinite(centsPerMillion)) return 0;
+  const product = Math.trunc(tokens) * centsPerMillion;
+  if (!Number.isFinite(product)) return 0;
+  // Cents per million tokens, times 10,000 micro-dollars per cent, over a million: divide by 100.
+  return Math.max(0, Math.round(product / (1_000_000 / MICROS_PER_CENT)));
+}
+
 /**
- * What one response cost, in whole cents.
+ * What one response cost, in whole micro-dollars (millionths of a dollar): the ledger's unit.
+ *
+ * Whole cents were too coarse to charge by: at the paper model's rate a turn under about 33,000 input
+ * tokens rounded to zero cents, so a ticket could run hundreds of turns and a dollar ceiling never
+ * moved. A micro-dollar is fine enough that only a turn of a few tokens rounds away, and it is still
+ * an integer, so the same tokens always make the same figure.
  *
  * Rounded per component and summed, in that order, because the order is part of the answer: rounding a
  * total gives a different figure from summing rounded parts, and only one of them can be reproduced by
  * hand from a token count.
  */
-export function centsFor(
+export function microsFor(
   table: PriceTable,
   model: { readonly provider: string; readonly modelId: string },
   usage: Usage,
 ): number {
   const price = priceFor(table, model);
   return (
-    componentCents(usage.input, price.input) +
-    componentCents(usage.output, price.output) +
-    componentCents(usage.cacheRead, price.cacheRead) +
-    componentCents(usage.cacheWrite, price.cacheWrite)
+    componentMicros(usage.input, price.input) +
+    componentMicros(usage.output, price.output) +
+    componentMicros(usage.cacheRead, price.cacheRead) +
+    componentMicros(usage.cacheWrite, price.cacheWrite)
   );
 }
 
-/** Cents as a person writes money: `$0.12`, `$1.00`, `$0.00`. */
-export function formatCents(cents: number): string {
-  return `$${(Math.max(0, cents) / 100).toFixed(2)}`;
+/** Micro-dollars as a person writes money, rounded to the cent only here, at the edge. */
+export function formatMicros(micros: number): string {
+  return `$${(Math.max(0, micros) / (100 * MICROS_PER_CENT)).toFixed(2)}`;
 }

@@ -126,6 +126,9 @@ describe("board migrations", () => {
       // Added by migration 4, so they land at the end: `ALTER TABLE ADD COLUMN` appends.
       "used_calls",
       "max_calls",
+      // Added by migration 9: spend in micro-dollars. The cents columns stay, frozen.
+      "max_usd_micros",
+      "used_usd_micros",
     ]);
     expect(columns(database, "spend_ledger")).toEqual([
       "call_id",
@@ -137,6 +140,8 @@ describe("board migrations", () => {
       "tokens",
       "usd_cents",
       "at",
+      // Added by migration 9.
+      "usd_micros",
     ]);
     expect(columns(database, "ticket_conversations")).toEqual([
       "conversation_id",
@@ -411,7 +416,7 @@ describe("board migrations", () => {
       // The old spend is intact and the new counter starts at zero: nothing was re-derived or guessed.
       expect(board.budget("t1")).toMatchObject({
         usedTokens: 400,
-        usedUsdCents: 5,
+        usedUsdMicros: 50_000,
         usedCalls: 0,
         maxCalls: null,
         remainingCalls: null,
@@ -528,6 +533,95 @@ describe("board migrations", () => {
       expect(() => insertV5.run("a3", "cancelled", at)).not.toThrow();
       expect(() => insertV5.run("a4", "expired", at)).not.toThrow();
       expect(() => insertV5.run("a5", "reconsidering", at)).toThrow(/CHECK/);
+    } finally {
+      upgraded.close();
+    }
+  });
+
+  it("upgrades a version-8 database to micro-dollars, keeping every cent (migration 9)", () => {
+    const file = boardFile();
+    const at = "2026-11-01T00:00:00.000Z";
+    const old = new DatabaseSync(file);
+    for (const migration of MIGRATIONS.filter((step) => step.version <= 8)) migration.up(old);
+    old.exec("PRAGMA user_version = 8");
+    const insertTicket = old.prepare(
+      `INSERT INTO tickets (id, type, title, payload, status, assignee, created_by, created_at,
+                            updated_at)
+       VALUES (?, 'invoice.create', 'Invoice', '{}', 'claimed', 'bookkeeper', 'front-desk', ?, ?)`,
+    );
+    const insertBudget = old.prepare(
+      `INSERT INTO budgets (ticket_id, max_tokens, max_usd_cents, used_tokens, used_usd_cents,
+                            hop_count, max_hops, used_calls, max_calls)
+       VALUES (?, NULL, ?, 0, ?, 0, 4, 0, NULL)`,
+    );
+    const insertLedger = old.prepare(
+      `INSERT INTO spend_ledger (call_id, kind, ticket_id, agent, calls, tokens, usd_cents, at)
+       VALUES (?, 'usage', ?, 'bookkeeper', 0, 100, ?, ?)`,
+    );
+    insertTicket.run("capped", at, at);
+    insertTicket.run("uncapped", at, at);
+    insertBudget.run("capped", 500, 7);
+    insertBudget.run("uncapped", null, 3);
+    insertLedger.run("c1", "capped", 4, at);
+    insertLedger.run("c2", "capped", 3, at);
+    insertLedger.run("c3", "uncapped", 3, at);
+    // The dry run: what the old store holds, counted before anything is migrated.
+    const before = {
+      budgets: old.prepare("SELECT COUNT(*) AS n, SUM(used_usd_cents) AS cents FROM budgets").get(),
+      ledger: old.prepare("SELECT COUNT(*) AS n, SUM(usd_cents) AS cents FROM spend_ledger").get(),
+    };
+    expect(before).toEqual({ budgets: { n: 2, cents: 10 }, ledger: { n: 3, cents: 10 } });
+    old.close();
+
+    const board = openBoard(file);
+    try {
+      expect(board.budget("capped")).toMatchObject({
+        maxUsdMicros: 5_000_000,
+        usedUsdMicros: 70_000,
+        remainingUsdMicros: 4_930_000,
+      });
+      expect(board.budget("uncapped")).toMatchObject({
+        maxUsdMicros: null,
+        usedUsdMicros: 30_000,
+        remainingUsdMicros: null,
+      });
+      expect(board.spendByAgent()).toEqual([
+        { day: "2026-11-01", agent: "bookkeeper", calls: 0, tokens: 300, usdMicros: 100_000 },
+      ]);
+    } finally {
+      board.close();
+    }
+
+    const upgraded = new DatabaseSync(file);
+    try {
+      expect(
+        (upgraded.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+      ).toBe(MIGRATIONS.length);
+      // Same rows, the old cents untouched, and the micros exactly cents × 10,000.
+      expect(
+        upgraded
+          .prepare(
+            `SELECT COUNT(*) AS n, SUM(used_usd_cents) AS cents, SUM(used_usd_micros) AS micros,
+                    SUM(max_usd_cents) AS max_cents, SUM(max_usd_micros) AS max_micros
+               FROM budgets`,
+          )
+          .get(),
+      ).toEqual({ n: 2, cents: 10, micros: 100_000, max_cents: 500, max_micros: 5_000_000 });
+      expect(
+        upgraded
+          .prepare(
+            "SELECT COUNT(*) AS n, SUM(usd_cents) AS cents, SUM(usd_micros) AS micros FROM spend_ledger",
+          )
+          .get(),
+      ).toEqual({ n: 3, cents: 10, micros: 100_000 });
+      expect(
+        upgraded
+          .prepare("SELECT COUNT(*) AS n FROM spend_ledger WHERE usd_micros <> usd_cents * 10000")
+          .get(),
+      ).toEqual({ n: 0 });
+      // The backfill lifted the append-only trigger inside its own transaction; it is back.
+      expect(() => upgraded.exec("UPDATE spend_ledger SET usd_micros = 0")).toThrow(/append-only/);
+      expect(() => upgraded.exec("DELETE FROM spend_ledger")).toThrow(/append-only/);
     } finally {
       upgraded.close();
     }

@@ -80,6 +80,11 @@ export interface DefineRoleOptions {
    * them out. Pass the same clock to the role's desk so the two agree. Omitted: no section.
    */
   readonly now?: (() => Date) | undefined;
+  /**
+   * The business's IANA time zone (the company record's `hours.timezone`), which decides the day
+   * the `today` section names. Pass the same one to `localDate` in the role's desk. Omitted: UTC.
+   */
+  readonly timeZone?: string | undefined;
 }
 
 /** A role bundle that can re-read its files when an overlay changes. */
@@ -194,7 +199,7 @@ export function defineRole(options: DefineRoleOptions): DefinedRole {
       section("skills", () => skillIndex(current)),
       section("append_system", () => current.appendSystem?.text),
       // Last, so the stable sections above stay a cacheable prefix when the date changes.
-      ...(options.now === undefined ? [] : [todaySection(options.now)]),
+      ...(options.now === undefined ? [] : [todaySection(options.now, options.timeZone)]),
     ],
     tools: [...roleTools, readSkill].map(guardToolResult),
     hooks: [

@@ -36,17 +36,35 @@
  * that would add one refuses with `broken-reference` and writes nothing.
  */
 
-import { type DocumentError, refusal } from "./errors.js";
-import { type DocumentLease, findLeasedInput, type LeasedInput, permitsFormat } from "./lease.js";
+import { refusal } from "./errors.js";
+import type { DocumentLease, LeasedInput } from "./lease.js";
 import {
-  assertFileId,
-  assertHash,
-  assertPathSegment,
-  assertSize,
-  exactKeys,
-  isRecord,
-  record,
-} from "./validate.js";
+  adapterInstruction,
+  asBoolean,
+  asInteger,
+  asList,
+  asNullableString,
+  asNumber,
+  asPage,
+  asRecord,
+  asRecords,
+  asSourceRef,
+  asString,
+  asStrings,
+  type DocumentFileRef,
+  type DocumentPage,
+  fileRefOf,
+  flag,
+  invalid,
+  object,
+  oneOf,
+  pageOf,
+  resolveOutput,
+  resolveRef,
+  text,
+  whole,
+} from "./typed-operation.js";
+import { exactKeys } from "./validate.js";
 
 export const INSPECT_WORKBOOK = "inspect_workbook";
 export const READ_WORKBOOK = "read_workbook";
@@ -85,8 +103,6 @@ export const XLSX_READ_SECTIONS = [
   "charts",
 ] as const;
 
-export type XlsxReadSection = (typeof XLSX_READ_SECTIONS)[number];
-
 /** The edit steps this adapter runs. A step never carries code, only data. */
 export const XLSX_STEP_KINDS = [
   "setCell",
@@ -115,24 +131,17 @@ export const XLSX_STYLE_FIELDS = [
 ] as const;
 
 export const MAX_XLSX_PAGE = 50;
-export const DEFAULT_XLSX_PAGE = 20;
 export const MAX_XLSX_STEPS = 32;
 export const MAX_XLSX_SHEETS = 32;
 export const MAX_XLSX_RANGE_CELLS = 4_096;
 
 /** The one format this adapter owns. */
-export const XLSX_FORMAT = "xlsx";
+const XLSX_FORMAT = "xlsx";
 
 // -- what a caller sends --------------------------------------------------------------------------
 
 /** A leased Excel file: the FileStore id and the version, name, hash and size the lease pinned. */
-export interface XlsxFileRef {
-  readonly fileId: string;
-  readonly versionId: string;
-  readonly name: string;
-  readonly sha256: string;
-  readonly size: number;
-}
+export type XlsxFileRef = DocumentFileRef;
 
 /** One cell's literal or formula. A caller supplies the figure; this pack never computes one. */
 export type XlsxCellValue = string | number | boolean | null;
@@ -275,52 +284,9 @@ export interface XlsxProgram {
 
 // -- reading the request --------------------------------------------------------------------------
 
-function object(
-  value: unknown,
-  what: string,
-  allowed?: readonly string[],
-): Record<string, unknown> {
-  const entry = record(value, `${what} must be a JSON object`);
-  if (allowed !== undefined) exactKeys(entry, allowed, `${what} carries an unknown field`);
-  return entry;
-}
-
-function text(value: unknown, what: string, limit: number): string {
-  if (
-    typeof value !== "string" ||
-    value.trim() === "" ||
-    Buffer.byteLength(value, "utf8") > limit
-  ) {
-    throw refusal(
-      "invalid-request",
-      `${what} must be a non-empty string of at most ${limit} bytes`,
-    );
-  }
-  return value;
-}
-
-function flag(value: unknown, what: string): boolean {
-  if (typeof value !== "boolean") throw refusal("invalid-request", `${what} must be true or false`);
-  return value;
-}
-
-function whole(value: unknown, what: string, low: number, high: number): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < low || value > high) {
-    throw refusal("invalid-request", `${what} must be an integer between ${low} and ${high}`);
-  }
-  return value;
-}
-
 function quantity(value: unknown, what: string, low: number, high: number): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < low || value > high) {
     throw refusal("invalid-request", `${what} must be a finite number between ${low} and ${high}`);
-  }
-  return value;
-}
-
-function oneOf(value: unknown, what: string, allowed: readonly string[]): string {
-  if (typeof value !== "string" || !allowed.includes(value)) {
-    throw refusal("invalid-request", `${what} must be one of ${allowed.join(", ")}`);
   }
   return value;
 }
@@ -411,64 +377,14 @@ function rangeBounds(
   return { minRow, minCol, maxRow, maxCol };
 }
 
-/** The shape of a file reference, before the lease is consulted. */
-export function assertXlsxFileRef(value: unknown, what: string): XlsxFileRef {
-  const entry = object(value, what, ["fileId", "versionId", "name", "sha256", "size"]);
-  assertFileId(entry.fileId, `${what} fileId`);
-  assertFileId(entry.versionId, `${what} versionId`);
-  assertPathSegment(entry.name, `${what} name`);
-  assertHash(entry.sha256, `${what} sha256`);
-  assertSize(entry.size, `${what} size`);
-  return {
-    fileId: entry.fileId,
-    versionId: entry.versionId,
-    name: entry.name,
-    sha256: entry.sha256,
-    size: entry.size,
-  };
-}
-
-/**
- * The leased input a reference names, or a refusal. Every field is checked against the lease: the
- * lease, not the caller, decides what this operation may read, and an Excel operation reads `.xlsx`.
- */
+/** The leased `.xlsx` input a reference names, or a refusal: the lease decides, not the caller. */
 export function resolveXlsxRef(lease: DocumentLease, value: unknown, what: string): LeasedInput {
-  const ref = assertXlsxFileRef(value, what);
-  const leased = findLeasedInput(lease, ref.versionId);
-  if (leased === undefined) {
-    throw refusal(
-      "ungranted-input",
-      `${what} names version ${ref.versionId}, which this task's lease does not grant`,
-    );
-  }
-  if (
-    leased.fileId !== ref.fileId ||
-    leased.name !== ref.name ||
-    leased.sha256 !== ref.sha256 ||
-    leased.size !== ref.size
-  ) {
-    throw refusal(
-      "ungranted-input",
-      `${what} does not match the version the lease pinned for ${leased.name}`,
-    );
-  }
-  if (leased.format !== XLSX_FORMAT) {
-    throw refusal("invalid-request", `${what} is a ${leased.format} file, not a .xlsx`);
-  }
-  return leased;
+  return resolveRef(lease, value, what, XLSX_FORMAT);
 }
 
 /** The output name a request proposes: one path segment, `.xlsx`, and permitted by the lease. */
 export function resolveXlsxOutput(lease: DocumentLease, value: unknown): string {
-  const name = text(value, "an output name", 255);
-  assertPathSegment(name, "an output name");
-  if (!name.toLowerCase().endsWith(`.${XLSX_FORMAT}`)) {
-    throw refusal("output-format", `an output named ${name} is not a .xlsx file`);
-  }
-  if (!permitsFormat(lease, XLSX_FORMAT)) {
-    throw refusal("output-format", "this task's lease does not permit an xlsx output");
-  }
-  return name;
+  return resolveOutput(lease, value, XLSX_FORMAT);
 }
 
 function styleSpec(value: unknown, what: string): XlsxStyleSpec {
@@ -821,39 +737,9 @@ export function assertXlsxSheet(value: unknown, index: number): XlsxSheetSpec {
 
 // -- turning a request into a program ---------------------------------------------------------------
 
-function pageOf(entry: Record<string, unknown>, what: string): Record<string, unknown> {
-  return {
-    ...(entry.cursor === undefined
-      ? {}
-      : { cursor: whole(entry.cursor, `${what} cursor`, 0, 1_000_000_000) }),
-    ...(entry.pageSize === undefined
-      ? {}
-      : { pageSize: whole(entry.pageSize, `${what} pageSize`, 1, MAX_XLSX_PAGE) }),
-  };
-}
-
-/** The reference the adapter echoes back as its source evidence, exactly as the lease pinned it. */
-function refArgument(leased: LeasedInput): Record<string, unknown> {
-  return {
-    fileId: leased.fileId,
-    versionId: leased.versionId,
-    name: leased.name,
-    sha256: leased.sha256,
-    size: leased.size,
-  };
-}
-
-/**
- * The Python program one typed operation runs: a constant per operation, plus the checked arguments.
- * The operation name lives in the code, so a receipt's code hash names the operation and its argument
- * hash names the request.
- */
+/** The fixed Python program one typed Excel operation runs; the arguments travel beside it. */
 export function xlsxInstruction(operation: XlsxOperation): string {
-  return [
-    "import xlsx_adapter",
-    "",
-    `documents.result(xlsx_adapter.run(${JSON.stringify(operation)}, documents.arguments()))`,
-  ].join("\n");
+  return adapterInstruction("xlsx_adapter", operation);
 }
 
 /**
@@ -873,7 +759,7 @@ export function xlsxProgram(
     case "inspect": {
       exactKeys(entry, ["ref"], "inspect carries a field it does not declare");
       const source = resolveXlsxRef(lease, entry.ref, "the inspect ref");
-      return { ...base, sources: [source], arguments: { ref: refArgument(source) } };
+      return { ...base, sources: [source], arguments: { ref: fileRefOf(source) } };
     }
     case "read": {
       exactKeys(
@@ -899,11 +785,11 @@ export function xlsxProgram(
         ...base,
         sources: [source],
         arguments: {
-          ref: refArgument(source),
+          ref: fileRefOf(source),
           section,
           ...(entry.sheet === undefined ? {} : { sheet: text(entry.sheet, "the read sheet", 255) }),
           ...(entry.range === undefined ? {} : { range: rangeText(entry.range, "the read range") }),
-          ...pageOf(entry, "read"),
+          ...pageOf(entry, "read", MAX_XLSX_PAGE),
         },
       };
     }
@@ -918,7 +804,7 @@ export function xlsxProgram(
       return {
         ...base,
         sources: [source],
-        arguments: { ref: refArgument(source), ...pageOf(entry, "preview") },
+        arguments: { ref: fileRefOf(source), ...pageOf(entry, "preview", MAX_XLSX_PAGE) },
       };
     }
     case "compare": {
@@ -931,7 +817,7 @@ export function xlsxProgram(
       return {
         ...base,
         sources: [from, to],
-        arguments: { from: refArgument(from), to: refArgument(to) },
+        arguments: { from: fileRefOf(from), to: fileRefOf(to) },
       };
     }
     case "create": {
@@ -974,7 +860,7 @@ export function xlsxProgram(
         ...base,
         sources: [source],
         output: { name, editOf: source.versionId },
-        arguments: { ref: refArgument(source), output: name, steps },
+        arguments: { ref: fileRefOf(source), output: name, steps },
       };
     }
   }
@@ -1116,16 +1002,7 @@ export type XlsxItem =
   | XlsxStyleItem
   | XlsxChartItem;
 
-export interface XlsxPage<T> {
-  readonly section: string;
-  readonly pageSize: number;
-  readonly cursor: number;
-  readonly returned: number;
-  readonly total: number;
-  readonly nextCursor: number | null;
-  readonly hasMore: boolean;
-  readonly items: readonly T[];
-}
+export type XlsxPage<T> = DocumentPage<T>;
 
 export interface XlsxBrokenReference {
   readonly where: string;
@@ -1509,43 +1386,9 @@ export type XlsxResult =
 
 // -- the result validator -------------------------------------------------------------------------
 
-function invalid(what: string): DocumentError {
-  return refusal("output-invalid", `the worker's ${what} is not the shape this operation promises`);
-}
-
-function asRecord(value: unknown, what: string): Record<string, unknown> {
-  if (!isRecord(value)) throw invalid(what);
-  return value;
-}
-
-function asString(value: unknown, what: string): string {
-  if (typeof value !== "string") throw invalid(what);
-  return value;
-}
-
-function asNullableString(value: unknown, what: string): string | null {
-  if (value === null) return null;
-  return asString(value, what);
-}
-
-function asInteger(value: unknown, what: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) throw invalid(what);
-  return value;
-}
-
-function asNumber(value: unknown, what: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) throw invalid(what);
-  return value;
-}
-
 function asNullableNumber(value: unknown, what: string): number | null {
   if (value === null) return null;
   return asNumber(value, what);
-}
-
-function asBoolean(value: unknown, what: string): boolean {
-  if (typeof value !== "boolean") throw invalid(what);
-  return value;
 }
 
 function asFalse(value: unknown, what: string): false {
@@ -1553,35 +1396,11 @@ function asFalse(value: unknown, what: string): false {
   return false;
 }
 
-function asList(value: unknown, what: string): readonly unknown[] {
-  if (!Array.isArray(value)) throw invalid(what);
-  return value;
-}
-
-function asStrings(value: unknown, what: string): readonly string[] {
-  return asList(value, what).map((item) => asString(item, what));
-}
-
-function asRecords(value: unknown, what: string): readonly Readonly<Record<string, unknown>>[] {
-  return asList(value, what).map((item) => asRecord(item, what));
-}
-
 function asNumberMap(value: unknown, what: string): Readonly<Record<string, number>> {
   const entry = asRecord(value, what);
   const out: Record<string, number> = {};
   for (const [key, item] of Object.entries(entry)) out[key] = asInteger(item, what);
   return out;
-}
-
-function asSourceRef(value: unknown, what: string): XlsxSourceEvidence {
-  const entry = asRecord(value, what);
-  return {
-    fileId: asString(entry.fileId, what),
-    versionId: asString(entry.versionId, what),
-    name: asString(entry.name, what),
-    sha256: asString(entry.sha256, what),
-    size: asInteger(entry.size, what),
-  };
 }
 
 function asCensus(value: unknown, what: string): XlsxWorkbookCensus {
@@ -1764,34 +1583,6 @@ function asItem(section: string, value: unknown, what: string): XlsxItem {
     default:
       return asChartItem(value, what);
   }
-}
-
-function asPage<T>(
-  value: unknown,
-  what: string,
-  item: (value: unknown, what: string) => T,
-): XlsxPage<T> {
-  const entry = asRecord(value, what);
-  const pageSize = asInteger(entry.pageSize, what);
-  const returned = asInteger(entry.returned, what);
-  if (pageSize < 1 || pageSize > MAX_XLSX_PAGE || returned > pageSize) throw invalid(what);
-  const items = asList(entry.items, what).map((entry_) => item(entry_, what));
-  if (items.length !== returned) throw invalid(what);
-  const total = asInteger(entry.total, what);
-  const cursor = asInteger(entry.cursor, what);
-  if (cursor + returned > total) throw invalid(what);
-  const nextCursor = entry.nextCursor === null ? null : asInteger(entry.nextCursor, what);
-  if (nextCursor !== (cursor + returned < total ? cursor + returned : null)) throw invalid(what);
-  return {
-    section: asString(entry.section, what),
-    pageSize,
-    cursor,
-    returned,
-    total,
-    nextCursor,
-    hasMore: asBoolean(entry.hasMore, what),
-    items,
-  };
 }
 
 function asReferenceCheck(value: unknown, what: string): XlsxReferenceCheck {
@@ -2287,7 +2078,12 @@ export function parseXlsxResult(
         operation,
         source,
         workbook: asCensus(entry.workbook, what),
-        page: asPage(page, `${what} page`, (item, name) => asItem(section, item, name)),
+        page: asPage(
+          page,
+          `${what} page`,
+          (item, name) => asItem(section, item, name),
+          MAX_XLSX_PAGE,
+        ),
         sectionRange:
           entry.sectionRange === null
             ? null
@@ -2392,7 +2188,12 @@ export function parseXlsxResult(
       return {
         operation,
         source,
-        page: asPage(entry.page, `${what} page`, (item, name) => asSheetPreview(item, name)),
+        page: asPage(
+          entry.page,
+          `${what} page`,
+          (item, name) => asSheetPreview(item, name),
+          MAX_XLSX_PAGE,
+        ),
         workbook: asCensus(entry.workbook, what),
         namedRanges: asList(entry.namedRanges, what).map((item) =>
           asNamedRange(item, `${what} named range`),
@@ -2431,20 +2232,4 @@ export function parseXlsxResult(
       };
     }
   }
-}
-
-/** The file reference a typed result reports, as the receipt's lineage records it. */
-export function xlsxResultRef(leased: LeasedInput): XlsxSourceEvidence {
-  return {
-    fileId: leased.fileId,
-    versionId: leased.versionId,
-    name: leased.name,
-    sha256: leased.sha256,
-    size: leased.size,
-  };
-}
-
-/** Whether a leased input is a workbook this adapter may open. */
-export function isXlsxInput(leased: LeasedInput): boolean {
-  return leased.format === XLSX_FORMAT;
 }

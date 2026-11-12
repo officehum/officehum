@@ -7,7 +7,7 @@
  * cannot publish a different proposal with the same file and different bytes.
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -201,6 +201,40 @@ async function publishedPointer(store: VersionedFileStore, fileId: string): Prom
 }
 
 describe("the publication gate", () => {
+  it("refuses a ledger entry in a shape the gate never writes", async () => {
+    const { root, store, ledger, gate } = await workspace();
+    const proposal = await fileWithProposal(store, "v1", "v2-edited");
+    const opened = await gate.open({
+      identity: identityOf(proposal),
+      evidence: wordEvidence(proposal, "a new total"),
+    });
+    if (!opened.ok) throw new Error("the review did not open");
+    const reviewId = opened.value.reviewId;
+    await gate.decide({ reviewId, verdict: "approved", by: "azmat", approvalId: "approval:1" });
+
+    const dir = join(root, "reviews", "reviews");
+    const [name] = await readdir(dir);
+    const path = join(dir, name ?? "");
+    const entry = JSON.parse(await readFile(path, "utf8")) as {
+      decision: Record<string, unknown>;
+      publication?: unknown;
+    };
+
+    // A decision always carries the binding it approved. One without it must not be read as an
+    // approval of whatever the proposal binds now.
+    const { binding: _binding, ...unbound } = entry.decision;
+    await writeFile(path, JSON.stringify({ ...entry, decision: unbound }));
+    await expect(ledger.read(reviewId)).rejects.toMatchObject({ code: "ledger-integrity" });
+    const published = await gate.publish({ reviewId, operationId: "publish:1" });
+    expect(published.ok).toBe(false);
+    expect(await publishedPointer(store, proposal.fileId)).toBe(proposal.source.versionId);
+
+    // A record always states its publication, as null until there is one.
+    const { publication: _publication, ...unstated } = entry;
+    await writeFile(path, JSON.stringify(unstated));
+    await expect(ledger.read(reviewId)).rejects.toMatchObject({ code: "ledger-integrity" });
+  });
+
   it("publishes an approved review and records the previous and published refs", async () => {
     const { store, gate } = await workspace();
     const proposal = await fileWithProposal(store, "v1", "v2-edited");

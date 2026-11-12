@@ -7,7 +7,7 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { APPROVED_FACTS_ARG, type VerifiedSender } from "@officehum/sdk";
+import { APPROVED_FACTS_ARG, type CompanyPerson, type VerifiedSender } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import {
   companyHead,
@@ -34,7 +34,7 @@ const refundOwner = personLabel(person(company, refunds.refundNeeds));
 const complaintOwner = personLabel(person(company, refunds.complaintOwner));
 const safetyOwner = personLabel(escalationOwner(company, "safety-incident"));
 /** "Name (Title)", as a hand-off receipt names who has the case. */
-const named = (who: ReturnType<typeof person>) => `${who?.name} (${who?.title})`;
+const named = (who: CompanyPerson | undefined) => `${who?.name} (${who?.title})`;
 
 /** The durable identity one tool call runs under; only the ids matter to these tools. */
 const call = (callId: string) =>
@@ -283,6 +283,51 @@ describe("list_cases", () => {
     }
   });
 
+  it("an unknown sender cannot hand on a client's case, and learns nothing from the refusal", async () => {
+    for (const sender of [
+      null,
+      { origin: "external" as const, channel: "email", contact: "someone@example.test" },
+    ]) {
+      const support = desk();
+      const refused = await tools(support, sender).escalateCase.execute(
+        { caseId: "C-301", reason: "unresolved", note: "Still unhappy." },
+        call("u-real"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(isError(refused)).toBe(true);
+      expect(details(refused)).toEqual({ caseId: "C-301", code: "unknown_sender" });
+      // The same words as for a case that does not exist.
+      const missing = await tools(support, sender).escalateCase.execute(
+        { caseId: "C-999", reason: "unresolved", note: "Still unhappy." },
+        call("u-missing"),
+        BACKGROUND_CONTEXT,
+      );
+      expect(text(refused)).toBe(text(missing));
+      expect(text(refused)).not.toMatch(/Hawthorne|Grace|Tom Becker/);
+      // Nothing was handed on, also when the call is replayed.
+      await tools(support, sender).escalateCase.execute(
+        { caseId: "C-301", reason: "unresolved", note: "Still unhappy." },
+        call("u-real"),
+        BACKGROUND_CONTEXT,
+      );
+      expect((await support.listCases({ caseId: "C-301" }))[0]).toMatchObject({
+        status: "open",
+        escalations: [],
+      });
+    }
+  });
+
+  it("another client cannot hand on a case that is not theirs", async () => {
+    const support = desk();
+    const refused = await tools(support, MEGAN).escalateCase.execute(
+      { caseId: "C-301", reason: "unresolved", note: "Still unhappy." },
+      call("m-esc"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(refused).code).toBe("not_found");
+    expect((await support.listCases({ caseId: "C-301" }))[0]?.escalations).toEqual([]);
+  });
+
   it("withdraw_credit answers a proposal out of reach exactly like one that does not exist", async () => {
     const support = desk();
     for (const sender of [GRACE, null]) {
@@ -373,6 +418,50 @@ describe("list_cases", () => {
     );
     expect(text(result)).toContain("re-clean: booked for 2026-11-10, not done yet");
     expect(text(result)).not.toContain("propose_credit with caseId C-304");
+  });
+
+  it("reports a credit as proposed until a person has been asked, across a restart of the tools", async () => {
+    const support = desk();
+    await tools(support).proposeCredit.execute(CREDIT, call("p"), BACKGROUND_CONTEXT);
+    const proposed = await tools(support).listCases.execute(
+      { caseId: "C-302" },
+      call("l1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(proposed)).toContain(
+      `credit: CR-402, $150.00 on INV-2042 line 1, proposed and not issued; nobody has been asked yet. Next: call offer_credit with creditId CR-402, which asks ${creditOwner}. Do not call propose_credit for this case.`,
+    );
+    expect(text(proposed)).not.toContain("put to");
+    // The approval gate reads the facts just before it asks a person: from then on, they have it.
+    await tools(support).creditFacts(
+      { creditId: "CR-402" },
+      BACKGROUND_CONTEXT as never,
+      call("cf"),
+    );
+    // A fresh toolset over the same desk, as after a restart: the desk remembers, not the tools.
+    const asked = await tools(support).listCases.execute(
+      { caseId: "C-302" },
+      call("l2"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(asked)).toContain(
+      `credit: CR-402, $150.00 on INV-2042 line 1, proposed and put to ${creditOwner}; not issued.`,
+    );
+    expect((await support.listCredits({ creditId: "CR-402" }))[0]?.askedOn).toBe("2026-11-09");
+  });
+
+  it("a proposal nobody may be asked about is not recorded as asked", async () => {
+    const support = desk();
+    await tools(support).proposeCredit.execute(CREDIT, call("p"), BACKGROUND_CONTEXT);
+    // Grace is not Little Acorns' contact, so her call puts nothing to a person.
+    await expect(
+      tools(support, GRACE).creditFacts(
+        { creditId: "CR-402" },
+        BACKGROUND_CONTEXT as never,
+        call("cf"),
+      ),
+    ).rejects.toThrow("Nothing was put to a person");
+    expect((await support.listCredits({ creditId: "CR-402" }))[0]?.askedOn).toBeNull();
   });
 
   it("lists every case with no filter, and refuses a case that does not exist", async () => {
@@ -487,7 +576,10 @@ describe("log_case", () => {
 
   it("records who raised it from the verified sender, never from the call", async () => {
     // log_case takes no reportedBy: the model cannot name who raised a case.
-    expect(Object.keys(tools(desk()).logCase.parameters.properties)).not.toContain("reportedBy");
+    const parameters = tools(desk()).logCase.parameters as unknown as {
+      properties: Record<string, unknown>;
+    };
+    expect(Object.keys(parameters.properties)).not.toContain("reportedBy");
     // A client: their contact's name on the desk.
     const support = desk();
     await tools(support, GRACE).logCase.execute(SAFETY, call("by-client"), BACKGROUND_CONTEXT);
@@ -594,7 +686,10 @@ describe("propose_credit", () => {
     );
     expect(details(waiting).code).toBe("credit_pending");
     expect(text(waiting)).toContain(`CR-400 on C-304 is proposed and not issued`);
-    expect(text(waiting)).toContain(`otherwise tell the client ${creditOwner} has it`);
+    expect(text(waiting)).toContain(
+      `otherwise read the case with list_cases, which says whether ${creditOwner} has been asked`,
+    );
+    expect(text(waiting)).not.toContain("has it");
   });
 });
 
@@ -636,7 +731,12 @@ describe("offer_credit", () => {
     const unknownId = async (sender: VerifiedSender | null) =>
       tools(support, sender)
         .creditFacts({ creditId: "CR-999" }, BACKGROUND_CONTEXT as never, call("f0"))
-        .catch((error: Error) => error.message);
+        .then(
+          (): never => {
+            throw new Error("CR-999 is on no desk, so the reader must refuse it");
+          },
+          (error: Error) => error.message,
+        );
     for (const sender of [GRACE, null]) {
       const message = await tools(support, sender)
         .creditFacts({ creditId: "CR-400" }, BACKGROUND_CONTEXT as never, call("f1"))
@@ -821,13 +921,31 @@ describe("resolve_case", () => {
       `Next: call escalate_case with caseId ${logged.id} and reason safety, which hands it to ${safetyOwner}.`,
     );
   });
+  it("points an unescalated damage case at escalate_case, as for safety", async () => {
+    const support = desk();
+    const logged = await support.logCase(
+      { ...SAFETY, kind: "complaint", category: "damage", reportedBy: "Megan Shaw" },
+      { requestId: "log-damage" },
+    );
+    const result = await tools(support).resolveCase.execute(
+      { caseId: logged.id, outcome: "Apologised." },
+      call("g5"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(result).code).toBe("not_escalated");
+    expect(text(result)).toContain(`${logged.id} is a damage complaint that has not been handed`);
+    expect(text(result)).toContain(
+      `Next: call escalate_case with caseId ${logged.id} and reason safety, which hands it to ${safetyOwner}.`,
+    );
+    expect((await support.listCases({ caseId: logged.id }))[0]?.status).toBe("open");
+  });
 });
 
 describe("next steps come from the refusal's code, not its wording", () => {
   it("names the step for each code even when the desk's message names no tool", async () => {
     const cases: [
       SupportDeskError["code"],
-      keyof SupportToolset,
+      Exclude<keyof SupportToolset, "creditFacts">,
       Record<string, unknown>,
       string,
     ][] = [

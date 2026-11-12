@@ -43,6 +43,7 @@ import {
   type PptxReading,
   type PptxResult,
   PREVIEW_PRESENTATION,
+  pptxProgram,
   READ_PRESENTATION,
 } from "./pptx-operations.js";
 import { paperOfficeToolPack, RUN_DOCUMENT_PYTHON } from "./run-document-python.js";
@@ -51,6 +52,7 @@ import { runLedger } from "./run-ledger.js";
 import {
   buildZip,
   configuredInterpreter,
+  countingLoadsCode,
   pptxFixtureCode,
   pptxLike,
   pptxPackage,
@@ -998,6 +1000,36 @@ suite("the PowerPoint adapter drafts and proposes", () => {
       expect(head?.versionId).toBe(parsed.wrote[0]?.versionId);
       const stored = await store.getVersion(source.id, parsed.wrote[0]?.versionId ?? "");
       expect(stored?.ref.sourceVersionId).toBe(source.versionId);
+    },
+  );
+});
+
+suite("the PowerPoint adapter parses each package once per call", () => {
+  itSlow(
+    "an edit parses the source twice (to edit, and untouched) and the output once",
+    async () => {
+      const { store, service } = harness();
+      const source = await fixture(store, service, { operationId: "conv:parse-count" });
+      const lease = leaseOf([source]);
+      const program = pptxProgram(
+        "edit",
+        {
+          ref: refOf(source),
+          output: "proposal.pptx",
+          steps: [{ kind: "writeNotes", slide: 1, text: "Revenue confirmed at 1400." }],
+        },
+        lease,
+      );
+      const receipt = committed(
+        await service.runDocumentPython({
+          operationId: "conv:parse-count-edit",
+          taskId: lease.taskId,
+          lease,
+          code: countingLoadsCode("pptx_adapter", "edit"),
+          arguments: program.arguments,
+        }),
+      );
+      expect(receipt.result).toEqual({ loads: 3 });
     },
   );
 });

@@ -415,10 +415,9 @@ describe("create_quote", () => {
       lines: [{ description: "Window cleaning, our rate", quantity: 1 }],
     };
     // The desk refuses it whoever calls, so a host that skips the schema cannot price off the book.
-    await expect(one.createQuote(offBook as never, { requestId: "direct-1" })).rejects.toThrow(
-      SalesDeskError,
-    );
-    await expect(one.createQuote(offBook as never, { requestId: "direct-1" })).rejects.toThrow(
+    const direct = { requestId: "direct-1", quoteLimitCents: LIMITS.quote_limit_cents };
+    await expect(one.createQuote(offBook as never, direct)).rejects.toThrow(SalesDeskError);
+    await expect(one.createQuote(offBook as never, direct)).rejects.toThrow(
       "a person prices work the price book does not cover",
     );
 
@@ -795,11 +794,11 @@ describe("read_company", () => {
         rule.topic === "contract-terms" ? { ...rule, toPersonId: "priya-raman" } : rule,
       ),
     };
-    const result = await salesTools({ desk: desk(), company: moved }).readCompany.execute(
-      { section: "profile" },
-      call("c"),
-      BACKGROUND_CONTEXT,
-    );
+    const result = await salesTools({
+      desk: desk(),
+      company: moved,
+      limits: () => LIMITS,
+    }).readCompany.execute({ section: "profile" }, call("c"), BACKGROUND_CONTEXT);
     expect(text(result)).toContain("Certificates come from Priya Raman.");
     expect(text(result)).not.toContain("Dana Whitfield");
   });
@@ -834,10 +833,6 @@ describe("the company facts", () => {
     expect(money(7)).toBe("$0.07");
     const deep = company.priceBook.find((item) => item.id === "clean-deep-sqft");
     expect(deep === undefined ? "" : priceText(deep)).toBe("$0.12 per sq ft, minimum $450.00");
-  });
-
-  it("keeps the quote limit the manifest declares", () => {
-    expect(company.approvalLimits.quoteOverCents).toBe(500000);
   });
 });
 

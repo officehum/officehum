@@ -816,6 +816,27 @@ export interface DirectWorkerRequest {
   readonly limits?: Readonly<Record<string, number>>;
 }
 
+/**
+ * A program that runs one typed adapter operation and reports how many times the adapter parsed a
+ * package into a model, so a test can hold an adapter to one parse of each package per call.
+ */
+export function countingLoadsCode(adapter: string, operation: string): string {
+  return [
+    `import ${adapter} as adapter`,
+    "",
+    "loaded = []",
+    "parse = adapter._load",
+    "",
+    "def counting(*args, **kwargs):",
+    "    loaded.append(1)",
+    "    return parse(*args, **kwargs)",
+    "",
+    "adapter._load = counting",
+    `adapter.run(${JSON.stringify(operation)}, documents.arguments())`,
+    'documents.result({"loads": len(loaded)})',
+  ].join("\n");
+}
+
 export interface DirectWorkerAnswer {
   readonly exitCode: number;
   readonly json: Record<string, unknown>;

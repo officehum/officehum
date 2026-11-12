@@ -41,12 +41,11 @@ import type { Board } from "./board/index.js";
 import { createWorkboard, seedPerson } from "./board/testing.js";
 import { openLocalCalendar } from "./local-calendar.js";
 import type { InternalResendInbox } from "./resend-inbox.js";
-import type { InboundOutcome, ResendListener } from "./resend-listener.js";
+import type { InboundOutcome, ResendListener, SmsInboundMessage } from "./resend-listener.js";
 import { openResendListener } from "./resend-listener.js";
 import {
   openSmsIntake,
   SmsConversationDoc,
-  type SmsInboundMessage,
   type SmsIntake,
   SmsRoutesDoc,
   smsEnvelope,

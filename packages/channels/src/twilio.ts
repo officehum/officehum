@@ -55,27 +55,6 @@ export function formParams(body: string): Record<string, string> {
 }
 
 /**
- * The shape this adapter has always answered `accept` with, kept because the package is published.
- *
- * The gateway works in `InboundResult`, whose message is keyed by `(channel, externalId)`. `accept` is
- * the Twilio-specific view of the same two steps and its message keeps the provider's own field name:
- * a caller written against `@officehum/channels` 0.0.0 keeps working, and `messageSid` stays the word
- * Twilio's documentation uses.
- */
-export type TwilioAcceptResult =
-  | {
-      readonly accepted: true;
-      readonly message: {
-        readonly from: E164;
-        readonly to: E164;
-        readonly body: string;
-        readonly messageSid: string;
-        readonly receivedAt: string;
-      };
-    }
-  | { readonly accepted: false; readonly reason: InboundRefusal };
-
-/**
  * Twilio's inbound SMS, verified and parsed.
  *
  * The order is the security story. Parse, then verify, then look at the fields: verification needs the
@@ -148,28 +127,6 @@ export class TwilioAdapter implements ChannelAdapter {
       status: 200,
       headers: { "content-type": TWIML_CONTENT_TYPE },
       body: EMPTY_TWIML,
-    };
-  }
-
-  /**
-   * Verify, parse, and answer in the shape this package published before RASF-3160.
-   *
-   * One implementation behind two entry points: the gateway calls `verify` and `parse`, and this calls
-   * the same two, so neither can drift from the other.
-   */
-  accept(request: InboundRequest): TwilioAcceptResult {
-    if (this.verify(request) !== undefined) return { accepted: false, reason: "signature" };
-    const result = this.parse(request);
-    if (!result.accepted) return result;
-    return {
-      accepted: true,
-      message: {
-        from: result.message.from as E164,
-        to: result.message.to as E164,
-        body: result.message.body,
-        messageSid: result.message.externalId,
-        receivedAt: result.message.receivedAt,
-      },
     };
   }
 }

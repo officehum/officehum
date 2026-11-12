@@ -47,8 +47,8 @@ import {
   record,
 } from "./validate.js";
 
-export const REVIEW_SCHEMA = "officehum.paper.review";
-export const REVIEW_SCHEMA_VERSION = 1;
+const REVIEW_SCHEMA = "officehum.paper.review";
+const REVIEW_SCHEMA_VERSION = 1;
 
 /** One immutable version, named exactly as the FileStore holds it. */
 export interface ReviewArtifact {
@@ -136,7 +136,7 @@ export function approvalCovers(decision: ReviewDecision, proposal: ReviewProposa
 }
 
 /** Value equality over every hashed field of a binding. */
-export function sameBinding(left: ReviewBinding, right: ReviewBinding): boolean {
+function sameBinding(left: ReviewBinding, right: ReviewBinding): boolean {
   return (
     left.fileId === right.fileId &&
     left.sourceVersionId === right.sourceVersionId &&
@@ -614,12 +614,9 @@ function validateRecord(value: unknown): ReviewRecord {
     evidence: proposalRaw.evidence as ReviewEvidence,
     createdAt: assertTimestamp(proposalRaw.createdAt),
   };
-  const decision =
-    raw.decision === null ? null : validateDecision(raw.decision, reviewId, proposal.binding);
+  const decision = raw.decision === null ? null : validateDecision(raw.decision, reviewId);
   const publication =
-    raw.publication === null || raw.publication === undefined
-      ? null
-      : validatePublication(raw.publication, reviewId);
+    raw.publication === null ? null : validatePublication(raw.publication, reviewId);
   return { reviewId, proposal, decision, publication };
 }
 
@@ -643,11 +640,7 @@ function validateBinding(value: unknown): ReviewBinding {
   };
 }
 
-function validateDecision(
-  value: unknown,
-  reviewId: string,
-  binding: ReviewBinding,
-): ReviewDecision {
+function validateDecision(value: unknown, reviewId: string): ReviewDecision {
   const raw = record(value, "a review decision must be an object", "ledger-integrity");
   if (raw.verdict !== "approved" && raw.verdict !== "denied") {
     throw refusal("ledger-integrity", "a review decision has an unknown verdict");
@@ -661,7 +654,7 @@ function validateDecision(
     by: raw.by,
     approvalId: raw.approvalId,
     at: assertTimestamp(raw.at),
-    binding: raw.binding === undefined ? binding : validateBinding(raw.binding),
+    binding: validateBinding(raw.binding),
   };
 }
 

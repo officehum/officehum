@@ -267,6 +267,21 @@ describe("Resend Messenger", () => {
     },
   );
 
+  it("refuses a response whose headers are oversized, as the other Resend readers do", async () => {
+    const host = openResendMessenger(file(), {
+      ...fixtureOptions(new ResendFetchFixture()),
+      fetch: async () =>
+        new Response(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }), {
+          status: 200,
+          headers: { "x-padding": "v".repeat(8193) },
+        }),
+    });
+    await expect(host.send(intent, { requestId: "wide-headers" })).rejects.toThrow(
+      /response was invalid/i,
+    );
+    await host.close();
+  });
+
   it.each(["", "{}", '{"id":""}'])(
     "rejects malformed successful response %j while retaining the pending operation",
     async (responseBody) => {

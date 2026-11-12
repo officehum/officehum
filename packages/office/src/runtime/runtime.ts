@@ -51,11 +51,14 @@ import {
   validateMessage,
 } from "@officehum/protocol";
 import { type Office, type OfficeEvent, type OfficeStorage, openOffice } from "../adapter/index.js";
+import type { Board, Person } from "../board/index.js";
+import type { PersonRoute } from "../extension/index.js";
 import type { LoadedRole } from "../roles/load-role.js";
 import { answerText } from "../roles/run-role.js";
 import { DEFAULT_APPROVAL_TIMEOUT_MS, type RemoteApprovals } from "./approvals.js";
 import { RuntimeError } from "./errors.js";
 import { FrameWriter } from "./frame-writer.js";
+import { openTeamwork } from "./teamwork.js";
 
 export interface RuntimeOptions {
   /** The office's id, sent as `serverId` in `welcome`. */
@@ -77,6 +80,17 @@ export interface RuntimeOptions {
   readonly approvals?: RemoteApprovals;
   /** How long each agent's approvals wait, by agent name; others wait the default 4 hours. */
   readonly approvalTimeoutsMs?: Readonly<Record<string, number>>;
+  /**
+   * The office's workboard, opened by the host, which also closes it after the runtime. With one, the
+   * agents work together: each gets the office extension (`agent_dispatch`, `agent_inbox`,
+   * `agent_reply`), and the runtime runs the relay that delivers their tickets for as long as it is
+   * open (`./teamwork.ts`). Omitted: each agent works alone.
+   */
+  readonly board?: Board;
+  /** The company record's people, added to the board at start. Read only with a `board`. */
+  readonly people?: readonly Person[];
+  /** Ticket types no agent accepts that go to a person on the board. Read only with a `board`. */
+  readonly personRoutes?: readonly PersonRoute[];
 }
 
 export interface Runtime {
@@ -164,6 +178,15 @@ interface Tracked {
 
 const TERMINAL = new Set(["done", "unanswered"]);
 
+/**
+ * How long a settled request's events are kept for replay, and how many settled requests are kept at
+ * once. The gateway keeps its own copy for the same window and limit; past either, the record is let
+ * go here too, and a later command about the request rebuilds it from the durable index, which
+ * still answers how it settled.
+ */
+const REPLAY_WINDOW_MS = 5 * 60_000;
+const SETTLED_LIMIT = 1_000;
+
 /** Re-exported from the protocol, where the gateway reads the same rule. */
 export { scopedRequestId };
 
@@ -197,24 +220,43 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
   });
 
   try {
-    const agents = new Map<string, AgentEntry>();
+    const hosted: AgentEntry[] = [];
     for (const role of options.roles) {
       office.install(role.bundle);
       const model = options.model ?? role.bundle.agent.model ?? manifestModel(role) ?? undefined;
       if (model === undefined) {
         throw new Error(`${role.manifest.id} declares no model; pass one with --model.`);
       }
-      agents.set(role.manifest.id, {
+      hosted.push({
         name: role.manifest.id,
         role,
         settings: { ...role.bundle.agent, model },
         model,
       });
     }
+    const teamwork =
+      options.board === undefined
+        ? undefined
+        : openTeamwork({
+            office,
+            board: options.board,
+            agents: hosted,
+            ...(options.people === undefined ? {} : { people: options.people }),
+            ...(options.personRoutes === undefined ? {} : { personRoutes: options.personRoutes }),
+            log,
+          });
+    const agents = new Map<string, AgentEntry>(
+      hosted.map((agent) => [
+        agent.name,
+        teamwork === undefined ? agent : { ...agent, settings: teamwork.settings(agent.name) },
+      ]),
+    );
 
     const index = new Map(Object.entries((await office.snapshot(RequestIndexDoc))?.requests ?? {}));
     const tracked = new Map<string, Tracked>();
     const bySubmission = new Map<number, Tracked>();
+    /** When each settled request still in `tracked` settled, oldest first. */
+    const settledAt = new Map<string, number>();
     const conversations = new Map<string, Promise<OpenConversation>>();
     /** Open conversations by Pi Durable conversation id, with their agent, for approvals. */
     const byConversationId = new Map<string, { open: OpenConversation; agent: AgentEntry }>();
@@ -317,6 +359,23 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
       if (request.subscribed) send(message);
     };
 
+    /**
+     * Lets go of settled requests whose replay window has closed, and of the oldest settled beyond
+     * the limit, so a runtime that stays up for weeks holds the requests in flight and a bounded
+     * tail of finished ones. An unsettled request is never let go: its events are still arriving.
+     */
+    const release = () => {
+      const closed = Date.now() - REPLAY_WINDOW_MS;
+      for (const [key, at] of settledAt) {
+        if (at > closed && settledAt.size <= SETTLED_LIMIT) return;
+        settledAt.delete(key);
+        const request = tracked.get(key);
+        if (request === undefined) continue;
+        tracked.delete(key);
+        bySubmission.delete(request.submission as number);
+      }
+    };
+
     /** Marks a request settled (once) and emits its `settled` event with the answer. */
     const settle = (request: Tracked) => {
       if (request.settling) return;
@@ -333,6 +392,8 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
           log(`Could not read how ${request.key} settled: ${String(error)}`);
           emit(request, { kind: "settled", status: "failed" });
         }
+        settledAt.set(request.key, Date.now());
+        release();
       })();
       settlements.add(settling);
       void settling.finally(() => settlements.delete(settling));
@@ -640,6 +701,7 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
       log,
     });
     office.resume();
+    teamwork?.start();
     send({ type: "welcome", version: 1, serverId: options.serverId });
 
     return {
@@ -689,10 +751,13 @@ export async function openRuntime(options: RuntimeOptions): Promise<Runtime> {
       },
       async close() {
         closing ??= (async () => {
+          const relayStopped = teamwork?.stop();
           // Let settles already under way read their answer before the office goes.
           await Promise.allSettled([...settlements]);
           approvals?.close();
           await office.close();
+          // The host closes the board next: a poll that was waiting on a delivery ends with the office.
+          await relayStopped;
         })();
         return await closing;
       },

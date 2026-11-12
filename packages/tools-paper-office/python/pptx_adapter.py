@@ -56,8 +56,8 @@ Refusals are ``documents.WorkspaceError`` with a stable code — ``stale-anchor`
 ``ambiguous-target``, ``target-not-found``, ``package-limit``, ``relationship-policy``,
 ``boundary-violation``, ``unsupported-structure``, ``malformed-package`` — or the workspace's own
 codes for a bad name, a bad lease reference or a read-only source. Every one of them leaves the
-source bytes unchanged: nothing here writes outside the staging directory, and the workspace hashes
-the inputs again after the run.
+source bytes unchanged: nothing here writes outside the staging directory, and after a run that
+completes the worker hashes the input copies again.
 """
 
 from __future__ import annotations
@@ -306,8 +306,21 @@ def _open(reference: Dict[str, Any]) -> Tuple[str, Any]:
     return path, _load(what, path)
 
 
+# One call parses each package it only reads once: the models and part hashes are kept here for the
+# length of the call, and ``run`` empties it before each operation.
+_READ_ONLY: Dict[Tuple[str, str], Any] = {}
+
+
+def _read_only(what: str, path: str) -> Any:
+    """The model of a deck this call only reads, parsed once however many reports ask for it."""
+    key = ("deck", path)
+    if key not in _READ_ONLY:
+        _READ_ONLY[key] = _load(what, path)
+    return _READ_ONLY[key]
+
+
 def _reopen(path: str) -> Any:
-    return _load("the written deck", path)
+    return _read_only("the written deck", path)
 
 
 def _applying(call, *args: Any, **kwargs: Any) -> Any:
@@ -815,8 +828,14 @@ def _zip_parts(path: str) -> Dict[str, bytes]:
         return {info.filename: archive.read(info.filename) for info in archive.infolist()}
 
 
-def _hashes_of(parts: Dict[str, bytes]) -> Dict[str, str]:
-    return {name: hashlib.sha256(data).hexdigest() for name, data in parts.items()}
+def _part_hashes(path: str) -> Dict[str, str]:
+    """The sha256 of every ZIP member of a package, read once per call."""
+    key = ("hashes", path)
+    if key not in _READ_ONLY:
+        _READ_ONLY[key] = {
+            name: hashlib.sha256(data).hexdigest() for name, data in _zip_parts(path).items()
+        }
+    return _READ_ONLY[key]
 
 
 def _change_set(source_path: str, output_path: str) -> Dict[str, Any]:
@@ -825,8 +844,8 @@ def _change_set(source_path: str, output_path: str) -> Dict[str, Any]:
     The fork's own ``diff_package`` decides which members are *semantically* different; the sha256
     of each member before and after is what makes preservation arguable with bytes.
     """
-    before = _hashes_of(_zip_parts(source_path))
-    after = _hashes_of(_zip_parts(output_path))
+    before = _part_hashes(source_path)
+    after = _part_hashes(output_path)
     residual = _applying(paper_package.diff_package, source_path, output_path)
     changed = []
     for delta in residual.deltas:
@@ -864,8 +883,8 @@ def _preservation(source_path: str, output_path: str, changed_parts: Sequence[st
     the count is exact whatever the list holds. The changed parts' before and after hashes are in the
     change set and are never bounded.
     """
-    before = _hashes_of(_zip_parts(source_path))
-    after = _hashes_of(_zip_parts(output_path))
+    before = _part_hashes(source_path)
+    after = _part_hashes(output_path)
     identical = sorted(name for name in before if after.get(name) == before[name])
     ordered: List[str] = []
     for fragment in ("/media/", "/theme/", "/slideMasters/", "/slideLayouts/", "/notesSlides/", "/slides/"):
@@ -2116,8 +2135,8 @@ def _compare(params: Dict[str, Any]) -> Dict[str, Any]:
     detail = _one_of(entry.get("detail", "text"), "compare detail", DIFF_DETAILS)
     from_path = documents.open_input(from_ref["versionId"])
     to_path = documents.open_input(to_ref["versionId"])
-    _load(f"the leased input {from_ref['name']!r}", from_path)
-    _load(f"the leased input {to_ref['name']!r}", to_path)
+    _read_only(f"the leased input {from_ref['name']!r}", from_path)
+    _read_only(f"the leased input {to_ref['name']!r}", to_path)
     change_set = _change_set(from_path, to_path)
     diff = _diff(from_path, to_path, detail)
     preview = _before_after(from_path, to_path, diff)
@@ -2147,7 +2166,11 @@ def run(operation: str, parameters: Any) -> Dict[str, Any]:
     """Run one typed PowerPoint operation. ``operation`` is fixed by the submitted code."""
     if operation not in OPERATIONS:
         _fail("invalid-request", f"{operation!r} is not a PowerPoint operation")
-    return OPERATIONS[operation](_object(parameters, "operation parameters"))
+    _READ_ONLY.clear()
+    try:
+        return OPERATIONS[operation](_object(parameters, "operation parameters"))
+    finally:
+        _READ_ONLY.clear()
 
 
 __all__ = ["run", "SCHEMA", "VERSION", "OPERATIONS"]

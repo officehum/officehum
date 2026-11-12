@@ -18,6 +18,34 @@ const SIX_LOBBIES = Array.from({ length: 6 }, () => [
 ]).flat();
 
 describe("fakeSalesDesk quotes", () => {
+  it("dates in the company's time zone: after 16:00 Pacific today is still the Pacific date", async () => {
+    // 01:30 UTC on 3 November is 17:30 on 2 November in Portland, where the company keeps its day.
+    const evening = fakeSalesDesk({ now: () => new Date("2026-11-03T01:30:00.000Z") });
+    const quote = await evening.createQuote(
+      {
+        leadId: "L-204",
+        lines: [{ priceBookItemId: "clean-deep-sqft", quantity: 5000 }],
+        validForDays: 30,
+      },
+      { requestId: "evening", quoteLimitCents: LIMIT },
+    );
+    expect(quote.issuedOn).toBe("2026-11-02");
+    expect(quote.validUntil).toBe("2026-12-02");
+    expect((await evening.pipelineReport()).asOf).toBe("2026-11-02");
+    // A follow-up for the Pacific today is not in the past.
+    const scheduled = await evening.scheduleFollowUp(
+      { leadId: "L-204", on: "2026-11-02", what: "Call about the quote" },
+      { requestId: "evening-follow-up" },
+    );
+    expect(scheduled.followUp.on).toBe("2026-11-02");
+    // Another zone is the host's to give.
+    const utc = fakeSalesDesk({
+      now: () => new Date("2026-11-03T01:30:00.000Z"),
+      timeZone: "UTC",
+    });
+    expect((await utc.pipelineReport()).asOf).toBe("2026-11-03");
+  });
+
   it("prices a line from the book: the caller names an item and a quantity, never a price", async () => {
     const quote = await desk().createQuote(
       { leadId: "L-204", lines: [{ priceBookItemId: "clean-deep-sqft", quantity: 5000 }] },

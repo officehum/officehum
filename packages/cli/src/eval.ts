@@ -56,7 +56,7 @@ import type { CliDependencies, CliIo } from "./cli.js";
 import { parseModelRef, runModels } from "./run.js";
 import { UsageError } from "./usage-error.js";
 
-export interface EvalArguments {
+interface EvalArguments {
   readonly roleDir: string;
   readonly model?: string;
   readonly tag?: string;
@@ -71,7 +71,7 @@ const EVAL_USAGE =
   "[--mode bare|office] [--report FILE]";
 
 /** Parses the eval command's arguments: one positional role directory, then the flags above. */
-export function parseEvalArguments(args: readonly string[]): EvalArguments {
+function parseEvalArguments(args: readonly string[]): EvalArguments {
   let roleDir: string | undefined;
   let model: string | undefined;
   let tag: string | undefined;
@@ -250,7 +250,7 @@ async function scriptedModel(file: string, scenarios: readonly Scenario[]) {
 }
 
 /** Reads and checks a script file: JSON of scenario id → the turns to play back, in order. */
-export async function readEvalScript(
+async function readEvalScript(
   file: string,
 ): Promise<Readonly<Record<string, readonly ScriptedTurn[]>>> {
   let parsed: unknown;

@@ -16,8 +16,9 @@ never sent a second time: the tool keeps its own durable record of every stage i
 and answers with that record instead of sending again. So a run repeated later the same day, or a run
 restarted after a crash, sends nothing and reports what was already sent.
 
-A stage is not sent before its day: `send_reminder` answers with the invoice's age and the stage that
-is actually due, and that answer stands. If the tool says the cadence could not be read, or the
+A stage is not sent before its day, and not once the invoice's age has moved on to a later one: only
+the stage that is due goes out. `send_reminder` answers with the invoice's age and the stage that is
+actually due, and that answer stands. If the tool says the cadence could not be read, or the
 customer has no address on file, say so and name who in the handbook decides what happens next.
 
 An invoice a person has marked in dispute is not chased at any stage: `send_reminder` answers with who

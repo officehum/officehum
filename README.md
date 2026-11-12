@@ -147,7 +147,7 @@ node packages/cli/dist/index.js inbox --state .officehum/frontdesk-resend
 node packages/cli/dist/index.js resume --state .officehum/frontdesk-resend
 ```
 
-The listener binds `127.0.0.1` and accepts only `POST /webhooks/resend`. Resend needs a separately
+The listener binds `127.0.0.1` and accepts `POST /webhooks/resend`. Resend needs a separately
 configured public HTTPS forwarder to that local endpoint; Office Hum does not create a tunnel,
 change DNS, or configure the provider. Default reply approval is interactive review. Explicit
 `--approval allow` applies to approval requests handled by that runtime; customer email never
@@ -160,8 +160,17 @@ exactly 23 hours. Each inbound receipt permits one distinct reply operation. Pre
 `inbound.sqlite`, `email.sqlite`, `messenger.json`, and the Harness directory together. HTML is
 converted locally; attachments remain inert metadata and are never downloaded. Live provider
 send/receive acceptance still requires a human-configured webhook and a separate live verification.
-SMS is inbound only: a signed Twilio webhook is accepted, and the office replies by email. There is
-no outbound SMS path, no SMS credential, and no provider account behind it yet.
+SMS is inbound only, and off unless you turn it on. Set `TWILIO_AUTH_TOKEN` in the shell or an
+approved secret store and `listen` also accepts `POST /hooks/twilio`, a signed Twilio webhook; without
+the variable the route does not exist. The number texts arrive on is read from `office.config.json` in
+the state directory (`{"version":1,"sms":{"businessNumber":"+15035550142"}}`); there is no command
+that buys or registers a number, and `listen` refuses to start with the token set and no number. A
+text from a saved contact's number reaches the Front Desk, which may check availability and answer by
+email, with the usual approval for a first contact. A text from any other number becomes a
+`phone.callback` ticket on the board for a person: whoever the company record routes that type to, or
+else its first person. Unknown numbers are limited to three texts an hour, and for now so are saved
+contacts. There is no outbound SMS path and no provider account behind it yet. Behind a proxy, Twilio's
+signature is checked against the URL in the request's `Host` and `X-Forwarded-*` headers.
 
 ```sh
 node packages/cli/dist/index.js bookings --state .officehum/frontdesk-live
@@ -208,7 +217,8 @@ is rejected because it can refer to a different calendar after a token change.
 
 Bookings disable default reminders, omit attendees, and use `sendUpdates=none`, so Office Hum does
 not send invitations. Approval decisions and the operation journal remain in the local
-`calendar.sqlite`; Google bookings are listed asynchronously from the provider. The journal binds a
+`calendar.sqlite`; Google bookings are listed asynchronously from the provider, from now onwards:
+an appointment that has already ended is not listed and cannot be moved or cancelled. The journal binds a
 key globally across booking, reschedule, and cancellation and records successful receipts and
 pre-delete snapshots. A single Office Hum process owns each state directory, and one connector
 client serializes its complete booking, reschedule, and cancel operations. Google
@@ -254,11 +264,42 @@ then reads lines from the terminal. Each line becomes one durable submission; a 
 in this session or a later one, runs again. Gated actions print their description and arguments and wait for a `y`/`n` answer;
 anything other than `y`/`yes` declines, and the decision is recorded with the OS user as `by`.
 
+Nothing is published yet, so `officehum` in this and the following sections is this repository's
+CLI: after `npm install` and `npm run build`, `npx officehum` from the repository root, or
+`node packages/cli/dist/index.js`. A live model key must be in the environment
+(`PAPERINSTRUMENTS_API_KEY` for Paper, `OPENAI_API_KEY` for OpenAI).
+
+The Front Desk ships no calendar of its own, so give it one through `--clients` (the file format is
+described below); without it the role starts, and every calendar tool fails when it is called. Save
+these two files in the repository root:
+
+```json
+{ "calendar": { "module": "./calendar.mjs" } }
+```
+
+```js
+// calendar.mjs: a stand-in that offers two slots a day and stores nothing.
+// agents/frontdesk/README.md documents the Calendar interface a real one implements.
+export default function createCalendar() {
+  return {
+    freeSlots: async (date) => [`${date}T09:00:00Z`, `${date}T10:00:00Z`],
+    listBookings: async () => [],
+    book: async (start, customer, idempotencyKey) => ({ id: "b1", start, customer }),
+    reschedule: async (id, start, idempotencyKey) => ({ id, start, customer: "Demo Guest" }),
+    cancel: async (id, idempotencyKey) => ({ id, status: "canceled", alreadyCanceled: false }),
+  };
+}
+```
+
 ```sh
-officehum run agents/frontdesk \
+npx officehum run agents/frontdesk \
   --model paper/ultramarine-1-flash \
+  --clients ./clients.json \
   --db .officehum/frontdesk.sqlite
 ```
+
+A role that keeps its records behind a desk needs no client file to try: `npx officehum run
+agents/sales --demo` runs on its demonstration records (see "The desk" below).
 
 Flags:
 
@@ -294,7 +335,9 @@ the same choice to `loadRole` as its reserved `demo` option; the eval runner alw
 that desk's fixed demo date (`DEMO_NOW`) and its prompt has no `today` section.
 
 At the prompt, `/commands` lists the manifest's operator views, `/NAME` runs one (an engine view with
-no model involved), `/reload` re-reads the overlays and re-applies the role's settings, and `/help`,
+no model involved), `/reload` re-reads the overlays and re-applies the role's settings except the model (a saved
+conversation keeps the provider and model it started with; an overlay's model applies to new
+conversations only), and `/help`,
 `/quit` and end of input are available too.
 
 Role loading refuses three things with every problem named at once: an invalid package, a Pi Durable
@@ -332,13 +375,44 @@ officehum runtime --db .officehum/office.sqlite --office office.json --demo
 
 | Flag | Meaning |
 | --- | --- |
-| `--db FILE` | The office SQLite file |
+| `--db FILE` | The office SQLite file (Pi Durable's store) |
 | `--office FILE` | The office file: its id and its roles, each with optional overlays |
+| `--board FILE` | The office's workboard, a second SQLite file. With it the agents hand work to each other; without it each agent works alone |
 | `--model provider/model` | Overrides every role's model for conversations it starts |
 | `--demo` | Run roles that keep records on their demonstration data |
 
 Every command carries a `principal`, which the gateway adds from the signed-in session; typed by hand,
 you add it yourself. A command without one is refused as `unauthorized`.
+
+### Agents working together
+
+Give the runtime a workboard and its agents become a team:
+
+```sh
+echo '{"version":1,"id":"my-office","roles":[{"dir":"agents/sales"},{"dir":"agents/office-manager"}]}' > office.json
+officehum runtime --db .officehum/harness.sqlite --board .officehum/office.sqlite --office office.json --demo
+```
+
+- **People.** At start the runtime reads the company record in each role's package
+  (`skills/company-handbook/references/facts.json`) and adds its people to the board. Starting again
+  adds nobody twice; a renamed person is renamed; nobody is removed.
+- **Hand-offs.** Each agent gets `agent_dispatch`, `agent_inbox` and `agent_reply`. A dispatched
+  ticket goes to the agent whose manifest accepts its type, in a conversation of its own, and the
+  answer comes back to the agent that asked. A type the company record routes to a person
+  (`ticketRoutes`) goes on the board assigned to them instead. The runtime delivers tickets for as
+  long as it runs, and a restart picks up a hand-off where it stopped.
+- **Budgets and hops.** The board's spend ceilings and hop limit apply to handed-on work.
+- **Watching it.** `officehum board --office .officehum` shows the board, when the board file is
+  named `office.sqlite`. Keep `--db` and `--board` as two files.
+
+What is not there yet:
+
+- **Approvals in handed-on work.** A gated tool called from a request you submit is asked through
+  the gateway, as before. A gated tool called while working a *ticket* is recorded on the board as a
+  request to the office's first person and does not run, and there is no command or screen yet to
+  answer it. Until there is, keep gated work in direct requests.
+- **Who sent it.** A ticket an agent opens records that it came through the gateway, not which
+  signed-in person asked.
 
 To serve an office over the network, run the gateway in front of it. It starts and supervises the
 runtime, and signs clients in with JWTs verified against `OFFICEHUM_GATEWAY_JWT_PUBLIC_KEY`:

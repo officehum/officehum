@@ -9,10 +9,11 @@
  *   not-implemented stub for a tool with no engine, cli or mcp source) and `src/role.test.ts`. No
  *   guardrail is ever generated TypeScript: approvals, limits and replay policy are manifest fields
  *   the SDK enforces.
- * - **The output is checked before it is trusted.** The merged manifest goes through
+ * - **The output is checked before it is written.** The merged manifest goes through
  *   `validateManifest`, the spec's scenarios and the generated ones through `validateSuite` together
- *   (so a duplicate id or an unknown approval is caught here), and the written package through
- *   `checkFourLayers` in strict mode. Any of the three failing refuses the run and lists what is wrong.
+ *   (so a duplicate id or an unknown approval is caught here), and the package's files through
+ *   `checkFourLayers` in strict mode, in a scratch directory. Any of the three failing, or an overlay
+ *   that cannot be written, refuses the run, lists what is wrong and leaves both directories alone.
  * - **Deterministic.** The same spec writes byte-identical files: the builders are pure, key order is
  *   the spec's own, and nothing reads a clock, an environment variable or a random source. Generating
  *   twice is a diff that comes back empty, which is what lets a reviewer read a regeneration instead
@@ -24,7 +25,16 @@
  * See docs/design/role-spec.md, "What the generator writes".
  */
 
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import {
   type AgentManifest,
@@ -93,7 +103,7 @@ export class RoleGenerationError extends Error {
  * Writes the complete package for `spec` into `outDir`: the prompt files, the skills and their
  * references, the merged manifest, `package.json`, the README, the entry point and its test, and the
  * evals. Throws `RoleGenerationError` when the spec does not survive the checks, and lists every
- * problem it found; the files are already written by then, so the issues can be read next to the spec.
+ * problem it found; nothing is written to `outDir` or the overlay unless every check passes.
  */
 export function generateRole(
   spec: RoleSpec,
@@ -114,15 +124,23 @@ export function generateRole(
   );
   if (!suite.ok) throw new RoleGenerationError(suite.issues);
 
-  // Refuse before writing anything: a package is generated into a fresh directory, never edited.
+  // Everything that can refuse the run does so here, before either directory is touched: a package
+  // is generated into a fresh directory, never edited, and an overlay only where nothing is.
+  const packaged = packageFiles(spec, manifest);
+  const overlay = options.overlayDir === undefined ? undefined : businessOverlay(spec);
   assertWritableOutDir(outDir);
-  const files = writeAll(outDir, packageFiles(spec, manifest));
-
-  const writtenOverlay =
-    options.overlayDir === undefined ? [] : writeAll(options.overlayDir, businessOverlay(spec));
-
-  const layers = checkFourLayers(outDir, manifest, { strict: true });
+  assertWritableWithin(outDir, Object.keys(packaged));
+  if (options.overlayDir !== undefined && overlay !== undefined) {
+    assertWritableWithin(options.overlayDir, Object.keys(overlay));
+  }
+  const layers = fourLayerIssues(packaged, manifest);
   if (layers.length > 0) throw new RoleGenerationError(layers);
+
+  const files = writeAll(outDir, packaged);
+  const writtenOverlay =
+    options.overlayDir === undefined || overlay === undefined
+      ? []
+      : writeAll(options.overlayDir, overlay);
 
   return {
     dir: outDir,
@@ -190,39 +208,58 @@ function assertWritableOutDir(outDir: string): void {
   }
 }
 
-/** Writes every file, in sorted path order, and returns the paths it wrote. */
-function writeAll(root: string, files: Record<string, string>): string[] {
-  const paths = Object.keys(files).sort();
-  for (const path of paths) writeWithin(root, path, files[path] ?? "");
-  return paths;
+/**
+ * The strict four-layer check on the package's files. The check reads a package directory, so the
+ * files go into a scratch one that is removed again: the role's own directory is written only once
+ * this has passed.
+ */
+function fourLayerIssues(files: Record<string, string>, manifest: AgentManifest): readonly Issue[] {
+  const scratch = mkdtempSync(join(tmpdir(), "officehum-role-check-"));
+  try {
+    writeAll(scratch, files);
+    return checkFourLayers(scratch, manifest, { strict: true });
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 /**
- * Writes one file below `root`, and only below it: a relative path that resolves outside the directory
- * is refused, and so is a file already at the target. Both are the generator's promise that it
- * overwrites nothing a person did not ask it to write.
+ * Every path stays below `root` and names no file that is already there. Both are the generator's
+ * promise that it overwrites nothing a person did not ask it to write, and every problem is reported.
  */
-function writeWithin(root: string, path: string, content: string): void {
+function assertWritableWithin(root: string, paths: readonly string[]): void {
   const base = resolve(root);
-  const target = resolve(base, path);
-  if (target !== base && !target.startsWith(`${base}${sep}`)) {
-    throw new RoleGenerationError([
-      {
+  const issues: Issue[] = [];
+  for (const path of [...paths].sort()) {
+    const target = resolve(base, path);
+    if (target !== base && !target.startsWith(`${base}${sep}`)) {
+      issues.push({
         source: path,
         path: "",
         message: `would be written outside ${base}; the generator writes only below the directory it was given`,
-      },
-    ]);
-  }
-  if (existsSync(target)) {
-    throw new RoleGenerationError([
-      {
+      });
+    } else if (existsSync(target)) {
+      issues.push({
         source: join(root, path),
         path: "",
         message: "already exists; the generator never overwrites a file it did not just write",
-      },
-    ]);
+      });
+    }
   }
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, content);
+  if (issues.length > 0) throw new RoleGenerationError(issues);
+}
+
+/**
+ * Writes every file below `root`, in sorted path order, and returns the paths it wrote. The paths
+ * have been through `assertWritableWithin` by now.
+ */
+function writeAll(root: string, files: Record<string, string>): string[] {
+  const paths = Object.keys(files).sort();
+  for (const path of paths) {
+    const target = resolve(root, path);
+    mkdirSync(dirname(target), { recursive: true });
+    // `wx`: a file that appeared since the check is still never overwritten.
+    writeFileSync(target, files[path] ?? "", { flag: "wx" });
+  }
+  return paths;
 }

@@ -8,8 +8,8 @@ export class ResendFetchFixture {
   acceptances = 0;
   loseNextResponse = false;
   holdNextResponse = false;
-  status?: number;
-  responseBody?: string;
+  status: number | undefined;
+  responseBody: string | undefined;
   readonly requests: { key: string; payload: string; authorization: string | null }[] = [];
   private readonly saved = new Map<string, Saved>();
   private pauseLostResponse = false;

@@ -477,3 +477,30 @@ describe("recordCallout", () => {
     expect(next.id).toBe("CO-2");
   });
 });
+
+describe("the company's day", () => {
+  it("reads today, and so this week, in the company's time zone, not in UTC", async () => {
+    // 17:30 on Sunday 15 November in Portland is already Monday the 16th in UTC.
+    const evening = fakeOperationsDesk({ now: () => new Date("2026-11-16T01:30:00.000Z") });
+    const [crew] = await evening.listCrews();
+    expect(crew).toMatchObject({ weekStart: "2026-11-09", weekEnd: "2026-11-15" });
+    // Sunday is still today, so a job can still be moved to it, and Saturday has passed.
+    const moved = await evening.rescheduleJob(
+      { jobId: "J-2104", newDate: "2026-11-15" },
+      { requestId: "sunday" },
+    );
+    expect(moved.toDate).toBe("2026-11-15");
+    const passed = await refusalOf(
+      evening.rescheduleJob({ jobId: "J-2104", newDate: "2026-11-14" }, { requestId: "saturday" }),
+    );
+    expect(passed.message).toContain("2026-11-14 has already passed (today is 2026-11-15)");
+  });
+
+  it("takes another company's time zone", async () => {
+    const tokyo = fakeOperationsDesk({
+      timeZone: "Asia/Tokyo",
+      now: () => new Date("2026-11-15T16:00:00.000Z"),
+    });
+    expect((await tokyo.listCrews())[0]?.weekStart).toBe("2026-11-16");
+  });
+});

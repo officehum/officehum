@@ -27,7 +27,6 @@ import {
   CREATE_WORKBOOK,
   EDIT_WORKBOOK,
   INSPECT_WORKBOOK,
-  isXlsxInput,
   MAX_XLSX_PAGE,
   MAX_XLSX_RANGE_CELLS,
   MAX_XLSX_SHEETS,
@@ -116,7 +115,7 @@ describe("an Excel operation takes a leased file reference, never a path", () =>
     const leasedInput = resolveXlsxRef(LEASE, refOf(FILE_A), "the ref");
     expect(leasedInput.versionId).toBe(FILE_A);
     expect(leasedInput.writable).toBe(true);
-    expect(isXlsxInput(leasedInput)).toBe(true);
+    expect(leasedInput.format).toBe("xlsx");
 
     expect(
       refusalOf(() =>
@@ -1078,7 +1077,7 @@ describe("the Excel result validator", () => {
         sourceBroken: 0,
         outputBroken: 0,
         newBroken: [],
-        note: "an operation that would add a broken reference is refused before anything is written",
+        note: "an operation that would add a broken reference is refused and produces no proposal",
       },
       recalculation: { ...RECALC },
       protections: { ...PROTECTIONS },

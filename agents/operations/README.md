@@ -74,6 +74,17 @@ gate reads only `officehum.json`, where the approval has no condition, so in the
 asks a person on every call: it fails safe. With approval off, the result says the overtime was recorded and that the
 company does not require approval; it never says anyone approved it.
 
+**What the approver sees.** Both approvals have a facts reader (`overtimeFacts` and
+`contractRescheduleFacts` in `src/tools.ts`), which the gate runs before it asks anyone: the person is
+shown the crew by name, the client, the service, the job's date and hours, the crew's booked hours
+against its cap for that week, and for a contract move both dates and the client's reason, all read
+from the desk rather than a bare job and crew id. A job or crew that is not on the desk, or a one-off
+job sent as a contract move, asks nobody. The facts are for the person to read; the desk still checks
+the overtime figure and the new date itself when the approved call runs.
+
+"Today", and so "this week" in `list_crews`, is the company's day (`hours.timezone`), in the prompt
+and on the desk alike; `fakeOperationsDesk` takes it as `timeZone`.
+
 A visit on a recurring contract keeps its crew: `assign_crew` refuses a different one, and the refusal
 says to hand it to the person the handbook names for scheduling. Approved overtime belongs to its crew and job: if the job
 moves to another week or another crew, the overtime no longer counts toward the old week.
@@ -121,7 +132,7 @@ const root = await harness.root(context, { agent: role.agent });
 | `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
 | `role.md`, `role.sources.json` | The researched description of the job; `officehum verify-role agents/operations --online` re-checks the sources |
 | `src/index.ts` | The factory |
-| `src/tools.ts` | The eight tools, and the receipts they return |
+| `src/tools.ts` | The eight tools, the receipts they return, and the two approvals' facts readers |
 | `src/company.ts` | The company facts as the role reads them |
 | `src/desk.ts` | The `OperationsDesk` interface, `fakeOperationsDesk` and the demonstration week |
 | `src/*.test.ts` | The desk's limits, each tool, the approval gates on a real harness, the package and the scenarios |

@@ -89,6 +89,48 @@ describe("parseRoleSpec", () => {
     expect(JSON.stringify(manifest)).not.toContain("Example Co");
   });
 
+  it("accepts what officehum.json accepts: a one-way channel, and an approval's amount", () => {
+    // The spec's manifest fields are the SDK's own schemas, so nothing the manifest can say is
+    // refused here, and it reaches the merged manifest as written.
+    const spec = parsed(
+      fixtureSpec
+        .replace(
+          "  channels: [email, chat]\n",
+          "  channels:\n    - email\n    - { channel: sms, direction: inbound, replyBy: email }\n",
+        )
+        .replace(
+          "    - id: long_note\n      tool: add_note\n",
+          "    - id: long_note\n      tool: add_note\n      amount: { arg: length }\n",
+        ),
+    );
+    const manifest = manifestFromRoleSpec(spec);
+    expect(manifest.channels).toEqual([
+      "email",
+      { channel: "sms", direction: "inbound", replyBy: "email" },
+    ]);
+    expect(manifest.approvals[0]?.amount).toEqual({ arg: "length" });
+    expect(validateManifest(manifest).issues.map(formatIssue)).toEqual([]);
+  });
+
+  it("holds a limit's name and a repeated channel to the manifest's rules", () => {
+    const result = parseRoleSpec(
+      fixtureSpec
+        .replace(
+          "    long_note:\n      description: The length",
+          "    Long-Note:\n      description: The length",
+        )
+        .replace(
+          "  channels: [email, chat]\n",
+          "  channels:\n    - email\n    - { channel: email, direction: inbound }\n",
+        ),
+    );
+    expectReported(result, [
+      'ROLE_SPEC.md › role.limits.Long-Note: must be named in snake_case, like "large_invoice"',
+      'ROLE_SPEC.md › role.channels[1]: channel "email" is declared more than once',
+    ]);
+    expect(issueAt(result, "role.limits.Long-Note")?.layer).toBe("wisdom");
+  });
+
   it("carries each prohibition into the manifest, so a generated role keeps it on its card", () => {
     const spec = parsed(fixtureSpec);
     const manifest = manifestFromRoleSpec(spec);
@@ -170,7 +212,7 @@ describe("parseRoleSpec", () => {
     expectReported(withoutAuthority, [
       "ROLE_SPEC.md › notes: is not a known field",
       'ROLE_SPEC.md › role.tools[1].replay: must be one of "safe", "unsafe" (got "maybe")',
-      'ROLE_SPEC.md › knowledge.skills[0].id: must be kebab-case, like "note-keeper" (got "Notes Desk")',
+      'ROLE_SPEC.md › knowledge.skills[0].id: must be kebab-case, like "front-desk" (got "Notes Desk")',
       "ROLE_SPEC.md › wisdom.authority: is required",
       'ROLE_SPEC.md › context (body): "$2,500" is a money amount;',
       'ROLE_SPEC.md › role.tools[2]: "archive_note" is unsafe and states no approval decision;',

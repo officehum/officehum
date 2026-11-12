@@ -144,6 +144,8 @@ export default function sales(options: SalesOptions = {}): DefinedRole {
           priceBook: company.priceBook,
           weeksPerMonth: company.quoting.weeksPerMonth,
           now: options.now ?? (() => new Date(DEMO_NOW)),
+          // "Today" on a quote, an outcome and a follow-up is the company's own day, not UTC's.
+          timeZone: company.hours.timezone,
         })
       : undefined);
   // The quote limit is read from the role's own resolved limits at every call, so an overlay's value

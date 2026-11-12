@@ -6,7 +6,7 @@
  */
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { APPROVED_FACTS_ARG, type HookContext } from "@officehum/sdk";
+import { APPROVED_FACTS_ARG, type ApprovalCallIdentity, type HookContext } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import {
   loadCompanyFacts,
@@ -16,8 +16,11 @@ import {
   postalAddress,
 } from "./company.js";
 import {
+  type Audience,
+  campaignFooter,
   DEMO_NOW,
   type Draft,
+  demoAudiences,
   fakeMarketingDesk,
   type MarketingDesk,
   MarketingDeskError,
@@ -63,6 +66,8 @@ const FLOOR_CLAIM = "Our floor care leaves floors 2x cleaner.";
 const FLOOR_POST = `${FLOOR_CLAIM} Ask us for a walkthrough.`;
 
 const HOOK_CONTEXT = {} as HookContext;
+/** The gate passes every facts reader the conversation and task of the call it is deciding. */
+const CALL_IDENTITY: ApprovalCallIdentity = { conversationId: "conversation-1", taskId: "task-1" };
 
 /**
  * A gated call as the approval gate hands it to the tool after a yes: the draft's id and the facts
@@ -72,7 +77,7 @@ async function approvedCall(
   reader: MarketingToolset["claimApprovalFacts"],
   draftId: string,
 ): Promise<Record<string, unknown>> {
-  const { facts } = await reader({ draftId }, HOOK_CONTEXT);
+  const { facts } = await reader({ draftId }, HOOK_CONTEXT, CALL_IDENTITY);
   return { draftId, [APPROVED_FACTS_ARG]: facts };
 }
 
@@ -242,7 +247,11 @@ describe("request_claim_approval", () => {
   });
 
   it("the approval shows the held draft's text and phrases, read from the desk", async () => {
-    const read = await tools(desk()).claimApprovalFacts({ draftId: "D-104" }, HOOK_CONTEXT);
+    const read = await tools(desk()).claimApprovalFacts(
+      { draftId: "D-104" },
+      HOOK_CONTEXT,
+      CALL_IDENTITY,
+    );
     expect(read.summary).toBe(
       `Approve for D-104 only: "${FLOOR_CLAIM}" (the phrase "2x cleaner"), in this facebook post:\n${FLOOR_POST}`,
     );
@@ -256,10 +265,14 @@ describe("request_claim_approval", () => {
 
   it("the approval refuses, asking nobody, a draft not on the desk or with nothing held", async () => {
     const set = tools(desk());
-    await expect(set.claimApprovalFacts({ draftId: "D-42" }, HOOK_CONTEXT)).rejects.toThrow(
+    await expect(
+      set.claimApprovalFacts({ draftId: "D-42" }, HOOK_CONTEXT, CALL_IDENTITY),
+    ).rejects.toThrow(
       'No draft has the id "D-42". Nothing was put to a person and nothing was approved. Next: find the draft with list_drafts.',
     );
-    await expect(set.claimApprovalFacts({ draftId: "D-102" }, HOOK_CONTEXT)).rejects.toThrow(
+    await expect(
+      set.claimApprovalFacts({ draftId: "D-102" }, HOOK_CONTEXT, CALL_IDENTITY),
+    ).rejects.toThrow(
       "D-102 has no claim waiting for approval: it is draft. Nothing was put to a person and nothing was approved.",
     );
   });
@@ -344,11 +357,11 @@ describe("publish", () => {
   it("the approval shows the draft's channel and full text, footer included, read from the desk", async () => {
     const marketing = desk();
     const set = tools(marketing);
-    const post = await set.publishApprovalFacts({ draftId: "D-102" }, HOOK_CONTEXT);
+    const post = await set.publishApprovalFacts({ draftId: "D-102" }, HOOK_CONTEXT, CALL_IDENTITY);
     const porter = await draft(marketing, "D-102");
     expect(post.summary).toBe(`Publish D-102 on linkedin, exactly as below:\n${porter.finalText}`);
     expect(post.facts).toMatchObject({ id: "D-102", channel: "linkedin" });
-    const email = await set.publishApprovalFacts({ draftId: "D-103" }, HOOK_CONTEXT);
+    const email = await set.publishApprovalFacts({ draftId: "D-103" }, HOOK_CONTEXT, CALL_IDENTITY);
     const winter = await draft(marketing, "D-103");
     expect(email.summary).toBe(
       `Send D-103 by email to the current clients list (Contracted clients who asked for news and offers), exactly as below, with the unsubscribe line and postal address the desk added:\n${winter.finalText}`,
@@ -364,7 +377,11 @@ describe("publish", () => {
       listDrafts: async (filter) =>
         filter?.id === "D-103" ? [orphan] : marketing.listDrafts(filter),
     };
-    const read = await tools(edited).publishApprovalFacts({ draftId: "D-103" }, HOOK_CONTEXT);
+    const read = await tools(edited).publishApprovalFacts(
+      { draftId: "D-103" },
+      HOOK_CONTEXT,
+      CALL_IDENTITY,
+    );
     expect(read.summary.split("\n")[0]).toBe(
       "Send D-103 by email with no audience list on file, exactly as below, with the unsubscribe line and postal address the desk added:",
     );
@@ -372,13 +389,19 @@ describe("publish", () => {
 
   it("the approval refuses, asking nobody, a held, published or unknown draft", async () => {
     const set = tools(desk());
-    await expect(set.publishApprovalFacts({ draftId: "D-104" }, HOOK_CONTEXT)).rejects.toThrow(
+    await expect(
+      set.publishApprovalFacts({ draftId: "D-104" }, HOOK_CONTEXT, CALL_IDENTITY),
+    ).rejects.toThrow(
       `D-104 is held: "${FLOOR_CLAIM}" (the phrase "2x cleaner") still needs a person's approval. Nothing was put to a person and nothing was published. Next: each held claim needs request_claim_approval first, which asks ${approver}; or draft it again without the claim.`,
     );
-    await expect(set.publishApprovalFacts({ draftId: "D-101" }, HOOK_CONTEXT)).rejects.toThrow(
+    await expect(
+      set.publishApprovalFacts({ draftId: "D-101" }, HOOK_CONTEXT, CALL_IDENTITY),
+    ).rejects.toThrow(
       "D-101 was already published on 2026-11-02 (PUB-1). Nothing was put to a person and nothing was published again.",
     );
-    await expect(set.publishApprovalFacts({ draftId: "D-42" }, HOOK_CONTEXT)).rejects.toThrow(
+    await expect(
+      set.publishApprovalFacts({ draftId: "D-42" }, HOOK_CONTEXT, CALL_IDENTITY),
+    ).rejects.toThrow(
       'No draft has the id "D-42". Nothing was put to a person and nothing was published.',
     );
   });
@@ -520,5 +543,241 @@ describe("with no desk", () => {
     await expect(
       tools(undefined).listDrafts.execute({}, call("n"), BACKGROUND_CONTEXT),
     ).rejects.toThrow("No marketing desk is bound to this role, so nothing was read or written.");
+  });
+});
+
+/**
+ * A host desk that checks nothing: it saves whatever it is handed as a ready draft, whatever claims
+ * it was told are held, and publishes whatever it holds. The role's promises (no unapproved result
+ * claim, no invented testimonial, an unsubscribe line on every email) must hold on it too, so they
+ * are the tool layer's, not a desk's.
+ */
+function permissiveDesk(seed: readonly Draft[] = []) {
+  const drafts: Draft[] = [...seed];
+  const calls: string[] = [];
+  const audiences: readonly Audience[] = demoAudiences();
+  const save = (draft: Pick<Draft, "kind" | "channel" | "audienceId" | "subject" | "text">) => {
+    const saved: Draft = {
+      ...draft,
+      id: `H-${drafts.length + 1}`,
+      finalText: draft.text,
+      status: "draft",
+      heldClaims: [],
+      grantedClaims: [],
+      createdOn: "2026-11-09",
+      publishedOn: null,
+      publicationId: null,
+    };
+    drafts.push(saved);
+    return saved;
+  };
+  const marketing: MarketingDesk = {
+    listDrafts: async (filter = {}) =>
+      drafts.filter((entry) => filter.id === undefined || entry.id === filter.id),
+    listAudiences: async () => audiences,
+    draftPost: async (input) => {
+      calls.push("draftPost");
+      return save({
+        kind: "post",
+        channel: input.channel,
+        audienceId: null,
+        subject: null,
+        text: input.text,
+      });
+    },
+    draftCampaignEmail: async (input) => {
+      calls.push("draftCampaignEmail");
+      const saved = save({
+        kind: "email",
+        channel: "email",
+        audienceId: input.audienceId,
+        subject: input.subject,
+        text: input.body,
+      });
+      const withFooter = { ...saved, finalText: input.finalText };
+      drafts[drafts.length - 1] = withFooter;
+      return withFooter;
+    },
+    approveClaim: async (input) => {
+      calls.push("approveClaim");
+      return draft(marketing, input.draftId);
+    },
+    publish: async (input) => {
+      calls.push("publish");
+      const found = await draft(marketing, input.draftId);
+      return {
+        id: "HPUB-1",
+        draftId: found.id,
+        channel: found.channel,
+        text: found.finalText,
+        publishedAt: DEMO_NOW,
+        backend: "host",
+      };
+    },
+  };
+  return { marketing, calls };
+}
+
+/** A draft as a careless host desk might hold it: ready to publish, whatever it says. */
+function hostDraft(overrides: Partial<Draft>): Draft {
+  return {
+    id: "H-1",
+    kind: "post",
+    channel: "linkedin",
+    audienceId: null,
+    subject: null,
+    text: "",
+    finalText: "",
+    status: "draft",
+    heldClaims: [],
+    grantedClaims: [],
+    createdOn: "2026-11-09",
+    publishedOn: null,
+    publicationId: null,
+    ...overrides,
+  };
+}
+
+describe("with a host desk that checks nothing, the tools still refuse", () => {
+  const INVENTED =
+    '"Northwind cut our sick days and the lobby has never looked this good." — Morgan Ellis';
+
+  it("draft_post refuses a result claim and hands the desk the held claims", async () => {
+    const { marketing } = permissiveDesk();
+    const held: unknown[] = [];
+    const recording: MarketingDesk = {
+      ...marketing,
+      draftPost: async (input, options) => {
+        held.push(input.heldClaims);
+        return marketing.draftPost(input, options);
+      },
+    };
+    const result = await tools(recording).draftPost.execute(
+      { channel: "linkedin", text: POST },
+      call("h1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(details(result)).toMatchObject({
+      code: "unapproved_claim",
+      claims: [{ claim: CLAIM, phrase: "30%" }],
+    });
+    expect(text(result)).toContain(`"${CLAIM}" (the phrase "30%")`);
+    expect(held).toEqual([[{ claim: CLAIM, phrase: "30%" }]]);
+  });
+
+  it("draft_post and draft_campaign_email refuse an invented testimonial and save nothing", async () => {
+    const { marketing, calls } = permissiveDesk();
+    const post = await tools(marketing).draftPost.execute(
+      { channel: "linkedin", text: `Hear it from a client. ${INVENTED}` },
+      call("h2"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(post).code).toBe("unrecorded_testimonial");
+    const email = await tools(marketing).draftCampaignEmail.execute(
+      { ...EMAIL, body: INVENTED },
+      call("h3"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(email).code).toBe("unrecorded_testimonial");
+    expect(calls).toEqual([]);
+    expect(await marketing.listDrafts()).toEqual([]);
+  });
+
+  it("draft_campaign_email hands the desk the email with the unsubscribe line and postal address", async () => {
+    const { marketing } = permissiveDesk();
+    const result = await tools(marketing).draftCampaignEmail.execute(
+      EMAIL,
+      call("h4"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(false);
+    const [saved] = await marketing.listDrafts();
+    const audience = demoAudiences().find((entry) => entry.id === EMAIL.audienceId) as Audience;
+    expect(saved?.finalText).toBe(
+      `Subject: ${EMAIL.subject}\n\n${EMAIL.body}\n\n${campaignFooter(company, audience)}`,
+    );
+    expect(saved?.finalText).toContain(postalAddress(company));
+  });
+
+  it("publish refuses a draft the desk calls ready that states a claim nobody approved", async () => {
+    const { marketing, calls } = permissiveDesk([hostDraft({ text: POST, finalText: POST })]);
+    const set = tools(marketing);
+    const result = await set.publish.execute(
+      await approvedCall(set.publishApprovalFacts, "H-1"),
+      call("h5"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(text(result)).toContain(`"${CLAIM}" (the phrase "30%")`);
+    expect(text(result)).toContain("Nothing was published.");
+    expect(calls).toEqual([]);
+  });
+
+  it("publish lets through a claim a person approved for that draft", async () => {
+    const { marketing, calls } = permissiveDesk([
+      hostDraft({ text: POST, finalText: POST, grantedClaims: [CLAIM] }),
+    ]);
+    const set = tools(marketing);
+    const result = await set.publish.execute(
+      await approvedCall(set.publishApprovalFacts, "H-1"),
+      call("h6"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(false);
+    expect(calls).toEqual(["publish"]);
+  });
+
+  it("publish refuses a campaign email that lost its unsubscribe line and postal address", async () => {
+    const bare = `Subject: ${EMAIL.subject}\n\n${EMAIL.body}`;
+    const { marketing, calls } = permissiveDesk([
+      hostDraft({
+        kind: "email",
+        channel: "email",
+        audienceId: EMAIL.audienceId,
+        subject: EMAIL.subject,
+        text: EMAIL.body,
+        finalText: bare,
+      }),
+    ]);
+    const set = tools(marketing);
+    const result = await set.publish.execute(
+      await approvedCall(set.publishApprovalFacts, "H-1"),
+      call("h7"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(isError(result)).toBe(true);
+    expect(text(result)).toContain("unsubscribe line and postal address");
+    expect(text(result)).toContain("Nothing was published.");
+    expect(calls).toEqual([]);
+  });
+
+  it("request_claim_approval and publish refuse a draft that quotes an invented testimonial", async () => {
+    const quoted = `${INVENTED} Our floors are 2x cleaner.`;
+    const { marketing, calls } = permissiveDesk([
+      hostDraft({
+        status: "held",
+        text: quoted,
+        finalText: quoted,
+        heldClaims: [{ claim: "Our floors are 2x cleaner.", phrase: "2x cleaner" }],
+      }),
+      hostDraft({ id: "H-2", text: INVENTED, finalText: INVENTED }),
+    ]);
+    const set = tools(marketing);
+    const grant = await set.requestClaimApproval.execute(
+      await approvedCall(set.claimApprovalFacts, "H-1"),
+      call("h8"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(grant).code).toBe("unrecorded_testimonial");
+    expect(text(grant)).toContain("Nothing was approved.");
+    const out = await set.publish.execute(
+      await approvedCall(set.publishApprovalFacts, "H-2"),
+      call("h9"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(details(out).code).toBe("unrecorded_testimonial");
+    expect(text(out)).toContain("Nothing was published.");
+    expect(calls).toEqual([]);
   });
 });

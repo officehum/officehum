@@ -109,6 +109,46 @@ describe("Google Calendar host adapter", () => {
     }
   });
 
+  it("asks the provider only for the window it needs", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "officehum-google-host-"));
+    try {
+      const decisions = openLocalCalendar(join(directory, "calendar.sqlite"));
+      const fake = fakeCalendar({
+        timeZone: "UTC",
+        workingHours: { start: "09:00", end: "12:00" },
+        durationMinutes: 60,
+      });
+      const windows: { timeMin: string; timeMax?: string }[] = [];
+      const client: CalendarClient = {
+        ...fake,
+        listBookings(window) {
+          windows.push(window);
+          return fake.listBookings(window);
+        },
+      };
+      const host = createGoogleCalendarHost({ client, decisions, durationMinutes: 60 });
+      const before = Date.now();
+      const booked = await host.book("2030-01-15T09:00:00Z", "Guest", "book-key");
+
+      // A listing starts now: the calendar's past is never read.
+      expect(await host.listBookings()).toEqual([booked]);
+      expect(windows).toHaveLength(1);
+      expect(Date.parse(windows[0]?.timeMin ?? "")).toBeGreaterThanOrEqual(before);
+      expect(Date.parse(windows[0]?.timeMin ?? "")).toBeLessThanOrEqual(Date.now());
+      expect(windows[0]?.timeMax).toBeUndefined();
+
+      // A replayed booking is checked against its own slot and nothing else.
+      expect(await host.book("2030-01-15T09:00:00Z", "Guest", "book-key")).toEqual(booked);
+      expect(windows[1]).toEqual({
+        timeMin: "2030-01-15T09:00:00Z",
+        timeMax: "2030-01-15T10:00:00Z",
+      });
+      host.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("moves, cancels, and verifies completed retries against current provider state", async () => {
     const directory = mkdtempSync(join(tmpdir(), "officehum-google-host-"));
     try {

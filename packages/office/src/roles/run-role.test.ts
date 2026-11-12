@@ -4,7 +4,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { ModelRef } from "@earendil-works/pi-durable";
 import { afterEach, describe, expect, it } from "vitest";
+import { scriptedProvider } from "../testing/scripted-model.js";
+import type { LoadedRole } from "./load-role.js";
+import { openRoleRun } from "./run-role.js";
 
 const temps: string[] = [];
 afterEach(() => {
@@ -70,4 +75,51 @@ describe("role run crash and resume", () => {
       if (first.exitCode === null && first.signalCode === null) first.kill("SIGKILL");
     }
   }, 30_000);
+});
+
+describe("role run reload", () => {
+  const SAVED: ModelRef = { provider: "scripted", modelId: "saved-model" };
+  const OVERLAID: ModelRef = { provider: "scripted", modelId: "overlay-model" };
+
+  /** A role whose `reload` picks up an overlay that names a different model, as `defineRole`'s does. */
+  function overlaidRole(directory: string): LoadedRole {
+    const agent: { model: ModelRef; extensions: [] } = { model: SAVED, extensions: [] };
+    return {
+      dir: directory,
+      manifest: { id: "reload-fixture" },
+      bundle: { extensions: [], agent },
+      reload: () => {
+        agent.model = OVERLAID;
+        return [];
+      },
+    } as unknown as LoadedRole;
+  }
+
+  it("keeps the saved conversation's provider and model, across reload and reopen", async () => {
+    const directory = temporary();
+    const database = join(directory, "run.sqlite");
+    const scripted = scriptedProvider([{ text: "first" }, { text: "second" }]);
+    const role = overlaidRole(directory);
+
+    const run = await openRoleRun({ role, database, models: scripted.models });
+    try {
+      expect(await run.reload()).toEqual([]);
+      expect((await run.conversation.agent(BACKGROUND_CONTEXT)).model).toEqual(SAVED);
+      await run.submit("hello", "after-reload");
+      expect(scripted.requests.at(-1)?.model).toBe(SAVED.modelId);
+    } finally {
+      await run.close();
+    }
+
+    // The same file, reopened by a new process that asks for the model the conversation started
+    // with: the reload left nothing behind that says otherwise.
+    const reopened = await openRoleRun({ role, database, models: scripted.models, model: SAVED });
+    try {
+      expect((await reopened.conversation.agent(BACKGROUND_CONTEXT)).model).toEqual(SAVED);
+      await reopened.reload();
+      expect((await reopened.conversation.agent(BACKGROUND_CONTEXT)).model).toEqual(SAVED);
+    } finally {
+      await reopened.close();
+    }
+  });
 });

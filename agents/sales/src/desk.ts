@@ -23,7 +23,7 @@
  * The desk also counts the pipeline (`pipelineReport`), so a review's figures come from code.
  */
 
-import { isoDate, sameFacts } from "@officehum/sdk";
+import { addDays, localDate, parseDate, sameFacts } from "@officehum/sdk";
 import type { PriceBookItem } from "./company.js";
 import { loadCompanyFacts, money } from "./company.js";
 import { demoLeads, demoQuotes } from "./demo.js";
@@ -386,9 +386,12 @@ export interface FakeSalesDeskOptions {
   readonly weeksPerMonth?: number;
   /** The clock, so a receipt's dates are reproducible in a test; `DEMO_NOW` when omitted. */
   readonly now?: () => Date;
+  /**
+   * The IANA time zone the desk reads "today" in, for a quote's dates, an outcome and a follow-up;
+   * the company's own (`hours.timezone`) when omitted.
+   */
+  readonly timeZone?: string;
 }
-
-const DAY_MS = 86_400_000;
 
 /** The most visits a week a recurring line may ask for: one a day. */
 const MAX_VISITS_PER_WEEK = 7;
@@ -408,16 +411,10 @@ function monthlyQuantity(count: RecurringCount): number {
   return Math.round(Number((exact * 100).toPrecision(12))) / 100;
 }
 
-/** `YYYY-MM-DD` of a date, in UTC: the only date form a receipt carries. */
 /** A `YYYY-MM-DD` the caller gave, checked to be a real day, or a refusal saying what was wrong. */
 function calendarDay(value: string, what: string): string {
   const day = value.trim();
-  const parsed = new Date(`${day}T00:00:00.000Z`);
-  if (
-    !/^\d{4}-\d{2}-\d{2}$/.test(day) ||
-    Number.isNaN(parsed.getTime()) ||
-    isoDate(parsed) !== day
-  ) {
+  if (parseDate(day) === undefined) {
     throw new SalesDeskError(
       `${what} must be a day written YYYY-MM-DD; ${JSON.stringify(value)} is not.`,
     );
@@ -455,6 +452,9 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
   const priceBook = options.priceBook ?? loadCompanyFacts().priceBook;
   const weeksPerMonth = options.weeksPerMonth ?? loadCompanyFacts().quoting.weeksPerMonth;
   const clock = options.now ?? (() => new Date(DEMO_NOW));
+  const timeZone = options.timeZone ?? loadCompanyFacts().hours.timezone;
+  /** Today as `YYYY-MM-DD`, the company's own day: the only date form a receipt carries. */
+  const today = (): string => localDate(clock(), timeZone);
   const leads: Lead[] = (options.leads ?? demoLeads()).map((lead) => ({ ...lead }));
   const quoteByRequest = new Map<string, Quote>();
   const quotesById = new Map<string, Quote>((options.quotes ?? demoQuotes()).map((q) => [q.id, q]));
@@ -505,9 +505,8 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
   /** Records an activity on a lead and moves its last activity to today. */
   const recordActivity = (lead: Lead, kind: ActivityKind, summary: string): Activity => {
     activityNumber += 1;
-    const at = clock().toISOString();
-    lead.lastActivityAt = at.slice(0, 10);
-    return { id: `A-${activityNumber}`, leadId: lead.id, kind, summary, at };
+    lead.lastActivityAt = today();
+    return { id: `A-${activityNumber}`, leadId: lead.id, kind, summary, at: clock().toISOString() };
   };
 
   const priceLine = (line: QuoteLineDraft, where: string): QuoteLine => {
@@ -596,7 +595,7 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
         throw new SalesDeskError("There is nothing on this quote to discount.");
       }
       const discountCents = Math.round((subtotalCents * discountPercent) / 100);
-      const now = clock();
+      const issuedOn = today();
       const validForDays = draft.validForDays ?? 30;
       if (!Number.isSafeInteger(validForDays) || validForDays <= 0) {
         throw new SalesDeskError("validForDays must be a whole number of days greater than zero.");
@@ -626,8 +625,8 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
         discountPercent,
         discountCents,
         totalCents: subtotalCents - discountCents,
-        issuedOn: isoDate(now),
-        validUntil: isoDate(new Date(now.getTime() + validForDays * DAY_MS)),
+        issuedOn,
+        validUntil: addDays(issuedOn, validForDays),
         notes: draft.notes ?? null,
         sentOn: null,
         acceptedOn: null,
@@ -755,11 +754,11 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
           "invalid_transition",
         );
       }
-      const today = isoDate(clock());
-      const on = input.on === undefined ? today : calendarDay(input.on, "The outcome's date");
-      if (on > today) {
+      const now = today();
+      const on = input.on === undefined ? now : calendarDay(input.on, "The outcome's date");
+      if (on > now) {
         throw new SalesDeskError(
-          `${on} is after today, ${today}: record an outcome once it has happened.`,
+          `${on} is after today, ${now}: record an outcome once it has happened.`,
         );
       }
       const earliest = input.outcome === "sent" ? quote.issuedOn : (quote.sentOn ?? quote.issuedOn);
@@ -792,10 +791,10 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
       if (prior !== undefined) return prior;
       const lead = findLead(draft.leadId);
       const on = calendarDay(draft.on, "A follow-up's day");
-      const today = isoDate(clock());
-      if (on < today) {
+      const now = today();
+      if (on < now) {
         throw new SalesDeskError(
-          `${on} is before today, ${today}: a follow-up is scheduled for today or later.`,
+          `${on} is before today, ${now}: a follow-up is scheduled for today or later.`,
         );
       }
       const what = draft.what.trim();
@@ -814,7 +813,7 @@ export function fakeSalesDesk(options: FakeSalesDeskOptions = {}): SalesDesk {
     async pipelineReport(): Promise<PipelineReport> {
       const quotes = [...quotesById.values()];
       return {
-        asOf: isoDate(clock()),
+        asOf: today(),
         stages: LEAD_STAGES.map((stage) => {
           const inStage = leads.filter((lead) => lead.stage === stage);
           return {

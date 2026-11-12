@@ -12,7 +12,7 @@ import type { DocumentRunOutcome } from "./document-service.js";
 import { DocumentError } from "./errors.js";
 import { DEFAULT_LIMITS, type DocumentLease, type LeasedInput } from "./lease.js";
 import { localDocumentService } from "./local-document-service.js";
-import { POLICY_VERSION } from "./operation.js";
+import { outputOperationId, POLICY_VERSION } from "./operation.js";
 import { runLedger } from "./run-ledger.js";
 import {
   crashingWorker,
@@ -73,14 +73,18 @@ function leaseFor(
   };
 }
 
-function service(store: VersionedFileStore, worker: RecordingWorker) {
+function service(
+  store: VersionedFileStore,
+  worker: RecordingWorker,
+  at = "2026-10-23T00:00:00.000Z",
+) {
   return localDocumentService({
     store,
     worker,
     ledger: runLedger(join(root, "ledger")),
     createdBy: "role:test",
     policyVersion: POLICY_VERSION,
-    now: () => new Date("2026-10-23T00:00:00.000Z"),
+    now: () => new Date(at),
   });
 }
 
@@ -440,6 +444,93 @@ describe("the durable document run", () => {
     );
     expect(outcome.code).toBe("lease-expired");
     expect(worker.calls).toHaveLength(0);
+  });
+
+  it("a replay after the lease expired returns the committed receipt, not lease-expired", async () => {
+    const { store, ref } = await seeded(docxPackage(), "brief.docx", "docx");
+    const worker = fakeWorker([
+      declaredOutput("reviewed.docx", "docx", docxPackage(), ref.versionId),
+    ]);
+    const request = {
+      operationId: "conv:12a",
+      taskId: "task:1",
+      lease: leaseFor(ref, { expiresAt: "2026-10-24T00:00:00.000Z" }),
+      code: "documents.result(12)",
+      arguments: {},
+    };
+    const first = committed(await service(store, worker).runDocumentPython(request));
+    const replay = committed(
+      await service(store, worker, "2026-10-25T00:00:00.000Z").runDocumentPython(request),
+    );
+    expect(replay).toEqual(first);
+    expect(worker.calls).toHaveLength(1);
+  });
+
+  it("a crash between two outputs is finished by the replay, even after the lease expired", async () => {
+    const { store, ref } = await seeded(docxPackage(), "brief.docx", "docx");
+    const worker = fakeWorker([
+      declaredOutput("figures.xlsx", "xlsx", docxPackage()),
+      declaredOutput("reviewed.docx", "docx", docxPackage(), ref.versionId),
+    ]);
+    const request = {
+      operationId: "conv:12b",
+      taskId: "task:1",
+      lease: leaseFor(ref, { expiresAt: "2026-10-24T00:00:00.000Z" }),
+      code: "documents.result(12)",
+      arguments: {},
+    };
+    // The host dies after the first output landed and before the second was written.
+    const dying: VersionedFileStore = {
+      ...store,
+      async putVersion() {
+        throw new DocumentError("incomplete-run", "the host died between two outputs");
+      },
+    };
+    const first = refused(await service(dying, worker).runDocumentPython(request));
+    expect(first.code).toBe("incomplete-run");
+    expect((await store.getHead(ref.id))?.versionId).toBe(ref.versionId);
+
+    const receipt = committed(
+      await service(store, worker, "2026-10-25T00:00:00.000Z").runDocumentPython(request),
+    );
+    expect(receipt.outputs.map((output) => output.name)).toEqual(["figures.xlsx", "reviewed.docx"]);
+    expect(worker.calls).toHaveLength(1);
+    expect((await store.getHead(ref.id))?.versionId).toBe(receipt.outputs[1]?.versionId);
+  });
+
+  it("commits no output at all when one of several cannot be committed", async () => {
+    const { store, ref } = await seeded(docxPackage(), "brief.docx", "docx");
+    // Someone else's edit lands first, so the leased version is no longer the head.
+    committed(
+      await service(
+        store,
+        fakeWorker([declaredOutput("a.docx", "docx", docxPackage(), ref.versionId)]),
+      ).runDocumentPython({
+        operationId: "conv:12c",
+        taskId: "task:1",
+        lease: leaseFor(ref),
+        code: "documents.result('a')",
+        arguments: {},
+      }),
+    );
+    const worker = fakeWorker([
+      declaredOutput("figures.xlsx", "xlsx", docxPackage()),
+      declaredOutput("b.docx", "docx", docxLike({ targets: ["settings.xml"] }), ref.versionId),
+    ]);
+    const outcome = refused(
+      await service(store, worker).runDocumentPython({
+        operationId: "conv:12d",
+        taskId: "task:1",
+        lease: leaseFor(ref),
+        code: "documents.result('b')",
+        arguments: {},
+      }),
+    );
+    expect(outcome.code).toBe("version-conflict");
+    // The new file that came before the conflicting edit was not created either.
+    expect(
+      await store.lookupOperation(outputOperationId("conv:12d", "figures.xlsx", "xlsx")),
+    ).toBeUndefined();
   });
 
   it("refuses a leased version whose bytes no longer match the lease's hash", async () => {

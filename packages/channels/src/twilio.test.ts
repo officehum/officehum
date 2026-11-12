@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type E164, parseE164 } from "./adapter.js";
+import { type E164, type InboundRequest, type InboundResult, parseE164 } from "./adapter.js";
 import { twilioSignature } from "./signature.js";
 import {
   EMPTY_TWIML,
@@ -50,15 +50,16 @@ function adapter(): TwilioAdapter {
   });
 }
 
+/** Verify, then parse, as the gateway does: nothing a field says counts before the signature. */
+function receive(request: InboundRequest): InboundResult {
+  const inbound = adapter();
+  const refusal = inbound.verify(request);
+  return refusal === undefined ? inbound.parse(request) : { accepted: false, reason: refusal };
+}
+
 function accepted() {
   const body = twilioBody();
-  const params = formParams(body);
-  const result = adapter().accept({
-    url: URL,
-    body,
-    signature: twilioSignature(TOKEN, URL, params),
-  });
-  return result;
+  return receive({ url: URL, body, signature: twilioSignature(TOKEN, URL, formParams(body)) });
 }
 
 describe("TwilioAdapter", () => {
@@ -67,10 +68,11 @@ describe("TwilioAdapter", () => {
     expect(result).toEqual({
       accepted: true,
       message: {
+        channel: "sms",
+        externalId: SID,
         from: CUSTOMER,
         to: BUSINESS,
         body: "The sink is leaking again",
-        messageSid: SID,
         receivedAt: "2030-01-01T00:00:00.000Z",
       },
     });
@@ -92,18 +94,18 @@ describe("TwilioAdapter", () => {
 
   it("refuses a body whose signature does not match, and says why", () => {
     const body = twilioBody();
-    const result = adapter().accept({ url: URL, body, signature: "not-a-signature" });
+    const result = receive({ url: URL, body, signature: "not-a-signature" });
     expect(result).toEqual({ accepted: false, reason: "signature" });
   });
 
   it("refuses a missing signature header", () => {
-    const result = adapter().accept({ url: URL, body: twilioBody(), signature: undefined });
+    const result = receive({ url: URL, body: twilioBody(), signature: undefined });
     expect(result).toEqual({ accepted: false, reason: "signature" });
   });
 
   it("refuses a verified message addressed to a number that is not ours", () => {
     const body = twilioBody({ To: "+15005550100" });
-    const result = adapter().accept({
+    const result = receive({
       url: URL,
       body,
       signature: twilioSignature(TOKEN, URL, formParams(body)),
@@ -119,7 +121,7 @@ describe("TwilioAdapter", () => {
     ];
     for (const field of overrides) {
       const body = twilioBody(field);
-      const result = adapter().accept({
+      const result = receive({
         url: URL,
         body,
         signature: twilioSignature(TOKEN, URL, formParams(body)),

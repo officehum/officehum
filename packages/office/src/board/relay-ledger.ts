@@ -18,6 +18,7 @@
  * than of the relay's ordering.
  */
 import type { DatabaseSync } from "node:sqlite";
+import { transact } from "../shared/transact.js";
 
 /** A delivery's whole lifecycle. `settled` and `failed` are terminal; `skipped` is terminal at birth. */
 export type DeliveryState = "pending" | "admitted" | "settled" | "skipped" | "failed";
@@ -158,25 +159,13 @@ export function openRelayLedger(database: DatabaseSync): RelayLedger {
   const findWait = database.prepare("SELECT * FROM relay_waits WHERE ticket_id = ?");
   const deleteWait = database.prepare("DELETE FROM relay_waits WHERE ticket_id = ?");
 
-  const transact = <T>(work: () => T): T => {
-    database.exec("BEGIN IMMEDIATE");
-    try {
-      const value = work();
-      database.exec("COMMIT");
-      return value;
-    } catch (error) {
-      if (database.isTransaction) database.exec("ROLLBACK");
-      throw error;
-    }
-  };
-
   return {
     cursor() {
       const row = readCursor.get() as { seq: number } | undefined;
       return row?.seq ?? 0;
     },
     begin(delivery) {
-      transact(() => {
+      transact(database, () => {
         insertDelivery.run(
           delivery.eventId,
           delivery.seq,
@@ -190,12 +179,12 @@ export function openRelayLedger(database: DatabaseSync): RelayLedger {
       });
     },
     admitted(eventId, submissionId) {
-      transact(() => {
+      transact(database, () => {
         admitDelivery.run(submissionId, eventId);
       });
     },
     settle(eventId, state, outcome) {
-      transact(() => {
+      transact(database, () => {
         finishDelivery.run(state, outcome, eventId);
       });
     },
@@ -210,7 +199,7 @@ export function openRelayLedger(database: DatabaseSync): RelayLedger {
       return (findForTicket.all(ticketId) as unknown as DeliveryRow[]).map(toDelivery);
     },
     recordWait(wait) {
-      transact(() => {
+      transact(database, () => {
         insertWait.run(wait.ticketId, wait.taskId, wait.conversationId, wait.deadlineMs);
       });
     },
@@ -219,7 +208,7 @@ export function openRelayLedger(database: DatabaseSync): RelayLedger {
       return row === undefined ? undefined : toWait(row);
     },
     clearWait(ticketId) {
-      transact(() => {
+      transact(database, () => {
         deleteWait.run(ticketId);
       });
     },

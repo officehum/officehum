@@ -13,7 +13,7 @@
  * refusal carries a code, and the tools turn the code into the next step a person can take.
  */
 
-import { isoDate, sameFacts } from "@officehum/sdk";
+import { addDays, localDate, sameFacts } from "@officehum/sdk";
 import type { CompanyFacts, Supplier, SupplyItem } from "./company.js";
 import { loadCompanyFacts, money } from "./company.js";
 
@@ -242,7 +242,8 @@ export interface PurchasingDesk {
   /**
    * Prices and places an order inside the limit, or refuses it. A host desk must refuse with
    * `unrequested` an order whose reason is `reorder_point` for an item that is not at or below its
-   * reorder point, or `request` with no `requestedBy`. When it refuses a split order (`split_order`),
+   * reorder point or for more than the item's reorder quantity in the company's catalogue, or
+   * `request` with no `requestedBy`. When it refuses a split order (`split_order`),
    * it must recall the orders placed with that supplier that day without a person's approval and not
    * yet received into the refused draft, so the draft is the whole order a person approves, or refuse
    * to place the split at all; it must never leave the first part out on its own. An order a person
@@ -323,8 +324,8 @@ export class PurchasingDeskError extends Error {
 
 /** The demonstration stock and orders; the company's own catalogue, suppliers and limit. */
 export interface FakePurchasingDeskOptions {
-  /** The suppliers, catalogue and limit; the company's own when omitted. */
-  readonly company?: Pick<CompanyFacts, "suppliers" | "supplyCatalog" | "approvalLimits">;
+  /** The suppliers, catalogue, limit and time zone the day is read in; the company's own when omitted. */
+  readonly company?: Pick<CompanyFacts, "hours" | "suppliers" | "supplyCatalog" | "approvalLimits">;
   /** On-hand quantity by item id; the demonstration stockroom when omitted. */
   readonly stock?: Readonly<Record<string, number>>;
   /** Existing orders; the demonstration ones when omitted. */
@@ -441,12 +442,6 @@ export function demoOrders(
   ];
 }
 
-const DAY_MS = 86_400_000;
-
-function addDays(date: string, days: number): string {
-  return isoDate(new Date(new Date(`${date}T00:00:00.000Z`).getTime() + days * DAY_MS));
-}
-
 /** A supplier id, ignoring case and spaces, or its name. */
 export function sameSupplier(supplier: { id: string; name: string }, query: string): boolean {
   const wanted = query.trim().toLowerCase();
@@ -486,6 +481,8 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
   const catalog = facts.supplyCatalog;
   const limit = facts.approvalLimits.purchaseOrderOverCents;
   const clock = options.now ?? (() => new Date(DEMO_NOW));
+  /** Today as `YYYY-MM-DD`, the company's own day: an order's dates and the day a split is counted in. */
+  const today = (): string => localDate(clock(), facts.hours.timezone);
   const suppliers: SupplierState[] = facts.suppliers.map((supplier) => ({
     id: supplier.id,
     name: supplier.name,
@@ -583,8 +580,10 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
     (onHand.get(itemId) ?? 0) + onOrderOf(itemId) <= reorderPoint;
 
   /**
-   * Refuses an order nobody asked for: a `request` with no person on the record behind it, or a
-   * `reorder_point` order for an item the stock does not show at or below its reorder point.
+   * Refuses an order nobody asked for: a `request` with no person on the record behind it, a
+   * `reorder_point` order for an item the stock does not show at or below its reorder point, or a
+   * `reorder_point` line for more than the item's reorder quantity. A reorder-point order has no
+   * sender behind it, so the company's own catalogue is all that says how much it may order.
    */
   const requireAsked = (input: RaisePurchaseOrderInput): void => {
     if (input.reason === "request") {
@@ -621,6 +620,21 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
       throw new PurchasingDeskError(
         "unrequested",
         `Not at its reorder point: ${which}. An order for it needs a person on the company record to ask for it. Nothing was ordered.`,
+      );
+    }
+    const tooMany = input.lines
+      .map((line) => ({ item: findItem(line.itemId), quantity: line.quantity }))
+      .filter(({ item, quantity }) => quantity > item.reorderQuantity);
+    if (tooMany.length > 0) {
+      const which = tooMany
+        .map(
+          ({ item, quantity }) =>
+            `${item.id} (${quantity} asked, reorder quantity ${item.reorderQuantity})`,
+        )
+        .join(", ");
+      throw new PurchasingDeskError(
+        "unrequested",
+        `More than its reorder quantity: ${which}. A reorder-point order is for at most the reorder quantity the company records; more than that needs a person on the company record to ask for it. Nothing was ordered.`,
       );
     }
   };
@@ -669,10 +683,9 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
   });
 
   const place = (order: OrderState, supplier: SupplierState, approved: boolean): void => {
-    const today = isoDate(clock());
     order.status = "placed";
-    order.placedOn = today;
-    order.expectedOn = addDays(today, supplier.leadTimeDays);
+    order.placedOn = today();
+    order.expectedOn = addDays(order.placedOn, supplier.leadTimeDays);
     order.approved = approved;
   };
 
@@ -788,7 +801,7 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
       const lines = price(supplier, input.lines);
       requireAsked(input);
       const totalCents = lines.reduce((total, line) => total + line.lineTotalCents, 0);
-      const today = isoDate(clock());
+      const raisedOn = today();
       const order: OrderState = {
         id: nextOrderId(),
         supplierId: supplier.id,
@@ -796,7 +809,7 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
         status: "draft",
         lines,
         totalCents,
-        raisedOn: today,
+        raisedOn,
         placedOn: null,
         expectedOn: null,
         approved: false,
@@ -812,7 +825,7 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
       // The limit applies to what goes to one supplier in one day, so an order cut into pieces that
       // each pass is still the order it was. Drafts are not counted: nothing in them has gone out.
       const placedToday = orders
-        .filter((other) => other.supplierId === supplier.id && other.placedOn === today)
+        .filter((other) => other.supplierId === supplier.id && other.placedOn === raisedOn)
         .filter((other) => other.status !== "draft");
       const earlier = placedToday.reduce((total, other) => total + other.totalCents, 0);
 

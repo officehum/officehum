@@ -15,7 +15,7 @@
  * Paying is a demonstration backend only: the fake records a payment in memory and moves no money.
  */
 
-import { isoDate, sameFacts } from "@officehum/sdk";
+import { addDays, daysBetween, localDate, sameFacts } from "@officehum/sdk";
 import type { CompanyFacts, Supplier, SupplyItem } from "./company.js";
 import { loadCompanyFacts, money } from "./company.js";
 
@@ -236,8 +236,8 @@ export interface SeedBill {
 }
 
 export interface FakeAccountingDeskOptions {
-  /** The suppliers and catalogue; the company's own when omitted. */
-  readonly company?: Pick<CompanyFacts, "suppliers" | "supplyCatalog">;
+  /** The suppliers, the catalogue and the time zone the day is read in; the company's own when omitted. */
+  readonly company?: Pick<CompanyFacts, "hours" | "suppliers" | "supplyCatalog">;
   /** Bills already on the desk; the demonstration ones when omitted. */
   readonly bills?: readonly SeedBill[];
   /** Bank statements; the demonstration October when omitted. */
@@ -389,18 +389,6 @@ export function demoBooks(): readonly BankEntry[] {
   ];
 }
 
-const DAY_MS = 86_400_000;
-
-function addDays(date: string, days: number): string {
-  return isoDate(new Date(Date.parse(`${date}T00:00:00.000Z`) + days * DAY_MS));
-}
-
-function daysBetween(from: string, to: string): number {
-  return Math.round(
-    (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / DAY_MS,
-  );
-}
-
 /** Text compared the way a person would: case and surrounding space do not matter. */
 export function same(left: string, right: string): boolean {
   return left.trim().toLowerCase() === right.trim().toLowerCase();
@@ -449,7 +437,7 @@ export function fakeAccountingDesk(options: FakeAccountingDeskOptions = {}): Fak
   const payments = new Map<string, VendorPayment>();
   let paymentNumber = 600;
 
-  const today = (): string => isoDate(clock());
+  const today = (): string => localDate(clock(), facts.hours.timezone);
 
   const findSupplier = (query: string): Supplier => {
     const supplier = suppliers.find(

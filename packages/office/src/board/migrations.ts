@@ -456,6 +456,37 @@ function addApprovalFacts(database: DatabaseSync): void {
   database.exec("ALTER TABLE approvals ADD COLUMN facts_json TEXT");
 }
 
+/**
+ * Migration 9 moves dollar spend from whole cents to micro-dollars (millionths of a dollar). A turn's
+ * cost rounded to whole cents was usually zero, so a dollar ceiling never moved; the finer integer is
+ * what lets one bind.
+ *
+ * Expand-only: the `*_usd_cents` columns stay exactly as they were, so what a store held before the
+ * upgrade can still be read back, but nothing reads or writes them from here on. Existing rows are
+ * backfilled as cents × 10,000, which is exact.
+ *
+ * The ledger's backfill is an UPDATE, which its append-only trigger refuses. The trigger is dropped
+ * and recreated around that one statement rather than leaving the column NULL for old rows: the step
+ * runs inside the migration's `BEGIN IMMEDIATE`, so no other holder of the file ever sees the ledger
+ * without its trigger, and every reader gets one plain column instead of a COALESCE over two units.
+ */
+function addSpendMicros(database: DatabaseSync): void {
+  database.exec(`
+    ALTER TABLE budgets ADD COLUMN max_usd_micros INTEGER;          -- NULL = uncapped
+    ALTER TABLE budgets ADD COLUMN used_usd_micros INTEGER NOT NULL DEFAULT 0;
+    UPDATE budgets SET max_usd_micros = max_usd_cents * 10000,
+                       used_usd_micros = used_usd_cents * 10000;
+
+    ALTER TABLE spend_ledger ADD COLUMN usd_micros INTEGER NOT NULL DEFAULT 0;
+    DROP TRIGGER IF EXISTS spend_ledger_append_only_update;
+    UPDATE spend_ledger SET usd_micros = usd_cents * 10000;
+    CREATE TRIGGER spend_ledger_append_only_update
+    BEFORE UPDATE ON spend_ledger BEGIN
+      SELECT RAISE(ABORT, 'spend_ledger is append-only: charge a new call instead');
+    END;
+  `);
+}
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, up: createWorkboard },
   { version: 2, up: createRelay },
@@ -465,6 +496,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 6, up: addSmsIntake },
   { version: 7, up: unifyInboundDedupe },
   { version: 8, up: addApprovalFacts },
+  { version: 9, up: addSpendMicros },
 ];
 
 for (const [index, migration] of MIGRATIONS.entries()) {

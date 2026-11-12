@@ -165,9 +165,7 @@ describe("openRuntime", () => {
   });
 
   it("cannot be confused by a principal id containing a slash", () => {
-    expect(scopedRequestId({ id: "a/b", roles: [] }, "c")).not.toBe(
-      scopedRequestId({ id: "a", roles: [] }, "b/c"),
-    );
+    expect(scopedRequestId({ id: "a/b" }, "c")).not.toBe(scopedRequestId({ id: "a" }, "b/c"));
   });
 
   it("queues a second submission while the conversation is busy, and attributes events to each", async () => {
@@ -358,6 +356,62 @@ describe("runtime commands", () => {
     await office.runtime.handle({ type: "subscribe", id: "s2", requestId: "r1", principal: ada });
     expect(office.sent.slice(again + 1)).toEqual(office.eventsFor("ada/r1").slice(0, settled.seq));
   });
+
+  /** What a subscribe from the start replays for a request: its recorded events, in order. */
+  async function replayOf(office: Awaited<ReturnType<typeof open>>, id: string, requestId: string) {
+    const before = office.sent.length;
+    await office.runtime.handle({ type: "subscribe", id, requestId, principal: ada });
+    await vi.waitFor(() => {
+      const kinds = office.sent.slice(before).map((message) => message.type);
+      if (!kinds.includes("event")) throw new Error("nothing replayed yet");
+    });
+    return office.sent
+      .slice(before)
+      .filter((message): message is EventMessage => message.type === "event")
+      .map((message) => ({ seq: message.seq, kind: message.event.kind }));
+  }
+
+  it("lets go of a settled request once its replay window closes, and still answers for it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const office = await open(lookupThenAnswer);
+      await office.runtime.handle(submit("c1", "r1"));
+      const settled = await office.settledFor("ada/r1");
+      expect(settled.seq).toBeGreaterThan(1);
+      // Inside the window the whole run replays.
+      expect(await replayOf(office, "s1", "r1")).toHaveLength(settled.seq);
+
+      vi.setSystemTime(Date.now() + 6 * 60_000);
+      await office.runtime.handle(submit("c2", "r2"));
+      await office.settledFor("ada/r2");
+
+      // The record is gone; the request is rebuilt from the durable index, which knows how it
+      // settled and nothing of the events on the way there.
+      expect(await replayOf(office, "s2", "r1")).toEqual([{ seq: 1, kind: "settled" }]);
+
+      // And a retried submit is still the same request, not new work.
+      const calls = office.scripted.calls;
+      const before = office.sent.length;
+      await office.runtime.handle(submit("c3", "r1"));
+      expect(office.sent[before]).toMatchObject({ type: "accepted", disposition: "existing" });
+      expect(office.scripted.calls).toBe(calls);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps at most a thousand settled requests, letting the oldest go first", async () => {
+    const office = await open(lookupThenAnswer);
+    await office.runtime.handle(submit("c-first", "r-first"));
+    const first = await office.settledFor("ada/r-first");
+    expect(first.seq).toBeGreaterThan(1);
+    for (let index = 0; index < 1_000; index += 1) {
+      await office.runtime.handle(submit(`c${index}`, `r${index}`));
+      await office.settledFor(`ada/r${index}`);
+    }
+    expect(await replayOf(office, "s-first", "r-first")).toEqual([{ seq: 1, kind: "settled" }]);
+    expect(await replayOf(office, "s-last", "r999")).toHaveLength(first.seq);
+  }, 120_000);
 
   it("does not let one principal subscribe to another's request", async () => {
     const office = await open([{ text: "Mine." }]);

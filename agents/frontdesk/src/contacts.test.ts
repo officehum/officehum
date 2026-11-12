@@ -195,7 +195,7 @@ describe("Front Desk contacts", () => {
       (tx) =>
         tx.appendEntry(root.id, {
           kind: "contact-test-anchor",
-          model: [{ role: "user", content: "anchor" }],
+          model: [{ role: "user", content: "anchor", timestamp: 0 }],
         }),
       BACKGROUND_CONTEXT,
     );

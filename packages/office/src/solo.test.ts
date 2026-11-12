@@ -1381,7 +1381,7 @@ describe("openSolo", () => {
             return { approved: true, by: "test" };
           },
         });
-        let role = baseRole;
+        let role: RoleBundle = baseRole;
         if (firstPhase && stage === "history") {
           const pauseAfterHistory = hook(ToolTask, {
             afterTool: async (call, result, _api, context) => {
@@ -1496,7 +1496,7 @@ describe("openSolo", () => {
     });
     const [roleExtension, ...otherExtensions] = baseRole.extensions;
     if (roleExtension === undefined) throw new Error("missing role extension");
-    const interruptedTools = roleExtension.tools?.map((tool) =>
+    const interruptedTools = (roleExtension.tools ?? []).map((tool) =>
       tool.name !== "send_message"
         ? tool
         : {

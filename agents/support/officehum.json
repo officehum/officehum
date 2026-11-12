@@ -54,13 +54,13 @@
       "name": "escalate_case",
       "replay": "unsafe",
       "noApproval": "An internal hand-off of a case to the person the company record names for the reason, with a note. The desk picks the person by title and never hands a complaint about someone to that person; it sends nothing to the client.",
-      "description": "Hand a case to a person, chosen by the desk from the company record for the reason: safety, refund, billing, legal, data, staff or unresolved."
+      "description": "Hand a case to a person, chosen by the desk from the company record for the reason: safety, refund, billing, legal, data, staff or unresolved. A client's case is handed on only for that client's own contact or a colleague."
     },
     {
       "name": "resolve_case",
       "replay": "unsafe",
-      "noApproval": "An internal record that a case is closed, with its outcome. The desk refuses a case with a credit proposal pending, a re-clean not yet done, a safety case not escalated, or a case handed to a person.",
-      "description": "Close a case with the outcome recorded. The desk refuses it while a credit proposal is pending, a re-clean is not done, or the case is someone else's."
+      "noApproval": "An internal record that a case is closed, with its outcome. The desk refuses a case with a credit proposal pending, a re-clean not yet done, a safety or damage case not escalated, or a case handed to a person.",
+      "description": "Close a case with the outcome recorded. The desk refuses it while a credit proposal is pending, a re-clean is not done, a safety or damage complaint has not been handed to a person, or the case is someone else's."
     },
     {
       "name": "read_company",

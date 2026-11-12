@@ -23,6 +23,8 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { transact as inTransaction } from "../shared/transact.js";
+import { MICROS_PER_CENT } from "../spend/prices.js";
 import { type ApprovalStore, openApprovalStore } from "./approvals.js";
 import { BoardError, type BoardErrorKind, fail } from "./errors.js";
 import { applyMigrations } from "./migrations.js";
@@ -69,6 +71,7 @@ export interface NewTicket {
   };
   readonly budget?: {
     readonly maxTokens?: number;
+    /** The dollar ceiling, in whole cents. The board holds and compares it in micro-dollars. */
     readonly maxUsdCents?: number;
     readonly maxCalls?: number;
     readonly maxHops?: number;
@@ -123,6 +126,8 @@ export interface Provenance {
 export interface ListFilter {
   readonly status?: TicketStatus | readonly TicketStatus[];
   readonly assignee?: string;
+  /** Only tickets this actor created: how an agent finds the answers to what it dispatched. */
+  readonly createdBy?: string;
   readonly parentId?: string;
   readonly type?: string;
   readonly limit?: number;
@@ -145,22 +150,23 @@ export interface Budget {
   readonly ticketId: string;
   readonly maxCalls: number | null;
   readonly maxTokens: number | null;
-  readonly maxUsdCents: number | null;
+  readonly maxUsdMicros: number | null;
   readonly usedCalls: number;
   readonly usedTokens: number;
-  readonly usedUsdCents: number;
+  readonly usedUsdMicros: number;
   readonly hopCount: number;
   readonly maxHops: number;
   readonly remainingCalls: number | null;
   readonly remainingTokens: number | null;
-  readonly remainingUsdCents: number | null;
+  readonly remainingUsdMicros: number | null;
 }
 
 /** What one charge adds to a ticket, and to every ancestor. Every field is optional; every one is a count. */
 export interface UsageCharge {
   readonly calls?: number;
   readonly tokens?: number;
-  readonly usdCents?: number;
+  /** Dollar cost in micro-dollars (millionths of a dollar), the ledger's unit. */
+  readonly usdMicros?: number;
   /** The role doing the spending, recorded on the ledger row for the per-agent-per-day reader. */
   readonly agent?: string;
 }
@@ -188,7 +194,7 @@ export interface AgentSpend {
   readonly agent: string | null;
   readonly calls: number;
   readonly tokens: number;
-  readonly usdCents: number;
+  readonly usdMicros: number;
 }
 
 /** The ticket a relay conversation is working, and the role the conversation belongs to. */
@@ -212,7 +218,7 @@ export function budgetSpent(budget: Budget): readonly ("calls" | "tokens" | "usd
   const spent: ("calls" | "tokens" | "usd")[] = [];
   if (budget.remainingCalls !== null && budget.remainingCalls <= 0) spent.push("calls");
   if (budget.remainingTokens !== null && budget.remainingTokens <= 0) spent.push("tokens");
-  if (budget.remainingUsdCents !== null && budget.remainingUsdCents <= 0) spent.push("usd");
+  if (budget.remainingUsdMicros !== null && budget.remainingUsdMicros <= 0) spent.push("usd");
   return spent;
 }
 
@@ -236,6 +242,10 @@ export interface Board {
    * number for the whole board, so it needs the whole board's tail, not one ticket's.
    */
   eventsAfter(after: number): TicketEvent[];
+  /** The newest event's `seq`, or 0 for an empty log: a cheap "has anything changed" read. */
+  lastEventSeq(): number;
+  /** How many tickets are in each status, every status present (0 when none). Not capped by `list`. */
+  countByStatus(): Record<TicketStatus, number>;
   /**
    * Append a `stalled` event: a delivery the relay could not route and no person could take. It has
    * no status change of its own — the ticket is where it was — so it is not `assign` or `comment`.
@@ -276,6 +286,12 @@ export interface Board {
   conversationTicket(conversationId: number): ConversationTicket | undefined;
   /** Everyone the office knows, in the order they were added. The relay's person fallback reads it. */
   people(): Person[];
+  /**
+   * Adds the people a host names, in the order given, and renames the ones already here. A host calls
+   * it at start with the company record's people, so the same list twice changes nothing. Nobody is
+   * ever removed: a ticket may still be with a person who has since left the record.
+   */
+  upsertPeople(people: readonly Person[]): void;
   /** The ticket's provenance row, or `undefined` when it has none. */
   provenance(ticketId: string): Provenance | undefined;
   /**
@@ -351,9 +367,9 @@ type KeyRow = { caller_key: string; ticket_id: string; request_json: string };
 type ProvenanceRow = { origin: string; source_channel: string; source_contact: string };
 type BudgetRow = {
   max_tokens: number | null;
-  max_usd_cents: number | null;
+  max_usd_micros: number | null;
   used_tokens: number;
-  used_usd_cents: number;
+  used_usd_micros: number;
   hop_count: number;
   max_hops: number;
   used_calls: number;
@@ -365,11 +381,11 @@ type SpendRow = {
   agent: string | null;
   calls: number;
   tokens: number;
-  usd_cents: number;
+  usd_micros: number;
 };
 type BudgetLimits = {
   readonly maxTokens: number | null;
-  readonly maxUsdCents: number | null;
+  readonly maxUsdMicros: number | null;
   readonly maxCalls: number | null;
 };
 
@@ -639,6 +655,10 @@ export function openBoard(file: string): Board {
     `SELECT id, seq, ticket_id, kind, actor, payload, at FROM ticket_events
       WHERE seq > ? ORDER BY seq`,
   );
+  const lastSeq = database.prepare("SELECT COALESCE(MAX(seq), 0) AS seq FROM ticket_events");
+  const countStatuses = database.prepare(
+    "SELECT status, COUNT(*) AS count FROM tickets GROUP BY status",
+  );
   const insertComment = database.prepare(
     "INSERT INTO comments (id, ticket_id, author, body, at) VALUES (?, ?, ?, ?, ?)",
   );
@@ -649,13 +669,13 @@ export function openBoard(file: string): Board {
     "INSERT INTO provenance (ticket_id, origin, source_channel, source_contact) VALUES (?, ?, ?, ?)",
   );
   const findBudget = database.prepare(
-    `SELECT max_tokens, max_usd_cents, used_tokens, used_usd_cents, hop_count, max_hops,
+    `SELECT max_tokens, max_usd_micros, used_tokens, used_usd_micros, hop_count, max_hops,
             used_calls, max_calls
        FROM budgets WHERE ticket_id = ?`,
   );
   const insertBudget = database.prepare(
     `INSERT INTO budgets
-      (ticket_id, max_tokens, max_usd_cents, used_tokens, used_usd_cents, hop_count, max_hops,
+      (ticket_id, max_tokens, max_usd_micros, used_tokens, used_usd_micros, hop_count, max_hops,
        used_calls, max_calls)
      VALUES (?, ?, ?, 0, 0, ?, ?, 0, ?)`,
   );
@@ -663,17 +683,17 @@ export function openBoard(file: string): Board {
     "SELECT 1 AS present FROM spend_ledger WHERE call_id = ? AND kind = ?",
   );
   const insertLedgerRow = database.prepare(
-    `INSERT INTO spend_ledger (call_id, kind, ticket_id, agent, calls, tokens, usd_cents, at)
+    `INSERT INTO spend_ledger (call_id, kind, ticket_id, agent, calls, tokens, usd_micros, at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const addSpend = database.prepare(
     `UPDATE budgets SET used_calls = used_calls + ?, used_tokens = used_tokens + ?,
-            used_usd_cents = used_usd_cents + ?
+            used_usd_micros = used_usd_micros + ?
       WHERE ticket_id = ?`,
   );
   const sumByAgent = database.prepare(
     `SELECT substr(at, 1, 10) AS day, agent,
-            SUM(calls) AS calls, SUM(tokens) AS tokens, SUM(usd_cents) AS usd_cents
+            SUM(calls) AS calls, SUM(tokens) AS tokens, SUM(usd_micros) AS usd_micros
        FROM spend_ledger GROUP BY day, agent
       ORDER BY day DESC, (agent IS NULL) ASC, agent ASC`,
   );
@@ -687,6 +707,9 @@ export function openBoard(file: string): Board {
   );
   const findPerson = database.prepare("SELECT 1 AS present FROM people WHERE id = ?");
   const listPeople = database.prepare("SELECT id, name FROM people ORDER BY rowid");
+  const upsertPerson = database.prepare(
+    "INSERT INTO people (id, name) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET name = excluded.name",
+  );
   const findKey = database.prepare(
     "SELECT caller_key, ticket_id, request_json FROM ticket_keys WHERE caller_key = ?",
   );
@@ -717,13 +740,9 @@ export function openBoard(file: string): Board {
   };
 
   const transact = <T>(work: () => T): T => {
-    database.exec("BEGIN IMMEDIATE");
     try {
-      const value = work();
-      database.exec("COMMIT");
-      return value;
+      return inTransaction(database, work);
     } catch (error) {
-      if (database.isTransaction) database.exec("ROLLBACK");
       throw surface(error);
     }
   };
@@ -769,7 +788,7 @@ export function openBoard(file: string): Board {
     if (own === undefined) return undefined;
     let remainingCalls = remaining(own.max_calls, own.used_calls);
     let remainingTokens = remaining(own.max_tokens, own.used_tokens);
-    let remainingUsdCents = remaining(own.max_usd_cents, own.used_usd_cents);
+    let remainingUsdMicros = remaining(own.max_usd_micros, own.used_usd_micros);
     const tighten = (limit: number | null, used: number, current: number | null): number | null => {
       const available = remaining(limit, used);
       if (available === null) return current;
@@ -783,10 +802,10 @@ export function openBoard(file: string): Board {
       if (ancestor !== undefined) {
         remainingCalls = tighten(ancestor.max_calls, ancestor.used_calls, remainingCalls);
         remainingTokens = tighten(ancestor.max_tokens, ancestor.used_tokens, remainingTokens);
-        remainingUsdCents = tighten(
-          ancestor.max_usd_cents,
-          ancestor.used_usd_cents,
-          remainingUsdCents,
+        remainingUsdMicros = tighten(
+          ancestor.max_usd_micros,
+          ancestor.used_usd_micros,
+          remainingUsdMicros,
         );
       }
       parentId = ticketRow(parentId)?.parent_id ?? null;
@@ -795,15 +814,15 @@ export function openBoard(file: string): Board {
       ticketId: id,
       maxCalls: own.max_calls,
       maxTokens: own.max_tokens,
-      maxUsdCents: own.max_usd_cents,
+      maxUsdMicros: own.max_usd_micros,
       usedCalls: own.used_calls,
       usedTokens: own.used_tokens,
-      usedUsdCents: own.used_usd_cents,
+      usedUsdMicros: own.used_usd_micros,
       hopCount: own.hop_count,
       maxHops: own.max_hops,
       remainingCalls,
       remainingTokens,
-      remainingUsdCents,
+      remainingUsdMicros,
     };
   };
 
@@ -819,7 +838,7 @@ export function openBoard(file: string): Board {
   const chargeOnce = (
     ticketId: string,
     callId: string,
-    delta: { readonly calls: number; readonly tokens: number; readonly usdCents: number },
+    delta: { readonly calls: number; readonly tokens: number; readonly usdMicros: number },
     options: {
       readonly agent: string | undefined;
       readonly gate: boolean;
@@ -831,7 +850,7 @@ export function openBoard(file: string): Board {
     for (const [label, value] of [
       ["calls", delta.calls],
       ["tokens", delta.tokens],
-      ["usdCents", delta.usdCents],
+      ["usdMicros", delta.usdMicros],
     ] as const) {
       if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
         throw fail("invalid_argument", `A charge's ${label} must be a whole number of 0 or more.`);
@@ -860,13 +879,13 @@ export function openBoard(file: string): Board {
         agent,
         delta.calls,
         delta.tokens,
-        delta.usdCents,
+        delta.usdMicros,
         now(),
       );
       let current: string | null = id;
       let depth = 0;
       while (current !== null && depth < MAX_CHAIN) {
-        addSpend.run(delta.calls, delta.tokens, delta.usdCents, current);
+        addSpend.run(delta.calls, delta.tokens, delta.usdMicros, current);
         current = ticketRow(current)?.parent_id ?? null;
         depth += 1;
       }
@@ -996,11 +1015,14 @@ export function openBoard(file: string): Board {
         // grandchild. The child's own request narrows and never widens.
         const parentBudget =
           parent === undefined ? undefined : (findBudget.get(parent.id) as BudgetRow | undefined);
+        // The ceiling is configured in cents and held in micro-dollars, the unit spend is charged in.
+        const requestedUsdMicros =
+          request.budget.maxUsdCents === null ? null : request.budget.maxUsdCents * MICROS_PER_CENT;
         const ceilings: BudgetLimits =
           parentBudget === undefined
             ? {
                 maxTokens: request.budget.maxTokens,
-                maxUsdCents: request.budget.maxUsdCents,
+                maxUsdMicros: requestedUsdMicros,
                 maxCalls: request.budget.maxCalls,
               }
             : {
@@ -1008,9 +1030,9 @@ export function openBoard(file: string): Board {
                   remaining(parentBudget.max_tokens, parentBudget.used_tokens),
                   request.budget.maxTokens,
                 ),
-                maxUsdCents: narrow(
-                  remaining(parentBudget.max_usd_cents, parentBudget.used_usd_cents),
-                  request.budget.maxUsdCents,
+                maxUsdMicros: narrow(
+                  remaining(parentBudget.max_usd_micros, parentBudget.used_usd_micros),
+                  requestedUsdMicros,
                 ),
                 maxCalls: narrow(
                   remaining(parentBudget.max_calls, parentBudget.used_calls),
@@ -1060,7 +1082,7 @@ export function openBoard(file: string): Board {
         insertBudget.run(
           id,
           ceilings.maxTokens,
-          ceilings.maxUsdCents,
+          ceilings.maxUsdMicros,
           hopCount,
           maxHops,
           ceilings.maxCalls,
@@ -1131,6 +1153,10 @@ export function openBoard(file: string): Board {
         clauses.push("assignee = ?");
         values.push(bounded(filter.assignee, "Assignee filter"));
       }
+      if (filter.createdBy !== undefined) {
+        clauses.push("created_by = ?");
+        values.push(bounded(filter.createdBy, "Creator filter"));
+      }
       if (filter.parentId !== undefined) {
         clauses.push("parent_id = ?");
         values.push(bounded(filter.parentId, "Parent filter"));
@@ -1156,6 +1182,19 @@ export function openBoard(file: string): Board {
       const from = cursorOf(after);
       const rows = findEventsAfter.all(from) as unknown as EventRow[];
       return rows.map(toEvent);
+    },
+    lastEventSeq() {
+      return (lastSeq.get() as { seq: number }).seq;
+    },
+    countByStatus() {
+      const counts = Object.fromEntries(STATUSES.map((status) => [status, 0])) as Record<
+        TicketStatus,
+        number
+      >;
+      for (const row of countStatuses.all() as unknown as { status: string; count: number }[]) {
+        counts[statusOf(row.status)] = row.count;
+      }
+      return counts;
     },
     stall(ticketId, actor, reason) {
       const id = bounded(ticketId, "Ticket id");
@@ -1205,7 +1244,7 @@ export function openBoard(file: string): Board {
         {
           calls: charge.calls ?? 0,
           tokens: charge.tokens ?? 0,
-          usdCents: charge.usdCents ?? 0,
+          usdMicros: charge.usdMicros ?? 0,
         },
         { agent: charge.agent, gate: false, kind: "usage" },
       );
@@ -1215,7 +1254,7 @@ export function openBoard(file: string): Board {
       const result = chargeOnce(
         ticketId,
         callId,
-        { calls: 1, tokens: 0, usdCents: 0 },
+        { calls: 1, tokens: 0, usdMicros: 0 },
         { agent, gate: true, kind: "call" },
       );
       return { admitted: result.admitted, charged: result.charged, budget: result.budget };
@@ -1229,7 +1268,7 @@ export function openBoard(file: string): Board {
         agent: row.agent,
         calls: row.calls,
         tokens: row.tokens,
-        usdCents: row.usd_cents,
+        usdMicros: row.usd_micros,
       }));
     },
     bindConversation(conversationId, binding) {
@@ -1252,6 +1291,15 @@ export function openBoard(file: string): Board {
     },
     people() {
       return listPeople.all() as unknown as Person[];
+    },
+    upsertPeople(people) {
+      const rows = people.map((person) => ({
+        id: bounded(person?.id, "Person id"),
+        name: bounded(person?.name, "Person name"),
+      }));
+      transact(() => {
+        for (const row of rows) upsertPerson.run(row.id, row.name);
+      });
     },
     provenance(ticketId) {
       const row = findProvenance.get(bounded(ticketId, "Ticket id")) as ProvenanceRow | undefined;

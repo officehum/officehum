@@ -3,7 +3,9 @@
  *
  * `list_vendor_bills` and `reconcile_summary` only read. `record_vendor_bill` writes through the desk
  * with no approval: the desk refuses a supplier that is not on file or not approved, prices every line
- * from the supply catalogue, and works out the total and the due date. `pay_vendor_bill` waits for a
+ * from the supply catalogue, and works out the total and the due date. Who asked for a bill to be
+ * recorded is the host's verified sender (`SenderResolver`), a person on the company record, never an
+ * argument or the message: the person approving its payment later reads that name as fact. `pay_vendor_bill` waits for a
  * person on every call (`any_payment` in `officehum.json`, evaluated by the SDK's gate before the
  * tool runs). The model names only the bill: `paymentApprovalFacts` reads its facts from the desk for
  * the person to approve, the gate hands those facts to the tool on a yes, and the desk pays the bill's
@@ -21,9 +23,12 @@ import {
   type ApprovalFactsReader,
   approvedFacts,
   approvedFactsParameter,
+  colleague,
   deskRefusal,
   refusal,
   requestId,
+  requireDesk,
+  type SenderResolver,
   textResult,
 } from "@officehum/sdk";
 import { type CompanyFacts, financeLead, money, personLabel, purchasingLead } from "./company.js";
@@ -41,11 +46,16 @@ import {
 /** The limit an unmatched bank item is measured against, in cents. */
 export const MAJOR_UNMATCHED_LIMIT = "major_unmatched_item";
 
-/** What the tools need: the desk, the company, and the role's resolved limits, read per call. */
+/**
+ * What the tools need: the desk, the company, the role's resolved limits, read per call, and who is
+ * asking.
+ */
 export interface PayablesToolDependencies {
   readonly desk: AccountingDesk | undefined;
   readonly company: CompanyFacts;
   readonly limits: () => Readonly<Record<string, number>>;
+  /** The host's verified sender of each call's work. Omitted: every sender is unknown. */
+  readonly sender?: SenderResolver;
 }
 
 /**
@@ -75,15 +85,6 @@ const LINES = Type.Array(
   ),
   { minItems: 1 },
 );
-
-function requireDesk(dependencies: PayablesToolDependencies): AccountingDesk {
-  if (dependencies.desk === undefined) {
-    throw new Error(
-      "No accounts desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
-    );
-  }
-  return dependencies.desk;
-}
 
 function billDetails(bill: VendorBill): JsonObject {
   return { ...bill, lines: bill.lines.map((line) => ({ ...line })) };
@@ -181,7 +182,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
     ),
     replay: "safe",
     execute: async (args) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "accounts");
       const bills = await desk.listVendorBills({
         ...(args.status === undefined ? {} : { status: args.status as BillStatus | "unpaid" }),
         ...(args.supplier === undefined ? {} : { supplier: args.supplier }),
@@ -209,7 +210,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
   const recordVendorBill = defineTool({
     name: "record_vendor_bill",
     description:
-      "Record a supplier's bill when someone in the company asks: the supplier, its own invoice number, each catalogue item and quantity on the bill, who asked for it to be recorded and what it came from. You give no prices or totals: the desk prices each line from the supply catalogue and works out the total and due date. It refuses a supplier not on file or not approved, an item that supplier does not supply, and a bill already recorded. It pays nothing.",
+      "Record a supplier's bill when someone in the company asks: the supplier, its own invoice number, each catalogue item and quantity on the bill, and what it came from. Who asked is recorded from the message's verified sender, and the bill is refused when that is nobody on the company record. You give no prices or totals: the desk prices each line from the supply catalogue and works out the total and due date. It refuses a supplier not on file or not approved, an item that supplier does not supply, and a bill already recorded. It pays nothing.",
     parameters: Type.Object(
       {
         supplier: Type.String({
@@ -220,10 +221,6 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
           description: "The supplier's own invoice number on the bill, e.g. RT-5588",
         }),
         lines: LINES,
-        recordedBy: Type.String({
-          minLength: 1,
-          description: "The name of the person in the company who asked for it to be recorded",
-        }),
         source: Type.String({
           minLength: 1,
           description: "What the bill came from: the message or document, who sent it and when",
@@ -240,14 +237,27 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "accounts");
+      // Who asked is the host's verified sender, never the model's say-so: a colleague on the
+      // company record, writing from inside the office. Anyone else has no bill recorded.
+      const asker = colleague(
+        company,
+        await dependencies.sender?.({ conversationId: api.conversationId, taskId: api.taskId }),
+      );
+      if (asker === undefined) {
+        return deskRefusal(
+          `Nothing was recorded: a supplier's bill is recorded only when a person on the company record asks from inside the office, and this message's verified sender is not one. Next: tell the person the bill is for ${finance} to look at; record and pay nothing.`,
+          "unknown_sender",
+          { supplier: args.supplier },
+        );
+      }
       try {
         const bill = await desk.recordVendorBill(
           {
             supplier: args.supplier,
             supplierInvoice: args.supplierInvoice,
             lines: args.lines,
-            recordedBy: args.recordedBy,
+            recordedBy: asker.name,
             source: args.source,
             ...(args.termsDays === undefined ? {} : { termsDays: args.termsDays }),
           },
@@ -269,7 +279,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
    * asks nobody.
    */
   const paymentApprovalFacts: ApprovalFactsReader = async (args) => {
-    const desk = requireDesk(dependencies);
+    const desk = requireDesk(dependencies.desk, "accounts");
     const billId = String(args.billId);
     const [bill] = await desk.listVendorBills({ billId });
     if (bill === undefined) {
@@ -302,7 +312,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "accounts");
       const approved = approvedFacts(args);
       if (approved === undefined) {
         return refusal(
@@ -365,7 +375,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
     ),
     replay: "safe",
     execute: async (args) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "accounts");
       const limit = dependencies.limits()[MAJOR_UNMATCHED_LIMIT];
       const majorOverCents =
         typeof limit === "number" && Number.isSafeInteger(limit) && limit >= 0 ? limit : null;

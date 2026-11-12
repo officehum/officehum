@@ -8,7 +8,7 @@
  * Two roles share one harness: the delegator (`frontdesk`, accepts `booking.request`) and the
  * delegate (`bookkeeper`, accepts `invoice.create`). Test support only: not built, not published.
  */
-import type { Message } from "@earendil-works/pi-ai";
+import type { JsonObject, Message } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
 import type { AgentManifest } from "../manifest.js";
 
@@ -77,7 +77,8 @@ export type CaseTurn =
   | {
       readonly toolCalls: readonly {
         readonly name: string;
-        readonly args?: Record<string, unknown>;
+        // JSON, as the scripted providers on both sides pass it to the model's tool call.
+        readonly args?: JsonObject;
       }[];
     };
 
@@ -86,7 +87,7 @@ export type CaseTurn =
  * `agent_reply`. Otherwise the delegator asks for the work, then finishes once the dispatch returns.
  */
 export function delegatingScript(
-  dispatch?: Record<string, unknown>,
+  dispatch?: JsonObject,
 ): (messages: readonly Message[]) => CaseTurn {
   return (messages) => {
     const delivered = messages.findLast(

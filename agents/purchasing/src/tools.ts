@@ -28,13 +28,20 @@ import {
   approvedFacts,
   approvedFactsParameter,
   colleague,
+  companyEscalationText,
+  companyGlossaryText,
+  companyPeopleText,
+  companyPoliciesText,
+  companyToneText,
   deskRefusal,
+  readCompanyTool,
   refusal,
   requestId,
+  requireDesk,
   type SenderResolver,
   textResult,
 } from "@officehum/sdk";
-import { type CompanyFacts, money, person, personLabel, purchasingLead } from "./company.js";
+import { type CompanyFacts, money, personLabel, purchasingLead } from "./company.js";
 import {
   type DeskRefusal,
   draftFacts,
@@ -87,17 +94,6 @@ export type CompanySection =
   | "escalation"
   | "glossary";
 
-const SECTIONS: readonly CompanySection[] = [
-  "profile",
-  "hours",
-  "people",
-  "purchasing",
-  "policies",
-  "tone",
-  "escalation",
-  "glossary",
-];
-
 const STATUSES: readonly OrderStatus[] = ["draft", "placed", "partially_received", "received"];
 
 const REASONS: readonly OrderReason[] = ["reorder_point", "request"];
@@ -115,16 +111,6 @@ const LINES = Type.Array(
   ),
   { minItems: 1 },
 );
-
-/** The desk, or a refusal: a host with no desk gets no read and no write. */
-function requireDesk(dependencies: PurchasingToolDependencies): PurchasingDesk {
-  if (dependencies.desk === undefined) {
-    throw new Error(
-      "No purchasing desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
-    );
-  }
-  return dependencies.desk;
-}
 
 function statusText(status: OrderStatus): string {
   return status.replace("_", " ");
@@ -196,67 +182,44 @@ function receiptText(receipt: GoodsReceipt): string {
   ].join("\n");
 }
 
-/** The company record as one section reads: prose the model can answer with. */
-function companySection(company: CompanyFacts, section: CompanySection): string {
-  switch (section) {
-    case "profile": {
-      const { profile } = company;
-      return [
-        `${profile.legalName} — trading as ${profile.tradingName}. ${profile.tagline}`,
-        `${profile.address.street}, ${profile.address.city}, ${profile.address.region} ${profile.address.postalCode}. Phone ${profile.phone}. Email ${profile.email}.`,
-      ].join("\n");
-    }
-    case "hours": {
-      const { hours } = company;
-      return [`Office: ${hours.office} (${hours.timezone}).`, `Closed: ${hours.closedOn}.`].join(
-        "\n",
-      );
-    }
-    case "people":
-      return company.people
-        .map(
-          (worker) =>
-            `${worker.name} — ${worker.title} — ${worker.email} — decides: ${worker.decides.join("; ")}`,
-        )
-        .join("\n");
-    case "purchasing": {
-      const lead = personLabel(purchasingLead(company));
-      return [
-        `Purchasing decisions belong to ${lead}: an order over the limit, a new supplier, a supplier contract, a claim against a supplier, and surplus stock.`,
-        `A purchase order over ${money(company.approvalLimits.purchaseOrderOverCents)} needs a person's approval before it goes out.`,
-        "Suppliers on file (the company's approved list is its own setting):",
-        ...company.suppliers.map(
-          (supplier) =>
-            `- ${supplier.name} — ${supplier.approved ? "approved" : "not approved"} — ${supplier.category} — lead time ${supplier.leadTimeDays} days`,
-        ),
-      ].join("\n");
-    }
-    case "policies":
-      return [
-        "Safety:",
-        ...company.policies.safety.map((rule) => `- ${rule}`),
-        "Never promised:",
-        ...company.policies.commitments.map((rule) => `- ${rule}`),
-      ].join("\n");
-    case "tone":
-      return [
-        company.tone.summary,
-        "Always:",
-        ...company.tone.always.map((rule) => `- ${rule}`),
-        "Never:",
-        ...company.tone.never.map((rule) => `- ${rule}`),
-      ].join("\n");
-    case "escalation":
-      return company.escalation
-        .map((rule) => {
-          const owner = person(company, rule.toPersonId);
-          return `${rule.topic} — ${owner?.name ?? rule.toPersonId}${owner === undefined ? "" : `, ${owner.title}`} — ${rule.when}`;
-        })
-        .join("\n");
-    case "glossary":
-      return company.glossary.map((entry) => `${entry.term}: ${entry.meaning}`).join("\n");
-  }
-}
+/**
+ * The company record, one section at a time: prose the model can answer with. The key order is the
+ * order `read_company` offers the sections in. The profile and the hours say less here than the
+ * shared texts do (no service area or clients, no crew hours or emergency line), so they are this
+ * role's own, as is the purchasing section.
+ */
+const COMPANY_SECTIONS: Readonly<Record<CompanySection, (company: CompanyFacts) => string>> = {
+  profile: (company) => {
+    const { profile } = company;
+    return [
+      `${profile.legalName} — trading as ${profile.tradingName}. ${profile.tagline}`,
+      `${profile.address.street}, ${profile.address.city}, ${profile.address.region} ${profile.address.postalCode}. Phone ${profile.phone}. Email ${profile.email}.`,
+    ].join("\n");
+  },
+  hours: (company) => {
+    const { hours } = company;
+    return [`Office: ${hours.office} (${hours.timezone}).`, `Closed: ${hours.closedOn}.`].join(
+      "\n",
+    );
+  },
+  people: (company) => companyPeopleText(company, "email"),
+  purchasing: (company) => {
+    const lead = personLabel(purchasingLead(company));
+    return [
+      `Purchasing decisions belong to ${lead}: an order over the limit, a new supplier, a supplier contract, a claim against a supplier, and surplus stock.`,
+      `A purchase order over ${money(company.approvalLimits.purchaseOrderOverCents)} needs a person's approval before it goes out.`,
+      "Suppliers on file (the company's approved list is its own setting):",
+      ...company.suppliers.map(
+        (supplier) =>
+          `- ${supplier.name} — ${supplier.approved ? "approved" : "not approved"} — ${supplier.category} — lead time ${supplier.leadTimeDays} days`,
+      ),
+    ].join("\n");
+  },
+  policies: companyPoliciesText,
+  tone: companyToneText,
+  escalation: companyEscalationText,
+  glossary: companyGlossaryText,
+};
 
 /**
  * Builds the nine tools over one desk and one company. Every one is plain Pi Durable: they install
@@ -300,7 +263,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
       already_approved: "",
       not_placed: "",
       not_on_order: "",
-      unrequested: ` Next: tell the person nothing was ordered: an order goes in only for an item at its reorder point or when a person on the company record asks for it, so pass the request to ${lead}, who decides purchasing.`,
+      unrequested: ` Next: tell the person nothing was ordered: an order goes in only for an item at its reorder point, for no more than its reorder quantity, or when a person on the company record asks for it, so pass the request to ${lead}, who decides purchasing.`,
       unknown_reporter: ` Next: tell the person nothing was recorded: a delivery is recorded only from the report of someone on the company record, so pass the report to ${lead}, or ask someone on the record who received it to report what arrived.`,
     };
     return deskRefusal(`${error.message}${next[error.code]}`, error.code, {
@@ -317,7 +280,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     parameters: Type.Object({}, { additionalProperties: false }),
     replay: "safe",
     execute: async () => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "purchasing");
       const stock = await desk.listStock();
       const due = stock.filter((line) => line.needsReorder);
       return {
@@ -342,7 +305,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     parameters: Type.Object({}, { additionalProperties: false }),
     replay: "safe",
     execute: async () => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "purchasing");
       const suppliers = await desk.listSuppliers();
       return {
         ...textResult(
@@ -374,7 +337,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     ),
     replay: "safe",
     execute: async (args) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "purchasing");
       try {
         const comparison = await desk.compareSuppliers(args.itemId);
         return {
@@ -418,7 +381,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     ),
     replay: "safe",
     execute: async (args) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "purchasing");
       const orders = await desk.listPurchaseOrders({
         ...(args.purchaseOrderId === undefined ? {} : { id: args.purchaseOrderId }),
         ...(args.supplier === undefined ? {} : { supplier: args.supplier }),
@@ -444,7 +407,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
   const raisePurchaseOrder = defineTool({
     name: "raise_purchase_order",
     description:
-      "Raise a purchase order with one supplier for items and quantities, and say why. You give no prices: the desk prices each line from the supplier's price list and works out the total. reason request: a person in the company asked; the desk records who from the message's verified sender, and refuses when that is nobody on the company record. reason reorder_point: only items list_stock flags REORDER. It refuses an order nobody asked for, an order over the spending limit (saving it as a draft: then call request_po_approval with the draft's id), an order that with others to the same supplier today passes the limit (recalling those into the draft), and a supplier not on the approved list (then call request_new_supplier).",
+      "Raise a purchase order with one supplier for items and quantities, and say why. You give no prices: the desk prices each line from the supplier's price list and works out the total. reason request: a person in the company asked; the desk records who from the message's verified sender, and refuses when that is nobody on the company record. reason reorder_point: only items list_stock flags REORDER, and at most each item's reorder quantity, since no sender stands behind it. It refuses an order nobody asked for, an order over the spending limit (saving it as a draft: then call request_po_approval with the draft's id), an order that with others to the same supplier today passes the limit (recalling those into the draft), and a supplier not on the approved list (then call request_new_supplier).",
     parameters: Type.Object(
       {
         supplierId: Type.String({
@@ -455,7 +418,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
           REASONS.map((reason) => Type.Literal(reason)),
           {
             description:
-              "request when a person in the company asked for it; reorder_point only for items list_stock flags REORDER",
+              "request when a person in the company asked for it; reorder_point only for items list_stock flags REORDER, up to each item's reorder quantity",
           },
         ),
         requestSource: Type.Optional(
@@ -470,7 +433,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "purchasing");
       const reason = args.reason as OrderReason;
       // Who asked is the host's verified sender, never the model's say-so.
       const requester = reason === "request" ? await asker(api) : undefined;
@@ -505,7 +468,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
    * gate asks nobody.
    */
   const poApprovalFacts: ApprovalFactsReader = async (args) => {
-    const desk = requireDesk(dependencies);
+    const desk = requireDesk(dependencies.desk, "purchasing");
     const draftId = String(args.draftId);
     const [order] = await desk.listPurchaseOrders({ id: draftId });
     if (order === undefined) {
@@ -551,7 +514,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "purchasing");
       const approved = approvedFacts(args);
       if (approved === undefined) {
         return refusal(
@@ -580,7 +543,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
    * the gate asks nobody. The reason stays in the call's arguments: it is the requester's words.
    */
   const newSupplierApprovalFacts: ApprovalFactsReader = async (args) => {
-    const desk = requireDesk(dependencies);
+    const desk = requireDesk(dependencies.desk, "purchasing");
     const supplier = (await desk.listSuppliers()).find((candidate) =>
       sameSupplier(candidate, String(args.supplierId)),
     );
@@ -628,7 +591,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "purchasing");
       const approved = approvedFacts(args);
       if (approved === undefined) {
         return refusal(
@@ -673,7 +636,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "purchasing");
       // Who reported it is the host's verified sender, never the model's say-so.
       const reporter = await asker(api);
       try {
@@ -697,24 +660,11 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     },
   });
 
-  const readCompany = defineTool({
-    name: "read_company",
+  const readCompany = readCompanyTool({
+    company,
     description:
       "Read one section of the company record: the profile, the office hours, the people and what each decides, purchasing (who decides, the spending limit and the approved supplier list), the policies, the tone of voice, the escalation path or the glossary.",
-    parameters: Type.Object(
-      {
-        section: Type.Union(
-          SECTIONS.map((section) => Type.Literal(section)),
-          { description: "Which part of the record to read" },
-        ),
-      },
-      { additionalProperties: false },
-    ),
-    replay: "safe",
-    execute: async (args) => {
-      const section = args.section as CompanySection;
-      return { ...textResult(companySection(company, section)), details: { section } };
-    },
+    sections: COMPANY_SECTIONS,
   });
 
   return {

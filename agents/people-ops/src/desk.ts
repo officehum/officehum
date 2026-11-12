@@ -16,7 +16,17 @@
  * code, and the tools turn the code into the next step.
  */
 
-import { colleague, isoDate, sameFacts, senderPerson, type VerifiedSender } from "@officehum/sdk";
+import {
+  addDays,
+  colleague,
+  daysBetween,
+  localDate,
+  parseDate,
+  sameFacts,
+  senderPerson,
+  type VerifiedSender,
+  weekOf as weekContaining,
+} from "@officehum/sdk";
 import {
   type CompanyFacts,
   companyHead,
@@ -486,47 +496,30 @@ export function demoTimeOff(): readonly BookedTimeOff[] {
   ];
 }
 
-const DAY_MS = 86_400_000;
+/** The refusal for a value that is not a calendar day. */
+const notADate = (value: string): PeopleOpsDeskError =>
+  new PeopleOpsDeskError("invalid", `${JSON.stringify(value)} is not a date (YYYY-MM-DD).`);
 
-/** A real calendar date in `YYYY-MM-DD` form, or `undefined`. */
-function parseDate(value: string): Date | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return Number.isNaN(date.getTime()) || isoDate(date) !== value ? undefined : date;
-}
-
-function daysBetween(from: string, to: string): number {
-  const start = parseDate(from);
-  const end = parseDate(to);
-  if (start === undefined || end === undefined) return Number.NaN;
-  return Math.round((end.getTime() - start.getTime()) / DAY_MS);
-}
-
-/** Monday-to-Friday days from `from` to `to`, both included. */
+/**
+ * Monday-to-Friday days from `from` to `to`, both included. Both must be days: a first day that is
+ * not one could never be stepped past `to`, so it is refused before the count starts.
+ */
 function businessDays(from: string, to: string): number {
+  if (parseDate(from) === undefined) throw notADate(from);
+  if (parseDate(to) === undefined) throw notADate(to);
   let count = 0;
   for (let day = from; day <= to; day = addDays(day, 1)) {
     const weekday = parseDate(day)?.getUTCDay();
-    if (weekday !== undefined && weekday !== 0 && weekday !== 6) count += 1;
+    if (weekday !== 0 && weekday !== 6) count += 1;
   }
   return count;
 }
 
-function addDays(value: string, days: number): string {
-  const date = parseDate(value);
-  if (date === undefined) return value;
-  return isoDate(new Date(date.getTime() + days * DAY_MS));
-}
-
 /** Monday and Sunday of the week a date falls in. */
 function weekOf(value: string): { readonly start: string; readonly end: string } {
-  const date = parseDate(value);
-  if (date === undefined) {
-    throw new PeopleOpsDeskError("invalid", `${JSON.stringify(value)} is not a date (YYYY-MM-DD).`);
-  }
-  const sinceMonday = (date.getUTCDay() + 6) % 7;
-  const monday = isoDate(new Date(date.getTime() - sinceMonday * DAY_MS));
-  return { start: monday, end: addDays(monday, 6) };
+  const week = weekContaining(value);
+  if (week === undefined) throw notADate(value);
+  return week;
 }
 
 function required(value: string | undefined, what: string): string {
@@ -542,7 +535,8 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
   const company = options.company ?? loadCompanyFacts();
   const staff = company.staffPolicies;
   const clock = options.now ?? (() => new Date(DEMO_NOW));
-  const today = (): string => isoDate(clock());
+  // The company's day, not the UTC one: notice asked for at 17:00 in the office counts from today.
+  const today = (): string => localDate(clock(), company.hours.timezone);
   const crewMembers = options.employees ?? demoEmployees();
   // Office staff take time off too; they come from the company record, without its contact fields.
   const employees: readonly Employee[] = [
@@ -565,7 +559,9 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
    * counted from that day, so what a person approves does not go stale at midnight while they decide.
    * It holds for one pending ask only: both approval gates read a request's facts once per ask (never
    * again while it waits, nor on the grant), so a facts read starts a new asking day, and recording
-   * the request ends it. A request declined or withdrawn at the gate is therefore asked afresh.
+   * the request ends it. A request declined or withdrawn at the gate is therefore asked afresh, and
+   * only the ask itself keeps a day: a refusal for short notice always counts from today, so it never
+   * repeats the figure of an ask that was declined.
    */
   const askedOn = new Map<string, string>();
   let timeOffNumber = 103;
@@ -701,7 +697,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
     employee: Employee,
     dates: { readonly start: string; readonly end: string },
     reason: ReasonCategory,
-    newAsk = false,
+    newAsk: boolean,
   ): number => {
     const key = askKey(employee, dates.start, dates.end, reason);
     const asked = (newAsk ? undefined : askedOn.get(key)) ?? today();
@@ -1013,19 +1009,17 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
       // Leave the law may protect goes to a person whatever the notice: the notice rule never refuses
       // it, because only a person can weigh it.
       const isProtected = PROTECTED_REASONS.includes(input.reasonCategory);
-      const dates =
-        !isProtected && checked.daysNotice < staff.timeOffNoticeDays
-          ? { ...checked, daysNotice: noticeWhenAsked(employee, checked, input.reasonCategory) }
-          : checked;
+      // The notice is today's count. The day an earlier ask was put to a person belongs to that ask
+      // alone: one that was declined must not lend its figure to this refusal.
       if (!isProtected && checked.daysNotice < staff.timeOffNoticeDays) {
         const mayBeProtected = VAGUE_REASONS.includes(input.reasonCategory);
         throw new PeopleOpsDeskError(
           "late_notice",
-          `Needs approval: time off for ${employee.name} from ${dates.start} to ${dates.end} gives ${dates.daysNotice} days' notice, and the company asks for ${staff.timeOffNoticeDays}. Short notice for this reason is a person's call: call request_time_off_exception with employee ${employee.name}, startDate ${dates.start}, endDate ${dates.end}, reasonCategory ${input.reasonCategory}, daysNotice ${dates.daysNotice} and why. Nothing was recorded.`,
-          { daysNotice: dates.daysNotice, mayBeProtected },
+          `Needs approval: time off for ${employee.name} from ${checked.start} to ${checked.end} gives ${checked.daysNotice} days' notice, and the company asks for ${staff.timeOffNoticeDays}. Short notice for this reason is a person's call: call request_time_off_exception with employee ${employee.name}, startDate ${checked.start}, endDate ${checked.end}, reasonCategory ${input.reasonCategory}, daysNotice ${checked.daysNotice} and why. Nothing was recorded.`,
+          { daysNotice: checked.daysNotice, mayBeProtected },
         );
       }
-      const entry = record(employee, dates, input.reasonCategory, "pending");
+      const entry = record(employee, checked, input.reasonCategory, "pending");
       requests.set(requestId, entry);
       return entry;
     },

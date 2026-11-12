@@ -10,7 +10,9 @@
  * It owns the event numbers clients see. The runtime keeps events in memory and numbers a resumed
  * request from 1 again after a restart, so the gateway keeps each request's events with its own `seq`
  * that only grows, drops runtime events it has already seen in the current runtime generation, and
- * forwards `settled` once. After a restart it re-subscribes every unsettled request it knows.
+ * forwards `settled` once. After a restart it re-subscribes every unsettled request it knows. A
+ * settled request is kept for a while, so a retry or a late subscribe is answered with the same
+ * numbers, and then forgotten, whoever is still connected.
  *
  * Approvals (RASF-3108): the runtime announces each approval asked for or decided as an `approval`
  * message. The router keeps them, with the agent each belongs to, and sends each to the connections
@@ -23,6 +25,7 @@ import {
   type ClientCommand,
   type EventMessage,
   type Principal,
+  replyId,
   type ServerMessage,
   scopedRequestId,
   validateMessage,
@@ -90,8 +93,14 @@ interface RequestState {
   readonly subscribers: Set<ClientSink>;
 }
 
-/** Settled requests nobody is watching are forgotten beyond this many known requests. */
-const REQUEST_LIMIT = 1_000;
+/**
+ * How long a settled request is kept for replay. After it, asking about the request again gets the
+ * runtime's own story of it, numbered from 1.
+ */
+const REPLAY_WINDOW_MS = 5 * 60_000;
+
+/** Settled requests kept at most, whatever their age: the oldest settled go first. */
+const SETTLED_LIMIT = 1_000;
 
 /** Events kept per request for replay; older ones are let go, and `settled` is always the last. */
 const EVENT_LIMIT = 2_000;
@@ -113,6 +122,8 @@ export class Router {
   readonly #options: RouterOptions;
   readonly #pending = new Map<string, Pending>();
   readonly #requests = new Map<string, RequestState>();
+  /** When each settled request still kept settled, by its key in `#requests`, oldest first. */
+  readonly #settledAt = new Map<string, number>();
   /** Approvals the runtime announced, by id: pending ones, and the latest decided. */
   readonly #approvals = new Map<string, ApprovalInfo>();
   /** Connections watching approvals, with who signed them in. */
@@ -200,6 +211,7 @@ export class Router {
       this.#options.log(
         `The runtime sent a message the gateway cannot use: ${JSON.stringify(checked.problems)}`,
       );
+      this.#unusableReply(replyId(value));
       return;
     }
     const message = checked.message;
@@ -261,6 +273,27 @@ export class Router {
       return;
     }
     client.send({ ...message, id: clientId });
+  }
+
+  /**
+   * A reply the gateway could not use still answers its command: the client hears `internal` instead
+   * of waiting for good.
+   */
+  #unusableReply(id: string | undefined): void {
+    const pending = id === undefined ? undefined : this.#pending.get(id);
+    if (id === undefined || pending === undefined) return;
+    this.#pending.delete(id);
+    const why = "the runtime answered with a message the gateway cannot use";
+    if (pending.clientId === undefined) {
+      if (pending.requestId !== undefined) this.#lost(pending.principal, pending.requestId, why);
+      return;
+    }
+    pending.client?.send({
+      type: "error",
+      id: pending.clientId,
+      code: "internal",
+      message: `The office could not answer: ${why}. Repeating a submit with the same requestId is safe; if this keeps happening, the gateway's log says what was wrong with the message.`,
+    });
   }
 
   /** The runtime went down: commands it never answered get `busy`; its event numbers start over. */
@@ -325,6 +358,7 @@ export class Router {
 
   /** What the gateway knows of a principal's request, for `GET /v1/requests/:id`. */
   snapshot(principal: Principal, requestId: string): RequestSnapshot | undefined {
+    this.#forgetSettled();
     const state = this.#requests.get(scopedRequestId(principal, requestId));
     return state === undefined
       ? undefined
@@ -368,7 +402,7 @@ export class Router {
       subscribers: new Set(),
     };
     this.#requests.set(key, state);
-    this.#forgetOld();
+    this.#forgetSettled();
     return state;
   }
 
@@ -383,6 +417,7 @@ export class Router {
     if (message.event.kind === "settled") {
       if (state.settled) return;
       state.settled = true;
+      this.#settledAt.set(message.requestId, Date.now());
     }
     const event: EventMessage = {
       type: "event",
@@ -393,6 +428,7 @@ export class Router {
     state.events.push(event);
     if (state.events.length > EVENT_LIMIT) state.events.shift();
     for (const client of state.subscribers) client.send(event);
+    if (state.settled) this.#forgetSettled();
   }
 
   /**
@@ -443,11 +479,17 @@ export class Router {
     }
   }
 
-  #forgetOld(): void {
-    if (this.#requests.size <= REQUEST_LIMIT) return;
-    for (const [key, state] of this.#requests) {
-      if (this.#requests.size <= REQUEST_LIMIT) return;
-      if (state.settled && state.subscribers.size === 0) this.#requests.delete(key);
+  /**
+   * Lets go of settled requests whose replay window has closed, and of the oldest settled beyond the
+   * limit. A subscriber does not keep one: it has had `settled`, and a WebSocket open for days would
+   * otherwise keep every request it ever made. Requests still running are kept until they settle.
+   */
+  #forgetSettled(): void {
+    const closed = Date.now() - REPLAY_WINDOW_MS;
+    for (const [key, at] of this.#settledAt) {
+      if (at > closed && this.#settledAt.size <= SETTLED_LIMIT) return;
+      this.#settledAt.delete(key);
+      this.#requests.delete(key);
     }
   }
 }

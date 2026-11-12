@@ -7,11 +7,16 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { type AgentManifest, validateManifest, validatePackage } from "@officehum/sdk";
+import {
+  type AgentManifest,
+  loadCompanyFacts as loadFacts,
+  validateManifest,
+  validatePackage,
+} from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { companyFactLeaks } from "../../../scripts/company-fact-guard.js";
 import manifest from "../officehum.json" with { type: "json" };
-import { loadCompanyFacts } from "./company.js";
+import { COMPANY_FACTS_URL, loadCompanyFacts } from "./company.js";
 
 const packageDirectory = fileURLToPath(new URL("..", import.meta.url));
 /** The JSON import's inferred type is widened; the checks want the SDK's manifest type. */
@@ -101,10 +106,12 @@ describe("sales package", () => {
   });
 
   it("quotes under the limit the company records, not a number of its own", () => {
-    expect(roleManifest.limits?.quote_limit_cents?.default).toBe(
-      company.approvalLimits.quoteOverCents,
-    );
-    expect(company.approvalLimits.quoteOverCents).toBe(500000);
+    // No code in the role reads the record's own quote limit, so the role's type does not carry it;
+    // the record still holds it, and the manifest's default must not drift from it.
+    const recorded = loadFacts<{ approvalLimits: { quoteOverCents: number } }>(COMPANY_FACTS_URL)
+      .approvalLimits.quoteOverCents;
+    expect(roleManifest.limits?.quote_limit_cents?.default).toBe(recorded);
+    expect(recorded).toBe(500000);
   });
 
   it("counts a recurring month with the weeks the company records, and has a per-visit item to count", () => {

@@ -35,17 +35,14 @@
  *   `broken-reference` and writes nothing.
  */
 
-import { type TSchema, Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
-import type {
-  DocumentRunCommitted,
-  DocumentRunRefused,
-  DocumentService,
-} from "./document-service.js";
-import { DocumentError } from "./errors.js";
-import type { DocumentLease } from "./lease.js";
-import { operationIdForCall } from "./operation.js";
-import type { LeaseLookup } from "./run-document-python.js";
+import { Type } from "@earendil-works/pi-ai";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import {
+  type DocumentToolFamily,
+  type DocumentToolOptions,
+  documentTool,
+  fileRefSchema,
+} from "./document-tool.js";
 import {
   COMPARE_WORKBOOK,
   CREATE_WORKBOOK,
@@ -62,47 +59,13 @@ import {
   type XlsxEditReceipt,
   type XlsxOperation,
   type XlsxPreservation,
-  type XlsxProgram,
   type XlsxResult,
   xlsxProgram,
-  xlsxResultRef,
 } from "./xlsx-operations.js";
-
-/**
- * The reply budget. An Excel result is dense — every changed cell carries its before and after, and
- * every numeric check carries an exact sum — so the budget stays at the PowerPoint tools' 32 KB rather
- * than growing: less survives trimming here, and anything above this is trimmed by
- * `boundedBody`, which names what it left out. The whole result is always in the receipt.
- */
-const MAX_TOOL_TEXT = 32_000;
-
-/** The keys a too-large reply gives up, in the order it gives them up. */
-const DROPPABLE = ["editReceipt", "preservation", "reopened", "worker", "wrote"] as const;
-
-/** What the Excel tools need: the injected service and the host's lease lookup. */
-export interface XlsxToolOptions {
-  readonly service: DocumentService;
-  readonly leaseFor: (lookup: LeaseLookup) => Promise<DocumentLease | undefined>;
-}
 
 // -- schemas ---------------------------------------------------------------------------------------
 
-const FileRef = Type.Object(
-  {
-    fileId: Type.String({ minLength: 1, description: "The FileStore file id the lease pinned." }),
-    versionId: Type.String({
-      minLength: 1,
-      description: "The immutable version id the lease pinned.",
-    }),
-    name: Type.String({ minLength: 1, description: "The leased file name, e.g. close.xlsx." }),
-    sha256: Type.String({
-      minLength: 1,
-      description: "The version's sha256, as the lease pinned it.",
-    }),
-    size: Type.Integer({ minimum: 0, description: "The version's size in bytes." }),
-  },
-  { additionalProperties: false },
-);
+const FileRef = fileRefSchema("close.xlsx");
 
 const StyleSchema = Type.Object(
   {
@@ -563,195 +526,7 @@ const DESCRIPTIONS: Readonly<Record<XlsxOperation, string>> = {
   ].join("\n"),
 };
 
-// -- the tools -------------------------------------------------------------------------------------
-
-/**
- * The six typed Excel tools. Every one is `replay: "safe"`: the service is idempotent by operation ID,
- * so an interrupted call that reruns resolves to the same committed receipt instead of a second edit.
- */
-export function xlsxTools(options: XlsxToolOptions): readonly ToolRegistration[] {
-  return [
-    xlsxTool("inspect", INSPECT_WORKBOOK, INSPECT_PARAMETERS, options),
-    xlsxTool("read", READ_WORKBOOK, READ_PARAMETERS, options),
-    xlsxTool("create", CREATE_WORKBOOK, CREATE_PARAMETERS, options),
-    xlsxTool("edit", EDIT_WORKBOOK, EDIT_PARAMETERS, options),
-    xlsxTool("preview", PREVIEW_WORKBOOK, PREVIEW_PARAMETERS, options),
-    xlsxTool("compare", COMPARE_WORKBOOK, COMPARE_PARAMETERS, options),
-  ];
-}
-
-/** A type alias, not an interface, so it keeps the implicit index signature `JsonValue` needs. */
-type XlsxToolDetails = {
-  operationId: string;
-  operation: string;
-  files?: string[];
-  worker?: string;
-  truncated?: boolean;
-  code?: string;
-};
-
-type XlsxToolResult = {
-  readonly output: { readonly type: "text"; readonly text: string }[];
-  readonly isError?: boolean;
-  readonly details: XlsxToolDetails;
-};
-
-function xlsxTool(
-  operation: XlsxOperation,
-  name: string,
-  parameters: TSchema,
-  options: XlsxToolOptions,
-): ToolRegistration {
-  return defineTool({
-    name,
-    description: DESCRIPTIONS[operation],
-    parameters,
-    replay: "safe",
-    execute: async (args: unknown, api): Promise<XlsxToolResult> => {
-      const taskId = String(api.taskId);
-      const conversationId = String(api.conversationId);
-      const operationId = operationIdForCall({ conversationId, callId: api.callId });
-
-      const lease = await options.leaseFor({ taskId, conversationId });
-      if (lease === undefined) {
-        return refusalResult(
-          operation,
-          operationId,
-          "no-lease",
-          "this task has no document lease, so no Excel file was granted. Ask the host for one.",
-        );
-      }
-
-      let program: XlsxProgram;
-      try {
-        program = xlsxProgram(operation, args, lease);
-      } catch (error) {
-        return refused(error, operation, operationId);
-      }
-
-      const outcome = await options.service.runDocumentPython({
-        operationId,
-        taskId,
-        lease,
-        code: program.code,
-        arguments: program.arguments,
-      });
-      if (outcome.kind === "refused") return refusedOutcome(outcome, operation);
-
-      try {
-        const result = parseXlsxResult(
-          operation,
-          outcome.receipt.result,
-          program.sources.map(xlsxResultRef),
-        );
-        return committed(operation, operationId, taskId, outcome, result);
-      } catch (error) {
-        return refused(error, operation, operationId);
-      }
-    },
-  }) as unknown as ToolRegistration;
-}
-
-function committed(
-  operation: XlsxOperation,
-  operationId: string,
-  taskId: string,
-  outcome: DocumentRunCommitted,
-  result: XlsxResult,
-): XlsxToolResult {
-  const receipt = outcome.receipt;
-  const compose = (value: XlsxResult | null): Record<string, unknown> => ({
-    ok: true,
-    operation,
-    operationId,
-    taskId,
-    ...(value === null ? {} : { result: value }),
-    wrote: receipt.outputs.map((entry) => ({
-      fileId: entry.fileId,
-      versionId: entry.versionId,
-      name: entry.name,
-      format: entry.format,
-      size: entry.size,
-      sha256: entry.sha256,
-      versionOf: entry.sourceVersionId,
-    })),
-    read: receipt.reads.map((entry) => ({
-      fileId: entry.fileId,
-      versionId: entry.versionId,
-      name: entry.name,
-      sha256: entry.sha256,
-    })),
-    reopened: receipt.reopen,
-    worker: { python: receipt.worker.python, libraries: receipt.worker.libraries },
-    notes: receipt.notes,
-  });
-  const { text, truncated } = boundedBody(compose, result);
-  return {
-    output: [{ type: "text", text }],
-    details: {
-      operationId,
-      operation,
-      files: receipt.outputs.map((entry) => entry.fileId),
-      worker: receipt.worker.image,
-      ...(truncated ? { truncated: true } : {}),
-    },
-  };
-}
-
-/**
- * A reply a model reads is JSON, so trimming it must keep it JSON. When a body does not fit, the verbose
- * review material goes first — counts, hashes, the change set and the file ids all stay — then the
- * droppable keys in priority order, and the body names what it left out. Slicing the string instead
- * would leave a model with a sheet it cannot parse and no way to tell.
- */
-function boundedBody(
-  compose: (value: XlsxResult | null) => Record<string, unknown>,
-  result: XlsxResult,
-): { text: string; truncated: boolean } {
-  const fits = (value: Record<string, unknown>): boolean =>
-    JSON.stringify(value, null, 2).length <= MAX_TOOL_TEXT;
-  const full = compose(result);
-  if (fits(full)) return { text: JSON.stringify(full, null, 2), truncated: false };
-
-  const omitted: string[] = [
-    "the preview lines, which preview_workbook and read_workbook page",
-    "the byte-identical parts' hash sample and each part change's own detail lines, which the change",
-    "set, the edit receipt and the receipt's own record all hold",
-  ];
-  let body = compose(light(result));
-  if (!fits(body)) {
-    body = compose(reduced(result));
-    omitted.push(
-      "the dependency list, the per-step change evidence and the per-cell numeric checks",
-    );
-  }
-  for (const key of DROPPABLE) {
-    if (fits(body)) break;
-    if (key in body) {
-      delete body[key];
-      omitted.push(key);
-    }
-  }
-  if (!fits(body)) {
-    return {
-      text: JSON.stringify(
-        {
-          ok: true,
-          operation: result.operation,
-          truncated: true,
-          omitted:
-            "every field; the run ledger holds the receipt and the versions hold the artifacts",
-        },
-        null,
-        2,
-      ),
-      truncated: true,
-    };
-  }
-  body.omitted = omitted;
-  body.truncated = true;
-  return { text: JSON.stringify(body, null, 2), truncated: true };
-}
+// -- trimming an oversized reply -------------------------------------------------------------------
 
 /**
  * The result with its verbose per-part material reduced to the counts that describe it.
@@ -796,8 +571,7 @@ function light(result: XlsxResult): XlsxResult {
 }
 
 /** The light result with its dependencies, numeric checks and step evidence removed too. */
-function reduced(result: XlsxResult): XlsxResult {
-  const lighter = light(result);
+function reduced(lighter: XlsxResult): XlsxResult {
   if (lighter.operation === "edit") {
     return {
       ...lighter,
@@ -837,33 +611,61 @@ function withoutCellMap(receipt: XlsxEditReceipt): XlsxEditReceipt {
   };
 }
 
-function refusedOutcome(outcome: DocumentRunRefused, operation: XlsxOperation): XlsxToolResult {
-  return refusalResult(operation, outcome.operationId, outcome.code, outcome.message);
-}
+// -- the tools -------------------------------------------------------------------------------------
 
-function refused(error: unknown, operation: XlsxOperation, operationId: string): XlsxToolResult {
-  if (error instanceof DocumentError) {
-    return refusalResult(operation, operationId, error.code, error.message);
-  }
-  throw error;
-}
+/**
+ * The reply budget. An Excel result is dense — every changed cell carries its before and after, and
+ * every numeric check carries an exact sum — so the budget stays at the PowerPoint tools' 32 KB rather
+ * than growing: less survives trimming here, and anything above this is trimmed by
+ * `boundedBody`, which names what it left out. The whole result is always in the receipt.
+ */
+const MAX_TOOL_TEXT = 32_000;
 
-function refusalResult(
-  operation: XlsxOperation,
-  operationId: string,
-  code: string,
-  message: string,
-): XlsxToolResult {
-  return {
-    output: [
+const FAMILY: DocumentToolFamily<XlsxOperation, XlsxResult> = {
+  subject: "Excel file",
+  descriptions: DESCRIPTIONS,
+  program: xlsxProgram,
+  parse: parseXlsxResult,
+  trim: {
+    maxText: MAX_TOOL_TEXT,
+    reductions: [
       {
-        type: "text",
-        text: JSON.stringify({ ok: false, operation, operationId, code, message }, null, 2),
+        omits: [
+          "the preview lines, which preview_workbook and read_workbook page",
+          "the byte-identical parts' hash sample and each part change's own detail lines, which the " +
+            "change set, the edit receipt and the receipt's own record all hold",
+        ],
+        apply: light,
+      },
+      {
+        omits: [
+          "the dependency list, the per-step change evidence and the per-cell numeric checks",
+        ],
+        apply: reduced,
       },
     ],
-    isError: true,
-    details: { operationId, operation, code },
-  };
+    resultKeys: ["editReceipt", "preservation"],
+  },
+  narrow: {
+    inspect: "Read the workbook a section and a sheet at a time with read_workbook.",
+    read: "Ask for a smaller pageSize, or a narrower range.",
+    create: "Read the draft back in pages with read_workbook.",
+    edit: "Read the proposal back in pages with read_workbook, or edit in fewer steps per call.",
+    preview: "Ask for a smaller pageSize.",
+    compare: "Read each version in pages with read_workbook.",
+  },
+};
+
+/** The six typed Excel tools, each replay-safe on the shared `documentTool` path. */
+export function xlsxTools(options: DocumentToolOptions): readonly ToolRegistration[] {
+  return [
+    documentTool(FAMILY, "inspect", INSPECT_WORKBOOK, INSPECT_PARAMETERS, options),
+    documentTool(FAMILY, "read", READ_WORKBOOK, READ_PARAMETERS, options),
+    documentTool(FAMILY, "create", CREATE_WORKBOOK, CREATE_PARAMETERS, options),
+    documentTool(FAMILY, "edit", EDIT_WORKBOOK, EDIT_PARAMETERS, options),
+    documentTool(FAMILY, "preview", PREVIEW_WORKBOOK, PREVIEW_PARAMETERS, options),
+    documentTool(FAMILY, "compare", COMPARE_WORKBOOK, COMPARE_PARAMETERS, options),
+  ];
 }
 
 /** The typed tools' names, in the order they are registered. */

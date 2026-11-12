@@ -92,10 +92,6 @@ export function refusalCodeFromWorker(value: unknown): DocumentRefusalCode {
     : "worker-refused";
 }
 
-export function isDocumentRefusalCode(value: unknown): value is DocumentRefusalCode {
-  return typeof value === "string" && KNOWN_CODES.has(value);
-}
-
 export class DocumentError extends Error {
   constructor(
     readonly code: DocumentRefusalCode,

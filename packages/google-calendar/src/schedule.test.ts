@@ -65,7 +65,7 @@ describe("portable calendar scheduling", () => {
     await expect(calendar.freeSlots(date)).rejects.toThrow(/ambiguous|nonexistent/i);
   });
 
-  it.each([
+  it.each<[string, () => unknown]>([
     [
       "invalid date",
       () =>
@@ -209,6 +209,31 @@ describe("portable calendar scheduling", () => {
     ).rejects.toThrow(/changed/i);
     await calendar.cancel(original.id, "cancel-1");
     await calendar.cancel(original.id, "cancel-1");
-    expect(await calendar.listBookings()).toEqual([]);
+    expect(await calendar.listBookings({ timeMin: "2030-01-01T00:00:00Z" })).toEqual([]);
+  });
+
+  it("lists only the bookings inside the window, as Google reads timeMin and timeMax", async () => {
+    const calendar = fakeCalendar({
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+    });
+    const book = (start: string, end: string, requestId: string) =>
+      calendar.book({ start, end, customer: "Guest", requestId });
+    const early = await book("2030-01-15T09:00:00Z", "2030-01-15T10:00:00Z", "early");
+    const late = await book("2030-01-16T11:00:00Z", "2030-01-16T12:00:00Z", "late");
+
+    expect(await calendar.listBookings({ timeMin: "2030-01-01T00:00:00Z" })).toEqual([early, late]);
+    // timeMin excludes a booking that has ended by then; one still running is listed.
+    expect(await calendar.listBookings({ timeMin: "2030-01-15T10:00:00Z" })).toEqual([late]);
+    expect(await calendar.listBookings({ timeMin: "2030-01-15T09:30:00Z" })).toEqual([early, late]);
+    // timeMax excludes a booking that starts at or after it.
+    expect(
+      await calendar.listBookings({
+        timeMin: "2030-01-15T09:00:00Z",
+        timeMax: "2030-01-16T11:00:00Z",
+      }),
+    ).toEqual([early]);
+    await expect(calendar.listBookings({ timeMin: "yesterday" })).rejects.toThrow(/timeMin/);
   });
 });

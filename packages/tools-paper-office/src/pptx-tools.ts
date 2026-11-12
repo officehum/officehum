@@ -34,16 +34,14 @@
  *   ambiguity instead of guessing.
  */
 
-import { type TSchema, Type } from "@earendil-works/pi-ai";
-import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
-import type {
-  DocumentRunCommitted,
-  DocumentRunRefused,
-  DocumentService,
-} from "./document-service.js";
-import { DocumentError } from "./errors.js";
-import type { DocumentLease } from "./lease.js";
-import { operationIdForCall } from "./operation.js";
+import { Type } from "@earendil-works/pi-ai";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import {
+  type DocumentToolFamily,
+  type DocumentToolOptions,
+  documentTool,
+  fileRefSchema,
+} from "./document-tool.js";
 import {
   COMPARE_PRESENTATION,
   COMPOSE_PRESENTATION,
@@ -58,52 +56,16 @@ import {
   type PptxDiff,
   type PptxOperation,
   type PptxPreservation,
-  type PptxProgram,
   type PptxResult,
   PREVIEW_PRESENTATION,
   parsePptxResult,
   pptxProgram,
-  pptxResultRef,
   READ_PRESENTATION,
 } from "./pptx-operations.js";
-import type { LeaseLookup } from "./run-document-python.js";
-
-/**
- * The reply budget. A deck-shaped result is intrinsically richer than a document-shaped one — every
- * package part has a hash, and a before/after preview is per slide — so the PowerPoint budget is
- * larger than the Word tools' 16 KB rather than dropping evidence a reviewer needs. Anything above
- * this is still trimmed by `boundedBody`, which names what it left out; the whole result is always
- * in the receipt.
- */
-const MAX_TOOL_TEXT = 32_000;
-
-/** The keys a too-large reply gives up, in the order it gives them up. */
-const DROPPABLE = ["patch", "overflow", "reopened", "worker", "wrote"] as const;
-
-/** What the PowerPoint tools need: the injected service and the host's lease lookup. */
-export interface PptxToolOptions {
-  readonly service: DocumentService;
-  readonly leaseFor: (lookup: LeaseLookup) => Promise<DocumentLease | undefined>;
-}
 
 // -- schemas ---------------------------------------------------------------------------------------
 
-const FileRef = Type.Object(
-  {
-    fileId: Type.String({ minLength: 1, description: "The FileStore file id the lease pinned." }),
-    versionId: Type.String({
-      minLength: 1,
-      description: "The immutable version id the lease pinned.",
-    }),
-    name: Type.String({ minLength: 1, description: "The leased file name, e.g. deck.pptx." }),
-    sha256: Type.String({
-      minLength: 1,
-      description: "The version's sha256, as the lease pinned it.",
-    }),
-    size: Type.Integer({ minimum: 0, description: "The version's size in bytes." }),
-  },
-  { additionalProperties: false },
-);
+const FileRef = fileRefSchema("deck.pptx");
 
 const AnchorText = Type.Object(
   {
@@ -149,7 +111,12 @@ const Anchor = Type.Union([AnchorText, AnchorBlock], {
 });
 
 const FooterOptions = {
-  footer: Type.Optional(Type.String({ description: "Literal footer text; omit to remove it." })),
+  footer: Type.Optional(
+    Type.String({
+      description:
+        "Literal footer text, not empty; leave the field out to remove the footer (an empty string is refused).",
+    }),
+  ),
   slideNumber: Type.Optional(Type.Boolean({ description: "Write a live slide-number field." })),
   dateFormat: Type.Optional(
     Type.String({ description: "A datetime..datetime13 token for an auto-updating date." }),
@@ -352,7 +319,8 @@ const SlideSchema = Type.Object(
     layout: Type.Optional(
       Type.String({
         minLength: 1,
-        description: "A layout by unique exact name; omitted uses Title and Content.",
+        description:
+          "A layout by unique exact name; omitted uses Title and Content, or Blank for a slide with no title and no blocks.",
       }),
     ),
     notes: Type.Optional(Type.String({ description: "Speaker notes for this slide." })),
@@ -541,7 +509,8 @@ const DESCRIPTIONS: Readonly<Record<PptxOperation, string>> = {
     "- `replaceText` addresses a block by the `anchor` a read reported, or by that paragraph's exact text.",
     "  An anchor that no longer matches its content refuses with `stale-anchor`.",
     "- PowerPoint carries no revision markup, so there is no redline: review gets the structural change",
-    "  set, a slide-level diff, and a before/after structural preview of each changed slide.",
+    "  set, a slide-level diff, and a before/after structural preview of the changed, added and removed",
+    "  slides (at most 8 of each per call; `preview.limitNote` says so, and the change set is complete).",
     "- The result reports source and output sha256, the change set (parts added, removed, changed and left",
     "  byte-identical, each with its before and after sha256), and a reopen witness.",
     "- Untouched parts come back byte-identical — layouts, masters, theme, media and untouched slides —",
@@ -563,7 +532,8 @@ const DESCRIPTIONS: Readonly<Record<PptxOperation, string>> = {
   compare: [
     "Diff two leased PowerPoint (.pptx) versions: the structural change set (parts added, removed, changed",
     "and left byte-identical, each hashed before and after), the fork's own slide-level diff, and a",
-    "**before/after structural preview of every changed slide**.",
+    "**before/after structural preview of the changed, added and removed slides** (at most 8 of each per",
+    "call; `preview.limitNote` says so, and the change set itself is complete).",
     "",
     REF_NOTE,
     "",
@@ -590,196 +560,7 @@ const DESCRIPTIONS: Readonly<Record<PptxOperation, string>> = {
   ].join("\n"),
 };
 
-// -- the tools -------------------------------------------------------------------------------------
-
-/**
- * The seven typed PowerPoint tools. Every one is `replay: "safe"`: the service is idempotent by
- * operation ID, so an interrupted call that reruns resolves to the same committed receipt instead of
- * a second edit.
- */
-export function pptxTools(options: PptxToolOptions): readonly ToolRegistration[] {
-  return [
-    pptxTool("inspect", INSPECT_PRESENTATION, INSPECT_PARAMETERS, options),
-    pptxTool("read", READ_PRESENTATION, READ_PARAMETERS, options),
-    pptxTool("create", CREATE_PRESENTATION, CREATE_PARAMETERS, options),
-    pptxTool("edit", EDIT_PRESENTATION, EDIT_PARAMETERS, options),
-    pptxTool("preview", PREVIEW_PRESENTATION, PREVIEW_PARAMETERS, options),
-    pptxTool("compare", COMPARE_PRESENTATION, COMPARE_PARAMETERS, options),
-    pptxTool("compose", COMPOSE_PRESENTATION, COMPOSE_PARAMETERS, options),
-  ];
-}
-
-/** A type alias, not an interface, so it keeps the implicit index signature `JsonValue` needs. */
-type PptxToolDetails = {
-  operationId: string;
-  operation: string;
-  files?: string[];
-  worker?: string;
-  truncated?: boolean;
-  code?: string;
-};
-
-type PptxToolResult = {
-  readonly output: { readonly type: "text"; readonly text: string }[];
-  readonly isError?: boolean;
-  readonly details: PptxToolDetails;
-};
-
-function pptxTool(
-  operation: PptxOperation,
-  name: string,
-  parameters: TSchema,
-  options: PptxToolOptions,
-): ToolRegistration {
-  return defineTool({
-    name,
-    description: DESCRIPTIONS[operation],
-    parameters,
-    replay: "safe",
-    execute: async (args: unknown, api): Promise<PptxToolResult> => {
-      const taskId = String(api.taskId);
-      const conversationId = String(api.conversationId);
-      const operationId = operationIdForCall({ conversationId, callId: api.callId });
-
-      const lease = await options.leaseFor({ taskId, conversationId });
-      if (lease === undefined) {
-        return refusalResult(
-          operation,
-          operationId,
-          "no-lease",
-          "this task has no document lease, so no PowerPoint file was granted. Ask the host for one.",
-        );
-      }
-
-      let program: PptxProgram;
-      try {
-        program = pptxProgram(operation, args, lease);
-      } catch (error) {
-        return refused(error, operation, operationId);
-      }
-
-      const outcome = await options.service.runDocumentPython({
-        operationId,
-        taskId,
-        lease,
-        code: program.code,
-        arguments: program.arguments,
-      });
-      if (outcome.kind === "refused") return refusedOutcome(outcome, operation);
-
-      try {
-        const result = parsePptxResult(
-          operation,
-          outcome.receipt.result,
-          program.sources.map(pptxResultRef),
-        );
-        return committed(operation, operationId, taskId, outcome, result);
-      } catch (error) {
-        return refused(error, operation, operationId);
-      }
-    },
-  }) as unknown as ToolRegistration;
-}
-
-function committed(
-  operation: PptxOperation,
-  operationId: string,
-  taskId: string,
-  outcome: DocumentRunCommitted,
-  result: PptxResult,
-): PptxToolResult {
-  const receipt = outcome.receipt;
-  const compose = (value: PptxResult | null): Record<string, unknown> => ({
-    ok: true,
-    operation,
-    operationId,
-    taskId,
-    ...(value === null ? {} : { result: value }),
-    wrote: receipt.outputs.map((entry) => ({
-      fileId: entry.fileId,
-      versionId: entry.versionId,
-      name: entry.name,
-      format: entry.format,
-      size: entry.size,
-      sha256: entry.sha256,
-      versionOf: entry.sourceVersionId,
-    })),
-    read: receipt.reads.map((entry) => ({
-      fileId: entry.fileId,
-      versionId: entry.versionId,
-      name: entry.name,
-      sha256: entry.sha256,
-    })),
-    reopened: receipt.reopen,
-    worker: { python: receipt.worker.python, libraries: receipt.worker.libraries },
-    notes: receipt.notes,
-  });
-  const { text, truncated } = boundedBody(compose, result);
-  return {
-    output: [{ type: "text", text }],
-    details: {
-      operationId,
-      operation,
-      files: receipt.outputs.map((entry) => entry.fileId),
-      worker: receipt.worker.image,
-      ...(truncated ? { truncated: true } : {}),
-    },
-  };
-}
-
-/**
- * A reply a model reads is JSON, so trimming it must keep it JSON. When a body does not fit, the verbose
- * review *lines* go first — their counts, the change set, the hashes and the file ids all stay — then the
- * droppable keys in priority order, and the body names what it left out. Slicing the string instead would
- * leave a model with a deck it cannot parse and no way to tell.
- */
-function boundedBody(
-  compose: (value: PptxResult | null) => Record<string, unknown>,
-  result: PptxResult,
-): { text: string; truncated: boolean } {
-  const fits = (value: Record<string, unknown>): boolean =>
-    JSON.stringify(value, null, 2).length <= MAX_TOOL_TEXT;
-  const full = compose(result);
-  if (fits(full)) return { text: JSON.stringify(full, null, 2), truncated: false };
-
-  const omitted: string[] = [
-    "the preview lines and overflow items, which read_presentation and preview_presentation page",
-    "the byte-identical parts' hash sample, which the change set and the receipt both hold",
-  ];
-  // The cosmetic review lines go first: counts, hashes, step evidence and file ids all stay.
-  let body = compose(light(result));
-  if (!fits(body)) {
-    // Only then the step evidence and the diff's per-slide deltas, which the receipt still holds.
-    body = compose(reduced(result));
-    omitted.push("the per-step change evidence and the diff's per-slide deltas");
-  }
-  for (const key of DROPPABLE) {
-    if (fits(body)) break;
-    if (key in body) {
-      delete body[key];
-      omitted.push(key);
-    }
-  }
-  if (!fits(body)) {
-    return {
-      text: JSON.stringify(
-        {
-          ok: true,
-          operation: result.operation,
-          truncated: true,
-          omitted:
-            "every field; the run ledger holds the receipt and the versions hold the artifacts",
-        },
-        null,
-        2,
-      ),
-      truncated: true,
-    };
-  }
-  body.omitted = omitted;
-  body.truncated = true;
-  return { text: JSON.stringify(body, null, 2), truncated: true };
-}
+// -- trimming an oversized reply -------------------------------------------------------------------
 
 /** The result with its cosmetic review lines reduced to the counts that describe them. */
 function light(result: PptxResult): PptxResult {
@@ -813,8 +594,7 @@ function light(result: PptxResult): PptxResult {
 }
 
 /** The light result with its per-step evidence removed too: the last resort before dropping fields. */
-function reduced(result: PptxResult): PptxResult {
-  const lighter = light(result);
+function reduced(lighter: PptxResult): PptxResult {
   if (lighter.operation === "edit") {
     return {
       ...lighter,
@@ -863,33 +643,64 @@ function withoutSlideLines(
   };
 }
 
-function refusedOutcome(outcome: DocumentRunRefused, operation: PptxOperation): PptxToolResult {
-  return refusalResult(operation, outcome.operationId, outcome.code, outcome.message);
-}
+// -- the tools -------------------------------------------------------------------------------------
 
-function refused(error: unknown, operation: PptxOperation, operationId: string): PptxToolResult {
-  if (error instanceof DocumentError) {
-    return refusalResult(operation, operationId, error.code, error.message);
-  }
-  throw error;
-}
+/**
+ * The reply budget. A deck-shaped result is intrinsically richer than a document-shaped one — every
+ * package part has a hash, and a before/after preview is per slide — so the PowerPoint budget is
+ * larger than the Word tools' 16 KB rather than dropping evidence a reviewer needs. Anything above
+ * this is still trimmed by `boundedBody`, which names what it left out; the whole result is always
+ * in the receipt.
+ */
+const MAX_TOOL_TEXT = 32_000;
 
-function refusalResult(
-  operation: PptxOperation,
-  operationId: string,
-  code: string,
-  message: string,
-): PptxToolResult {
-  return {
-    output: [
+const FAMILY: DocumentToolFamily<PptxOperation, PptxResult> = {
+  subject: "PowerPoint file",
+  descriptions: DESCRIPTIONS,
+  program: pptxProgram,
+  parse: parsePptxResult,
+  trim: {
+    maxText: MAX_TOOL_TEXT,
+    reductions: [
       {
-        type: "text",
-        text: JSON.stringify({ ok: false, operation, operationId, code, message }, null, 2),
+        // The cosmetic review lines go first: counts, hashes, step evidence and file ids all stay.
+        omits: [
+          "the preview lines and overflow items, which read_presentation and preview_presentation page",
+          "the byte-identical parts' hash sample, which the change set and the receipt both hold",
+          "the diff's per-slide deltas",
+        ],
+        apply: light,
+      },
+      {
+        // Only then the step evidence, which the receipt still holds.
+        omits: ["the per-step change evidence"],
+        apply: reduced,
       },
     ],
-    isError: true,
-    details: { operationId, operation, code },
-  };
+    resultKeys: ["patch", "overflow"],
+  },
+  narrow: {
+    inspect: "Read the deck a section at a time with read_presentation.",
+    read: "Ask for a smaller pageSize.",
+    create: "Read the draft back in pages with read_presentation.",
+    edit: 'Ask for `detail: "structure"`, or edit in fewer steps per call.',
+    preview: "Ask for a smaller pageSize.",
+    compare: 'Ask for `detail: "structure"`, or read each version in pages with read_presentation.',
+    compose: 'Ask for `detail: "structure"`, or import fewer slides per call.',
+  },
+};
+
+/** The seven typed PowerPoint tools, each replay-safe on the shared `documentTool` path. */
+export function pptxTools(options: DocumentToolOptions): readonly ToolRegistration[] {
+  return [
+    documentTool(FAMILY, "inspect", INSPECT_PRESENTATION, INSPECT_PARAMETERS, options),
+    documentTool(FAMILY, "read", READ_PRESENTATION, READ_PARAMETERS, options),
+    documentTool(FAMILY, "create", CREATE_PRESENTATION, CREATE_PARAMETERS, options),
+    documentTool(FAMILY, "edit", EDIT_PRESENTATION, EDIT_PARAMETERS, options),
+    documentTool(FAMILY, "preview", PREVIEW_PRESENTATION, PREVIEW_PARAMETERS, options),
+    documentTool(FAMILY, "compare", COMPARE_PRESENTATION, COMPARE_PARAMETERS, options),
+    documentTool(FAMILY, "compose", COMPOSE_PRESENTATION, COMPOSE_PARAMETERS, options),
+  ];
 }
 
 /** The typed tools' names, in the order they are registered. */

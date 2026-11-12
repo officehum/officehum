@@ -200,6 +200,49 @@ describe("validateManifest", () => {
     ]);
   });
 
+  it("checks an approval's amount names an argument of the tool, and times a field", () => {
+    const tools = [
+      ...sample.tools,
+      {
+        name: "stock_adjust",
+        replay: "unsafe",
+        engine: ["adjust"],
+        description: "Adjust a stock level",
+        parameters: { cost_cents: { type: "integer", description: "What it costs" } },
+      },
+    ];
+    const engine = { command: ["bin/stock", "adjust"] };
+    const approval = (amount: unknown) => [
+      ...sample.approvals,
+      { id: "large_adjust", tool: "stock_adjust", description: "Large adjustments", amount },
+    ];
+    expect(
+      messages(withFields({ tools, engine, approvals: approval({ arg: "cost_cents" }) })),
+    ).toEqual([]);
+    expect(
+      messages(withFields({ tools, engine, approvals: approval({ arg: "costCents" }) })),
+    ).toEqual([
+      'officehum.json › approvals[1].amount.arg: "costCents" is not a parameter of "stock_adjust"',
+    ]);
+
+    // On a tool whose parameters are defined in code, any argument name may be right.
+    const inCode = (amount: unknown) => [
+      { id: "large_booking", tool: "book_appointment", description: "Large bookings", amount },
+    ];
+    expect(
+      messages(
+        withFields({
+          approvals: inCode({ arg: "lines", field: "unitPriceCents", times: "quantity" }),
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      messages(withFields({ approvals: inCode({ arg: "lines", times: "quantity" }) })),
+    ).toEqual([
+      'officehum.json › approvals[0].amount.times: needs "field": it multiplies the summed field, so on its own it has nothing to multiply',
+    ]);
+  });
+
   it("takes no value with a presence condition, and needs one otherwise", () => {
     const presence = [
       {
@@ -300,6 +343,26 @@ describe("validateManifest", () => {
     const contextPlan = { promptBudgetTokens: 4000, mask: false };
     expect(messages(withFields({ contextPlan }))).toEqual([
       "officehum.json › contextPlan.mask: is not a known field",
+    ]);
+  });
+
+  it("lets a sub-agent run only declared safe tools and declared skills", () => {
+    const contextPlan = {
+      subagents: [
+        {
+          id: "summarise",
+          purpose: "Summarise a thread",
+          model: "small",
+          tools: ["check_schedule", "book_appointment", "issue_refund"],
+          skills: ["payroll"],
+          output: { type: "object" },
+        },
+      ],
+    };
+    expect(messages(withFields({ contextPlan }))).toEqual([
+      'officehum.json › contextPlan.subagents[0].tools[1]: "book_appointment" is unsafe; a sub-agent runs only the role\'s safe tools, never one that changes something',
+      'officehum.json › contextPlan.subagents[0].tools[2]: "issue_refund" is not a declared tool; a sub-agent runs only the role\'s declared safe tools',
+      'officehum.json › contextPlan.subagents[0].skills[0]: "payroll" is not a declared skill',
     ]);
   });
 

@@ -53,7 +53,7 @@ function event(emailId = EMAIL): string {
 }
 
 /** The message Resend serves from its own endpoint, once the office asks for it. */
-function received(emailId = EMAIL): Response {
+function received(emailId = EMAIL, overrides: Record<string, unknown> = {}): Response {
   return Response.json({
     id: emailId,
     from: "guest@example.test",
@@ -66,6 +66,7 @@ function received(emailId = EMAIL): Response {
     text: "Is January 15 open?",
     html: "",
     attachments: [],
+    ...overrides,
   });
 }
 
@@ -103,8 +104,16 @@ interface Office {
   close(): Promise<void>;
 }
 
-async function office(options: { twilio?: boolean } = {}): Promise<Office> {
-  const path = await directory();
+async function office(
+  options: {
+    twilio?: boolean;
+    /** Reopen an office that already has state on disk, as a restarted host does. */
+    path?: string;
+    /** What the provider serves for a message; omitted, a well-formed customer email. */
+    serve?: (emailId: string) => Response;
+  } = {},
+): Promise<Office> {
+  const path = options.path ?? (await directory());
   let fetches = 0;
   const inbox = openResendInbox(join(path, "inbound.sqlite"), {
     authority: {
@@ -122,7 +131,8 @@ async function office(options: { twilio?: boolean } = {}): Promise<Office> {
       // The provider's endpoint names the message it is serving; the stub does the same, so the
       // envelope and the body cannot drift apart in a fixture.
       const url = new URL(String(input));
-      return received(decodeURIComponent(url.pathname.split("/").pop() ?? ""));
+      const emailId = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+      return options.serve?.(emailId) ?? received(emailId);
     },
   });
   const board = createWorkboard(join(path, "office.sqlite"));
@@ -181,6 +191,78 @@ describe("Resend listener", () => {
       },
     ]);
     expect(inboundRows(office1.path)).toEqual([{ channel: "email", external_id: EMAIL }]);
+    await office1.close();
+  });
+
+  it.each([
+    [
+      "an auto-reply",
+      { headers: { "message-id": `<${EMAIL}@example.test>`, "auto-submitted": "auto-replied" } },
+      "auto_message",
+    ],
+    ["a DMARC failure", { authentication: { dmarc: "fail" } }, "authentication_failed"],
+  ])(
+    "records %s as blocked and acknowledges it, so Resend does not retry",
+    async (_name, overrides, reason) => {
+      const serve = (emailId: string) => received(emailId, overrides);
+      const office1 = await office({ serve });
+      const raw = event();
+      const address = `${office1.listener.address}/webhooks/resend`;
+      const blocked = [
+        { emailId: EMAIL, state: "blocked", reason, conversationId: null, submissionId: null },
+      ];
+
+      const first = await fetch(address, {
+        method: "POST",
+        headers: svix(raw, "evt_1"),
+        body: raw,
+      });
+      expect(first.status).toBe(204);
+      expect(office1.summaries()).toEqual(blocked);
+      // Not a message for the office: nothing reaches the duplicate table or a conversation.
+      expect(inboundRows(office1.path)).toEqual([]);
+
+      // A redelivery is answered from the record: the provider is not asked for the words again.
+      const again = await fetch(address, {
+        method: "POST",
+        headers: svix(raw, "evt_2"),
+        body: raw,
+      });
+      expect(again.status).toBe(204);
+      expect(office1.fetches()).toBe(1);
+      await office1.close();
+
+      // The rejection outlives the process: a restarted host still answers 2xx without refetching.
+      const restarted = await office({ path: office1.path, serve });
+      const later = await fetch(`${restarted.listener.address}/webhooks/resend`, {
+        method: "POST",
+        headers: svix(raw, "evt_3"),
+        body: raw,
+      });
+      expect(later.status).toBe(204);
+      expect(restarted.fetches()).toBe(0);
+      expect(restarted.summaries()).toEqual(blocked);
+      await restarted.close();
+    },
+  );
+
+  it("answers 503 for a transient fetch failure, and takes the retry", async () => {
+    let failing = true;
+    const office1 = await office({
+      serve: (emailId) =>
+        failing ? new Response("unavailable", { status: 500 }) : received(emailId),
+    });
+    const raw = event();
+    const address = `${office1.listener.address}/webhooks/resend`;
+
+    const first = await fetch(address, { method: "POST", headers: svix(raw, "evt_1"), body: raw });
+    expect(first.status).toBe(503);
+    expect(office1.summaries()).toMatchObject([{ emailId: EMAIL, state: "received" }]);
+
+    failing = false;
+    const retry = await fetch(address, { method: "POST", headers: svix(raw, "evt_2"), body: raw });
+    expect(retry.status).toBe(202);
+    expect(office1.summaries()).toMatchObject([{ emailId: EMAIL, state: "prepared" }]);
     await office1.close();
   });
 

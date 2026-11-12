@@ -12,6 +12,7 @@ import {
   type Credit,
   creditApprovalFacts,
   DEMO_NOW,
+  demoCases,
   demoCredits,
   fakeSupportDesk,
   type SupportDesk,
@@ -189,6 +190,37 @@ describe("fakeSupportDesk: re-cleans", () => {
     expect(last.reclean?.date).toBe("2026-11-13");
   });
 
+  it("says the window has closed, with the dates the right way round, for a complaint past it", async () => {
+    // Opened Monday 26 October: five business days end on Monday 2 November, a week before today.
+    const support = fakeSupportDesk({
+      cases: demoCases().map((entry) =>
+        entry.id === "C-301" ? { ...entry, openedOn: "2026-10-26" } : entry,
+      ),
+      now: () => new Date(DEMO_NOW),
+    });
+    const late = await refusal(
+      support.bookReclean({ caseId: "C-301", date: "2026-11-11" }, { requestId: "r5" }),
+    );
+    expect(late.code).toBe("outside_window");
+    expect(late.message).toBe(
+      "The re-clean window for C-301 closed on 2026-11-02: 5 business days after the complaint on 2026-10-26. Today is 2026-11-09, so no date is inside it. Nothing was booked.",
+    );
+    expect((await support.listCases({ caseId: "C-301" }))[0]?.reclean).toBeNull();
+  });
+
+  it("dates its records by the company's day, not the UTC one", async () => {
+    // 17:30 on Monday 9 November in Portland is already Tuesday in UTC.
+    const support = fakeSupportDesk({ now: () => new Date("2026-11-10T01:30:00.000Z") });
+    const logged = await support.logCase(SAFETY, { requestId: "evening" });
+    expect(logged.openedOn).toBe("2026-11-09");
+    // Today is still inside the window, and Monday is still a day a re-clean can be booked for.
+    const booked = await support.bookReclean(
+      { caseId: "C-301", date: "2026-11-09" },
+      { requestId: "evening-reclean" },
+    );
+    expect(booked.reclean).toEqual({ date: "2026-11-09", done: false, bookedOn: "2026-11-09" });
+  });
+
   it("refuses a case a re-clean does not put right, a second re-clean, a closed case and a bad date", async () => {
     const support = desk();
     const code = async (caseId: string, date = "2026-11-11") =>
@@ -309,6 +341,30 @@ describe("fakeSupportDesk: credits", () => {
     expect((await support.listCredits({ creditId: proposal.id }))[0]?.status).toBe("withdrawn");
   });
 
+  it("records when a proposal is put to a person, once, and only while it is pending", async () => {
+    const later = { now: new Date(DEMO_NOW) };
+    const support = fakeSupportDesk({ now: () => later.now });
+    const credit = await support.proposeCredit(CREDIT, { requestId: "c1" });
+    // Proposing asks nobody.
+    expect(credit.askedOn).toBeNull();
+    expect((await support.markCreditAsked(credit.id)).askedOn).toBe("2026-11-09");
+    // A second ask, or a replay of the first, keeps the day it was first put to a person.
+    later.now = new Date("2026-11-11T18:00:00.000Z");
+    expect((await support.markCreditAsked(credit.id)).askedOn).toBe("2026-11-09");
+    expect((await support.listCases({ caseId: "C-302" }))[0]?.credit?.askedOn).toBe("2026-11-09");
+    // Being asked changes nothing a person approves.
+    expect(
+      creditApprovalFacts((await support.listCredits({ creditId: credit.id }))[0] as never),
+    ).toEqual(creditApprovalFacts(credit));
+    expect((await refusal(support.markCreditAsked("CR-999"))).code).toBe("not_found");
+    await support.withdrawCredit({ creditId: credit.id, reason: "Declined." }, { requestId: "w" });
+    expect((await refusal(support.markCreditAsked(credit.id))).code).toBe("invalid");
+  });
+
+  it("the demonstration proposals were both put to a person", () => {
+    expect(demoCredits().map((credit) => credit.askedOn)).toEqual(["2026-11-04", "2026-11-09"]);
+  });
+
   it("withdraws a pending proposal once on replay with its reason, and never an issued one", async () => {
     const support = desk();
     const proposal = await support.proposeCredit(CREDIT, { requestId: "p1" });
@@ -389,11 +445,12 @@ describe("fakeSupportDesk: escalation", () => {
     // Whatever the reason, a case never goes to anyone it names: a refund naming the person who
     // decides money back goes up the line instead.
     const refundOwner = person(company, refunds.refundNeeds);
+    if (refundOwner === undefined) throw new Error("company changed");
     const named = await desk().escalateCase(
-      { caseId: "C-301", reason: "refund", note: "Wants October back.", about: refundOwner?.name },
+      { caseId: "C-301", reason: "refund", note: "Wants October back.", about: refundOwner.name },
       { requestId: "s3" },
     );
-    expect(named.toPersonId).not.toBe(refundOwner?.id);
+    expect(named.toPersonId).not.toBe(refundOwner.id);
     expect(named.redirected).toBe(true);
 
     // A crew member the record does not list is not a person the case could go to.
@@ -737,6 +794,34 @@ describe("fakeSupportDesk: closing a case", () => {
     ]);
   });
 
+  it("refuses to close a damage complaint nobody has been handed, exactly as a safety one", async () => {
+    const support = desk();
+    const damage = await support.logCase(
+      { ...SAFETY, category: "damage", summary: "A glass partition was cracked during the clean." },
+      { requestId: "log-damage" },
+    );
+    const refused = await refusal(
+      support.resolveCase({ caseId: damage.id, outcome: "Apologised." }, { requestId: "d1" }),
+    );
+    expect(refused.code).toBe("not_escalated");
+    expect(refused.message).toBe(
+      `${damage.id} is a damage complaint that has not been handed to a person. Nothing was closed.`,
+    );
+    expect((await support.listCases({ caseId: damage.id }))[0]?.status).toBe("open");
+    // Once a person has it, it is theirs to close, as for safety.
+    await support.escalateCase(
+      { caseId: damage.id, reason: "safety", note: "Glass partition cracked." },
+      { requestId: "d-esc" },
+    );
+    expect(
+      (
+        await refusal(
+          support.resolveCase({ caseId: damage.id, outcome: "Done." }, { requestId: "d2" }),
+        )
+      ).code,
+    ).toBe("escalated");
+  });
+
   it("resolve_case refuses while a credit proposal is pending", async () => {
     const support = desk();
     const proposal = await support.proposeCredit(CREDIT, { requestId: "p" });
@@ -790,7 +875,7 @@ describe("fakeSupportDesk: demonstration data", () => {
     for (const seeded of demoCredits()) {
       const fresh = fakeSupportDesk({ credits: [], now: () => new Date(DEMO_NOW) });
       const proposal = await fresh.proposeCredit(seeded, { requestId: "p" });
-      const { id: _id, proposedOn: _on, ...expected } = seeded;
+      const { id: _id, proposedOn: _on, askedOn: _asked, ...expected } = seeded;
       expect(proposal, seeded.id).toMatchObject(expected);
     }
   });

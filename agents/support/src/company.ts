@@ -12,9 +12,23 @@
  */
 
 import {
+  type CompanyAddress,
+  type CompanyEscalationRule,
+  type CompanyGlossaryEntry,
+  type CompanyHours,
+  type CompanyPolicies,
+  type CompanyPriceBookItem,
+  type CompanyProfile,
+  type CompanyRecord,
+  type CompanyRecordPerson,
+  type CompanyRefundPolicy,
+  type CompanyTone,
   companyHead,
+  escalationOwner,
   findPeople,
   loadCompanyFacts as loadFacts,
+  money,
+  personById as person,
   personLabel,
 } from "@officehum/sdk";
 
@@ -24,131 +38,51 @@ export const COMPANY_FACTS_URL = new URL(
   import.meta.url,
 );
 
-export interface Address {
-  readonly street: string;
-  readonly city: string;
-  readonly region: string;
-  readonly postalCode: string;
-  readonly country: string;
-}
+export type Address = CompanyAddress;
 
-export interface Profile {
-  readonly legalName: string;
-  readonly tradingName: string;
-  readonly tagline: string;
-  readonly address: Address;
-  readonly phone: string;
-  readonly email: string;
-  readonly serviceArea: string;
-  readonly clients: string;
-}
+export type Profile = Pick<
+  CompanyProfile,
+  | "legalName"
+  | "tradingName"
+  | "tagline"
+  | "address"
+  | "phone"
+  | "email"
+  | "serviceArea"
+  | "clients"
+>;
 
-export interface Hours {
-  readonly timezone: string;
-  readonly office: string;
-  readonly crews: string;
-  readonly emergencyLine: string;
-  readonly closedOn: string;
-  readonly note: string;
-}
+export type Hours = CompanyHours;
 
-export interface Person {
-  readonly id: string;
-  readonly name: string;
-  readonly title: string;
-  readonly email: string;
-  /** Other names colleagues use for them ("DW"); a complaint naming one is kept away from them. */
-  readonly aliases?: readonly string[];
-  readonly decides: readonly string[];
-}
+/** A colleague as this role reads them; a complaint naming one (or an alias) is kept away from them. */
+export type Person = Omit<CompanyRecordPerson, "department" | "phone">;
 
 /** One price book line: invoice lines are priced from these, never from a figure in a message. */
-export interface PriceBookItem {
-  readonly id: string;
-  readonly name: string;
-  readonly unit: string;
-  /** The unit price in integer cents. */
-  readonly unitPriceCents: number;
-  /** The least a line of this item comes to, in integer cents, or `null` for none. */
-  readonly minimumCents: number | null;
-}
+export type PriceBookItem = Omit<CompanyPriceBookItem, "category" | "notes">;
 
 /** How a service failure is put right, and who decides which remedy. */
-export interface RefundPolicy {
-  readonly summary: string;
-  /** A re-clean is booked within this many business days of the complaint. */
-  readonly recleanWindowDays: number;
-  /** The usual credit for a service failure: a credit never comes to more than this or the line. */
-  readonly serviceRecoveryCreditCents: number;
-  /** The person id who approves a credit note. */
-  readonly creditNeeds: string;
-  /** The person id who decides money back. */
-  readonly refundNeeds: string;
-  /** The person id who owns complaints about a visit. */
-  readonly complaintOwner: string;
-}
+export type RefundPolicy = CompanyRefundPolicy;
 
-export interface Policies {
-  readonly refunds: RefundPolicy;
-  readonly safety: readonly string[];
-  readonly dataHandling: readonly string[];
-  readonly commitments: readonly string[];
-}
+export type Policies = Omit<CompanyPolicies, "discounts">;
 
-export interface Tone {
-  readonly summary: string;
-  readonly always: readonly string[];
-  readonly never: readonly string[];
-}
+export type Tone = CompanyTone;
 
-export interface EscalationRule {
-  readonly topic: string;
-  readonly toPersonId: string;
-  readonly when: string;
-}
+export type EscalationRule = CompanyEscalationRule;
 
-export interface GlossaryEntry {
-  readonly term: string;
-  readonly meaning: string;
-}
+export type GlossaryEntry = CompanyGlossaryEntry;
 
 /** Everything the company records that this role reads. */
-export interface CompanyFacts {
+export type CompanyFacts = Pick<CompanyRecord, "hours" | "tone" | "escalation" | "glossary"> & {
   readonly profile: Profile;
-  readonly hours: Hours;
   readonly people: readonly Person[];
   readonly priceBook: readonly PriceBookItem[];
   readonly policies: Policies;
-  readonly tone: Tone;
-  readonly escalation: readonly EscalationRule[];
-  readonly glossary: readonly GlossaryEntry[];
-}
+};
 
 /** The company facts generated into this package. Throws when the copy is missing or is not JSON. */
 export const loadCompanyFacts = (): CompanyFacts => loadFacts<CompanyFacts>(COMPANY_FACTS_URL);
 
-const CURRENCY = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-
-/** Integer cents as the money a person reads, never a recomputed amount. */
-export function money(cents: number): string {
-  return CURRENCY.format(cents / 100);
-}
-
-/** One person by id, or `undefined` when nobody here has that id. */
-export function person(company: Pick<CompanyFacts, "people">, id: string): Person | undefined {
-  return company.people.find((candidate) => candidate.id === id);
-}
-
-/** The person whose escalation topic this is, or `undefined` when the record has no such topic. */
-export function escalationOwner(
-  company: Pick<CompanyFacts, "people" | "escalation">,
-  topic: string,
-): Person | undefined {
-  const rule = company.escalation.find((candidate) => candidate.topic === topic);
-  return rule === undefined ? undefined : person(company, rule.toPersonId);
-}
-
 // `companyHead` is the SDK's one rule for the person at the top of the company: a head title first,
 // a bare director only when nobody holds one. A complaint about the person who would normally take
 // it goes there.
-export { companyHead, findPeople, personLabel };
+export { companyHead, escalationOwner, findPeople, money, person, personLabel };

@@ -19,13 +19,16 @@ import {
   createDemoModels,
   durableInboundReplyApprover,
   messengerIdentityString,
+  OFFICE_CONFIG_FILE,
   openConsoleMessenger,
   openLocalCalendar,
+  openOfficeConfig,
   openResendInbox,
   openSolo,
   readInboundInbox,
   readMessengerIdentity,
 } from "@officehum/office";
+import { openOfficeBoard } from "@officehum/office/board";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeCalendar } from "../../google-calendar/src/index.js";
 import { type CliIo, cliApprover, cliReplyDecision, interruptCli, runCli } from "./cli.js";
@@ -280,11 +283,12 @@ describe("runCli", () => {
   });
 
   it("selects OpenAI models as a provider/model pair regardless of option order", async () => {
-    for (const [options, expectedModel] of [
+    const cases: [options: string[], expectedModel: string][] = [
       [["--provider", "openai"], "gpt-6-sol"],
       [["--provider", "openai", "--model", "gpt-6.1-sol"], "gpt-6.1-sol"],
       [["--model", "gpt-6.1-sol", "--provider", "openai"], "gpt-6.1-sol"],
-    ]) {
+    ];
+    for (const [options, expectedModel] of cases) {
       const directory = state();
       const faux = fauxProvider({
         provider: "openai",
@@ -1159,7 +1163,7 @@ describe("runCli", () => {
         operation: database
           .prepare("SELECT intent_json,payload_json,state FROM reply_operations")
           .get(),
-      } as Record<string, Record<string, unknown>>;
+      } as Record<"receipt" | "approval" | "operation", Record<string, unknown>>;
       database.close();
       expect(persisted.receipt).toMatchObject({
         request_id: expect.any(String),
@@ -1202,6 +1206,126 @@ describe("runCli", () => {
       }
     }
   }, 15_000);
+
+  it("serves the Twilio webhook only when its token is set, and turns a stranger's text into a callback for a person", async () => {
+    const secret = `whsec_${Buffer.from("cli-sms-secret").toString("base64")}`;
+    // A fixture value in Twilio's shape (32 hexadecimal characters); no account is behind it.
+    const token = "0123456789abcdef0123456789abcdef";
+    const business = "+15035550142";
+    const names = [
+      "RESEND_ACCOUNT_ID",
+      "RESEND_FROM_EMAIL",
+      "RESEND_SUBJECT",
+      "RESEND_API_KEY",
+      "RESEND_INBOUND_EMAIL",
+      "RESEND_WEBHOOK_SECRET",
+      "TWILIO_AUTH_TOKEN",
+    ] as const;
+    const prior = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    const provider = fauxProvider({ provider: "openai", models: [{ id: "gpt-6-sol" }] });
+    const models = createModels();
+    models.setProvider(provider.provider);
+    const dependencies = {
+      createLiveModels: () => ({ models, model: { provider: "openai", modelId: "gpt-6-sol" } }),
+    };
+    process.env.RESEND_ACCOUNT_ID = "account_test";
+    process.env.RESEND_FROM_EMAIL = "desk@example.test";
+    process.env.RESEND_SUBJECT = "Front Desk";
+    process.env.RESEND_API_KEY = "synthetic";
+    process.env.RESEND_INBOUND_EMAIL = "desk@example.test";
+    process.env.RESEND_WEBHOOK_SECRET = secret;
+
+    const text = (port: number, messageSid: string) => {
+      const url = `http://127.0.0.1:${port}/hooks/twilio`;
+      const params: Record<string, string> = {
+        AccountSid: "AC11111111111111111111111111111111",
+        Body: "Can someone call me about a quote?",
+        From: "+15035550199",
+        MessageSid: messageSid,
+        To: business,
+      };
+      const signed = Object.keys(params)
+        .sort()
+        .reduce((payload, key) => payload + key + params[key], url);
+      return fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "x-twilio-signature": createHmac("sha1", token).update(signed, "utf8").digest("base64"),
+        },
+        body: new URLSearchParams(params).toString(),
+      });
+    };
+    const listen = async (directory: string, port: number) => {
+      const capture = io();
+      const running = runCli(
+        ["listen", "--provider", "openai", "--state", directory, "--port", String(port)],
+        capture.io,
+        dependencies,
+      );
+      await waitUntil(
+        () => capture.output.some((line) => line.includes("Inbound listener:")),
+        "the inbound listener to announce itself",
+      );
+      return { capture, running };
+    };
+
+    try {
+      // No token: the office has not bought the channel, so the route does not exist.
+      delete process.env.TWILIO_AUTH_TOKEN;
+      const quietPort = await freeLoopbackPort();
+      const quiet = await listen(state(), quietPort);
+      expect((await text(quietPort, "SM00000000000000000000000000000001")).status).toBe(404);
+      expect(quiet.capture.output.join("\n")).not.toContain("SMS");
+      await interruptCli();
+      expect(await quiet.running).toBe(0);
+
+      // A token and a provisioned number: the route is served and a stranger's text is a person's work.
+      const directory = state();
+      const port = await freeLoopbackPort();
+      openOfficeConfig(join(directory, OFFICE_CONFIG_FILE)).setSmsBusinessNumber(business as never);
+      process.env.TWILIO_AUTH_TOKEN = token;
+      const served = await listen(directory, port);
+      expect(served.capture.output).toContain(
+        `SMS webhook: http://127.0.0.1:${port}/hooks/twilio (inbound only)`,
+      );
+      const response = await text(port, "SM00000000000000000000000000000002");
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain("<Response>");
+      // Twilio retries: the same message again is the same ticket.
+      expect((await text(port, "SM00000000000000000000000000000002")).status).toBe(200);
+      await interruptCli();
+      expect(await served.running).toBe(0);
+      expect([...served.capture.output, ...served.capture.errors].join("\n")).not.toContain(token);
+
+      const board = openOfficeBoard(join(directory, "office.sqlite"));
+      try {
+        // The people came from the Front Desk's company record; its first person takes the callback.
+        expect(board.people()[0]).toEqual({ id: "dana-whitfield", name: "Dana Whitfield" });
+        expect(board.list({ type: "phone.callback" })).toEqual([
+          expect.objectContaining({
+            assignee: "dana-whitfield",
+            createdBy: "sms-inbound",
+            title: "Call back +15035550199 about a text message",
+          }),
+        ]);
+        expect(board.provenance(board.list({ type: "phone.callback" })[0]?.id ?? "")).toMatchObject(
+          {
+            origin: "external",
+          },
+        );
+      } finally {
+        board.close();
+      }
+    } finally {
+      await interruptCli();
+      for (const name of names) {
+        const value = prior[name];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  }, 30_000);
 
   it("interrupts a slow startup receiving GET and releases every acquired owner", async () => {
     const directory = state();
@@ -1406,9 +1530,7 @@ describe("runCli", () => {
     });
     const pending = (await solo.harness.inspect(BACKGROUND_CONTEXT)).submissions;
     expect(pending.map((record) => String(record.id))).toContain(submissionId);
-    expect(
-      pending.find((record) => String(record.id) === submissionId)?.settlement,
-    ).toBeUndefined();
+    expect(pending.find((record) => String(record.id) === submissionId)?.status).toBe("placed");
     await solo.close();
     calendar.close();
   });
@@ -1977,7 +2099,7 @@ describe("runCli", () => {
     });
     await reopened.root.commit(async (transaction) => {
       const agent = await transaction.doc(AgentDoc, reopened.root.id);
-      agent.model = undefined;
+      delete agent.model;
     }, BACKGROUND_CONTEXT);
     await reopened.close();
     calendar.close();

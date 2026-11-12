@@ -118,7 +118,8 @@ It guards against three habits:
 - letting the model declare work finished
 
 Each layer is files or manifest data, never generated code: `@officehum/sdk` enforces wisdom, and
-Office Hum enforces workflow (the board checks completion evidence; hand-offs are host tools).
+Office Hum enforces workflow (hand-offs are host tools; the board checking completion evidence is
+designed, and nothing runs `done` evidence yet: today the SDK only validates that it is declared).
 
 `checkFourLayers()` checks a package, and `validatePackage()` runs it:
 - **Context:** the word budget, no amounts, percentages or thresholds in context files, and a "You may not" section
@@ -298,7 +299,11 @@ const root = await harness.root(context, { agent: role.agent });
 **Today comes from the host's clock.** `defineRole({ now })` adds a `today` prompt section, rendered
 from that clock at every request: today's date and weekday, the next 14 dates with their weekdays,
 and the rule that every date the role states or records comes from that section or a tool result.
-Dates are UTC. With no `now` there is no section. The first-wave roles take `now` as a factory
+The day is the one in the time zone the role passes as `defineRole({ timeZone })`: the roles that
+read a company record pass its `hours.timezone` (the default company: `America/Los_Angeles`) and their
+desks date records the same way, through the SDK's `localDate(now, timeZone)`, so 17:00 in Portland is
+still today and a notice period is not a day short. With no `timeZone` the day is UTC's. The Front
+Desk is the exception: its appointments are UTC. With no `now` there is no section. The first-wave roles take `now` as a factory
 option and pass the same clock to their demonstration desk. If the option is left out, the
 demonstration desk uses its fixed demo date (`DEMO_NOW`) and a host's own desk uses the system clock.
 `loadRole(dir, { now })` passes the clock to the factory, so no client may be named `now`.
@@ -352,8 +357,10 @@ A sender comes from one of three places today, and nowhere else:
   matches an internal sender) and refuses anyone it does not name. The role gets
   `{ origin: "internal", channel: "terminal", contact: <person id> }` for every call. With no `--as`
   the CLI passes no resolver and the sender is unknown.
-- **A board-backed host**, which passes `boardSenderResolver(board)`. Today the only such host is the
-  eval runner's office mode; no production host opens a board for a role yet.
+- **A board-backed host**, which passes `boardSenderResolver(board)`. Today the only host that does
+  is the eval runner's office mode. `officehum runtime --board` opens a board for its roles but does
+  not pass the resolver: the tickets its agents open do not name the person who asked, so there is
+  no sender to resolve yet, and a role there sees the sender as unknown.
 
 `boardSenderResolver(board)` reads the provenance row of the ticket the
 conversation is bound to, which the channel gateway resolved before the ticket existed. A child
@@ -550,6 +557,12 @@ else is found with `memory_recall`.
 
 ## Context engineering
 
+> Status: mostly schema only, not built. `officehum.json` accepts every field named here and
+> `validateManifest` checks them, but almost nothing reads them at run time. What runs today:
+> `agentCard()` and its formatters in `@officehum/sdk` (no host calls them yet); the `team` prompt
+> section, which the office extension builds from the installed manifests' `accepts`; and
+> `checkAgent`'s prompt budget and sub-agent reference checks. Each part below says what is not built.
+
 Context engineering is deciding what each agent sees, when, and in what shape. The four layers decide
 *where* something belongs; context engineering decides how it reaches the model on each request
 (RASF-3232). Three parts:
@@ -568,9 +581,14 @@ In an office, the registry holds every agent's card:
 - `agent_directory` and `agent_card` give details on demand
 - linked offices and the public catalog of free roles come later (RASF-3239)
 
+Not built: the card registry and the `agent_directory` and `agent_card` tools. `agentCard()` builds a
+card, but no host holds or serves one; the `team` section that ships lists each colleague with the
+ticket types it accepts, read from the manifests rather than from cards.
+
 Hand-offs still go by ticket type: knowing a colleague's tools helps an agent choose whom to ask,
 never lets it call those tools. An office warns at install time when a role dispatches a ticket type
-that no agent accepts.
+that no agent accepts (not built: today `agent_dispatch` refuses such a type when it is called, unless
+the company record routes it to a person).
 
 **Each role has a context plan.** `contextPlan` in `officehum.json` declares:
 - the prompt budget
@@ -582,23 +600,32 @@ that no agent accepts.
 - memory subjects
 - tool groups
 
-The Role Factory builds the plan from a context profile in the interview. A rule table recommends each
+Schema only, not built, except two checks. `checkAgent` holds the role's stable prompt to
+`promptBudgetTokens`, and `validateManifest` and `checkAgent` check each sub-agent's references (safe
+tools and skills the role declares). Nothing runs a sub-agent, searches a retrieval source, filters
+history, masks amounts, picks a model tier, stores memory or narrows tools by ticket type: `retrieval`,
+`subagents`, `historyFilter`, `maskAmounts`, `modelTiers`, `memorySubjects` and `toolGroups` are
+validated and then unused.
+
+Also not built: the Role Factory does not write a `contextPlan` or context evals. As designed, the
+Role Factory builds the plan from a context profile in the interview. A rule table recommends each
 technique with a reason that quotes the interview, and a person accepts or rejects each one in
 `ROLE_SPEC.md` — the document the interview writes and the generator reads ([role-spec.md](role-spec.md)).
 The generated package carries context evals: the prompt stays under budget, the prompt
 prefix is identical across turns, cited ids survive filtering, and sub-agents return valid results.
 
-**Durable context patterns** (`@officehum/sdk`, on Pi Durable's own hooks):
+**Durable context patterns** (designed for `@officehum/sdk`, on Pi Durable's own hooks). The last
+column says what exists in the code today:
 
-| Pattern | How |
-| --- | --- |
-| Storage is not context | The transcript stays complete in storage; each request gets a projection of it |
-| Stable sections | No timestamps or counters in stable sections, and per-ticket sections last, so the provider's prompt cache holds; `checkAgent` renders sections twice and flags differences |
-| Relevance filter | A `beforeRequest` hook stubs older tool results that no longer matter, for that request only; cited ids are always kept, and `context_recall` brings a result back |
-| Compaction that keeps ids | A `beforeCompact` hook checks the summary keeps every cited id and figure, and appends any it dropped |
-| Decisions in memos | Filter and approval decisions live in task memos, so a restart reuses them |
-| Amount masking | `read_skill` masks sample amounts in skills and references, so the model takes figures from the engine |
-| Sub-agents | Task-owned child conversations with only safe tools, a small model and an output schema; fan-out survives restarts |
+| Pattern | How | Today |
+| --- | --- | --- |
+| Storage is not context | The transcript stays complete in storage; each request gets a projection of it | Pi Durable's own behaviour; Office Hum adds no projection of its own |
+| Stable sections | No timestamps or counters in stable sections, and per-ticket sections last, so the provider's prompt cache holds; `checkAgent` renders sections twice and flags differences | Not built in `checkAgent`. A prompt-cache check over recorded requests exists in `packages/office/src/evals/prompt-cache.ts`, used only by its own tests |
+| Relevance filter | A `beforeRequest` hook stubs older tool results that no longer matter, for that request only; cited ids are always kept, and `context_recall` brings a result back | Not built: no such hook and no `context_recall` tool |
+| Compaction that keeps ids | A `beforeCompact` hook checks the summary keeps every cited id and figure, and appends any it dropped | Not built |
+| Decisions in memos | Filter and approval decisions live in task memos, so a restart reuses them | Built for approval decisions; there is no filter |
+| Amount masking | `read_skill` masks sample amounts in skills and references, so the model takes figures from the engine | Not built: `read_skill` returns the text as written, and `maskAmounts` is never read |
+| Sub-agents | Task-owned child conversations with only safe tools, a small model and an output schema; fan-out survives restarts | Not built: declarations are validated, nothing runs them |
 
 ## The open-source distribution
 
@@ -690,10 +717,10 @@ connectors, skills), the Inbox (`approvals`) and release gates (`evals`). Pi Dur
 | `approvals[]` | `id` (snake_case), `tool` (a declared tool), `description` (shown in the Inbox), optional `when` conditions over the tool's arguments. A numeric comparison may take a named limit as its value, `{ "limit": "large_invoice" }`, instead of a number. `field` names a numeric field of each element of an array argument, so the comparison is against their sum; `times` multiplies it by a second field per element. Conditions too complex to declare go in the entry point's `when`, keyed by `id` — but the office gate cannot see those, and takes such an approval as unconditional. |
 | `limits` | Named amounts the business sets, e.g. `large_invoice`: each has a `description` and a `default`. An approval compares against a limit with `{ "limit": "NAME" }` for `gt`, `gte`, `lt` or `lte`. An overlay changes a value, never removes it. |
 | `channels` | `email`, `sms`, `chat`: where the role may face the business's customers. A name alone means both directions. An object `{ "channel", "direction", "replyBy"?, "note"? }` declares one that does not run both ways — `direction` is `inbound`, `outbound` or `both`, and `replyBy` names a channel the role also declares. The Front Desk receives texts and answers them by email: `{ "channel": "sms", "direction": "inbound", "replyBy": "email" }`. |
-| `accepts[]` | Dotted ticket types (`invoice.create`) with a description shown to delegating agents, and `done`: the completion evidence for that type. Every entry must pass, and the host runs it, never the model: `{ "engine": ["subcommand", …], "args": {…} }` (the engine answers `ok` with at least one finding), `{ "tool": "NAME", "args": {…}, "expect": "found" }` (a declared **safe** tool whose result reports `found`), `{ "file": "NAME" }` (the result attaches a file), or `{ "person": true }`. Args may interpolate `{ticket.id}` and `{ticket.data.<path>}`, and nothing else. |
+| `accepts[]` | Dotted ticket types (`invoice.create`) with a description shown to delegating agents, and `done`: the completion evidence for that type (validated today; no host runs it yet). As designed, every entry must pass, and the host runs it, never the model: `{ "engine": ["subcommand", …], "args": {…} }` (the engine answers `ok` with at least one finding), `{ "tool": "NAME", "args": {…}, "expect": "found" }` (a declared **safe** tool whose result reports `found`), `{ "file": "NAME" }` (the result attaches a file), or `{ "person": true }`. Args may interpolate `{ticket.id}` and `{ticket.data.<path>}`, and nothing else. |
 | `dispatches[]` | Ticket types this role hands to other roles, and when: `type` (a dotted ticket type) and `when` (one line about the trigger). A type the role also `accepts` is an error: a role accepts a type or hands it off, never both. A card carries them, so an agent can choose whom to ask. |
 | `mayNot[]` | What the role never does, and what it does instead: `action` and `instead`. Wisdom data: it appears on the role's agent card, never as a tool. |
-| `contextPlan` | How the role decides what each request sees. Every part is optional. `promptBudgetTokens` (default 4,000) caps the stable prompt. `retrieval.sources[]` (`id`, `description`) are business documents the role searches instead of pasting them in. `subagents[]` are narrow workers: `id`, `purpose`, `model` (`"small"` or `"default"`), `tools` (declared **safe** tools of this role only), optional `skills` (declared skills), `output` (a JSON Schema) and optional `maxParallel`. `historyFilter` (`keepRecentRounds`, `keepCitedIds`, `maxToolResultTokens`). `maskAmounts` (default true when the role has an engine). `modelTiers.small[]` are purposes that may run on the office's small model. `memorySubjects[]` are subject kinds to remember (`business`, `customer`, `vendor`, `person`, `agent`, `topic`). `toolGroups[]` (`id`, `tools`, `forTicketTypes`) offer only the group for the current ticket type. |
+| `contextPlan` | How the role decides what each request sees. Every part is optional. Only `promptBudgetTokens` and the sub-agent reference rules are enforced today; the rest is schema only (see "Context engineering"). `promptBudgetTokens` (default 4,000) caps the stable prompt. `retrieval.sources[]` (`id`, `description`) are business documents the role searches instead of pasting them in. `subagents[]` are narrow workers: `id`, `purpose`, `model` (`"small"` or `"default"`), `tools` (declared **safe** tools of this role only), optional `skills` (declared skills), `output` (a JSON Schema) and optional `maxParallel`. `historyFilter` (`keepRecentRounds`, `keepCitedIds`, `maxToolResultTokens`). `maskAmounts` (default true when the role has an engine). `modelTiers.small[]` are purposes that may run on the office's small model. `memorySubjects[]` are subject kinds to remember (`business`, `customer`, `vendor`, `person`, `agent`, `topic`). `toolGroups[]` (`id`, `tools`, `forTicketTypes`) offer only the group for the current ticket type. |
 | `skills[]` | `id` (the folder under `skills/`) and `enabledByDefault`. The name and description come from `SKILL.md`, so they cannot drift. Every bundled skill folder must be listed. |
 | `evals` | Directory of eval files, relative to the package root. |
 

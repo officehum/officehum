@@ -16,7 +16,7 @@ import type {
 } from "./document-service.js";
 import type { DocumentLease } from "./lease.js";
 import { DEFAULT_LIMITS } from "./lease.js";
-import { paperOfficeToolPack } from "./run-document-python.js";
+import { paperOfficeToolPack, RUN_DOCUMENT_PYTHON } from "./run-document-python.js";
 import { docxPackage, sha256 } from "./test-helpers.js";
 import {
   COMPARE_DOCUMENT,
@@ -355,6 +355,75 @@ describe("the typed Word tools run only through the injected service", () => {
     expect(request?.code).toBe(wordInstruction("edit"));
   });
 
+  it("trims an oversized edit to its counts, and says what it left out", async () => {
+    const long = editResult();
+    const lines = Array.from(
+      { length: 400 },
+      (_, index) => `+[paragraph] line ${index} of the diff`,
+    );
+    const service = scriptedService({
+      ...long,
+      diff: {
+        ...DIFF,
+        stories: [{ story: "word/document.xml", diffLines: lines, omittedLines: 0 }],
+      },
+    });
+    const { tool } = toolOf(service, EDIT_DOCUMENT, LEASE);
+    const result = await tool.execute(
+      {
+        ref: REF,
+        output: "proposal.docx",
+        author: "Office Hum",
+        steps: [
+          {
+            kind: "insertSection",
+            anchor: { text: "Quarterly Close" },
+            heading: "Variance",
+            paragraphs: ["Revenue grew."],
+          },
+        ],
+      },
+      api,
+    );
+    expect(result.isError).toBeUndefined();
+    const body = JSON.parse(result.output[0]?.text ?? "{}") as {
+      ok: boolean;
+      truncated: boolean;
+      omitted: string[];
+      result: { diff: { stories: { diffLines: string[]; omittedLines: number }[] } };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.truncated).toBe(true);
+    expect(body.omitted.join(" ")).toContain("diff lines");
+    expect(body.result.diff.stories[0]).toMatchObject({ diffLines: [], omittedLines: 400 });
+    expect(result.details?.truncated).toBe(true);
+  });
+
+  it("refuses a page that cannot fit one reply, and says what to narrow", async () => {
+    const page = readResult();
+    const items = Array.from({ length: 20 }, (_, index) => ({
+      ...BLOCK,
+      index,
+      text: "x".repeat(2_000),
+    }));
+    const service = scriptedService({
+      ...page,
+      page: { ...page.page, returned: 20, total: 20, items },
+    });
+    const { tool } = toolOf(service, READ_DOCUMENT, LEASE);
+    const result = await tool.execute({ ref: REF, section: "paragraphs" }, api);
+    expect(result.isError).toBe(true);
+    const body = JSON.parse(result.output[0]?.text ?? "{}") as {
+      ok: boolean;
+      code: string;
+      message: string;
+    };
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe("reply-too-large");
+    expect(body.message).toContain("pageSize");
+    expect(result.details?.code).toBe("reply-too-large");
+  });
+
   it("returns the same answer for a replay of the same call", async () => {
     const service = scriptedService(readResult());
     const { tool } = toolOf(service, READ_DOCUMENT, LEASE);
@@ -424,6 +493,25 @@ describe("the typed Word tools run only through the injected service", () => {
       includeWordTools: false,
     });
     expect(pack.tools.some((tool) => tool.name === WORD_TOOL_NAMES.read)).toBe(false);
+  });
+
+  it("withholds the Python workspace from a pack that asks for the typed tools alone", async () => {
+    const service = scriptedService(readResult());
+    const names = (pack: { tools: readonly { name: string }[] }) =>
+      pack.tools.map((tool) => tool.name);
+    // The default keeps the workspace, as before.
+    expect(names(paperOfficeToolPack({ service, leaseFor: async () => LEASE }))).toContain(
+      RUN_DOCUMENT_PYTHON,
+    );
+    const typedOnly = names(
+      paperOfficeToolPack({
+        service,
+        leaseFor: async () => LEASE,
+        includePythonWorkspace: false,
+      }),
+    );
+    expect(typedOnly).not.toContain(RUN_DOCUMENT_PYTHON);
+    expect(typedOnly).toContain(WORD_TOOL_NAMES.read);
   });
 
   it("registers every typed tool as replay-safe with a closed argument schema", async () => {

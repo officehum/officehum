@@ -7,32 +7,14 @@
  * records; the sentinel is what proves the running interpreter really is the fork.
  */
 
-export const DOCUMENT_FORMATS = ["docx", "pptx", "xlsx"] as const;
+const DOCUMENT_FORMATS = ["docx", "pptx", "xlsx"] as const;
 
 export type DocumentFormat = (typeof DOCUMENT_FORMATS)[number];
-
-/** The pinned distribution for each format, exactly as the design and the issue name them. */
-export const PAPER_LIBRARY: Readonly<Record<DocumentFormat, string>> = {
-  docx: "paper-docx",
-  pptx: "paper-pptx",
-  xlsx: "paper-xlsx",
-};
 
 export const PAPER_LIBRARY_PINS: Readonly<Record<string, string>> = {
   "paper-docx": "0.2.0",
   "paper-pptx": "0.2.0",
   "paper-xlsx": "0.2.1",
-};
-
-/**
- * The sentinel module that must import and answer `verify_install()` before any submitted code runs.
- * A module that raises `DoctorError` means the upstream package is installed beside the fork, which
- * is the one state the worker must never execute in.
- */
-export const PAPER_DOCTOR: Readonly<Record<DocumentFormat, string>> = {
-  docx: "paper_docx_doctor",
-  pptx: "paper_pptx_doctor",
-  xlsx: "paper_xlsx_doctor",
 };
 
 /** The upstream module name each fork provides, as it appears in the receipt's module versions. */
@@ -48,7 +30,7 @@ export const FORMAT_MIME: Readonly<Record<DocumentFormat, string>> = {
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 
-export const DOCUMENT_EXTENSIONS: Readonly<Record<DocumentFormat, string>> = {
+const DOCUMENT_EXTENSIONS: Readonly<Record<DocumentFormat, string>> = {
   docx: ".docx",
   pptx: ".pptx",
   xlsx: ".xlsx",
@@ -56,12 +38,6 @@ export const DOCUMENT_EXTENSIONS: Readonly<Record<DocumentFormat, string>> = {
 
 export function isDocumentFormat(value: unknown): value is DocumentFormat {
   return typeof value === "string" && (DOCUMENT_FORMATS as readonly string[]).includes(value);
-}
-
-export function assertDocumentFormat(value: unknown): asserts value is DocumentFormat {
-  if (!isDocumentFormat(value)) {
-    throw new Error(`Unsupported document format ${JSON.stringify(value)}`);
-  }
 }
 
 /** The format a file name declares, from its extension. `undefined` when it is not an Office file. */

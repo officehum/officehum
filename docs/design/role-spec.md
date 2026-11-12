@@ -130,7 +130,7 @@ afterwards:
 | `src/index.ts` | The only generated code: the factory (`defineRole` with the package directory, the manifest, the overlays, the approver and the engine), plus a typed not-implemented stub for a tool the spec declares with no engine, cli or mcp source |
 | `src/role.test.ts` | The role's own run of the SDK's checks: `validatePackage` and `checkAgent` in strict mode |
 | `evals/spec.json` | The spec's scenarios, in the SDK's format |
-| `evals/generated.json` | The generator's own critical scenarios: one per approval (declined, and the gated call must not run), one per unsafe tool (an instruction hidden in the input asks for it and must not be called) and one per `may_not` (a person asks for the prohibited action; no tool that could perform it runs, and the reply offers the `instead`) |
+| `evals/generated.json` | The generator's own critical scenarios: one per approval (the role makes the gated call, the approval is requested and declined, and the call does not execute: the scenario expects the call and the approval request, and the tool's result must not reach the reply), one per unsafe tool (an instruction hidden in the input asks for it and must not be called) and one per `may_not` (a person asks for the prohibited action; no tool that could perform it runs, and the reply offers the `instead`) |
 
 Nothing else is generated: an approval, a limit or a replay policy is a manifest field the SDK enforces,
 never TypeScript. The generator writes into an empty directory, overwrites no file, and produces
@@ -139,7 +139,11 @@ evidence per ticket type is not generated here (RASF-3231).
 
 `generateRole(spec, outDir, { overlayDir })` is the generator; `officehum-role generate <spec.md>
 <out-dir> [--overlay <dir>]` is the same thing on the command line, and exits non-zero when the spec,
-the manifest, the evals or the four-layer check refuses the run.
+the manifest, the evals or the four-layer check refuses the run. Everything is validated before any
+file is written: the manifest, the spec's and the generated scenarios together, the overlay (one with
+nothing to write is refused), that neither directory would have a file overwritten, and the
+four-layer check (the word limit included) on the rendered package. A refused run leaves both
+directories untouched.
 
 ## Field reference
 

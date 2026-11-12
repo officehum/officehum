@@ -4,15 +4,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
+import defaultCompany from "../../../company/default/company.json" with { type: "json" };
 import {
   colleague,
   companyHead,
+  escalationOwner,
+  escalationRule,
   findPeople,
   loadCompanyFacts,
+  money,
+  personById,
   personLabel,
+  purchasingLead,
   senderPerson,
   type VerifiedSender,
 } from "./company.js";
+import type { CompanyRecord } from "./company-record.js";
+import { localDate } from "./dates.js";
+import { requireDesk } from "./desk.js";
 
 function fileWith(content: string): URL {
   const path = join(mkdtempSync(join(tmpdir(), "company-")), "facts.json");
@@ -196,5 +205,69 @@ describe("companyHead", () => {
       "p1",
     );
     expect(companyHead(people("Office Manager", "Crew Lead"))).toBeUndefined();
+  });
+});
+
+describe("the lookups every role shares", () => {
+  const record = {
+    people: [
+      { id: "dana", name: "Dana Reyes", title: "Managing Director", department: "office" },
+      { id: "kit", name: "Kit Lund", title: "Buyer", department: "purchasing" },
+    ],
+    escalation: [
+      { topic: "start-date", toPersonId: "dana", when: "Any change to the schedule." },
+      { topic: "press", toPersonId: "nobody-here", when: "A journalist calls." },
+    ],
+  };
+
+  it("personById finds one person, or nobody", () => {
+    expect(personById(record, "kit")?.name).toBe("Kit Lund");
+    expect(personById(record, "Kit")).toBeUndefined();
+    expect(personById(record, "")).toBeUndefined();
+  });
+
+  it("escalationRule and escalationOwner read the escalation path by topic", () => {
+    expect(escalationRule(record, "start-date")?.when).toBe("Any change to the schedule.");
+    expect(escalationRule(record, "refund")).toBeUndefined();
+    expect(escalationOwner(record, "start-date")?.name).toBe("Dana Reyes");
+    // A topic nobody owns, and a rule naming someone who is not on the record, are both nobody.
+    expect(escalationOwner(record, "refund")).toBeUndefined();
+    expect(escalationOwner(record, "press")).toBeUndefined();
+  });
+
+  it("purchasingLead is whoever the record puts in purchasing, whatever their title", () => {
+    expect(purchasingLead(record)?.id).toBe("kit");
+    expect(purchasingLead({ people: record.people.slice(0, 1) })).toBeUndefined();
+  });
+
+  it("money writes integer cents as dollars", () => {
+    expect(money(123456)).toBe("$1,234.56");
+    expect(money(5)).toBe("$0.05");
+    expect(money(-2500)).toBe("-$25.00");
+    expect(money(0)).toBe("$0.00");
+  });
+});
+
+describe("requireDesk", () => {
+  it("hands back the desk it is given", () => {
+    const desk = { list: () => [] };
+    expect(requireDesk(desk, "sales")).toBe(desk);
+  });
+
+  it("refuses with what to pass when the host bound none", () => {
+    expect(() => requireDesk(undefined, "sales")).toThrow(
+      "No sales desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
+    );
+  });
+});
+
+describe("CompanyRecord", () => {
+  it("is the shape of the default company, whose time zone is a real one", () => {
+    // The assignment is the check: `tsc` fails here when the record and the type drift apart.
+    const record: CompanyRecord = defaultCompany;
+    expect(record.hours.timezone).toBe("America/Los_Angeles");
+    expect(localDate(new Date("2026-11-12T01:30:00.000Z"), record.hours.timezone)).toBe(
+      "2026-11-11",
+    );
   });
 });

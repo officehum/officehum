@@ -11,7 +11,25 @@
  * `company` to the factory instead, and nothing in this file runs.
  */
 
-import { loadCompanyFacts as loadFacts, personLabel as sharedPersonLabel } from "@officehum/sdk";
+import {
+  type CompanyAddress,
+  type CompanyApprovalLimits,
+  type CompanyEscalationRule,
+  type CompanyGlossaryEntry,
+  type CompanyHours,
+  type CompanyPolicies,
+  type CompanyProfile,
+  type CompanyRecord,
+  type CompanyRecordPerson,
+  type CompanySupplier,
+  type CompanySupplyItem,
+  type CompanyTone,
+  loadCompanyFacts as loadFacts,
+  money,
+  personById as person,
+  purchasingLead,
+  personLabel as sharedPersonLabel,
+} from "@officehum/sdk";
 
 /** Where the generated facts live, from either `src/company.ts` or `dist/company.js`. */
 export const COMPANY_FACTS_URL = new URL(
@@ -19,138 +37,60 @@ export const COMPANY_FACTS_URL = new URL(
   import.meta.url,
 );
 
-export interface Address {
-  readonly street: string;
-  readonly city: string;
-  readonly region: string;
-  readonly postalCode: string;
-  readonly country: string;
-}
-
-export interface Profile {
-  readonly legalName: string;
-  readonly tradingName: string;
-  readonly tagline: string;
-  readonly address: Address;
-  readonly phone: string;
-  readonly email: string;
-  readonly serviceArea: string;
-  readonly clients: string;
-}
-
-export interface Hours {
-  readonly timezone: string;
-  readonly office: string;
-  readonly crews: string;
-  readonly emergencyLine: string;
-  readonly closedOn: string;
-  readonly note: string;
-}
-
-export interface Person {
-  readonly id: string;
-  readonly name: string;
-  readonly title: string;
-  /** Where they work: `office`, `maintenance` or `purchasing`, as the company record lists them. */
-  readonly department: string;
-  readonly email: string;
-  /** As the company records it; a verified sender's phone matches it on "+" and digits. */
-  readonly phone?: string;
-  readonly decides: readonly string[];
-}
-
+export type Address = CompanyAddress;
+export type Profile = Pick<
+  CompanyProfile,
+  | "legalName"
+  | "tradingName"
+  | "tagline"
+  | "address"
+  | "phone"
+  | "email"
+  | "serviceArea"
+  | "clients"
+>;
+export type Hours = CompanyHours;
+export type Person = CompanyRecordPerson;
 /**
  * A supplier on file. `approved` is the company's own approved-supplier list, a setting it keeps in
  * its data, not a legal rule: the desk orders only from a supplier marked approved.
  */
-export interface Supplier {
-  readonly id: string;
-  readonly name: string;
-  readonly category: string;
-  readonly approved: boolean;
-  readonly leadTimeDays: number;
-  readonly contactEmail: string;
-}
-
+export type Supplier = CompanySupplier;
 /** One stocked item, bought from its usual supplier at the unit cost the company records. */
-export interface SupplyItem {
-  readonly id: string;
-  readonly name: string;
-  readonly supplierId: string;
-  readonly unit: string;
-  readonly unitCostCents: number;
-  /** Reorder when the stock on hand plus on order falls to this. */
-  readonly reorderPoint: number;
-  /** How many to order when it does. */
-  readonly reorderQuantity: number;
-}
-
-export interface ApprovalLimits {
-  /** A purchase order whose total is above this needs a person's approval before it goes out. */
-  readonly purchaseOrderOverCents: number;
-}
-
-export interface Policies {
-  readonly safety: readonly string[];
-  readonly commitments: readonly string[];
-}
-
-export interface Tone {
-  readonly summary: string;
-  readonly always: readonly string[];
-  readonly never: readonly string[];
-}
-
-export interface EscalationRule {
-  readonly topic: string;
-  readonly toPersonId: string;
-  readonly when: string;
-}
-
-export interface GlossaryEntry {
-  readonly term: string;
-  readonly meaning: string;
-}
+export type SupplyItem = CompanySupplyItem;
+export type ApprovalLimits = CompanyApprovalLimits;
+export type Policies = Pick<CompanyPolicies, "safety" | "commitments">;
+export type Tone = CompanyTone;
+export type EscalationRule = CompanyEscalationRule;
+export type GlossaryEntry = CompanyGlossaryEntry;
 
 /** Everything the company records that this role reads. */
-export interface CompanyFacts {
+export type CompanyFacts = Pick<
+  CompanyRecord,
+  | "hours"
+  | "people"
+  | "tone"
+  | "escalation"
+  | "glossary"
+  | "approvalLimits"
+  | "suppliers"
+  | "supplyCatalog"
+> & {
   readonly profile: Profile;
-  readonly hours: Hours;
-  readonly people: readonly Person[];
   readonly policies: Policies;
-  readonly tone: Tone;
-  readonly escalation: readonly EscalationRule[];
-  readonly glossary: readonly GlossaryEntry[];
-  readonly approvalLimits: ApprovalLimits;
-  readonly suppliers: readonly Supplier[];
-  readonly supplyCatalog: readonly SupplyItem[];
-}
+};
 
 /** The company facts generated into this package. Throws when the copy is missing or is not JSON. */
 export const loadCompanyFacts = (): CompanyFacts => loadFacts<CompanyFacts>(COMPANY_FACTS_URL);
 
-const CURRENCY = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-
-/** Integer cents as the money a person reads, never a recomputed amount. */
-export function money(cents: number): string {
-  return CURRENCY.format(cents / 100);
-}
-
-/** One person by id, or `undefined` when nobody here has that id. */
-export function person(company: CompanyFacts, id: string): Person | undefined {
-  return company.people.find((candidate) => candidate.id === id);
-}
-
 /**
- * The person who decides purchasing: whoever the company record puts in the `purchasing` department.
- * The sources call that person the purchasing manager; a small company gives the job its own title,
- * so the record's department says who it is, not a word in the title, and the name comes from the
- * company rather than from this package. An order over the limit, a new supplier, a supplier contract,
- * a claim and surplus stock all go to them.
+ * `purchasingLead` is the person who decides purchasing: whoever the company record puts in the
+ * `purchasing` department. The sources call that person the purchasing manager; a small company gives
+ * the job its own title, so the record's department says who it is, not a word in the title, and the
+ * name comes from the company rather than from this package. An order over the limit, a new supplier,
+ * a supplier contract, a claim and surplus stock all go to them.
  */
-export function purchasingLead(company: CompanyFacts): Person | undefined {
-  return company.people.find((candidate) => candidate.department === "purchasing");
-}
+export { money, person, purchasingLead };
 
 /** "Name, Title", or the title-free fallback when the company names nobody. */
 export const personLabel = (who: Person | undefined): string =>

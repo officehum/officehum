@@ -79,7 +79,9 @@ const decided = await client.approve({ approvalId: waiting[0].approvalId, decisi
 
 The first decision wins: deciding one already decided rejects with `conflict`. Approving above your
 limit, or one whose amount cannot be checked against it, rejects with `forbidden`. After a reconnect
-the client watches again and passes on whatever is waiting then.
+the client watches again and passes on whatever is waiting then; if the gateway answers that watch
+`busy` (its runtime is restarting), the client asks again, with backoff, until it is taken. A
+listener whose own `watchApprovals` call rejects is not registered.
 
 ## HTTP fallback
 

@@ -11,8 +11,13 @@
  * demonstration data (that stays a host flag, `--demo`).
  */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { loadCompanyFacts } from "@officehum/sdk";
+import type { Person } from "../board/index.js";
+import type { PersonRoute } from "../extension/index.js";
 import { type LoadedRole, type LoadRoleOptions, loadRole } from "../roles/load-role.js";
 
 /** The longest an approval may wait: a year. */
@@ -167,6 +172,66 @@ export function approvalTimeoutsMs(
     }
   });
   return timeouts;
+}
+
+/** Where a role package keeps the company record generated into it (`npm run sync-company`). */
+export const COMPANY_FACTS = "skills/company-handbook/references/facts.json";
+
+/** What a runtime with a workboard takes from its roles' company records. */
+export interface OfficeCompany {
+  /** The company's people, in the record's order: who the board can hand work and approvals to. */
+  readonly people: readonly Person[];
+  /** The record's `ticketRoutes`: ticket types that go to a person, not a role. */
+  readonly personRoutes: readonly PersonRoute[];
+}
+
+/**
+ * Reads the people and person routes from the company record in each role's package, in the roles'
+ * order. Roles of one office carry copies of one record, so the first role to name a person or route
+ * a type decides it. A role with no record (a generated role, say) adds nothing; a record that is
+ * there and malformed is an error naming every problem, not an office that quietly knows nobody.
+ */
+export function readOfficeCompany(roles: readonly Pick<LoadedRole, "dir">[]): OfficeCompany {
+  const people = new Map<string, Person>();
+  const routes = new Map<string, PersonRoute>();
+  for (const role of roles) {
+    const path = resolve(role.dir, COMPANY_FACTS);
+    if (!existsSync(path)) continue;
+    const facts = loadCompanyFacts<{ people?: unknown; ticketRoutes?: unknown }>(
+      pathToFileURL(path),
+    );
+    const problems: string[] = [];
+    const entries = (key: "people" | "ticketRoutes"): unknown[] => {
+      const value = facts[key] ?? [];
+      if (Array.isArray(value)) return value;
+      problems.push(`${key}: must be a list`);
+      return [];
+    };
+    const text = (entry: unknown, at: string, field: string): string | undefined => {
+      const value = isObject(entry) ? entry[field] : undefined;
+      if (typeof value === "string" && value.trim().length > 0) return value;
+      problems.push(`${at}.${field}: must be a non-empty string`);
+      return undefined;
+    };
+    entries("people").forEach((entry, index) => {
+      const id = text(entry, `people[${index}]`, "id");
+      const name = text(entry, `people[${index}]`, "name");
+      if (id !== undefined && name !== undefined && !people.has(id)) people.set(id, { id, name });
+    });
+    entries("ticketRoutes").forEach((entry, index) => {
+      const type = text(entry, `ticketRoutes[${index}]`, "type");
+      const personId = text(entry, `ticketRoutes[${index}]`, "toPersonId");
+      if (type !== undefined && personId !== undefined && !routes.has(type)) {
+        routes.set(type, { type, personId });
+      }
+    });
+    if (problems.length > 0) {
+      throw new Error(
+        `The company record ${path} has ${problems.length} problem(s):\n  ${problems.join("\n  ")}\nIt is generated: run \`npm run sync-company\`.`,
+      );
+    }
+  }
+  return { people: [...people.values()], personRoutes: [...routes.values()] };
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

@@ -1,9 +1,16 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadOfficeRoles, parseOfficeFile, readOfficeFile } from "./office-file.js";
+import type { LoadedRole } from "../roles/load-role.js";
+import {
+  COMPANY_FACTS,
+  loadOfficeRoles,
+  parseOfficeFile,
+  readOfficeCompany,
+  readOfficeFile,
+} from "./office-file.js";
 
 const sales = fileURLToPath(new URL("../../../../agents/sales", import.meta.url));
 
@@ -78,6 +85,64 @@ describe("readOfficeFile and loadOfficeRoles", () => {
   it("says which file could not be read", async () => {
     await expect(readOfficeFile("/nowhere/office.json")).rejects.toThrow(
       "Could not read the office file /nowhere/office.json",
+    );
+  });
+});
+
+describe("readOfficeCompany", () => {
+  /** A role directory holding only a company record. */
+  function roleWith(facts: unknown): LoadedRole {
+    const dir = mkdtempSync(join(tmpdir(), "officehum-office-company-"));
+    temps.push(dir);
+    const path = join(dir, COMPANY_FACTS);
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(path, JSON.stringify(facts));
+    return { dir } as LoadedRole;
+  }
+
+  it("reads the people and person routes of a catalog role's company record", () => {
+    const company = readOfficeCompany([{ dir: sales } as LoadedRole]);
+    expect(company.people[0]).toEqual({ id: "dana-whitfield", name: "Dana Whitfield" });
+    expect(company.people).toHaveLength(9);
+    expect(company.personRoutes).toEqual([{ type: "finance.review", personId: "eileen-hart" }]);
+  });
+
+  it("lets the first role to name a person or route a type decide it, and skips a role with no record", () => {
+    const empty = mkdtempSync(join(tmpdir(), "officehum-office-company-"));
+    temps.push(empty);
+    const company = readOfficeCompany([
+      { dir: empty } as LoadedRole,
+      roleWith({
+        people: [{ id: "ada", name: "Ada" }],
+        ticketRoutes: [{ type: "legal.review", toPersonId: "ada", when: "Contracts." }],
+      }),
+      roleWith({
+        people: [
+          { id: "ada", name: "Ada Again" },
+          { id: "bo", name: "Bo" },
+        ],
+        ticketRoutes: [{ type: "legal.review", toPersonId: "bo", when: "Contracts." }],
+      }),
+    ]);
+    expect(company).toEqual({
+      people: [
+        { id: "ada", name: "Ada" },
+        { id: "bo", name: "Bo" },
+      ],
+      personRoutes: [{ type: "legal.review", personId: "ada" }],
+    });
+  });
+
+  it("reports every problem in a malformed record with its path", () => {
+    const role = roleWith({ people: [{ id: "ada" }, "bo"], ticketRoutes: {} });
+    expect(() => readOfficeCompany([role])).toThrow(
+      [
+        "has 4 problem(s):",
+        "  people[0].name: must be a non-empty string",
+        "  people[1].id: must be a non-empty string",
+        "  people[1].name: must be a non-empty string",
+        "  ticketRoutes: must be a list",
+      ].join("\n"),
     );
   });
 });

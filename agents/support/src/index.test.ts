@@ -15,6 +15,7 @@ import {
   createRegistry,
   type Extension,
   Harness,
+  type JsonObject,
   MemoryStorage,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
@@ -167,13 +168,13 @@ async function attempt(options: {
 }
 
 /** One tool call and a closing line, so a gate test is about the gate and not about the script. */
-const one = (name: string, args: Record<string, unknown>): readonly ScriptedTurn[] => [
+const one = (name: string, args: JsonObject): readonly ScriptedTurn[] => [
   { toolCalls: [{ name, args }] },
   { text: "Done." },
 ];
 
 /** The two-step credit: propose C-301's line, then put the proposal to a person. */
-const proposeThenOffer = (offer: Record<string, unknown> = PROPOSAL): readonly ScriptedTurn[] => [
+const proposeThenOffer = (offer: JsonObject = PROPOSAL): readonly ScriptedTurn[] => [
   { toolCalls: [{ name: "propose_credit", args: CREDIT }] },
   { toolCalls: [{ name: "offer_credit", args: offer }] },
   { text: "Done." },
@@ -311,9 +312,10 @@ describe("support approval gate", () => {
     });
     expect(summaries).toEqual([SUMMARY]);
     const [credit] = await desk.listCredits({ creditId: "CR-402" });
+    if (credit === undefined) throw new Error("CR-402 is not on the desk");
     // The desk was handed what the person was shown, never the model's version.
     expect(reached).toEqual([
-      creditApprovalFacts({ ...(credit as never), status: "pending", creditNoteId: null }),
+      creditApprovalFacts({ ...credit, status: "pending", creditNoteId: null }),
     ]);
     expect(lastToolText(run.messages)).toContain("credit note CN-501 for $150.00");
   });
@@ -597,6 +599,13 @@ describe("support clock", () => {
     const role = support({ demo: true, now: LATER });
     expect(await todayOf(role)).toMatch(/^Today is 2027-02-01 \(Monday\)\./);
     expect((await call(role, "log_case", CASE)).details.openedOn).toBe("2027-02-01");
+  });
+
+  it("today is the company's day: after 16:00 Pacific it is still the Pacific date", async () => {
+    // 17:30 on Monday 9 November in Portland; Tuesday already in UTC.
+    const role = support({ demo: true, now: () => new Date("2026-11-10T01:30:00.000Z") });
+    expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
+    expect((await call(role, "log_case", CASE)).details.openedOn).toBe("2026-11-09");
   });
 
   it("the demo desk keeps the demo date without now", async () => {

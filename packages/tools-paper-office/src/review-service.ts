@@ -13,7 +13,7 @@ import type { DocumentService } from "./document-service.js";
 import { DocumentError } from "./errors.js";
 import type { DocumentFormat } from "./formats.js";
 import { type DocumentLease, findLeasedInput, type LeasedInput } from "./lease.js";
-import { parsePptxResult, pptxProgram, pptxResultRef } from "./pptx-operations.js";
+import { parsePptxResult, pptxProgram } from "./pptx-operations.js";
 import type { ReviewResult } from "./review.js";
 import type { ReviewEvidence } from "./review-evidence.js";
 import {
@@ -21,9 +21,10 @@ import {
   reviewEvidenceFromWord,
   reviewEvidenceFromXlsx,
 } from "./review-evidence.js";
+import { fileRefOf } from "./typed-operation.js";
 import { messageOf } from "./validate.js";
-import { parseWordResult, wordProgram, wordResultRef } from "./word-operations.js";
-import { parseXlsxResult, xlsxProgram, xlsxResultRef } from "./xlsx-operations.js";
+import { parseWordResult, wordProgram } from "./word-operations.js";
+import { parseXlsxResult, xlsxProgram } from "./xlsx-operations.js";
 
 export interface ReviewCompareRequest {
   /** Stable across a crash and its replay: derived by the host, never by a model. */
@@ -79,21 +80,21 @@ export async function reviewEvidenceFromService(
       case "docx": {
         const program = wordProgram("compare", args, request.lease);
         return await compare(service, request, program, (result) => {
-          const parsed = parseWordResult("compare", result, program.sources.map(wordResultRef));
+          const parsed = parseWordResult("compare", result, program.sources.map(fileRefOf));
           return parsed.operation === "compare" ? reviewEvidenceFromWord(parsed) : null;
         });
       }
       case "pptx": {
         const program = pptxProgram("compare", args, request.lease);
         return await compare(service, request, program, (result) => {
-          const parsed = parsePptxResult("compare", result, program.sources.map(pptxResultRef));
+          const parsed = parsePptxResult("compare", result, program.sources.map(fileRefOf));
           return parsed.operation === "compare" ? reviewEvidenceFromPptx(parsed) : null;
         });
       }
       case "xlsx": {
         const program = xlsxProgram("compare", args, request.lease);
         return await compare(service, request, program, (result) => {
-          const parsed = parseXlsxResult("compare", result, program.sources.map(xlsxResultRef));
+          const parsed = parseXlsxResult("compare", result, program.sources.map(fileRefOf));
           return parsed.operation === "compare" ? reviewEvidenceFromXlsx(parsed) : null;
         });
       }

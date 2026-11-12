@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { controls, exact } from "./shared/validation.js";
 
 /**
  * The one channel the console outbox records.
@@ -44,16 +45,8 @@ type MessageRow = {
   delivery_status: string;
 };
 
-function hasControl(value: string, message = false): boolean {
-  return [...value].some((character) => {
-    const code = character.codePointAt(0) ?? 0;
-    if (message && (code === 9 || code === 10 || code === 13)) return false;
-    return code <= 31 || (code >= 127 && code <= 159);
-  });
-}
-
 function bounded(value: string, label: string, maximum: number): string {
-  if (value.length === 0 || value.length > maximum || value.trim() !== value || hasControl(value)) {
+  if (!exact(value, maximum)) {
     throw new Error(`${label} is invalid.`);
   }
   return value;
@@ -70,7 +63,7 @@ function validateIntent(value: ConsoleMessageIntent): ConsoleMessageIntent {
     value.text.length === 0 ||
     value.text.length > 4000 ||
     value.text.trim().length === 0 ||
-    hasControl(value.text, true)
+    controls(value.text, true)
   ) {
     throw new Error("Message text is invalid.");
   }

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  bookingWindow,
   canonicalSlot,
   createSchedule,
   overlaps,
@@ -44,9 +45,15 @@ export function fakeCalendar(options: FakeCalendarOptions): CalendarClient {
     async freeSlots(date) {
       return slotsFor(schedule, date).filter((slot) => available(slot));
     },
-    async listBookings() {
+    async listBookings(window) {
+      const { timeMin, timeMax } = bookingWindow(window);
       return active()
         .map((record) => record.booking)
+        .filter(
+          (booking) =>
+            Date.parse(booking.end) > timeMin &&
+            (timeMax === undefined || Date.parse(booking.start) < timeMax),
+        )
         .sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id));
     },
     async book(input) {

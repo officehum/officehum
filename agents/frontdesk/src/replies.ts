@@ -218,6 +218,7 @@ function decision(value: ApprovalDecision): ApprovalDecision {
     value === null ||
     typeof value !== "object" ||
     typeof value.approved !== "boolean" ||
+    (value.pending !== undefined && typeof value.pending !== "boolean") ||
     (value.by !== undefined &&
       (typeof value.by !== "string" || value.by.length > 200 || hasControl(value.by))) ||
     (value.note !== undefined &&
@@ -331,6 +332,13 @@ export function repliesTools(messenger?: ReplyMessenger, approve?: Approver): To
         let savedDecision = await api.memo<DecisionMemo>("frontdesk.reply-approval", context);
         if (savedDecision === undefined) {
           const answer = decision(await approve(request, context));
+          // "Not yet" is not a no. Nothing is memoised for a pending answer, so the person's later
+          // answer still reaches this reply: asked again, it is sent on a yes.
+          if (answer.pending === true) {
+            throw new Error(
+              `The reply was not sent: it needs a person's approval (${request.description}), and the request is with a person who has not answered yet. Nothing has been approved or declined. Say the reply is waiting for a person's answer, and do not retry this call.`,
+            );
+          }
           savedDecision = await api.memo<DecisionMemo>(
             "frontdesk.reply-approval",
             {

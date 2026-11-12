@@ -407,7 +407,11 @@ describe("relay killed by signal", () => {
       expect(recovered.board.relay.wait(report.ticketId)?.taskId).toBe(report.waitTaskId);
 
       await recovered.relay.recover();
-      const rows = recovered.board.relay.deliveriesForTicket(report.ticketId);
+      // Recovery also accounts for the claim and the completion the dead process left behind the
+      // cursor; those rows go to no conversation. The one delivery is still the one it admitted.
+      const rows = recovered.board.relay
+        .deliveriesForTicket(report.ticketId)
+        .filter((row) => row.targetKey !== "");
       expect(rows).toHaveLength(1);
       expect(rows[0]?.state).toBe("settled");
       expect(rows[0]?.outcome).toBe(ANSWER);

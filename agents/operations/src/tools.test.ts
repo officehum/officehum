@@ -13,6 +13,9 @@ import { type OperationsToolset, operationsTools } from "./tools.js";
 const company = loadCompanyFacts();
 const owner = personLabel(scheduleOwner(company));
 
+/** The Central crew's name, as the company record gives it. */
+const CENTRAL = company.crews.find((crew) => crew.id === "cleaning-central")?.name;
+
 const NOW = new Date("2026-11-09T15:00:00.000Z");
 
 /** The durable identity one tool call runs under; only the ids matter to these tools. */
@@ -185,6 +188,72 @@ describe("request_overtime", () => {
       (crew) => crew.crewId === "cleaning-central",
     );
     expect(central?.overtimeHours).toBe(7);
+  });
+});
+
+describe("approval facts", () => {
+  it("reads an overtime request's crew, client, date and hours from the desk", async () => {
+    const read = await tools(desk()).overtimeFacts(
+      { crewId: "cleaning-central", jobId: "J-2101", hours: 7 },
+      BACKGROUND_CONTEXT as never,
+      call("f1"),
+    );
+    expect(read.facts).toEqual({
+      crewId: "cleaning-central",
+      crewName: CENTRAL,
+      jobId: "J-2101",
+      client: "Riverside Dental",
+      site: "3,200 sq ft suite on SE Hawthorne Boulevard",
+      service: "Deep clean and floor care",
+      date: "2026-11-12",
+      crewHours: 12,
+      overtimeHours: 7,
+      weekStart: "2026-11-09",
+      bookedHours: 135,
+      weeklyHoursCap: 140,
+    });
+  });
+
+  it("reads a contract move's client, contract, crew and both dates, with the client's reason", async () => {
+    const read = await tools(desk()).contractRescheduleFacts(
+      { jobId: "J-1034", newDate: "2026-11-14", reason: "  Floors recarpeted on Thursday. " },
+      BACKGROUND_CONTEXT as never,
+      call("f2"),
+    );
+    expect(read.summary).toBe(
+      `Move J-1034 (Sellwood Law Partners, Recurring janitorial, contract CT-303, ${CENTRAL}) from 2026-11-12 to 2026-11-14. The client's reason: Floors recarpeted on Thursday.`,
+    );
+    expect(read.facts).toMatchObject({
+      jobId: "J-1034",
+      contractId: "CT-303",
+      fromDate: "2026-11-12",
+      toDate: "2026-11-14",
+    });
+  });
+
+  it("throws, so nobody is asked, for an unknown job or crew and with no desk", async () => {
+    const toolset = tools(desk());
+    await expect(
+      toolset.overtimeFacts(
+        { crewId: "cleaning-west", jobId: "J-2101", hours: 7 },
+        BACKGROUND_CONTEXT as never,
+        call("f3"),
+      ),
+    ).rejects.toThrow('No crew has the id "cleaning-west". Nothing was put to a person.');
+    await expect(
+      toolset.contractRescheduleFacts(
+        { jobId: "J-9", newDate: "2026-11-14", reason: "Asked." },
+        BACKGROUND_CONTEXT as never,
+        call("f4"),
+      ),
+    ).rejects.toThrow('No job has the id "J-9". Nothing was put to a person.');
+    await expect(
+      tools(undefined).overtimeFacts(
+        { crewId: "cleaning-central", jobId: "J-2101", hours: 7 },
+        BACKGROUND_CONTEXT as never,
+        call("f5"),
+      ),
+    ).rejects.toThrow("No operations desk is bound");
   });
 });
 

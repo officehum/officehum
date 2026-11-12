@@ -30,6 +30,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { ApprovalFacts } from "@officehum/sdk";
+import { transact as inTransaction } from "../shared/transact.js";
 import { BoardError, fail } from "./errors.js";
 
 /** A request's whole lifecycle. `expired` and `cancelled` end a wait without a person deciding it. */
@@ -403,13 +404,9 @@ export function openApprovalStore(
         throw surface(error);
       }
     }
-    database.exec("BEGIN IMMEDIATE");
     try {
-      const value = work();
-      database.exec("COMMIT");
-      return value;
+      return inTransaction(database, work);
     } catch (error) {
-      if (database.isTransaction) database.exec("ROLLBACK");
       throw surface(error);
     }
   };

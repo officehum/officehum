@@ -41,6 +41,7 @@ import { runLedger } from "./run-ledger.js";
 import {
   buildZip,
   configuredInterpreter,
+  countingLoadsCode,
   invokeWorker,
   sha256,
   textOf,
@@ -65,6 +66,7 @@ import {
   type XlsxPreview,
   type XlsxReading,
   type XlsxResult,
+  xlsxProgram,
 } from "./xlsx-operations.js";
 
 const interpreter = configuredInterpreter();
@@ -170,6 +172,8 @@ interface FixtureOptions {
   readonly broken?: boolean;
   readonly unmodeled?: boolean;
   readonly name?: string;
+  /** A fixture program of the test's own, instead of the standard close workbook. */
+  readonly code?: string;
   readonly operationId: string;
 }
 
@@ -191,7 +195,7 @@ async function fixture(
         limits: DEFAULT_LIMITS,
         expiresAt: "2999-01-01T00:00:00.000Z",
       },
-      code: xlsxFixtureCode(options),
+      code: options.code ?? xlsxFixtureCode(options),
       arguments: {},
     }),
   );
@@ -923,7 +927,7 @@ suite("the Excel adapter drafts and proposes", () => {
       expect(result.referenceCheck.sourceBroken).toBe(0);
       expect(result.referenceCheck.outputBroken).toBe(0);
       expect(result.referenceCheck.newBroken).toEqual([]);
-      expect(result.referenceCheck.note).toContain("refused before anything is written");
+      expect(result.referenceCheck.note).toContain("refused and produces no proposal");
       expect(result.reopened).toMatchObject({
         sheets: 4,
         formulas: 5,
@@ -1342,6 +1346,220 @@ suite("a bare Pi Durable harness gets the same receipt as Office Hum", () => {
       const answer = await tool.execute(args, API);
       expect(answer.isError).toBeUndefined();
       expect(answer.output[0]?.text).toBe(office.output[0]?.text);
+    },
+  );
+});
+
+/** A small workbook written by the test's own openpyxl lines. */
+function workbookCode(
+  lines: readonly string[],
+  cached?: { formula: string; value: string },
+  name = "book.xlsx",
+) {
+  const code = [
+    "import zipfile",
+    "from openpyxl import Workbook",
+    "from openpyxl.styles import Alignment, Font",
+    "from openpyxl.workbook.defined_name import DefinedName",
+    "",
+    "wb = Workbook()",
+    "sheet = wb.active",
+    "sheet.title = 'Revenue'",
+    ...lines,
+    `path = documents.declare_output(${JSON.stringify(name)}, "xlsx")`,
+    "wb.save(path)",
+  ];
+  if (cached !== undefined) {
+    // The cached value Excel itself would have stored beside the formula, as a binary double.
+    code.push(
+      "with zipfile.ZipFile(path) as source:",
+      "    entries = [(item, source.read(item.filename)) for item in source.infolist()]",
+      "with zipfile.ZipFile(path, 'w') as target:",
+      "    for item, data in entries:",
+      "        if item.filename == 'xl/worksheets/sheet1.xml':",
+      `            data = data.replace(b'<f>${cached.formula}</f><v></v>', b'<f>${cached.formula}</f><v>${cached.value}</v>')`,
+      "        target.writestr(item, data)",
+    );
+  }
+  code.push("documents.result({})");
+  return code.join("\n");
+}
+
+suite("the Excel adapter's style merge and reference checks", () => {
+  itSlow("setStyle changes only the fields it names, keeping the rest of the font", async () => {
+    const { store, service } = harness();
+    const source = await fixture(store, service, {
+      operationId: "conv:style-merge",
+      code: workbookCode([
+        "sheet['A1'] = 'Total'",
+        "sheet['A1'].font = Font(italic=True, size=14, color='FF0000', name='Georgia')",
+        "sheet['A1'].alignment = Alignment(horizontal='center', vertical='top')",
+      ]),
+    });
+    const lease = leaseOf([source.ref]);
+    const edited = await body<XlsxEdit>(toolOf(service, EDIT_WORKBOOK, lease), {
+      ref: refOf(source.ref),
+      output: "book.xlsx",
+      steps: [{ kind: "setStyle", range: "Revenue!A1", style: { bold: true, wrapText: true } }],
+    });
+    const wrote = edited.wrote[0];
+    const head = await store.getHead(wrote?.fileId ?? "");
+    if (head === undefined) throw new Error("the edit wrote no version");
+    const styles = await body<XlsxReading>(toolOf(service, READ_WORKBOOK, leaseOf([head])), {
+      ref: refOf(head),
+      section: "styles",
+      sheet: "Revenue",
+    });
+    const items = styles.result.page.items as unknown as {
+      address: string;
+      style: Record<string, unknown>;
+    }[];
+    expect(items.find((item) => item.address === "Revenue!A1")?.style).toMatchObject({
+      bold: true,
+      italic: true,
+      fontSize: 14,
+      fontColor: "FF0000",
+      fontName: "Georgia",
+      horizontal: "center",
+      vertical: "top",
+      wrapText: true,
+    });
+  });
+
+  itSlow("tells a new broken reference from an old one past the cap on what is shown", async () => {
+    const { store, service } = harness();
+    const source = await fixture(store, service, {
+      operationId: "conv:broken-cap",
+      code: workbookCode([
+        "for row in range(1, 31):",
+        "    sheet.cell(row=row, column=6, value='=Missing!A1')",
+      ]),
+    });
+    const lease = leaseOf([source.ref]);
+    const tool = toolOf(service, EDIT_WORKBOOK, lease);
+
+    // Repairing one of the first 25 moves an old broken reference into the shown list. It is not
+    // new, so the edit goes through.
+    const repaired = await body<XlsxEdit>(tool, {
+      ref: refOf(source.ref),
+      output: "book.xlsx",
+      steps: [{ kind: "setCell", sheet: "Revenue", cell: "F1", value: 1 }],
+    });
+    expect(repaired.result.referenceCheck.outputBroken).toBe(29);
+    expect(repaired.result.referenceCheck.output.broken).toHaveLength(25);
+
+    // A new broken reference beyond the shown 25 is still found and refused.
+    const head = await store.getHead(source.ref.id);
+    if (head === undefined) throw new Error("the edit wrote no version");
+    const refused = await refuse(toolOf(service, EDIT_WORKBOOK, leaseOf([head])), {
+      ref: refOf(head),
+      output: "book.xlsx",
+      steps: [{ kind: "setCell", sheet: "Revenue", cell: "F40", formula: "=Gone!A1" }],
+    });
+    expect(refused.code).toBe("broken-reference");
+    expect(refused.message).toContain("F40");
+  });
+
+  itSlow(
+    "reads short names as names, and resolves named ranges with absolute references",
+    async () => {
+      const { store, service } = harness();
+      const source = await fixture(store, service, {
+        operationId: "conv:names",
+        code: workbookCode([
+          "sheet['B13'] = 8",
+          "wb.defined_names.add(DefinedName('TAX', attr_text='Revenue!$B$13'))",
+          "wb.defined_names.add(DefinedName('Block', attr_text='Revenue!$B$13:$C$140'))",
+          "wb.defined_names.add(DefinedName('Twice', attr_text='Revenue!$B$13*2'))",
+          "wb.defined_names.add(DefinedName('Lost', attr_text='Revenue!#REF!'))",
+          "sheet['A1'] = '=TAX*2'",
+          "sheet['A2'] = '=VAT*2'",
+          "sheet['A3'] = '=SUM(B:B)'",
+        ]),
+      });
+      const lease = leaseOf([source.ref]);
+      const inspected = await body<XlsxInspection>(toolOf(service, INSPECT_WORKBOOK, lease), {
+        ref: refOf(source.ref),
+      });
+      const names = new Map(inspected.result.namedRanges.map((name) => [name.name, name]));
+      expect(names.get("TAX")).toMatchObject({ resolved: true, kind: "range" });
+      expect(names.get("Block")).toMatchObject({ resolved: true, kind: "range" });
+      expect(names.get("Twice")).toMatchObject({ resolved: true, kind: "formula" });
+      expect(names.get("Lost")).toMatchObject({ resolved: false, kind: "broken-range" });
+
+      // TAX is a defined name and VAT is a name nobody defined; neither is a column. B:B is one.
+      const check = inspected.result.referenceCheck;
+      expect(check.kinds["defined-name"]).toBe(1);
+      expect(check.broken.filter((item) => item.kind === "missing-name")).toEqual([
+        expect.objectContaining({ raw: "VAT" }),
+      ]);
+      expect(check.kinds["cell-range"]).toBeGreaterThanOrEqual(1);
+    },
+  );
+
+  itSlow("a SUM agrees with the cached double Excel stored for it", async () => {
+    const { store, service } = harness();
+    const cells = ["sheet['B2'] = 0.1", "sheet['B3'] = 0.2"];
+    const before = await fixture(store, service, {
+      operationId: "conv:sum-before",
+      code: workbookCode([...cells, "sheet['B4'] = '=SUM(B2:B2)'"]),
+    });
+    const close = await fixture(store, service, {
+      operationId: "conv:sum-close",
+      code: workbookCode(
+        [...cells, "sheet['B4'] = '=SUM(B2:B3)'"],
+        { formula: "SUM(B2:B3)", value: "0.30000000000000004" },
+        "close.xlsx",
+      ),
+    });
+    const wrong = await fixture(store, service, {
+      operationId: "conv:sum-wrong",
+      code: workbookCode(
+        [...cells, "sheet['B4'] = '=SUM(B2:B3)'"],
+        { formula: "SUM(B2:B3)", value: "0.31" },
+        "wrong.xlsx",
+      ),
+    });
+    const sumOf = async (to: VersionedFileRef) => {
+      const compared = await body<XlsxComparison>(
+        toolOf(service, COMPARE_WORKBOOK, leaseOf([before.ref, to])),
+        { from: refOf(before.ref), to: refOf(to) },
+      );
+      return compared.result.diff.numericChecks.find((check) => check.address === "Revenue!B4")
+        ?.sum;
+    };
+    expect(await sumOf(close.ref)).toMatchObject({ adapterSumExact: "0.3", agrees: true });
+    expect(await sumOf(wrong.ref)).toMatchObject({ adapterSumExact: "0.3", agrees: false });
+  });
+});
+
+suite("the Excel adapter parses each package once per call", () => {
+  itSlow(
+    "an edit parses the source twice (to edit, and untouched) and the output twice",
+    async () => {
+      const { store, service } = harness();
+      const source = await fixture(store, service, { operationId: "conv:parse-count" });
+      const lease = leaseOf([source.ref]);
+      const program = xlsxProgram(
+        "edit",
+        {
+          ref: refOf(source.ref),
+          output: "proposal.xlsx",
+          steps: [{ kind: "setCell", sheet: "Revenue", cell: "B2", value: 1400 }],
+        },
+        lease,
+      );
+      const receipt = committed(
+        await service.runDocumentPython({
+          operationId: "conv:parse-count-edit",
+          taskId: lease.taskId,
+          lease,
+          code: countingLoadsCode("xlsx_adapter", "edit"),
+          arguments: program.arguments,
+        }),
+      );
+      // The output is read once as formulas and once as the values the file cached.
+      expect(receipt.result).toEqual({ loads: 4 });
     },
   );
 });

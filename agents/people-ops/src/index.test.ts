@@ -14,6 +14,7 @@ import {
   createRegistry,
   type Extension,
   Harness,
+  type JsonObject,
   MemoryStorage,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
@@ -163,7 +164,7 @@ async function attempt(options: {
   return { messages };
 }
 
-const one = (name: string, args: Record<string, unknown>): readonly ScriptedTurn[] => [
+const one = (name: string, args: JsonObject): readonly ScriptedTurn[] => [
   { toolCalls: [{ name, args }] },
   { text: "Done." },
 ];
@@ -219,7 +220,7 @@ describe("people ops role", () => {
   });
 
   it("returns output, not content, so the SDK tool-result guard passes", async () => {
-    const list = tools(peopleOps({ demo: true }).extensions).find(
+    const list = tools(peopleOps({ demo: true, sender: OWNER }).extensions).find(
       (tool) => tool.name === "list_candidates",
     );
     if (list === undefined) throw new Error("missing list_candidates");
@@ -480,12 +481,22 @@ describe("people ops with no desk bound", () => {
   });
 
   it("runs on the demonstration desk when the host asks for it", async () => {
-    const result = await tool(peopleOps({ demo: true }), "list_candidates").execute(
+    const result = await tool(peopleOps({ demo: true, sender: OWNER }), "list_candidates").execute(
       {},
       call,
       BACKGROUND_CONTEXT,
     );
     expect(result.output?.[0]).toMatchObject({ type: "text" });
+    expect((result as { isError?: boolean }).isError).not.toBe(true);
+  });
+
+  it("gives the pipeline to nobody when the host verifies no sender", async () => {
+    const result = await tool(peopleOps({ demo: true }), "list_candidates").execute(
+      {},
+      call,
+      BACKGROUND_CONTEXT,
+    );
+    expect(result).toMatchObject({ isError: true, details: { code: "unknown_sender" } });
   });
 });
 
@@ -527,6 +538,23 @@ describe("people ops clock", () => {
       reasonCategory: "vacation",
     });
     expect(recorded.details.recordedOn).toBe("2027-02-01");
+  });
+
+  it("today is the company's day: after 16:00 Pacific it is still the Pacific date", async () => {
+    // 17:30 on Monday 9 November in Portland; Tuesday already in UTC.
+    const role = peopleOps({
+      demo: true,
+      now: () => new Date("2026-11-10T01:30:00.000Z"),
+      sender: OWNER,
+    });
+    expect(await todayOf(role)).toMatch(/^Today is 2026-11-09 \(Monday\)\./);
+    const recorded = await call(role, "record_time_off_request", {
+      employee: "Ana Lopez",
+      startDate: "2026-12-15",
+      endDate: "2026-12-15",
+      reasonCategory: "vacation",
+    });
+    expect(recorded.details.recordedOn).toBe("2026-11-09");
   });
 
   it("the demo desk keeps the demo date without now", async () => {

@@ -320,6 +320,9 @@ describe("Google Calendar REST client", () => {
       fetch: async (input) => {
         const url = new URL(String(input));
         expect(url.searchParams.get("privateExtendedProperty")).toBe("officehumOwner=frontdesk-v1");
+        // Every page asks for the caller's window, so past events are never paged through.
+        expect(url.searchParams.get("timeMin")).toBe("2030-01-15T00:00:00Z");
+        expect(url.searchParams.get("timeMax")).toBe("2030-01-16T00:00:00Z");
         page += 1;
         return page === 1
           ? json(200, {
@@ -337,7 +340,10 @@ describe("Google Calendar REST client", () => {
             });
       },
     });
-    const listed = await calendar.listBookings();
+    const listed = await calendar.listBookings({
+      timeMin: "2030-01-15T00:00:00Z",
+      timeMax: "2030-01-16T00:00:00Z",
+    });
     expect(page).toBe(2);
     expect(listed).toEqual([
       {
@@ -349,6 +355,29 @@ describe("Google Calendar REST client", () => {
         timeZone: "UTC",
       },
     ]);
+  });
+
+  it("asks for no upper bound when the caller has none, and refuses a malformed window", async () => {
+    const asked: URL[] = [];
+    const calendar = createGoogleCalendar({
+      calendarId: "cal",
+      getAccessToken: async () => "token",
+      timeZone: "UTC",
+      workingHours: { start: "09:00", end: "12:00" },
+      durationMinutes: 60,
+      fetch: async (input) => {
+        asked.push(new URL(String(input)));
+        return json(200, { items: [] });
+      },
+    });
+    expect(await calendar.listBookings({ timeMin: "2030-01-15T00:00:00.000Z" })).toEqual([]);
+    expect(asked[0]?.searchParams.get("timeMin")).toBe("2030-01-15T00:00:00.000Z");
+    expect(asked[0]?.searchParams.has("timeMax")).toBe(false);
+    await expect(calendar.listBookings({ timeMin: "yesterday" })).rejects.toThrow(/timeMin/);
+    await expect(
+      calendar.listBookings({ timeMin: "2030-01-15T00:00:00Z", timeMax: "soon" }),
+    ).rejects.toThrow(/timeMax/);
+    expect(asked).toHaveLength(1);
   });
 
   it("fails closed on incomplete metadata for an owned active booking", async () => {
@@ -373,7 +402,9 @@ describe("Google Calendar REST client", () => {
           ],
         }),
     });
-    await expect(calendar.listBookings()).rejects.toThrow(/metadata/i);
+    await expect(calendar.listBookings({ timeMin: "2030-01-01T00:00:00Z" })).rejects.toThrow(
+      /metadata/i,
+    );
   });
 
   it("checks reschedule conflicts, persists a receipt, and recovers a lost PATCH", async () => {

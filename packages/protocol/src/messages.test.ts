@@ -331,6 +331,30 @@ describe("scopedRequestId", () => {
     expect(scopedRequestId({ id: "ada" }, "r1")).toBe("ada/r1");
     expect(scopedRequestId({ id: "a/b" }, "c")).not.toBe(scopedRequestId({ id: "a" }, "b/c"));
   });
+
+  it("stays within the id limit for the longest ids, the same way every time", () => {
+    // 256 characters each, and every one of the principal's grows when URI-encoded.
+    const principal = { id: "é".repeat(256) };
+    const requestId = "r".repeat(256);
+    const scoped = scopedRequestId(principal, requestId);
+    expect(scoped.length).toBeLessThanOrEqual(256);
+    expect(scopedRequestId(principal, requestId)).toBe(scoped);
+    // Still one key per principal and request, and never a key a short pair could have.
+    expect(scopedRequestId(principal, `${"r".repeat(255)}s`)).not.toBe(scoped);
+    expect(scopedRequestId({ id: "e".repeat(256) }, requestId)).not.toBe(scoped);
+    expect(scoped).not.toContain("/");
+    // The runtime's own frames carrying it validate.
+    expect(
+      validateMessage(
+        { type: "accepted", id: "g1", requestId: scoped, disposition: "started" },
+        "server",
+      ).ok,
+    ).toBe(true);
+    // An id that fits is left as it is, right up to the limit.
+    const fits = scopedRequestId({ id: "a".repeat(127) }, "r".repeat(128));
+    expect(fits).toBe(`${"a".repeat(127)}/${"r".repeat(128)}`);
+    expect(fits).toHaveLength(256);
+  });
 });
 
 describe("handshake", () => {

@@ -816,6 +816,9 @@ describe("Inbound session", () => {
     let approvals = 0;
     let currentInbox: InternalResendInbox | undefined;
     let currentRole: ReturnType<typeof frontdesk> | undefined;
+    // Read through a function: `createRole` assigns these inside `openSolo`, which the compiler
+    // cannot see, so a direct read after `= undefined` is narrowed to `undefined`.
+    const created = () => ({ inbox: currentInbox, role: currentRole });
     const createRole = () => {
       const inbox = openResendInbox(join(directory, "inbound.sqlite"), {
         authority: {
@@ -904,8 +907,7 @@ describe("Inbound session", () => {
       createRole,
     });
     attachedHarness = firstSolo.harness;
-    const firstInbox = currentInbox;
-    const firstRole = currentRole;
+    const { inbox: firstInbox, role: firstRole } = created();
     if (firstInbox === undefined || firstRole === undefined) {
       throw new Error("inbound resources were not created");
     }
@@ -979,8 +981,7 @@ describe("Inbound session", () => {
       createRole,
     });
     attachedHarness = secondSolo.harness;
-    const secondInbox = currentInbox;
-    const secondRole = currentRole;
+    const { inbox: secondInbox, role: secondRole } = created();
     if (secondInbox === undefined || secondRole === undefined) {
       throw new Error("reopened inbound resources were not created");
     }
@@ -1039,8 +1040,7 @@ describe("Inbound session", () => {
       createRole,
     });
     attachedHarness = thirdSolo.harness;
-    const thirdInbox = currentInbox;
-    const thirdRole = currentRole;
+    const { inbox: thirdInbox, role: thirdRole } = created();
     if (thirdInbox === undefined || thirdRole === undefined) {
       throw new Error("twice-reopened inbound resources were not created");
     }
@@ -1158,6 +1158,9 @@ describe("Inbound session", () => {
     let attachedHarness: Harness | undefined;
     let currentInbox: InternalResendInbox | undefined;
     let currentRole: ReturnType<typeof frontdesk> | undefined;
+    // Read through a function: `createRole` assigns these inside `openSolo`, which the compiler
+    // cannot see, so a direct read after `= undefined` is narrowed to `undefined`.
+    const created = () => ({ inbox: currentInbox, role: currentRole });
     let holdAccepted = true;
     let acceptedReached!: () => void;
     const acceptedBarrier = new Promise<void>((resolve) => {
@@ -1243,8 +1246,7 @@ describe("Inbound session", () => {
       createRole,
     });
     attachedHarness = firstSolo.harness;
-    const firstInbox = currentInbox;
-    const firstRole = currentRole;
+    const { inbox: firstInbox, role: firstRole } = created();
     if (firstInbox === undefined || firstRole === undefined) throw new Error("missing first role");
     const firstSession = openInboundSession({
       solo: firstSolo,
@@ -1315,8 +1317,7 @@ describe("Inbound session", () => {
       createRole,
     });
     attachedHarness = secondSolo.harness;
-    const secondInbox = currentInbox;
-    const secondRole = currentRole;
+    const { inbox: secondInbox, role: secondRole } = created();
     if (secondInbox === undefined || secondRole === undefined)
       throw new Error("missing second role");
     const secondSession = openInboundSession({
@@ -1345,7 +1346,7 @@ describe("Inbound session", () => {
     expect(
       (await secondSolo.harness.snapshot(ContactsDoc, BACKGROUND_CONTEXT))?.contacts ?? [],
     ).toEqual([]);
-    expect(await fake.listBookings()).toEqual([]);
+    expect(await fake.listBookings({ timeMin: "2030-01-01T00:00:00Z" })).toEqual([]);
     expect({ availabilityReads, calendarWrites, posts, approvals }).toEqual({
       availabilityReads: 1,
       calendarWrites: 0,

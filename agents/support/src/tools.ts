@@ -13,7 +13,11 @@
  *
  * Who is asking comes from the host's verified sender, never from an argument or the message: a
  * colleague on the company record may read any client's cases, a client's contact only their own,
- * and anyone else no case data at all.
+ * and anyone else no case data at all. A client's case is handed to a person only for that client's
+ * contact or a colleague; an unknown sender hands on only a case on no client's account.
+ *
+ * Proposing a credit asks nobody. The desk records the ask when the gate reads the proposal's facts,
+ * and `list_cases` says a person has a credit only from then on.
  *
  * Every amount a tool speaks comes back from the desk, every name from the company record, and every
  * next step from a refusal's code.
@@ -27,9 +31,16 @@ import {
   approvedFacts,
   approvedFactsParameter,
   colleague,
+  companyEscalationText,
+  companyGlossaryText,
+  companyPeopleText,
+  companyProfileText,
+  companyToneText,
   deskRefusal,
+  readCompanyTool,
   refusal,
   requestId,
+  requireDesk,
   type SenderResolver,
   textResult,
 } from "@officehum/sdk";
@@ -110,17 +121,6 @@ export type CompanySection =
   | "escalation"
   | "glossary";
 
-const SECTIONS: readonly CompanySection[] = [
-  "profile",
-  "hours",
-  "people",
-  "support",
-  "policies",
-  "tone",
-  "escalation",
-  "glossary",
-];
-
 const KINDS: readonly CaseKind[] = ["complaint", "question"];
 
 /** Who raised a case, as recorded when nobody verified the sender. */
@@ -129,16 +129,6 @@ const UNVERIFIED_REPORTER = "an unverified sender";
 const CASE_ID = Type.String({ description: "The case number, e.g. C-301" });
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-/** The desk, or a refusal: a host with no desk gets no read and no write. */
-function requireDesk(dependencies: SupportToolDependencies): SupportDesk {
-  if (dependencies.desk === undefined) {
-    throw new Error(
-      "No support desk is bound to this role, so nothing was read or written. The host passes its system of record as `desk`, or sets `demo` to run on the demonstration data.",
-    );
-  }
-  return dependencies.desk;
-}
 
 /** A desk record as plain JSON for a result's details. */
 function plain(value: object): JsonObject {
@@ -163,74 +153,55 @@ function creditLine(credit: Credit): string {
   return `${credit.id}: ${money(credit.creditCents)} to ${credit.client} on ${credit.invoiceId} line ${credit.line} (${credit.lineName}), case ${credit.caseId}`;
 }
 
-/** The company record as one section reads: prose the model can answer with. */
-function companySection(company: CompanyFacts, section: CompanySection): string {
-  const refunds = company.policies.refunds;
-  switch (section) {
-    case "profile": {
-      const { profile } = company;
-      return [
-        `${profile.legalName} — trading as ${profile.tradingName}. ${profile.tagline}`,
-        `${profile.address.street}, ${profile.address.city}, ${profile.address.region} ${profile.address.postalCode}. Phone ${profile.phone}. Email ${profile.email}.`,
-        `Service area: ${profile.serviceArea}`,
-        `Clients: ${profile.clients}`,
-      ].join("\n");
-    }
-    case "hours": {
-      const { hours } = company;
-      return [
-        `Office: ${hours.office} (${hours.timezone}).`,
-        `Crews: ${hours.crews}.`,
-        `Emergencies: ${hours.emergencyLine}.`,
-        `Closed: ${hours.closedOn}. ${hours.note}`,
-      ].join("\n");
-    }
-    case "people":
-      return company.people
-        .map(
-          (worker) =>
-            `${worker.name} — ${worker.title} — ${worker.email} — decides: ${worker.decides.join("; ")}`,
-        )
-        .join("\n");
-    case "support":
-      return [
-        refunds.summary,
-        `Complaints about a visit, and how a service failure is put right: ${personLabel(person(company, refunds.complaintOwner))}.`,
-        `Credit notes: ${personLabel(person(company, refunds.creditNeeds))}. Every credit waits for their approval. A credit is never more than the invoice line it is on, and is normally ${money(refunds.serviceRecoveryCreditCents)}.`,
-        `Money back (a refund): ${personLabel(person(company, refunds.refundNeeds))}. Nobody else agrees a refund.`,
-        `Safety, injury, damage or a break-in: ${personLabel(escalationOwner(company, "safety-incident"))}.`,
-        `A re-clean is a return visit at no charge, booked within ${refunds.recleanWindowDays} business days of the complaint.`,
-      ].join("\n");
-    case "policies":
-      return [
-        "Putting things right:",
-        `- ${refunds.summary}`,
-        "Safety:",
-        ...company.policies.safety.map((rule) => `- ${rule}`),
-        "Client data:",
-        ...company.policies.dataHandling.map((rule) => `- ${rule}`),
-        "Never promised:",
-        ...company.policies.commitments.map((rule) => `- ${rule}`),
-      ].join("\n");
-    case "tone":
-      return [
-        company.tone.summary,
-        "Always:",
-        ...company.tone.always.map((rule) => `- ${rule}`),
-        "Never:",
-        ...company.tone.never.map((rule) => `- ${rule}`),
-      ].join("\n");
-    case "escalation":
-      return company.escalation
-        .map((rule) => {
-          const owner = person(company, rule.toPersonId);
-          return `${rule.topic} — ${owner === undefined ? rule.toPersonId : personLabel(owner)} — ${rule.when}`;
-        })
-        .join("\n");
-    case "glossary":
-      return company.glossary.map((entry) => `${entry.term}: ${entry.meaning}`).join("\n");
-  }
+/** The crews' hours and the emergency line, as a client is told them. */
+function hoursText(company: CompanyFacts): string {
+  const { hours } = company;
+  return [
+    `Office: ${hours.office} (${hours.timezone}).`,
+    `Crews: ${hours.crews}.`,
+    `Emergencies: ${hours.emergencyLine}.`,
+    `Closed: ${hours.closedOn}. ${hours.note}`,
+  ].join("\n");
 }
+
+/** Who decides complaints, credits, money back and safety, and the re-clean window. */
+function supportText(company: CompanyFacts): string {
+  const refunds = company.policies.refunds;
+  return [
+    refunds.summary,
+    `Complaints about a visit, and how a service failure is put right: ${personLabel(person(company, refunds.complaintOwner))}.`,
+    `Credit notes: ${personLabel(person(company, refunds.creditNeeds))}. Every credit waits for their approval. A credit is never more than the invoice line it is on, and is normally ${money(refunds.serviceRecoveryCreditCents)}.`,
+    `Money back (a refund): ${personLabel(person(company, refunds.refundNeeds))}. Nobody else agrees a refund.`,
+    `Safety, injury, damage or a break-in: ${personLabel(escalationOwner(company, "safety-incident"))}.`,
+    `A re-clean is a return visit at no charge, booked within ${refunds.recleanWindowDays} business days of the complaint.`,
+  ].join("\n");
+}
+
+/** Putting things right, safety, client data and what is never promised. */
+function policiesText(company: CompanyFacts): string {
+  return [
+    "Putting things right:",
+    `- ${company.policies.refunds.summary}`,
+    "Safety:",
+    ...company.policies.safety.map((rule) => `- ${rule}`),
+    "Client data:",
+    ...company.policies.dataHandling.map((rule) => `- ${rule}`),
+    "Never promised:",
+    ...company.policies.commitments.map((rule) => `- ${rule}`),
+  ].join("\n");
+}
+
+/** Each section `read_company` answers for and how it reads, in the order the model is offered them. */
+const COMPANY_SECTIONS: Readonly<Record<CompanySection, (company: CompanyFacts) => string>> = {
+  profile: companyProfileText,
+  hours: hoursText,
+  people: (company) => companyPeopleText(company, "email"),
+  support: supportText,
+  policies: policiesText,
+  tone: companyToneText,
+  escalation: companyEscalationText,
+  glossary: companyGlossaryText,
+};
 
 /**
  * Builds the ten tools over one desk and one company. Every one is plain Pi Durable: they install
@@ -310,7 +281,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     const creditId = error.creditId ?? "the credit";
     const next: Record<DeskRefusal, string> = {
       not_escalated: ` Next: call escalate_case with caseId ${caseId} and reason safety, which hands it to ${safetyOwner}.`,
-      credit_pending: ` ${creditId} on ${caseId} is proposed and not issued: if an approval in this conversation returned a decision, say that decision (record a decline with withdraw_credit); otherwise tell the client ${creditOwner} has it. Do not propose or ask for another. Leave the case open.`,
+      credit_pending: ` ${creditId} on ${caseId} is proposed and not issued: if an approval in this conversation returned a decision, say that decision (record a decline with withdraw_credit); otherwise read the case with list_cases, which says whether ${creditOwner} has been asked. Do not propose another. Leave the case open.`,
       note_names_owner:
         " Next: if the complaint is about them, call escalate_case again with them in about. Otherwise call again with a note that addresses no one. Never drop a name the client used.",
       duplicate_credit: ` ${creditId} is that credit: tell the client where it stands, and do not propose it again.`,
@@ -352,7 +323,10 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
         ? "none"
         : entry.credit.status === "issued"
           ? `credit note ${entry.credit.creditNoteId ?? ""}, ${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line}`
-          : `${entry.credit.id}, ${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line}, proposed and put to ${creditOwner}; not issued. If an approval in this conversation returned a decision, say that decision; otherwise say ${creditOwner} has it. Do not call propose_credit or offer_credit for this case.`;
+          : // Proposing a credit asks nobody: a person "has it" only once the desk records the ask.
+            entry.credit.askedOn === null
+            ? `${entry.credit.id}, ${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line}, proposed and not issued; nobody has been asked yet. Next: call offer_credit with creditId ${entry.credit.id}, which asks ${creditOwner}. Do not call propose_credit for this case.`
+            : `${entry.credit.id}, ${money(entry.credit.creditCents)} on ${entry.credit.invoiceId} line ${entry.credit.line}, proposed and put to ${creditOwner}; not issued. If an approval in this conversation returned a decision, say that decision; otherwise say ${creditOwner} has it. Do not call propose_credit or offer_credit for this case.`;
     const escalated =
       entry.escalations.length === 0
         ? "no"
@@ -400,7 +374,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     ),
     replay: "safe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "support");
       // A client's contact sees only its own record, an unknown sender none, a colleague any.
       const who = await asker(desk, api);
       if (who.kind === "unknown") return unknownSender({ found: false, clients: [] });
@@ -452,7 +426,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     ),
     replay: "safe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "support");
       const who = await asker(desk, api);
       if (who.kind === "unknown") return unknownSender({ found: false, cases: [], invoices: [] });
       // A client reads only its own cases, whatever client the arguments name.
@@ -530,7 +504,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "support");
       try {
         // A client logs on its own account, whatever client the call names. Nobody verified an
         // unknown sender, so their case goes on no client's account: an unverified complaint never
@@ -586,7 +560,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "support");
       const blocked = await outOfReach(desk, await asker(desk, api), args.caseId);
       if (blocked !== undefined) return blocked;
       try {
@@ -622,7 +596,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "support");
       const blocked = await outOfReach(desk, await asker(desk, api), args.caseId);
       if (blocked !== undefined) return blocked;
       try {
@@ -660,7 +634,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
   };
 
   const creditFacts: ApprovalFactsReader = async (args, _context, call) => {
-    const desk = requireDesk(dependencies);
+    const desk = requireDesk(dependencies.desk, "support");
     const creditId = String(args.creditId);
     // Another client's proposal reads exactly like one that does not exist, before anyone is asked.
     const credit = await reachableCredit(desk, creditId, call);
@@ -675,6 +649,9 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
         `${credit.id} was withdrawn (${credit.withdrawnReason ?? "no reason recorded"}), so there is nothing to approve. Nothing was put to a person and nothing was credited.`,
       );
     }
+    // The gate asks the person next, so the desk records the ask here: from now on list_cases says
+    // they have it, in this conversation and any other.
+    await desk.markCreditAsked(credit.id);
     return {
       summary: `Issue credit ${creditLine(credit)}, worked out by the desk`,
       facts: creditApprovalFacts(credit),
@@ -696,7 +673,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "support");
       const approved = approvedFacts(args);
       if (approved === undefined) {
         return refusal(
@@ -738,7 +715,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "support");
       // A proposal out of the sender's reach reads exactly like one that does not exist: no case
       // id, client or state, so ids cannot be probed.
       if ((await reachableCredit(desk, args.creditId, api)) === undefined) {
@@ -767,7 +744,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
   const escalateCase = defineTool({
     name: "escalate_case",
     description:
-      "Hand a case to a person. You never choose who: the desk picks who from the company record by the reason: safety (injury, hazard, damage, near miss), refund (money back), billing (an invoice dispute), legal (a claim, insurance, contract terms), data (a client's data or security), staff (a complaint about a member of staff: say who in about), or unresolved (anything you cannot put right). A case is never handed to anyone named in it, its note or who it is about. It sends nothing to the client.",
+      "Hand a case to a person. You never choose who: the desk picks who from the company record by the reason: safety (injury, hazard, damage, near miss), refund (money back), billing (an invoice dispute), legal (a claim, insurance, contract terms), data (a client's data or security), staff (a complaint about a member of staff: say who in about), or unresolved (anything you cannot put right). A case is never handed to anyone named in it, its note or who it is about. A client's case is handed on only for that client's own contact or a colleague. It sends nothing to the client.",
     parameters: Type.Object(
       {
         caseId: CASE_ID,
@@ -791,14 +768,25 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
-      // Anyone may have a case handed to a person: that is what an unknown sender is told happens.
-      // A client may hand on only its own case, and an unknown sender learns nothing about the case.
+      const desk = requireDesk(dependencies.desk, "support");
       const who = await asker(desk, api);
-      const blocked = who.kind === "client" ? await outOfReach(desk, who, args.caseId) : undefined;
-      if (blocked !== undefined) return blocked;
       const generic =
         "Next: tell them it is recorded and a person will look at it. Share nothing about the case or who has it.";
+      // A client may hand on only its own case. An unknown sender may hand on only a case on no
+      // client's account, which is where their own are logged: a client's case needs a sender
+      // matched to that client. They learn nothing about the case either way, not even that it exists.
+      const notHandedOn = () =>
+        refusal(`It was not handed on from here. ${generic}`, {
+          caseId: args.caseId,
+          code: "unknown_sender",
+        });
+      if (who.kind === "unknown") {
+        const [entry] = await desk.listCases({ caseId: args.caseId });
+        if (entry !== undefined && entry.clientId !== null) return notHandedOn();
+      } else {
+        const blocked = await outOfReach(desk, who, args.caseId);
+        if (blocked !== undefined) return blocked;
+      }
       try {
         const receipt = await desk.escalateCase(
           {
@@ -837,12 +825,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
       } catch (error) {
         // An unknown sender learns nothing about the case from a refusal either, not even that the
         // case exists.
-        if (who.kind === "unknown" && error instanceof SupportDeskError) {
-          return refusal(`It was not handed on from here. ${generic}`, {
-            caseId: args.caseId,
-            code: "unknown_sender",
-          });
-        }
+        if (who.kind === "unknown" && error instanceof SupportDeskError) return notHandedOn();
         return refused(error, { caseId: args.caseId });
       }
     },
@@ -851,7 +834,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
   const resolveCase = defineTool({
     name: "resolve_case",
     description:
-      "Close a case with its outcome: what was done and what the client said. The desk refuses a case with a credit proposal not yet issued or withdrawn, a re-clean not yet done, a safety complaint not handed to a person, or a case already handed to someone.",
+      "Close a case with its outcome: what was done and what the client said. The desk refuses a case with a credit proposal not yet issued or withdrawn, a re-clean not yet done, a safety or damage complaint not handed to a person, or a case already handed to someone.",
     parameters: Type.Object(
       {
         caseId: CASE_ID,
@@ -864,7 +847,7 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     ),
     replay: "unsafe",
     execute: async (args, api) => {
-      const desk = requireDesk(dependencies);
+      const desk = requireDesk(dependencies.desk, "support");
       const blocked = await outOfReach(desk, await asker(desk, api), args.caseId);
       if (blocked !== undefined) return blocked;
       try {
@@ -884,24 +867,11 @@ export function supportTools(dependencies: SupportToolDependencies): SupportTool
     },
   });
 
-  const readCompany = defineTool({
-    name: "read_company",
+  const readCompany = readCompanyTool({
+    company,
     description:
       "Read one section of the company record: the profile, the hours, the people and what each decides, support (who decides complaints, credits and money back, and the re-clean window), the policies, the tone of voice, the escalation path or the glossary.",
-    parameters: Type.Object(
-      {
-        section: Type.Union(
-          SECTIONS.map((section) => Type.Literal(section)),
-          { description: "Which part of the record to read" },
-        ),
-      },
-      { additionalProperties: false },
-    ),
-    replay: "safe",
-    execute: async (args) => {
-      const section = args.section as CompanySection;
-      return { ...textResult(companySection(company, section)), details: { section } };
-    },
+    sections: COMPANY_SECTIONS,
   });
 
   return {

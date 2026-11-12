@@ -13,6 +13,7 @@ import frontdesk, {
   RepliesDoc,
   type ReplyMessenger,
   type ReplyTarget,
+  repliesTools,
 } from "./index.js";
 
 const InboundConversationDoc = defineDoc<{ authorityId: string; senders: string[] }>({
@@ -286,6 +287,78 @@ describe("Front Desk threaded replies", () => {
     expect(prepares).toBe(1);
     expect(sends).toBe(0);
     expect((await harness.snapshot(RepliesDoc, BACKGROUND_CONTEXT))?.replies ?? []).toEqual([]);
+  });
+
+  it("waits on a pending approval, records no decline, and sends once the person says yes", async () => {
+    const target: ReplyTarget = {
+      receiptId: "11111111-1111-4111-8111-111111111111",
+      conversationId: "7",
+      messengerId: "officehum.resend.reply.v1:test",
+      from: "desk@example.test",
+      to: "guest@example.test",
+      replyTo: "desk@example.test",
+      subject: "Re: Hello",
+      inReplyTo: "<first@example.test>",
+      references: ["<first@example.test>"],
+    };
+    const sends: string[] = [];
+    const messenger: ReplyMessenger = {
+      identity: target.messengerId,
+      prepare: async () => target,
+      async send(_intent, options) {
+        sends.push(options.requestId);
+        return { id: "22222222-2222-4222-8222-222222222222", status: "accepted" };
+      },
+    };
+    const answers = [
+      { approved: false, pending: true },
+      { approved: true, by: "operator" },
+    ];
+    let asked = 0;
+    const reply = repliesTools(messenger, async () => {
+      asked += 1;
+      return answers.shift() ?? { approved: false };
+    })[0];
+    if (reply === undefined) throw new Error("missing reply_message");
+    const harness = await Harness.open(
+      new MemoryStorage(),
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    harnesses.push(harness);
+    const memos = new Map<string, unknown>();
+    const api = {
+      conversationId: 7,
+      taskId: 8,
+      callId: "call-1",
+      commit: harness.commit.bind(harness),
+      snapshot: harness.snapshot.bind(harness),
+      memo: async (name: string, ...rest: unknown[]) => {
+        if (rest.length === 2 && !memos.has(name)) memos.set(name, rest[0]);
+        return memos.get(name);
+      },
+    } as never;
+    const args = { receiptId: target.receiptId, text: "Hello." };
+
+    // The person has not answered: nothing is sent, and no decision is kept for this call.
+    await expect(reply.execute(args, api, BACKGROUND_CONTEXT)).rejects.toThrow(
+      /has not answered yet\. Nothing has been approved or declined/,
+    );
+    expect(sends).toEqual([]);
+    expect(memos.has("frontdesk.reply-approval")).toBe(false);
+    expect((await harness.snapshot(RepliesDoc, BACKGROUND_CONTEXT))?.replies ?? []).toEqual([]);
+
+    // The same call asked again after the person said yes sends the reply, once.
+    const sent = await reply.execute(args, api, BACKGROUND_CONTEXT);
+    expect(asked).toBe(2);
+    expect(sent.output).toEqual([{ type: "text", text: "Accepted by transport." }]);
+    expect(sends).toEqual(["7:8:call-1"]);
+    // A replay of the sent call is a historical receipt: no third ask and no second send.
+    const replay = await reply.execute(args, api, BACKGROUND_CONTEXT);
+    expect(replay.details).toMatchObject({ replayed: true });
+    expect(asked).toBe(2);
+    expect(sends).toHaveLength(1);
+    expect((await harness.snapshot(RepliesDoc, BACKGROUND_CONTEXT))?.replies).toHaveLength(1);
   });
 
   it("records a known inbound sender on the contact's record, guessing nothing from the text", async () => {

@@ -1,5 +1,5 @@
 import { Temporal } from "@js-temporal/polyfill";
-import type { SchedulingOptions, Slot } from "./types.js";
+import type { BookingWindow, SchedulingOptions, Slot } from "./types.js";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -83,6 +83,24 @@ export function canonicalInstant(value: string): Temporal.Instant {
   } catch {
     throw new Error("Appointment instants must be valid offset-bearing RFC3339 values.");
   }
+}
+
+/**
+ * Checks a listing window and returns its bounds as epoch milliseconds. A bound that is not an
+ * instant is refused here, before any request, so the real client and the fake refuse alike.
+ */
+export function bookingWindow(window: BookingWindow): { timeMin: number; timeMax?: number } {
+  const bound = (value: string, name: string): number => {
+    try {
+      return canonicalInstant(value).epochMilliseconds;
+    } catch {
+      throw new Error(`A booking listing's ${name} must be an offset-bearing RFC3339 instant.`);
+    }
+  };
+  const timeMin = bound(window?.timeMin, "timeMin");
+  return window.timeMax === undefined
+    ? { timeMin }
+    : { timeMin, timeMax: bound(window.timeMax, "timeMax") };
 }
 
 export function canonicalSlot(slot: Slot): Slot {

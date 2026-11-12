@@ -77,14 +77,48 @@ export {
   type CompanyPerson,
   colleague,
   companyHead,
+  escalationOwner,
+  escalationRule,
   findPeople,
   HEAD_TITLE,
   loadCompanyFacts,
+  money,
+  personById,
   personLabel,
+  purchasingLead,
   type SenderResolver,
   senderPerson,
   type VerifiedSender,
 } from "./company.js";
+export type {
+  CompanyAddress,
+  CompanyApprovalLimits,
+  CompanyCrew,
+  CompanyDiscountLadderStep,
+  CompanyDiscountPolicy,
+  CompanyEscalationRule,
+  CompanyFieldStaff,
+  CompanyGlossaryEntry,
+  CompanyHours,
+  CompanyInsurance,
+  CompanyMarketing,
+  CompanyPolicies,
+  CompanyPriceBookItem,
+  CompanyProfile,
+  CompanyQuoting,
+  CompanyRecord,
+  CompanyRecordPerson,
+  CompanyRefundPolicy,
+  CompanyService,
+  CompanyStaffPolicies,
+  CompanySupplier,
+  CompanySupplyItem,
+  CompanyTestimonial,
+  CompanyTicketRoute,
+  CompanyTone,
+} from "./company-record.js";
+export { addDays, daysBetween, isoDate, localDate, parseDate, weekOf } from "./dates.js";
+export { requireDesk } from "./desk.js";
 export {
   type CommandEngineOptions,
   checkRuntimes,
@@ -223,6 +257,17 @@ export {
   validatePackage,
 } from "./package.js";
 export {
+  companyEscalationText,
+  companyGlossaryText,
+  companyHoursText,
+  companyPeopleText,
+  companyPoliciesText,
+  companyProfileText,
+  companyToneText,
+  type ReadCompanyOptions,
+  readCompanyTool,
+} from "./read-company.js";
+export {
   type OverlaySettings,
   OverlaySettingsSchema,
   type ResolvedRole,
@@ -259,7 +304,7 @@ export {
   type Skill,
   skillFolders,
 } from "./skills.js";
-export { isoDate, todaySection, todayText } from "./today.js";
+export { todaySection, todayText } from "./today.js";
 export {
   deskRefusal,
   guardToolResult,
