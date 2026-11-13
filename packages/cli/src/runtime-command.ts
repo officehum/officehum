@@ -25,6 +25,7 @@ import {
 import { openOfficeBoard } from "@officehum/office/board";
 import { localFileStore } from "@officehum/sdk";
 import type { CliDependencies, CliIo } from "./cli.js";
+import { openConnections } from "./connections.js";
 import { modelsFor, parseModelRef } from "./run.js";
 import { UsageError } from "./usage-error.js";
 
@@ -99,10 +100,19 @@ export async function runRuntimeCommand(
   const file = await readOfficeFile(parsed.officeFile);
   // Every role's gate asks the runtime's remote approvals, which the gateway's approvers answer.
   const approvals = new RemoteApprovals();
-  const roles = await loadOfficeRoles(file, {
-    approve: approvals.approve,
-    ...(parsed.demo ? { demo: true } : {}),
-  });
+  // The outside systems the file names for its roles, opened before any role is built on them.
+  const connections = openConnections(file, dependencies.connections);
+  let roles: Awaited<ReturnType<typeof loadOfficeRoles>>;
+  try {
+    roles = await loadOfficeRoles(file, {
+      approve: approvals.approve,
+      clientsFor: connections.clientsFor,
+      ...(parsed.demo ? { demo: true } : {}),
+    });
+  } catch (error) {
+    connections.close();
+    throw error;
+  }
   const refs: ModelRef[] =
     override === undefined
       ? roles.map((role) => ({
@@ -159,6 +169,7 @@ export async function runRuntimeCommand(
     process.removeListener("SIGTERM", terminate);
     unregister();
     board?.close();
+    connections.close();
   }
   return 0;
 }
