@@ -23,7 +23,7 @@ jobs:
       # is how the whole Paper suite used to pass a green build without running a single test. Provision
       # it here so a green build means the suite ran; the script's three doctor sentinels fail the job if
       # the libraries are not the forks that own their module names.
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - name: Provision the Paper worker
         run: |
           packages/tools-paper-office/scripts/provision-worker.sh "$RUNNER_TEMP/paper-worker"
