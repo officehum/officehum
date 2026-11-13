@@ -957,6 +957,7 @@ export function fakePeopleOpsDesk(options: FakePeopleOpsDeskOptions = {}): Peopl
       const start = candidate.startDate;
       const before = (days: number) => {
         const due = addDays(start, -days);
+        // biome-ignore lint/complexity/useMathMinMax: these are ISO date strings, which Math.max cannot compare
         return due < today() ? today() : due;
       };
       const crew = personLabel(
