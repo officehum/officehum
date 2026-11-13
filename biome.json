@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.6/schema.json",
   "files": {
     "includes": [
       "**",
@@ -21,6 +21,11 @@
     "enabled": true,
     "rules": {
       "recommended": true
+    }
+  },
+  "markdown": {
+    "formatter": {
+      "enabled": false
     }
   },
   "javascript": {
