@@ -388,6 +388,34 @@ officehum runtime --db .officehum/office.sqlite --office office.json --demo
 Every command carries a `principal`, which the gateway adds from the signed-in session; typed by hand,
 you add it yourself. A command without one is refused as `unauthorized`.
 
+### Connecting a role to a real system
+
+A role's entry in the office file can name the calendar or the QuickBooks company it works in, so
+it does real work without `--demo`. The file holds ids and paths only, never a credential.
+
+```json
+{
+  "version": 1,
+  "id": "my-office",
+  "roles": [
+    { "dir": "agents/frontdesk", "connections": { "calendar": { "kind": "local", "file": "state/calendar.sqlite" } } },
+    { "dir": "agents/bookkeeper", "connections": { "quickbooks": { "kind": "quickbooks", "realmId": "4620816365", "environment": "sandbox" } } }
+  ]
+}
+```
+
+| Connection | Kind | Settings | Credential |
+| --- | --- | --- | --- |
+| `calendar` | `local` | `file`: a SQLite file the runtime creates | none |
+| `calendar` | `google` | `calendarId` (never `primary`); `decisions`: a local file where the calendar records what it booked | `GOOGLE_CALENDAR_ACCESS_TOKEN` |
+| `quickbooks` | `quickbooks` | `realmId`; `environment`: `sandbox` or `production` | `QUICKBOOKS_ACCESS_TOKEN` |
+
+Paths are relative to the office file. A token is read from the environment each time the client
+makes a call, so the runtime never stores it. If a variable a named connection needs is not set,
+the runtime stops at start and names it. A Google calendar offers one-hour slots from 09:00 to 12:00
+UTC, as it does in solo mode. The other six catalog roles keep their records in a desk that has only
+a demonstration version, so they still need `--demo`.
+
 ### Agents working together
 
 Give the runtime a workboard and its agents become a team:

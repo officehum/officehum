@@ -69,6 +69,7 @@ import {
   reviewSummaryLine,
 } from "@officehum/tools-paper-office";
 import { runBoardCommand } from "./board.js";
+import type { ConnectionDependencies } from "./connections.js";
 import { runEvalCommand } from "./eval.js";
 import {
   deskBanner,
@@ -118,6 +119,8 @@ type Parsed = {
 
 export interface CliDependencies {
   readonly createGoogleCalendar?: (options: GoogleCalendarOptions) => CalendarClient;
+  /** For `officehum runtime`: the environment and client builders its named connections use. */
+  readonly connections?: ConnectionDependencies;
   readonly createLiveModels?: (ref: ModelRef) => {
     readonly models: ReturnType<typeof createModels>;
     readonly model: ModelRef;

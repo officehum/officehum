@@ -16,6 +16,7 @@ import { UsageError } from "./usage-error.js";
 
 const sales = fileURLToPath(new URL("../../../agents/sales", import.meta.url));
 const officeManager = fileURLToPath(new URL("../../../agents/office-manager", import.meta.url));
+const frontdesk = fileURLToPath(new URL("../../../agents/frontdesk", import.meta.url));
 const principal = { id: "ada", roles: ["staff"] };
 
 const temps: string[] = [];
@@ -308,4 +309,183 @@ describe("officehum runtime", () => {
       board.close();
     }
   }, 30_000);
+
+  it("gives Front Desk the local calendar its office file names, and the booking outlives a restart", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "officehum-runtime-cli-"));
+    temps.push(directory);
+    const officeFile = join(directory, "office.json");
+    writeFileSync(
+      officeFile,
+      JSON.stringify({
+        version: 1,
+        id: "office-1",
+        roles: [
+          {
+            dir: frontdesk,
+            connections: { calendar: { kind: "local", file: "state/calendar.sqlite" } },
+          },
+        ],
+      }),
+    );
+
+    /** One runtime over the directory's files, without `--demo`, driven by a scripted model. */
+    const start = (script: Parameters<typeof scriptedProvider>[0]) => {
+      const scripted = scriptedProvider(script);
+      const input = new PassThrough();
+      const output = new PassThrough();
+      const frames: Record<string, unknown>[] = [];
+      const decoder = new LineDecoder();
+      output.on("data", (chunk: Buffer) => {
+        for (const frame of decoder.push(chunk)) {
+          if (frame.ok) frames.push(frame.value as Record<string, unknown>);
+        }
+      });
+      const io: CliIo = { output: () => {}, error: () => {}, readApproval: async () => undefined };
+      const running = runCli(
+        [
+          "runtime",
+          "--db",
+          join(directory, "harness.sqlite"),
+          "--office",
+          officeFile,
+          "--model",
+          `${scripted.model.provider}/${scripted.model.modelId}`,
+        ],
+        io,
+        {
+          createRunModels: (ref: ModelRef) => ({
+            models: scripted.models as ReturnType<typeof createModels>,
+            model: ref,
+          }),
+          stdio: { input, output },
+        },
+      );
+      const send = (frame: object) => input.write(`${JSON.stringify(frame)}\n`);
+      const settled = (requestId: string) =>
+        vi.waitFor(
+          () => {
+            const found = frames.find(
+              (frame) =>
+                frame.type === "event" &&
+                frame.requestId === requestId &&
+                (frame.event as { kind: string }).kind === "settled",
+            );
+            if (found === undefined) throw new Error("not settled yet");
+            return found.event as { status: string; answer?: string };
+          },
+          { timeout: 20_000 },
+        );
+      const stop = async () => {
+        input.end();
+        expect(await running).toBe(0);
+      };
+      return { frames, send, settled, stop };
+    };
+    const toolResult = (messages: readonly Message[], tool: string): string | undefined => {
+      const found = messages.findLast(
+        (message) => message.role === "toolResult" && message.toolName === tool,
+      );
+      const content = (found as { content?: readonly { text?: string }[] } | undefined)?.content;
+      return content?.map((block) => block.text ?? "").join("");
+    };
+
+    // The model asks the calendar for a free slot and books the first one it is given.
+    const first = start((messages) => {
+      const booked = toolResult(messages, "book_appointment");
+      if (booked !== undefined) return { text: `Booked: ${booked}` };
+      const free = toolResult(messages, "check_schedule");
+      if (free === undefined) {
+        return { toolCalls: [{ name: "check_schedule", args: { date: "2027-03-01" } }] };
+      }
+      const slot = /Free: ([^,]+)/.exec(free)?.[1] ?? "";
+      return {
+        toolCalls: [{ name: "book_appointment", args: { start: slot, customer: "Ada Lovelace" } }],
+      };
+    });
+    first.send({
+      type: "submit",
+      id: "c1",
+      agent: "frontdesk",
+      requestId: "r1",
+      input: { kind: "message", text: "Book Ada in on 1 March." },
+      principal,
+    });
+    // A booking is a gated action: it waits for a person, who approves it through the gateway.
+    const asked = await vi.waitFor(
+      () => {
+        const found = first.frames.find((frame) => frame.type === "approval");
+        if (found === undefined) throw new Error("no approval asked yet");
+        return found.approval as { approvalId: string; tool: string };
+      },
+      { timeout: 20_000 },
+    );
+    expect(asked.tool).toBe("book_appointment");
+    first.send({
+      type: "approve",
+      id: "c2",
+      approvalId: asked.approvalId,
+      decision: "approve",
+      principal,
+    });
+    const booked = await first.settled("ada/r1");
+    expect(booked.status).toBe("done");
+    expect(booked.answer).toContain("at 2027-03-01T09:00:00Z");
+    await first.stop();
+
+    // A second run over the same files reads the booking back from the calendar the file names.
+    const second = start((messages) => {
+      const listed = toolResult(messages, "list_bookings");
+      return listed === undefined
+        ? { toolCalls: [{ name: "list_bookings", args: {} }] }
+        : { text: `On the calendar: ${listed}` };
+    });
+    second.send({
+      type: "submit",
+      id: "c3",
+      agent: "frontdesk",
+      requestId: "r2",
+      input: { kind: "message", text: "What is booked?" },
+      principal,
+    });
+    const listed = await second.settled("ada/r2");
+    expect(listed.answer).toContain("Ada Lovelace");
+    expect(listed.answer).toContain("2027-03-01");
+    await second.stop();
+  });
+
+  it("stops at start, naming the variable, when a named connection's credential is not set", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "officehum-runtime-cli-"));
+    temps.push(directory);
+    const officeFile = join(directory, "office.json");
+    writeFileSync(
+      officeFile,
+      JSON.stringify({
+        version: 1,
+        id: "office-1",
+        roles: [
+          {
+            dir: frontdesk,
+            connections: {
+              calendar: { kind: "google", calendarId: "team@example.com", decisions: "g.sqlite" },
+            },
+          },
+        ],
+      }),
+    );
+    const errors: string[] = [];
+    const io: CliIo = {
+      output: () => {},
+      error: (line) => errors.push(line),
+      readApproval: async () => undefined,
+    };
+    const code = await runCli(
+      ["runtime", "--db", join(directory, "h.sqlite"), "--office", officeFile],
+      io,
+      { connections: { env: {} }, stdio: { input: new PassThrough(), output: new PassThrough() } },
+    );
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain(
+      "The office file names connections that need GOOGLE_CALENDAR_ACCESS_TOKEN; set it in the environment before starting the runtime.",
+    );
+  });
 });
