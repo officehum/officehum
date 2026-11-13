@@ -805,8 +805,9 @@ A ticket an agent dispatched with `wait: true` returns to it only once the ticke
 asker waits for the person too.
 
 The runtime passes each role's engine to the checker, and the file store `officehum runtime` opens
-in `files/` beside the board. No catalog role has a tool that puts a file there yet, so in practice
-`file` evidence can pass only for a role that brings one.
+in `files/` beside the board. A role the office file grants document tools (`"documents":
+["xlsx"]`) makes its files in that same store, so its reply can attach one; without that grant no
+catalog role can put a file there.
 
 ## Validation
 

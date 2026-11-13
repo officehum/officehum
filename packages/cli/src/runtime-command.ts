@@ -23,9 +23,10 @@ import {
   serveRuntime,
 } from "@officehum/office";
 import { openOfficeBoard } from "@officehum/office/board";
-import { localFileStore } from "@officehum/sdk";
+import { localVersionedFileStore } from "@officehum/sdk";
 import type { CliDependencies, CliIo } from "./cli.js";
 import { openConnections } from "./connections.js";
+import { withDocumentTools } from "./documents.js";
 import { modelsFor, parseModelRef } from "./run.js";
 import { UsageError } from "./usage-error.js";
 
@@ -113,6 +114,19 @@ export async function runRuntimeCommand(
     connections.close();
     throw error;
   }
+  // The office's one file store, beside its board (or its database when it has no board): where a
+  // role's document tools put a file, and where a ticket reply's attached file is looked up.
+  const stateDirectory = dirname(resolve(parsed.board ?? parsed.database));
+  const files = localVersionedFileStore(join(stateDirectory, "files"));
+  // `approvalTimeoutsMs` reads the roles in the file's order, so the order is kept.
+  roles = roles.map((role, index) =>
+    withDocumentTools(role, file.roles[index]?.documents, {
+      store: files,
+      ledgerDir: join(stateDirectory, "document-runs"),
+      log: (line) => io.error(line),
+      ...(dependencies.documents === undefined ? {} : { dependencies: dependencies.documents }),
+    }),
+  );
   const refs: ModelRef[] =
     override === undefined
       ? roles.map((role) => ({
@@ -153,8 +167,7 @@ export async function runRuntimeCommand(
             board,
             people: company.people,
             personRoutes: company.personRoutes,
-            // Beside the board: where a ticket reply's attached files are looked up.
-            files: localFileStore(join(dirname(resolve(parsed.board ?? "")), "files")),
+            files,
           }),
       approvals,
       approvalTimeoutsMs: approvalTimeoutsMs(file, roles),

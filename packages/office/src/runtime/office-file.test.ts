@@ -142,6 +142,27 @@ describe("parseOfficeFile", () => {
     );
   });
 
+  it("reads the document formats a role is granted, and refuses anything that is not one", () => {
+    const granted = parseOfficeFile(
+      {
+        version: 1,
+        id: "office-1",
+        roles: [{ dir: "a", documents: ["xlsx", "docx"] }, { dir: "b" }],
+      },
+      "/srv",
+    );
+    // In the formats' own order, whatever order the file wrote them in.
+    expect(granted.roles.map((role) => role.documents)).toEqual([["docx", "xlsx"], undefined]);
+
+    for (const documents of [[], ["pdf"], ["xlsx", "python"], "xlsx", true]) {
+      expect(() =>
+        parseOfficeFile({ version: 1, id: "office-1", roles: [{ dir: "a", documents }] }, "/srv"),
+      ).toThrowError(
+        'roles[0].documents: must be a list of the formats the role may produce, from docx, pptx, xlsx, e.g. ["xlsx"]',
+      );
+    }
+  });
+
   it("requires at least one role", () => {
     expect(() => parseOfficeFile({ version: 1, id: "o", roles: [] }, "/srv")).toThrow(
       "roles: must be a list of at least one role",

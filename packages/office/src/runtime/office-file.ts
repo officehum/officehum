@@ -15,6 +15,9 @@
  * { "dir": "agents/bookkeeper", "connections": { "quickbooks": { "kind": "quickbooks", "realmId": "…", "environment": "sandbox" } } }
  * ```
  *
+ * A role may be given the document tools (RASF-3577), by the formats it may produce:
+ * `{ "dir": "agents/bookkeeper", "documents": ["xlsx"] }`.
+ *
  * Relative paths are resolved against the file's own directory, so an office file and its overlays
  * can move together. It holds paths and ids only: no credentials (the host reads those from its
  * environment when it builds a client), and nothing that switches a role onto demonstration data
@@ -47,6 +50,10 @@ export type OfficeConnection =
       readonly environment: "sandbox" | "production";
     };
 
+/** A document format a role may be allowed to produce. */
+export type OfficeDocumentFormat = (typeof DOCUMENT_FORMATS)[number];
+const DOCUMENT_FORMATS = ["docx", "pptx", "xlsx"] as const;
+
 /** The client names a connection may be filed under, and the kinds each takes. */
 const CONNECTION_KINDS: Readonly<Record<string, readonly OfficeConnection["kind"][]>> = {
   calendar: ["local", "google"],
@@ -70,6 +77,8 @@ export interface OfficeFileRole {
   readonly dir: string;
   /** The outside systems this role works in, by the name its factory takes the client under. */
   readonly connections?: Readonly<Record<string, OfficeConnection>>;
+  /** The document formats this role may produce with the host's document tools. Omitted: none. */
+  readonly documents?: readonly OfficeDocumentFormat[];
   /** Overlay directories, lowest first, absolute. */
   readonly overlays: readonly string[];
   /** How long this agent's approvals wait for a decision before they are declined. Default 240. */
@@ -128,7 +137,9 @@ export function parseOfficeFile(value: unknown, base: string, source = "office f
         return;
       }
       for (const key of Object.keys(entry)) {
-        if (!["dir", "overlays", "approvalTimeoutMinutes", "connections"].includes(key)) {
+        if (
+          !["dir", "overlays", "approvalTimeoutMinutes", "connections", "documents"].includes(key)
+        ) {
           problem(`${at}.${key}`, "is not a known field");
         }
       }
@@ -156,8 +167,26 @@ export function parseOfficeFile(value: unknown, base: string, source = "office f
         );
       }
       const connections = connectionsOf(entry.connections, `${at}.connections`, base, problem);
+      const documents = entry.documents;
+      const formats =
+        Array.isArray(documents) && documents.length > 0
+          ? DOCUMENT_FORMATS.filter((format) => documents.includes(format))
+          : [];
+      if (
+        documents !== undefined &&
+        (formats.length === 0 ||
+          (documents as unknown[]).some(
+            (format) => !DOCUMENT_FORMATS.includes(format as OfficeDocumentFormat),
+          ))
+      ) {
+        problem(
+          `${at}.documents`,
+          `must be a list of the formats the role may produce, from ${DOCUMENT_FORMATS.join(", ")}, e.g. ["xlsx"]`,
+        );
+      }
       if (typeof entry.dir === "string" && Array.isArray(overlays)) {
         roles.push({
+          ...(formats.length === 0 ? {} : { documents: formats }),
           ...(connections === undefined ? {} : { connections }),
           dir: resolve(base, entry.dir),
           overlays: overlays
