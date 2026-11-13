@@ -32,8 +32,8 @@
     "@earendil-works/pi-ai": "1.3.x"
   },
   "devDependencies": {
-    "@earendil-works/chord": "1.3.0",
-    "@earendil-works/pi-ai": "1.3.0",
-    "@earendil-works/pi-durable": "1.3.0"
+    "@earendil-works/chord": "1.5.1",
+    "@earendil-works/pi-ai": "1.5.1",
+    "@earendil-works/pi-durable": "1.5.1"
   }
 }
