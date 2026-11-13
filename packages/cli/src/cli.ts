@@ -70,6 +70,7 @@ import {
 } from "@officehum/tools-paper-office";
 import { runBoardCommand } from "./board.js";
 import type { ConnectionDependencies } from "./connections.js";
+import type { DocumentDependencies } from "./documents.js";
 import { runEvalCommand } from "./eval.js";
 import {
   deskBanner,
@@ -121,6 +122,8 @@ export interface CliDependencies {
   readonly createGoogleCalendar?: (options: GoogleCalendarOptions) => CalendarClient;
   /** For `officehum runtime`: the environment and client builders its named connections use. */
   readonly connections?: ConnectionDependencies;
+  /** For `officehum runtime`: the worker environment and document service its document tools use. */
+  readonly documents?: DocumentDependencies;
   readonly createLiveModels?: (ref: ModelRef) => {
     readonly models: ReturnType<typeof createModels>;
     readonly model: ModelRef;
