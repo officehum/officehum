@@ -52,6 +52,117 @@ describe("parseOfficeFile", () => {
     );
   });
 
+  it("reads a role's named connections, resolving their paths and keeping no secret", () => {
+    const parsed = parseOfficeFile(
+      {
+        version: 1,
+        id: "office-1",
+        roles: [
+          {
+            dir: "agents/frontdesk",
+            connections: { calendar: { kind: "local", file: "state/calendar.sqlite" } },
+          },
+          {
+            dir: "agents/frontdesk-east",
+            connections: {
+              calendar: {
+                kind: "google",
+                calendarId: " team@example.com ",
+                decisions: "state/g.sqlite",
+              },
+            },
+          },
+          {
+            dir: "agents/bookkeeper",
+            connections: {
+              quickbooks: { kind: "quickbooks", realmId: "4620816365", environment: "sandbox" },
+            },
+          },
+          { dir: "agents/sales" },
+        ],
+      },
+      "/srv/office",
+    );
+    expect(parsed.roles.map((role) => role.connections)).toEqual([
+      { calendar: { kind: "local", file: "/srv/office/state/calendar.sqlite" } },
+      {
+        calendar: {
+          kind: "google",
+          calendarId: "team@example.com",
+          decisions: "/srv/office/state/g.sqlite",
+        },
+      },
+      { quickbooks: { kind: "quickbooks", realmId: "4620816365", environment: "sandbox" } },
+      undefined,
+    ]);
+  });
+
+  it("refuses an unknown connection, kind or field, and a credential, each with its path", () => {
+    expect(() =>
+      parseOfficeFile(
+        {
+          version: 1,
+          id: "office-1",
+          roles: [
+            {
+              dir: "a",
+              connections: {
+                crm: { kind: "salesforce" },
+                calendar: { kind: "outlook" },
+                quickbooks: {
+                  kind: "quickbooks",
+                  realmId: "1",
+                  environment: "live",
+                  accessToken: "not-a-real-token",
+                },
+              },
+            },
+            { dir: "b", connections: { calendar: { kind: "google", calendarId: "primary" } } },
+            { dir: "c", connections: { calendar: { kind: "local" } } },
+            { dir: "d", connections: { calendar: "local" } },
+            { dir: "e", connections: ["calendar"] },
+          ],
+        },
+        "/srv",
+        "office.json",
+      ),
+    ).toThrowError(
+      [
+        "The office.json has 9 problem(s):",
+        "  roles[0].connections.crm: is not a connection this host can make; it makes calendar and quickbooks",
+        '  roles[0].connections.calendar.kind: must be "local" or "google" (got "outlook")',
+        "  roles[0].connections.quickbooks.accessToken: is not a known field",
+        '  roles[0].connections.quickbooks.environment: must be "sandbox" or "production" (got "live")',
+        "  roles[1].connections.calendar.decisions: must be a non-empty string",
+        '  roles[1].connections.calendar.calendarId: must name the calendar explicitly; "primary" is not allowed',
+        "  roles[2].connections.calendar.file: must be a non-empty string",
+        "  roles[3].connections.calendar: must be an object with a kind: local or google",
+        '  roles[4].connections: must be an object, e.g. { "calendar": { "kind": "local", "file": "calendar.sqlite" } }',
+      ].join("\n"),
+    );
+  });
+
+  it("reads the document formats a role is granted, and refuses anything that is not one", () => {
+    const granted = parseOfficeFile(
+      {
+        version: 1,
+        id: "office-1",
+        roles: [{ dir: "a", documents: ["xlsx", "docx"] }, { dir: "b" }],
+      },
+      "/srv",
+    );
+    // In the formats' own order, whatever order the file wrote them in.
+    expect(granted.roles.map((role) => role.documents)).toEqual([["docx", "xlsx"], undefined]);
+
+    for (const documents of [[], ["pdf"], ["xlsx", "python"], "xlsx", true]) {
+      expect(() =>
+        parseOfficeFile({ version: 1, id: "office-1", roles: [{ dir: "a", documents }] }, "/srv"),
+      ).toThrowError(
+        'roles[0].documents: must be a list of the formats the role may produce, from docx, pptx, xlsx, e.g. ["xlsx"]',
+      );
+    }
+  });
+
   it("requires at least one role", () => {
     expect(() => parseOfficeFile({ version: 1, id: "o", roles: [] }, "/srv")).toThrow(
       "roles: must be a list of at least one role",
@@ -68,6 +179,30 @@ describe("readOfficeFile and loadOfficeRoles", () => {
     const file = await readOfficeFile(path);
     const roles = await loadOfficeRoles(file, { demo: true });
     expect(roles.map((role) => role.manifest.id)).toEqual(["sales"]);
+  });
+
+  it("refuses a role whose connections the host did not build, and passes the ones it did", async () => {
+    const file = parseOfficeFile(
+      {
+        version: 1,
+        id: "office-1",
+        roles: [{ dir: sales, connections: { calendar: { kind: "local", file: "c.sqlite" } } }],
+      },
+      "/",
+    );
+    await expect(loadOfficeRoles(file, { demo: true })).rejects.toThrow(
+      /names calendar for the role in .*sales, but this host built no such client; nothing falls back/,
+    );
+    const asked: unknown[] = [];
+    const [role] = await loadOfficeRoles(file, {
+      demo: true,
+      clientsFor: (entry) => {
+        asked.push(entry.connections);
+        return { calendar: {} };
+      },
+    });
+    expect(role?.manifest.id).toBe("sales");
+    expect(asked).toEqual([{ calendar: { kind: "local", file: "/c.sqlite" } }]);
   });
 
   it("refuses two roles with the same id", async () => {

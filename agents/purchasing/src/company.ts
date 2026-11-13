@@ -13,7 +13,6 @@
 
 import {
   type CompanyAddress,
-  type CompanyApprovalLimits,
   type CompanyEscalationRule,
   type CompanyGlossaryEntry,
   type CompanyHours,
@@ -58,7 +57,6 @@ export type Person = CompanyRecordPerson;
 export type Supplier = CompanySupplier;
 /** One stocked item, bought from its usual supplier at the unit cost the company records. */
 export type SupplyItem = CompanySupplyItem;
-export type ApprovalLimits = CompanyApprovalLimits;
 export type Policies = Pick<CompanyPolicies, "safety" | "commitments">;
 export type Tone = CompanyTone;
 export type EscalationRule = CompanyEscalationRule;
@@ -67,14 +65,7 @@ export type GlossaryEntry = CompanyGlossaryEntry;
 /** Everything the company records that this role reads. */
 export type CompanyFacts = Pick<
   CompanyRecord,
-  | "hours"
-  | "people"
-  | "tone"
-  | "escalation"
-  | "glossary"
-  | "approvalLimits"
-  | "suppliers"
-  | "supplyCatalog"
+  "hours" | "people" | "tone" | "escalation" | "glossary" | "suppliers" | "supplyCatalog"
 > & {
   readonly profile: Profile;
   readonly policies: Policies;

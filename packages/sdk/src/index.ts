@@ -93,7 +93,6 @@ export {
 } from "./company.js";
 export type {
   CompanyAddress,
-  CompanyApprovalLimits,
   CompanyCrew,
   CompanyDiscountLadderStep,
   CompanyDiscountPolicy,

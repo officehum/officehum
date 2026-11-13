@@ -18,6 +18,9 @@ import { DEMO_NOW, fakePurchasingDesk, type PurchasingDesk } from "./desk.js";
 import { type PurchasingToolset, purchasingTools } from "./tools.js";
 
 const company = loadCompanyFacts();
+/** The manifest's default limit, as a role with no overlay resolves it for every call. */
+const LIMIT = 150_000;
+const LIMITS = () => ({ purchase_order_limit_cents: LIMIT });
 const lead = personLabel(purchasingLead(company));
 
 /** The durable identity one tool call runs under; only the ids matter to these tools. */
@@ -25,7 +28,7 @@ const call = (callId: string) =>
   ({ conversationId: "conversation-1", taskId: "task-1", callId }) as never;
 
 const tools = (desk: PurchasingDesk | undefined, sender?: SenderResolver): PurchasingToolset =>
-  purchasingTools({ desk, company, ...(sender === undefined ? {} : { sender }) });
+  purchasingTools({ desk, company, limits: LIMITS, ...(sender === undefined ? {} : { sender }) });
 
 /** A verified sender, as the host resolves it from the call's conversation. */
 const from =
@@ -226,7 +229,7 @@ describe("raise_purchase_order", () => {
     expect(text(result)).toContain(
       `Next: call request_po_approval with draftId PO-1005, which asks ${lead}.`,
     );
-    expect(text(result)).toContain(money(company.approvalLimits.purchaseOrderOverCents));
+    expect(text(result)).toContain(money(LIMIT));
     expect(text(result)).toContain(lead);
     expect(details(result)).toMatchObject({
       code: "over_limit",
@@ -429,7 +432,7 @@ describe("request_po_approval", () => {
       CALL_IDENTITY,
     );
     expect(read.summary).toBe(
-      `Place draft PO-1004 with Cascade Paper & Packaging: 16 × Toilet tissue (case of 96 rolls) at $54.00 = $864.00; 12 × Roll hand towels (case of 12 rolls) at $49.00 = $588.00; 20 × Trash liners, 33 gallon (case of 250) at $36.00 = $720.00. Total $2,172.00; a purchase order over ${money(company.approvalLimits.purchaseOrderOverCents)} needs a person's approval`,
+      `Place draft PO-1004 with Cascade Paper & Packaging: 16 × Toilet tissue (case of 96 rolls) at $54.00 = $864.00; 12 × Roll hand towels (case of 12 rolls) at $49.00 = $588.00; 20 × Trash liners, 33 gallon (case of 250) at $36.00 = $720.00. Total $2,172.00; a purchase order over ${money(LIMIT)} needs a person's approval`,
     );
     expect(read.facts).toMatchObject({
       id: "PO-1004",
@@ -829,7 +832,7 @@ describe("read_company", () => {
       call("g1"),
       BACKGROUND_CONTEXT,
     );
-    expect(text(result)).toContain(money(company.approvalLimits.purchaseOrderOverCents));
+    expect(text(result)).toContain(money(LIMIT));
     expect(text(result)).toContain(lead);
     expect(text(result)).toContain("Quickship Discount Safety — not approved");
     expect(text(result)).toContain("Cascade Paper & Packaging — approved");

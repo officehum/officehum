@@ -155,6 +155,8 @@ export {
   COMPANY_FACTS,
   loadOfficeRoles,
   type OfficeCompany,
+  type OfficeConnection,
+  type OfficeDocumentFormat,
   type OfficeFile,
   type OfficeFileRole,
   parseOfficeFile,

@@ -6,9 +6,22 @@
  * { "version": 1, "id": "office-7f3a", "roles": [{ "dir": "agents/sales", "overlays": ["overlays/sales"] }] }
  * ```
  *
+ * A role may also name the outside systems it works in (RASF-3576), by the name its factory takes
+ * the client under:
+ *
+ * ```json
+ * { "dir": "agents/frontdesk", "connections": { "calendar": { "kind": "local", "file": "state/calendar.sqlite" } } }
+ * { "dir": "agents/frontdesk", "connections": { "calendar": { "kind": "google", "calendarId": "…", "decisions": "state/calendar.sqlite" } } }
+ * { "dir": "agents/bookkeeper", "connections": { "quickbooks": { "kind": "quickbooks", "realmId": "…", "environment": "sandbox" } } }
+ * ```
+ *
+ * A role may be given the document tools (RASF-3577), by the formats it may produce:
+ * `{ "dir": "agents/bookkeeper", "documents": ["xlsx"] }`.
+ *
  * Relative paths are resolved against the file's own directory, so an office file and its overlays
- * can move together. It holds paths only: no credentials, and nothing that switches a role onto
- * demonstration data (that stays a host flag, `--demo`).
+ * can move together. It holds paths and ids only: no credentials (the host reads those from its
+ * environment when it builds a client), and nothing that switches a role onto demonstration data
+ * (that stays a host flag, `--demo`).
  */
 
 import { existsSync } from "node:fs";
@@ -23,9 +36,49 @@ import { type LoadedRole, type LoadRoleOptions, loadRole } from "../roles/load-r
 /** The longest an approval may wait: a year. */
 const MAX_APPROVAL_TIMEOUT_MINUTES = 525_600;
 
+/**
+ * One outside system a role works in, as the office file names it. Paths are absolute once parsed.
+ * A `google` calendar keeps its own record of what it booked in a local file (`decisions`), so a
+ * repeated call is answered from the record instead of booking twice.
+ */
+export type OfficeConnection =
+  | { readonly kind: "local"; readonly file: string }
+  | { readonly kind: "google"; readonly calendarId: string; readonly decisions: string }
+  | {
+      readonly kind: "quickbooks";
+      readonly realmId: string;
+      readonly environment: "sandbox" | "production";
+    };
+
+/** A document format a role may be allowed to produce. */
+export type OfficeDocumentFormat = (typeof DOCUMENT_FORMATS)[number];
+const DOCUMENT_FORMATS = ["docx", "pptx", "xlsx"] as const;
+
+/** The client names a connection may be filed under, and the kinds each takes. */
+const CONNECTION_KINDS: Readonly<Record<string, readonly OfficeConnection["kind"][]>> = {
+  calendar: ["local", "google"],
+  quickbooks: ["quickbooks"],
+};
+
+/** Each kind's fields beside `kind`, all required, and which of them are paths. */
+const CONNECTION_FIELDS: Readonly<
+  Record<
+    OfficeConnection["kind"],
+    { readonly fields: readonly string[]; readonly paths: readonly string[] }
+  >
+> = {
+  local: { fields: ["file"], paths: ["file"] },
+  google: { fields: ["calendarId", "decisions"], paths: ["decisions"] },
+  quickbooks: { fields: ["realmId", "environment"], paths: [] },
+};
+
 export interface OfficeFileRole {
   /** The role package directory, absolute. */
   readonly dir: string;
+  /** The outside systems this role works in, by the name its factory takes the client under. */
+  readonly connections?: Readonly<Record<string, OfficeConnection>>;
+  /** The document formats this role may produce with the host's document tools. Omitted: none. */
+  readonly documents?: readonly OfficeDocumentFormat[];
   /** Overlay directories, lowest first, absolute. */
   readonly overlays: readonly string[];
   /** How long this agent's approvals wait for a decision before they are declined. Default 240. */
@@ -84,7 +137,9 @@ export function parseOfficeFile(value: unknown, base: string, source = "office f
         return;
       }
       for (const key of Object.keys(entry)) {
-        if (!["dir", "overlays", "approvalTimeoutMinutes"].includes(key)) {
+        if (
+          !["dir", "overlays", "approvalTimeoutMinutes", "connections", "documents"].includes(key)
+        ) {
           problem(`${at}.${key}`, "is not a known field");
         }
       }
@@ -111,8 +166,28 @@ export function parseOfficeFile(value: unknown, base: string, source = "office f
           `must be a number of minutes above 0 and at most ${MAX_APPROVAL_TIMEOUT_MINUTES} (a year), e.g. 240`,
         );
       }
+      const connections = connectionsOf(entry.connections, `${at}.connections`, base, problem);
+      const documents = entry.documents;
+      const formats =
+        Array.isArray(documents) && documents.length > 0
+          ? DOCUMENT_FORMATS.filter((format) => documents.includes(format))
+          : [];
+      if (
+        documents !== undefined &&
+        (formats.length === 0 ||
+          (documents as unknown[]).some(
+            (format) => !DOCUMENT_FORMATS.includes(format as OfficeDocumentFormat),
+          ))
+      ) {
+        problem(
+          `${at}.documents`,
+          `must be a list of the formats the role may produce, from ${DOCUMENT_FORMATS.join(", ")}, e.g. ["xlsx"]`,
+        );
+      }
       if (typeof entry.dir === "string" && Array.isArray(overlays)) {
         roles.push({
+          ...(formats.length === 0 ? {} : { documents: formats }),
+          ...(connections === undefined ? {} : { connections }),
           dir: resolve(base, entry.dir),
           overlays: overlays
             .filter((dir): dir is string => typeof dir === "string")
@@ -129,19 +204,107 @@ export function parseOfficeFile(value: unknown, base: string, source = "office f
   return { id: value.id as string, roles };
 }
 
+/** Checks one role's `connections`, reporting every problem; `undefined` when it names none. */
+function connectionsOf(
+  value: unknown,
+  at: string,
+  base: string,
+  problem: (path: string, message: string) => void,
+): Record<string, OfficeConnection> | undefined {
+  if (value === undefined) return undefined;
+  if (!isObject(value)) {
+    problem(
+      at,
+      'must be an object, e.g. { "calendar": { "kind": "local", "file": "calendar.sqlite" } }',
+    );
+    return undefined;
+  }
+  const connections: Record<string, OfficeConnection> = {};
+  for (const [name, entry] of Object.entries(value)) {
+    const here = `${at}.${name}`;
+    const kinds = CONNECTION_KINDS[name];
+    if (kinds === undefined) {
+      problem(
+        here,
+        `is not a connection this host can make; it makes ${Object.keys(CONNECTION_KINDS).join(" and ")}`,
+      );
+      continue;
+    }
+    if (!isObject(entry)) {
+      problem(here, `must be an object with a kind: ${kinds.join(" or ")}`);
+      continue;
+    }
+    const kind = kinds.find((candidate) => candidate === entry.kind);
+    if (kind === undefined) {
+      problem(
+        `${here}.kind`,
+        `must be ${kinds.map((candidate) => `"${candidate}"`).join(" or ")} (got ${JSON.stringify(entry.kind) ?? "nothing"})`,
+      );
+      continue;
+    }
+    const { fields, paths } = CONNECTION_FIELDS[kind];
+    for (const key of Object.keys(entry)) {
+      if (key !== "kind" && !fields.includes(key))
+        problem(`${here}.${key}`, "is not a known field");
+    }
+    const settings: Record<string, string> = {};
+    let complete = true;
+    for (const field of fields) {
+      const setting = entry[field];
+      if (typeof setting !== "string" || setting.trim().length === 0) {
+        problem(`${here}.${field}`, "must be a non-empty string");
+        complete = false;
+        continue;
+      }
+      settings[field] = paths.includes(field) ? resolve(base, setting) : setting.trim();
+    }
+    if (kind === "google" && settings.calendarId === "primary") {
+      problem(`${here}.calendarId`, 'must name the calendar explicitly; "primary" is not allowed');
+      complete = false;
+    }
+    if (
+      kind === "quickbooks" &&
+      settings.environment !== undefined &&
+      settings.environment !== "sandbox" &&
+      settings.environment !== "production"
+    ) {
+      problem(
+        `${here}.environment`,
+        `must be "sandbox" or "production" (got ${JSON.stringify(settings.environment)})`,
+      );
+      complete = false;
+    }
+    if (complete) connections[name] = { kind, ...settings } as OfficeConnection;
+  }
+  return connections;
+}
+
 /**
  * Loads every role the office file lists, in its order. Refuses two roles with the same manifest id,
  * since a command names its agent by that id. `approve` is the approver every role's gate asks (the
- * runtime's remote approvals); without one, gated actions are refused.
+ * runtime's remote approvals); without one, gated actions are refused. `clientsFor` answers the app
+ * clients the host built for a role's `connections`, by name; a host that builds none leaves it out,
+ * and a role whose entry names connections is then refused rather than loaded without them.
  */
 export async function loadOfficeRoles(
   file: OfficeFile,
-  options: Pick<LoadRoleOptions, "demo" | "approve"> = {},
+  options: Pick<LoadRoleOptions, "demo" | "approve"> & {
+    readonly clientsFor?: (role: OfficeFileRole) => Readonly<Record<string, unknown>>;
+  } = {},
 ): Promise<LoadedRole[]> {
   const roles: LoadedRole[] = [];
   for (const entry of file.roles) {
+    const named = Object.keys(entry.connections ?? {});
+    const clients = options.clientsFor?.(entry) ?? {};
+    const missing = named.filter((name) => !(name in clients));
+    if (missing.length > 0) {
+      throw new Error(
+        `The office file names ${missing.join(" and ")} for the role in ${entry.dir}, but this host built no such client; nothing falls back to demonstration data.`,
+      );
+    }
     const role = await loadRole(entry.dir, {
       overlays: entry.overlays,
+      ...(named.length === 0 ? {} : { clients }),
       ...(options.demo === true ? { demo: true } : {}),
       ...(options.approve === undefined ? {} : { approve: options.approve }),
     });

@@ -127,10 +127,10 @@ cadence counts from the recorded sent day, and each touch is a follow-up schedul
 
 ### Changing the limit
 
-The limit is `officehum.json`'s `quote_limit_cents`, in cents (`500000` is $5,000.00), and it is the
-same number the company package records as `approvalLimits.quoteOverCents` — `src/package.test.ts`
-fails if they drift. A business changes it in an overlay's `settings.json`, with no edit to this
-package and no restart:
+The limit is `officehum.json`'s `quote_limit_cents`, in cents (`500000` is $5,000.00). That is the
+only place it lives: the company record holds no limits, and the company's handbook names the limit
+without a figure, so nothing can drift from what the desk enforces. A business changes it in an
+overlay's `settings.json`, with no edit to this package and no restart:
 
 ```json
 { "limits": { "quote_limit_cents": 750000 } }

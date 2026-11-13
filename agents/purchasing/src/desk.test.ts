@@ -18,7 +18,10 @@ import {
 } from "./desk.js";
 
 const company = loadCompanyFacts();
-const LIMIT = company.approvalLimits.purchaseOrderOverCents;
+/** The manifest's default: the limit a role with no overlay hands the desk at every call. */
+const LIMIT = 150_000;
+/** The options a raise carries: the call's identity and the limit the role resolved for it. */
+const call = (requestId: string) => ({ requestId, purchaseOrderLimitCents: LIMIT });
 
 /** An order a person on the company record asked for, as the tool passes the verified sender. */
 const ASKED = {
@@ -113,6 +116,31 @@ describe("fakePurchasingDesk: stock", () => {
   });
 });
 
+describe("fakePurchasingDesk: an order with no limit resolved", () => {
+  it("is held for a person, never placed as if there were no limit", async () => {
+    const purchasing = desk();
+    const error = (await purchasing
+      .raisePurchaseOrder(
+        {
+          reason: "reorder_point",
+          supplierId: "sup-willamette-filters",
+          lines: [{ itemId: "hvac-filter-stock", quantity: 1 }],
+        },
+        // Written out: `call`'s default would fill the limit in.
+        { requestId: "no-limit", purchaseOrderLimitCents: undefined },
+      )
+      .then(
+        () => undefined,
+        (thrown: unknown) => thrown,
+      )) as PurchasingDeskError | undefined;
+    expect(error).toBeInstanceOf(PurchasingDeskError);
+    expect(error?.code).toBe("over_limit");
+    expect(error?.message).toContain("no purchase order limit is set");
+    const [saved] = await purchasing.listPurchaseOrders({ id: error?.draftId ?? "" });
+    expect(saved?.status).toBe("draft");
+  });
+});
+
 describe("fakePurchasingDesk: suppliers", () => {
   it("lists every supplier on file with its approval from the company data", async () => {
     const suppliers = await desk().listSuppliers();
@@ -139,7 +167,7 @@ describe("fakePurchasingDesk: suppliers", () => {
 describe("fakePurchasingDesk: raising a purchase order", () => {
   it("prices every line from data and places an order inside the limit", async () => {
     const purchasing = desk();
-    const order = await purchasing.raisePurchaseOrder(PACIFIC_RESTOCK, { requestId: "r1" });
+    const order = await purchasing.raisePurchaseOrder(PACIFIC_RESTOCK, call("r1"));
     expect(order).toMatchObject({
       id: "PO-1005",
       status: "placed",
@@ -158,9 +186,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
 
   it("refuses over the limit and saves the order as a draft, with the total it worked out", async () => {
     const purchasing = desk();
-    const refused = await refusal(
-      purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "r2" }),
-    );
+    const refused = await refusal(purchasing.raisePurchaseOrder(CASCADE_RESTOCK, call("r2")));
     expect(refused.code).toBe("over_limit");
     expect(refused.draftId).toBe("PO-1005");
     expect(refused.totalCents).toBe(217200);
@@ -182,7 +208,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           supplierId: "sup-quickship-safety",
           lines: [{ itemId: "nitrile-gloves", quantity: 5 }],
         },
-        { requestId: "r3" },
+        call("r3"),
       ),
     );
     expect(refused.code).toBe("unapproved_supplier");
@@ -199,7 +225,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           supplierId: "sup-evergreen",
           lines: [{ itemId: "nitrile-gloves", quantity: 1 }],
         },
-        { requestId: "r4" },
+        call("r4"),
       ),
     );
     expect(unknown.code).toBe("not_found");
@@ -210,7 +236,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           supplierId: "sup-cascade-paper",
           lines: [{ itemId: "floor-finish", quantity: 1 }],
         },
-        { requestId: "r5" },
+        call("r5"),
       ),
     );
     expect(notOffered.code).toBe("not_offered");
@@ -218,7 +244,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
       const bad = await refusal(
         purchasing.raisePurchaseOrder(
           { ...ASKED, supplierId: "sup-cascade-paper", lines: [{ itemId: "hand-soap", quantity }] },
-          { requestId: `r6-${quantity}` },
+          call(`r6-${quantity}`),
         ),
       );
       expect(bad.code).toBe("invalid");
@@ -226,7 +252,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     const empty = await refusal(
       purchasing.raisePurchaseOrder(
         { ...ASKED, supplierId: "sup-cascade-paper", lines: [] },
-        { requestId: "r7" },
+        call("r7"),
       ),
     );
     expect(empty.code).toBe("invalid");
@@ -243,7 +269,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           { itemId: "hand-towel", quantity: 12 },
         ],
       },
-      { requestId: "s1" },
+      call("s1"),
     );
     expect(first.totalCents).toBe(145200);
     expect(first.totalCents).toBeLessThanOrEqual(LIMIT);
@@ -254,7 +280,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           supplierId: "sup-cascade-paper",
           lines: [{ itemId: "trash-liners", quantity: 20 }],
         },
-        { requestId: "s2" },
+        call("s2"),
       ),
     );
     expect(refused.code).toBe("split_order");
@@ -262,7 +288,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     expect(refused.message).toContain("$2,172.00");
 
     // Another supplier the same day is a separate order.
-    await purchasing.raisePurchaseOrder(PACIFIC_RESTOCK, { requestId: "s3" });
+    await purchasing.raisePurchaseOrder(PACIFIC_RESTOCK, call("s3"));
 
     // The same supplier the next day is a separate order too: $1,452.00 placed on Monday and $720.00
     // on Tuesday would be over the limit if the day were not counted.
@@ -277,7 +303,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           { itemId: "hand-towel", quantity: 12 },
         ],
       },
-      { requestId: "t1" },
+      call("t1"),
     );
     now = "2026-11-10T16:00:00.000Z";
     const next = await week.raisePurchaseOrder(
@@ -286,7 +312,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
         supplierId: "sup-cascade-paper",
         lines: [{ itemId: "trash-liners", quantity: 20 }],
       },
-      { requestId: "t2" },
+      call("t2"),
     );
     expect(next.status).toBe("placed");
   });
@@ -302,7 +328,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           { itemId: "hand-towel", quantity: 12 },
         ],
       },
-      { requestId: "s1" },
+      call("s1"),
     );
     expect(first.status).toBe("placed");
     const refused = await refusal(
@@ -315,7 +341,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
             { itemId: "trash-liners", quantity: 20 },
           ],
         },
-        { requestId: "s2" },
+        call("s2"),
       ),
     );
     expect(refused.code).toBe("split_order");
@@ -349,7 +375,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
         supplierId: "sup-pacific-janitorial",
         lines: [{ itemId: "disinfectant", quantity: 50 }],
       },
-      { requestId: "p1" },
+      call("p1"),
     );
     await pacific.recordReceipt(
       {
@@ -367,7 +393,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           supplierId: "sup-pacific-janitorial",
           lines: [{ itemId: "nitrile-gloves", quantity: 5 }],
         },
-        { requestId: "p3" },
+        call("p3"),
       ),
     );
     expect(second.code).toBe("split_order");
@@ -391,7 +417,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           supplierId: "sup-cascade-paper",
           lines: [{ itemId: "toilet-tissue", quantity: 1 }],
         },
-        { requestId: "s1" },
+        call("s1"),
       ),
     );
     expect(refused.code).toBe("split_order");
@@ -415,7 +441,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     // A small order placed inside the limit, then the PO-1004 draft placed with a person's approval.
     const small = await purchasing.raisePurchaseOrder(
       { ...ASKED, supplierId: "sup-cascade-paper", lines: [{ itemId: "hand-soap", quantity: 2 }] },
-      { requestId: "w1" },
+      call("w1"),
     );
     expect(small).toMatchObject({ id: "PO-1005", status: "placed", approved: false });
     await purchasing.placeDraft(await approvedDraft(purchasing), { requestId: "w2" });
@@ -426,7 +452,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           supplierId: "sup-cascade-paper",
           lines: [{ itemId: "trash-liners", quantity: 1 }],
         },
-        { requestId: "w3" },
+        call("w3"),
       ),
     );
     expect(refused.code).toBe("split_order");
@@ -456,7 +482,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           { itemId: "hand-towel", quantity: 12 },
         ],
       },
-      { requestId: "s1" },
+      call("s1"),
     );
     await refusal(
       purchasing.raisePurchaseOrder(
@@ -465,7 +491,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           supplierId: "sup-cascade-paper",
           lines: [{ itemId: "trash-liners", quantity: 20 }],
         },
-        { requestId: "s2" },
+        call("s2"),
       ),
     );
     const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1006" });
@@ -490,7 +516,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           { itemId: "hand-towel", quantity: 12 },
         ],
       },
-      { requestId: "s1" },
+      call("s1"),
     );
     await refusal(
       purchasing.raisePurchaseOrder(
@@ -499,7 +525,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           supplierId: "sup-cascade-paper",
           lines: [{ itemId: "trash-liners", quantity: 20 }],
         },
-        { requestId: "s2" },
+        call("s2"),
       ),
     );
     const drafts = await purchasing.listPurchaseOrders({ status: "draft" });
@@ -521,15 +547,15 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           { itemId: "hand-towel", quantity: 12 },
         ],
       },
-      { requestId: "s1" },
+      call("s1"),
     );
     const split = {
       ...ASKED,
       supplierId: "sup-cascade-paper",
       lines: [{ itemId: "trash-liners", quantity: 20 }],
     };
-    const once = await refusal(purchasing.raisePurchaseOrder(split, { requestId: "s2" }));
-    const again = await refusal(purchasing.raisePurchaseOrder(split, { requestId: "s2" }));
+    const once = await refusal(purchasing.raisePurchaseOrder(split, call("s2")));
+    const again = await refusal(purchasing.raisePurchaseOrder(split, call("s2")));
     expect(again).toBe(once);
     const [draft] = await purchasing.listPurchaseOrders({ id: "PO-1006" });
     expect(draft?.totalCents).toBe(217200);
@@ -548,7 +574,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
           supplierId: "sup-pacific-janitorial",
           lines: [{ itemId: "neutral-cleaner", quantity: 2 }],
         },
-        { requestId: "u1" },
+        call("u1"),
       ),
     );
     expect(anonymous.code).toBe("unrequested");
@@ -563,7 +589,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
             { itemId: "neutral-cleaner", quantity: 6 },
           ],
         },
-        { requestId: "u2" },
+        call("u2"),
       ),
     );
     expect(notDue.code).toBe("unrequested");
@@ -582,7 +608,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
         supplierId: "sup-willamette-filters",
         lines: [{ itemId: "hvac-filter-stock", quantity: 4 }],
       },
-      { requestId: "rp1" },
+      call("rp1"),
     );
     expect(order).toMatchObject({ status: "placed", reason: "reorder_point" });
     expect(order.requestedBy).toBeUndefined();
@@ -597,12 +623,12 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
       supplierId: "sup-willamette-filters",
       lines: [{ itemId: "hvac-filter-stock", quantity: 5 }],
     };
-    const refused = await refusal(purchasing.raisePurchaseOrder(over, { requestId: "cap-1" }));
+    const refused = await refusal(purchasing.raisePurchaseOrder(over, call("cap-1")));
     expect(refused.code).toBe("unrequested");
     expect(refused.message).toContain("hvac-filter-stock (5 asked, reorder quantity 4)");
     expect(refused.message).toContain("Nothing was ordered.");
     // A replay of the refused call is refused the same way, and neither saved anything.
-    const replayed = await refusal(purchasing.raisePurchaseOrder(over, { requestId: "cap-1" }));
+    const replayed = await refusal(purchasing.raisePurchaseOrder(over, call("cap-1")));
     expect(replayed.message).toBe(refused.message);
     expect(await purchasing.listPurchaseOrders()).toHaveLength(4);
     // Only the line over its quantity is named.
@@ -616,7 +642,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
             { itemId: "nitrile-gloves", quantity: 6 },
           ],
         },
-        { requestId: "cap-2" },
+        call("cap-2"),
       ),
     );
     expect(mixed.message).toContain("nitrile-gloves (6 asked, reorder quantity 5)");
@@ -624,21 +650,19 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     // The reorder quantity itself, or less, goes through; so does more when a person asks for it.
     const exact = await purchasing.raisePurchaseOrder(
       { ...over, lines: [{ itemId: "hvac-filter-stock", quantity: 4 }] },
-      { requestId: "cap-3" },
+      call("cap-3"),
     );
     expect(exact.status).toBe("placed");
     const asked = await desk().raisePurchaseOrder(
       { ...ASKED, supplierId: over.supplierId, lines: over.lines },
-      { requestId: "cap-4" },
+      call("cap-4"),
     );
     expect(asked.status).toBe("placed");
   });
 
   it("holds a reorder-point order to the spending limit like any other order", async () => {
     // Every Cascade line is at its reorder quantity, and together they pass the limit.
-    const refused = await refusal(
-      desk().raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "cap-limit" }),
-    );
+    const refused = await refusal(desk().raisePurchaseOrder(CASCADE_RESTOCK, call("cap-limit")));
     expect(refused.code).toBe("over_limit");
     expect(refused.totalCents).toBeGreaterThan(LIMIT);
   });
@@ -652,7 +676,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
         supplierId: "sup-willamette-filters",
         lines: [{ itemId: "hvac-filter-stock", quantity: 4 }],
       },
-      { requestId: "evening" },
+      call("evening"),
     );
     const lead = company.suppliers.find((supplier) => supplier.id === "sup-willamette-filters");
     expect(order.raisedOn).toBe("2026-11-09");
@@ -662,14 +686,12 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
 
   it("places one order however many times the same call is replayed, and keeps one draft for a replayed refusal", async () => {
     const purchasing = desk();
-    const first = await purchasing.raisePurchaseOrder(PACIFIC_RESTOCK, { requestId: "same" });
-    const again = await purchasing.raisePurchaseOrder(PACIFIC_RESTOCK, { requestId: "same" });
+    const first = await purchasing.raisePurchaseOrder(PACIFIC_RESTOCK, call("same"));
+    const again = await purchasing.raisePurchaseOrder(PACIFIC_RESTOCK, call("same"));
     expect(again).toEqual(first);
-    const refusedOnce = await refusal(
-      purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "over" }),
-    );
+    const refusedOnce = await refusal(purchasing.raisePurchaseOrder(CASCADE_RESTOCK, call("over")));
     const refusedAgain = await refusal(
-      purchasing.raisePurchaseOrder(CASCADE_RESTOCK, { requestId: "over" }),
+      purchasing.raisePurchaseOrder(CASCADE_RESTOCK, call("over")),
     );
     expect(refusedAgain.draftId).toBe(refusedOnce.draftId);
     expect(await purchasing.listPurchaseOrders()).toHaveLength(6);
@@ -761,7 +783,7 @@ describe("fakePurchasingDesk: approving a draft", () => {
             { itemId: "trash-liners", quantity: 20 },
           ],
         },
-        { requestId: "b3" },
+        call("b3"),
       ),
     );
     expect(changed.code).toBe("over_limit");
@@ -796,7 +818,7 @@ describe("fakePurchasingDesk: approving a split's draft", () => {
           { itemId: "hand-towel", quantity: 12 },
         ],
       },
-      { requestId: "s1" },
+      call("s1"),
     );
     await refusal(
       purchasing.raisePurchaseOrder(
@@ -805,7 +827,7 @@ describe("fakePurchasingDesk: approving a split's draft", () => {
           supplierId: "sup-cascade-paper",
           lines: [{ itemId: "trash-liners", quantity: 20 }],
         },
-        { requestId: "s2" },
+        call("s2"),
       ),
     );
     // The recall happens inside the refusal, before anyone can read the draft's facts, so a grant
@@ -830,7 +852,7 @@ describe("fakePurchasingDesk: approving a split's draft", () => {
     const grant = await approvedDraft(purchasing, "PO-1004");
     await purchasing.raisePurchaseOrder(
       { ...ASKED, supplierId: "sup-cascade-paper", lines: [{ itemId: "hand-soap", quantity: 8 }] },
-      { requestId: "s1" },
+      call("s1"),
     );
     await refusal(
       purchasing.raisePurchaseOrder(
@@ -839,7 +861,7 @@ describe("fakePurchasingDesk: approving a split's draft", () => {
           supplierId: "sup-cascade-paper",
           lines: [{ itemId: "trash-liners", quantity: 40 }],
         },
-        { requestId: "s2" },
+        call("s2"),
       ),
     );
     expect((await purchasing.placeDraft(grant, { requestId: "a1" })).status).toBe("placed");
@@ -868,7 +890,7 @@ describe("fakePurchasingDesk: adding a supplier", () => {
         supplierId: "sup-quickship-safety",
         lines: [{ itemId: "nitrile-gloves", quantity: 5 }],
       },
-      { requestId: "n2" },
+      call("n2"),
     );
     expect(order.totalCents).toBe(5 * 5900);
   });

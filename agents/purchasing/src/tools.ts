@@ -55,10 +55,18 @@ import {
   supplierFacts,
 } from "./desk.js";
 
-/** What the tools need: the desk, the company whose supplies it buys, and who is asking. */
+/** The role's limit a purchase order is judged against (`officehum.json`'s `limits`). */
+export const PURCHASE_ORDER_LIMIT = "purchase_order_limit_cents";
+
+/** What the tools need: the desk, the company, the role's resolved limits, and who is asking. */
 export interface PurchasingToolDependencies {
   readonly desk: PurchasingDesk | undefined;
   readonly company: CompanyFacts;
+  /**
+   * The role's resolved limits, read at every call: the manifest's defaults with the business's
+   * overlay on top. Omitted, no limit resolves and the desk holds every order for a person.
+   */
+  readonly limits?: () => Readonly<Record<string, number>>;
   /** The host's verified sender of each call's work. Omitted: every sender is unknown. */
   readonly sender?: SenderResolver;
 }
@@ -188,7 +196,23 @@ function receiptText(receipt: GoodsReceipt): string {
  * shared texts do (no service area or clients, no crew hours or emergency line), so they are this
  * role's own, as is the purchasing section.
  */
-const COMPANY_SECTIONS: Readonly<Record<CompanySection, (company: CompanyFacts) => string>> = {
+/**
+ * The spending limit as one clause. The figure is the role's resolved limit, read when the sentence
+ * is written, so what the role says is what the desk enforces.
+ */
+function purchaseOrderLimitText(limitCents: number | undefined): string {
+  return limitCents === undefined || !Number.isFinite(limitCents)
+    ? "no purchase order limit is set for this role, so every purchase order needs a person's approval"
+    : `a purchase order over ${money(limitCents)} needs a person's approval`;
+}
+
+function capitalised(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
+const companySections = (
+  limitText: () => string,
+): Readonly<Record<CompanySection, (company: CompanyFacts) => string>> => ({
   profile: (company) => {
     const { profile } = company;
     return [
@@ -207,7 +231,7 @@ const COMPANY_SECTIONS: Readonly<Record<CompanySection, (company: CompanyFacts) 
     const lead = personLabel(purchasingLead(company));
     return [
       `Purchasing decisions belong to ${lead}: an order over the limit, a new supplier, a supplier contract, a claim against a supplier, and surplus stock.`,
-      `A purchase order over ${money(company.approvalLimits.purchaseOrderOverCents)} needs a person's approval before it goes out.`,
+      `${capitalised(limitText())} before it goes out.`,
       "Suppliers on file (the company's approved list is its own setting):",
       ...company.suppliers.map(
         (supplier) =>
@@ -219,7 +243,7 @@ const COMPANY_SECTIONS: Readonly<Record<CompanySection, (company: CompanyFacts) 
   tone: companyToneText,
   escalation: companyEscalationText,
   glossary: companyGlossaryText,
-};
+});
 
 /**
  * Builds the nine tools over one desk and one company. Every one is plain Pi Durable: they install
@@ -227,6 +251,9 @@ const COMPANY_SECTIONS: Readonly<Record<CompanySection, (company: CompanyFacts) 
  */
 export function purchasingTools(dependencies: PurchasingToolDependencies): PurchasingToolset {
   const { company } = dependencies;
+  const limit = (): number | undefined => dependencies.limits?.()[PURCHASE_ORDER_LIMIT];
+  /** The limit as a clause, for a person or the model: the figure comes from the resolved limit. */
+  const limitText = (): string => purchaseOrderLimitText(limit());
   const lead = personLabel(purchasingLead(company));
 
   /**
@@ -446,7 +473,8 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
             ...(requester === undefined ? {} : { requestedBy: requester.name }),
             ...(args.requestSource === undefined ? {} : { requestSource: args.requestSource }),
           },
-          { requestId: requestId("raise", api) },
+          // The limit is read now, so an overlay's value is the one the desk judges against.
+          { requestId: requestId("raise", api), purchaseOrderLimitCents: limit() },
         );
         const asked =
           order.requestedBy === undefined
@@ -493,7 +521,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
       )
       .join("; ");
     return {
-      summary: `Place draft ${order.id} with ${order.supplierName}: ${lines}. Total ${money(order.totalCents)}; a purchase order over ${money(company.approvalLimits.purchaseOrderOverCents)} needs a person's approval`,
+      summary: `Place draft ${order.id} with ${order.supplierName}: ${lines}. Total ${money(order.totalCents)}; ${limitText()}`,
       facts: draftFacts(order),
     };
   };
@@ -664,7 +692,7 @@ export function purchasingTools(dependencies: PurchasingToolDependencies): Purch
     company,
     description:
       "Read one section of the company record: the profile, the office hours, the people and what each decides, purchasing (who decides, the spending limit and the approved supplier list), the policies, the tone of voice, the escalation path or the glossary.",
-    sections: COMPANY_SECTIONS,
+    sections: companySections(limitText),
   });
 
   return {

@@ -404,6 +404,10 @@ An overlay's `settings.json` uses Pi's setting names and its `+name` / `-name` e
 Rules:
 
 - Overlays can switch tools **off**, never add them. New tools arrive only in a package release.
+- **A limit lives in one place.** Every amount a business sets is a named limit in a role's
+  `officehum.json`, changed here. The company record holds none, and its handbook names a limit
+  without a figure (the company check refuses an amount it does not record), so what a role says
+  and what it enforces are one number.
 - **Limits change; they are never removed.** An overlay sets a value for a limit the package declares.
   It cannot add a limit, remove one, or switch its approval off: a `null` value is refused, because a
   limit that disappeared would leave the approval it configures with nothing to compare.
@@ -801,8 +805,9 @@ A ticket an agent dispatched with `wait: true` returns to it only once the ticke
 asker waits for the person too.
 
 The runtime passes each role's engine to the checker, and the file store `officehum runtime` opens
-in `files/` beside the board. No catalog role has a tool that puts a file there yet, so in practice
-`file` evidence can pass only for a role that brings one.
+in `files/` beside the board. A role the office file grants document tools (`"documents":
+["xlsx"]`) makes its files in that same store, so its reply can attach one; without that grant no
+catalog role can put a file there.
 
 ## Validation
 

@@ -165,11 +165,6 @@ export interface CompanyGlossaryEntry {
   readonly meaning: string;
 }
 
-export interface CompanyApprovalLimits {
-  /** A purchase order whose total is above this needs a person's approval before it goes out. */
-  readonly purchaseOrderOverCents: number;
-}
-
 /** A supplier on file; `approved` is the company's own approved-supplier list. */
 export interface CompanySupplier {
   readonly id: string;
@@ -247,7 +242,6 @@ export interface CompanyRecord {
   readonly ticketRoutes: readonly CompanyTicketRoute[];
   readonly escalation: readonly CompanyEscalationRule[];
   readonly glossary: readonly CompanyGlossaryEntry[];
-  readonly approvalLimits: CompanyApprovalLimits;
   readonly suppliers: readonly CompanySupplier[];
   readonly supplyCatalog: readonly CompanySupplyItem[];
   readonly crews: readonly CompanyCrew[];
