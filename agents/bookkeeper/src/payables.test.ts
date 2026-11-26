@@ -22,7 +22,12 @@ import {
   type FakeAccountingDesk,
   fakeAccountingDesk,
 } from "./desk.js";
-import { MAJOR_UNMATCHED_LIMIT, type PayablesToolset, payablesTools } from "./payables.js";
+import {
+  MAJOR_UNMATCHED_LIMIT,
+  type PayablesToolset,
+  payablesTools,
+  supplierGuard,
+} from "./payables.js";
 
 const company = loadCompanyFacts();
 const finance = personLabel(financeLead(company), "");
@@ -126,6 +131,53 @@ describe("list_vendor_bills", () => {
     );
     expect(isError(result)).toBe(true);
     expect(details(result).found).toBe(false);
+  });
+});
+
+describe("the supplier guard", () => {
+  type BeforeTool = (call: { name: string; arguments: object }) => Promise<unknown>;
+  const beforeTool = (facts = company): BeforeTool =>
+    (supplierGuard(facts) as unknown as { handlers: { beforeTool: BeforeTool } }).handlers
+      .beforeTool;
+  const bill = (supplier: string) => ({
+    name: "record_vendor_bill",
+    arguments: { ...NEW_BILL, supplier },
+  });
+
+  it("blocks a supplier not on file or not approved, the same on a replay and after a restart", async () => {
+    for (const [supplier, words] of [
+      [
+        "sup-quickship-safety",
+        "Quickship Discount Safety is on file but not on the company's approved supplier list",
+      ],
+      ["Quickship Discount Safety", "not on the company's approved supplier list"],
+      ["Acme Shady Supplies", '"Acme Shady Supplies" is not a supplier on file'],
+    ] as const) {
+      const first = (await beforeTool()(bill(supplier))) as { block: string };
+      expect(first.block).toContain(words);
+      expect(first.block).toContain("Nothing was recorded.");
+      expect(first.block).toContain(personLabel(purchasingLead(company)));
+      // It reads the company record and writes nothing: a replayed call, or a freshly built guard
+      // after a restart, refuses with the same words.
+      const guard = beforeTool();
+      expect(await guard(bill(supplier))).toEqual(first);
+      expect(await guard(bill(supplier))).toEqual(first);
+    }
+  });
+
+  it("lets an approved supplier's bill and every other tool through", async () => {
+    expect(await beforeTool()(bill("sup-columbia-floor"))).toBeUndefined();
+    expect(await beforeTool()(bill(" Columbia Floor Care Supply "))).toBeUndefined();
+    expect(
+      await beforeTool()({ name: "pay_vendor_bill", arguments: { billId: "BILL-2001" } }),
+    ).toBeUndefined();
+  });
+
+  it("blocks a bill when the company record has no supplier list", async () => {
+    const { suppliers: _dropped, ...rest } = company;
+    expect(await beforeTool(rest as typeof company)(bill("sup-columbia-floor"))).toMatchObject({
+      block: expect.stringContaining("supplier list"),
+    });
   });
 });
 

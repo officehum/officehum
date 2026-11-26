@@ -68,17 +68,6 @@
     {
       "toolCalls": [
         {
-          "name": "record_enrollment_change",
-          "args": {
-            "planId": "dental",
-            "action": "drop"
-          }
-        }
-      ]
-    },
-    {
-      "toolCalls": [
-        {
           "name": "request_enrollment_exception",
           "args": {
             "planId": "dental",
@@ -197,11 +186,8 @@
     {
       "toolCalls": [
         {
-          "name": "record_enrollment_change",
-          "args": {
-            "planId": "vision",
-            "action": "enroll"
-          }
+          "name": "get_benefits_summary",
+          "args": {}
         }
       ]
     },

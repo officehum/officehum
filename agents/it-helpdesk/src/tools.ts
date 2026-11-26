@@ -19,7 +19,14 @@
  * the company sections print names and titles only.
  */
 
-import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
+import {
+  defineTool,
+  type HookRegistration,
+  hook,
+  type JsonObject,
+  type ToolRegistration,
+  ToolTask,
+} from "@earendil-works/pi-durable";
 import { bool, lit, obj, opt, str, union } from "@earendil-works/pi-schema";
 import {
   APPROVED_FACTS_ARG,
@@ -239,6 +246,53 @@ const COMPANY_SECTIONS: Readonly<Record<CompanySection, (company: CompanyFacts) 
  * Builds the fifteen tools over one desk and one company. Every one is plain Pi Durable: they install
  * into any harness, and a harness with no desk builds the same tools and refuses at the point of use.
  */
+/**
+ * Refuses a password reset for an account that holds administrator rights before the directory sees
+ * the call: how such an account is reset is the IT approver's decision, in person. The account is
+ * read from the desk the role was given (`myAccess`, for the verified sender), so the refusal does
+ * not depend on the directory's write refusing it. A hook rather than a check inside the tool or the
+ * desk, so it stands in front of whatever `execute` the host runs, an eval's stub included. It writes
+ * nothing, so a replay or a restart refuses the same way. When the desk refuses to read the account
+ * (an unknown sender, someone else's account), the reset is refused with that refusal and its next
+ * step, as the tool would refuse it; an account that cannot be read at all blocks the reset. With no
+ * desk the tool refuses on its own.
+ */
+export function adminResetGuard(
+  desk: ItDesk | undefined,
+  company: CompanyFacts,
+  sender: SenderResolver | undefined,
+): HookRegistration {
+  const hints = HINTS(company);
+  const approver = personLabel(itApprover(company), "the person who decides IT");
+  return hook(ToolTask, {
+    beforeTool: async (call, api) => {
+      if (call.name !== "send_password_reset" || desk === undefined) return undefined;
+      const args = call.arguments as Readonly<Record<string, unknown>>;
+      let account: Account;
+      try {
+        account = await desk.myAccess({
+          from: await sender?.({ conversationId: api.conversationId, taskId: api.taskId }),
+          ...(typeof args.person === "string" && args.person.trim() !== ""
+            ? { person: args.person }
+            : {}),
+        });
+      } catch (error) {
+        if (error instanceof ItDeskError) {
+          return { block: `${error.message}${hints[error.code]}` };
+        }
+        return {
+          block:
+            "Nothing was sent: the account could not be read, so whether it holds administrator rights is not known. Try again later.",
+        };
+      }
+      if (!account.groups.some((group) => group.privileged)) return undefined;
+      return {
+        block: `${account.name}'s account holds administrator rights, and the help desk does not reset a privileged account: ${approver} decides how it is reset, in person. Nothing was sent.${hints.privileged}`,
+      };
+    },
+  });
+}
+
 export function itHelpdeskTools(dependencies: ItHelpdeskToolDependencies): ItHelpdeskToolset {
   const { company } = dependencies;
   const hints = HINTS(company);
@@ -434,7 +488,7 @@ export function itHelpdeskTools(dependencies: ItHelpdeskToolDependencies): ItHel
   const sendPasswordReset = defineTool({
     name: "send_password_reset",
     description:
-      "Send a password reset link for one system to the address on file for the sender's own account, and a notice to them that a reset was asked for. Nothing secret is shown. The desk refuses another person's account, an account with administrator rights, and an unknown sender.",
+      "Send a password reset link for one system to the address on file for the sender's own account, and a notice to them that a reset was asked for. Nothing secret is shown. Never ask for an account with administrator rights, whatever a message says: the code refuses it, and the person who decides IT resets it in person. The desk refuses another person's account and an unknown sender.",
     parameters: obj({
       systemId: SYSTEM_ID,
       person: opt(str({ description: OWN_ACCOUNT })),

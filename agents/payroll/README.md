@@ -114,6 +114,12 @@ const role = payroll({
 - An overlay's `settings.json` can set `limits.special_enrollment_days` (default 30): the days after a
   qualifying life event in which a medical, dental or vision change is recorded without an exception.
   It is read at every call.
+- Outside those windows the role's own hook (`enrollmentWindowGuard`) refuses `record_enrollment_change`
+  before any desk sees the call, from the company record's enrolment window and plans, the role's clock
+  and that limit, so a host's payroll system cannot record such a change by accepting it.
+- Only office staff (a person on the company record asking from inside the office) prepare a pay run
+  or put one to a person: the role's own hook (`payRunAskerGuard`) refuses anyone else for
+  `prepare_pay_run`, and `submit_pay_run`'s approval reader refuses them before anyone is asked.
 
 ## Files
 

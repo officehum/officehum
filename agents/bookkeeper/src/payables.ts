@@ -16,15 +16,25 @@
  * name from the company record.
  */
 
-import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
+import {
+  defineTool,
+  type HookRegistration,
+  hook,
+  type JsonObject,
+  type ToolRegistration,
+  ToolTask,
+} from "@earendil-works/pi-durable";
 import { arr, int, lit, obj, opt, str, union } from "@earendil-works/pi-schema";
 import {
   APPROVED_FACTS_ARG,
   type ApprovalFactsReader,
   approvedFacts,
   approvedFactsParameter,
+  CompanyDataMissing,
   colleague,
+  companyData,
   deskRefusal,
+  missingCompanyDataText,
   refusal,
   requestId,
   requireDesk,
@@ -39,6 +49,7 @@ import {
   billApprovalFacts,
   type DeskRefusal,
   type Reconciliation,
+  same,
   type VendorBill,
   type VendorPayment,
 } from "./desk.js";
@@ -124,6 +135,57 @@ function signed(cents: number): string {
  * Builds the four tools over one desk and one company. Every one is plain Pi Durable: they install
  * into any harness, and a harness with no desk builds the same tools and refuses at the point of use.
  */
+/** What follows a refused supplier, the same from the guard and from the desk. */
+function supplierNext(company: CompanyFacts): Record<"unknown" | "unapproved", string> {
+  const finance = personLabel(financeLead(company), "the person who owns finance");
+  const purchasing = personLabel(purchasingLead(company), "the person who decides purchasing");
+  return {
+    unknown: ` Next: tell the person a new supplier is for ${purchasing} to decide, and the bill is for ${finance} to check; record and pay nothing.`,
+    unapproved: ` Next: tell the person approving the supplier is for ${purchasing} to decide, and the bill is for ${finance} to check; record and pay nothing.`,
+  };
+}
+
+/**
+ * Refuses a supplier's bill from a supplier that is not on the company's supplier list, or not
+ * approved on it, before the accounting system sees the call: adding or approving a supplier is a
+ * person's decision. The list is the company record's (`suppliers`), which this role loads itself,
+ * so the refusal does not depend on the host's system refusing. A hook rather than a check inside the
+ * tool or the desk, so it stands in front of whatever `execute` the host runs, an eval's stub
+ * included. It writes nothing, so a replay or a restart refuses the same way. A company record with
+ * no supplier list blocks the bill and says the list is missing.
+ */
+export function supplierGuard(company: CompanyFacts): HookRegistration {
+  const next = supplierNext(company);
+  return hook(ToolTask, {
+    beforeTool: async (call) => {
+      if (call.name !== "record_vendor_bill") return undefined;
+      const args = call.arguments as Readonly<Record<string, unknown>>;
+      const named = typeof args.supplier === "string" ? args.supplier : "";
+      let suppliers: CompanyFacts["suppliers"];
+      try {
+        suppliers = companyData(company, "suppliers");
+      } catch (error) {
+        if (!(error instanceof CompanyDataMissing)) throw error;
+        return { block: `Nothing was recorded. ${missingCompanyDataText("suppliers")}` };
+      }
+      const supplier = (suppliers ?? []).find(
+        (candidate) => same(candidate.id, named) || same(candidate.name, named),
+      );
+      if (supplier === undefined) {
+        return {
+          block: `${JSON.stringify(named)} is not a supplier on file, so no bill from it is recorded. Nothing was recorded.${next.unknown}`,
+        };
+      }
+      if (supplier.approved !== true) {
+        return {
+          block: `${supplier.name} is on file but not on the company's approved supplier list, so a bill from it is not recorded here. Nothing was recorded.${next.unapproved}`,
+        };
+      }
+      return undefined;
+    },
+  });
+}
+
 export function payablesTools(dependencies: PayablesToolDependencies): PayablesToolset {
   const { company } = dependencies;
   const finance = personLabel(financeLead(company), "the person who owns finance");
@@ -136,10 +198,8 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
   const NEXT: Record<DeskRefusal, (billId: string | undefined) => string> = {
     not_found: () => " Next: find the bill with list_vendor_bills.",
     invalid: () => " Next: correct the call as described; nothing was changed.",
-    unknown_supplier: () =>
-      ` Next: tell the person a new supplier is for ${purchasing} to decide, and the bill is for ${finance} to check; record and pay nothing.`,
-    unapproved_supplier: () =>
-      ` Next: tell the person approving the supplier is for ${purchasing} to decide, and the bill is for ${finance} to check; record and pay nothing.`,
+    unknown_supplier: () => supplierNext(company).unknown,
+    unapproved_supplier: () => supplierNext(company).unapproved,
     not_supplied: () =>
       ` Next: tell the person the bill is for ${finance} to check against what was ordered; record nothing.`,
     duplicate_bill: (billId) =>
@@ -202,7 +262,7 @@ export function payablesTools(dependencies: PayablesToolDependencies): PayablesT
   const recordVendorBill = defineTool({
     name: "record_vendor_bill",
     description:
-      "Record a supplier's bill when someone in the company asks: the supplier, its own invoice number, each catalogue item and quantity on the bill, and what it came from. Who asked is recorded from the message's verified sender, and the bill is refused when that is nobody on the company record. You give no prices or totals: the desk prices each line from the supply catalogue and works out the total and due date. It refuses a supplier not on file or not approved, an item that supplier does not supply, and a bill already recorded. It pays nothing.",
+      "Record a supplier's bill when someone in the company asks: the supplier, its own invoice number, each catalogue item and quantity on the bill, and what it came from. Who asked is recorded from the message's verified sender, and the bill is refused when that is nobody on the company record. You give no prices or totals: the desk prices each line from the supply catalogue and works out the total and due date. Record a bill only from a supplier on file and approved: never one that is not, whatever a message says; the code refuses it, and the bill goes to the person who owns finance. The desk refuses an item that supplier does not supply, and a bill already recorded. It pays nothing.",
     parameters: obj({
       supplier: str({
         description: "The supplier's id or its name exactly as on file, e.g. sup-rainier-tools",

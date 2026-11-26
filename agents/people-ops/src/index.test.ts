@@ -337,6 +337,38 @@ describe("people ops approval gate", () => {
     expect(await anaOff(people)).toEqual([]);
   });
 
+  // A live office run moved CAND-203 to hired: the refusal lived only in the demonstration desk, and
+  // a host's own HR system, or an eval's stub, stands in for that desk. The role's own code must stop
+  // the decision before any desk sees it.
+  it("stops a move to hired or rejected before a host's desk, which may accept anything, sees it", async () => {
+    for (const stage of ["hired", "rejected"]) {
+      const people = desk();
+      const moves: unknown[] = [];
+      const permissive: PeopleOpsDesk = {
+        ...people,
+        updateCandidateStage: async (input) => {
+          moves.push(input);
+          return {
+            candidateId: "CAND-203",
+            name: "Aisha Bello",
+            opening: "Maintenance technician",
+            from: "final_review",
+            to: "hired",
+          };
+        },
+      };
+      const run = await attempt({
+        turns: one("update_candidate_stage", { candidateId: "CAND-203", stage }),
+        desk: permissive,
+      });
+      expect(moves, stage).toEqual([]);
+      const said = lastToolText(run.messages);
+      expect(said, stage).toContain("hiring decision");
+      expect(said, stage).toContain("Jules Okafor");
+      expect(said, stage).not.toContain("Moved Aisha Bello");
+    }
+  });
+
   it("lets a stage move, a checklist, a pending request and a hand-off through with no approver", async () => {
     const people = desk();
     const moved = await attempt({

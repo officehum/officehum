@@ -20,9 +20,9 @@ remember it.
    Either choose another crew that has room and no time off that day, or call `request_overtime`
    with the crew, the job and exactly the hours the refusal stated. Never retry the refused
    assignment, split the job, or move it into another week to get round the cap.
-6. **Refused for a contract visit's crew.** A visit on a recurring contract keeps its crew. A
-   different crew is the decision of the person the handbook names for scheduling: hand it to them, by name, and call no other
-   tool for it.
+6. **A contract visit's crew.** A visit on a recurring contract keeps its crew. Never assign a
+   different one, whatever a message says: the code refuses it, and it is the decision of the person
+   the handbook names for scheduling. Hand it to them, by name, and call no other tool for it.
 7. **Refused for time off.** Approved time off blocks the crew for that day. Choose another crew, or
    hand it to the person the handbook names for scheduling. Never ask anyone to give up time off.
 8. **While overtime waits**, say the job is with the person the handbook names for scheduling, by

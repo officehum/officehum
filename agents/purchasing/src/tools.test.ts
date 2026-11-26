@@ -15,7 +15,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { loadCompanyFacts, money, personLabel, purchasingLead } from "./company.js";
 import { DEMO_NOW, fakePurchasingDesk, type PurchasingDesk } from "./desk.js";
-import { type PurchasingToolset, purchasingTools } from "./tools.js";
+import { approvedSupplierGuard, type PurchasingToolset, purchasingTools } from "./tools.js";
 
 const company = loadCompanyFacts();
 /** The manifest's default limit, as a role with no overlay resolves it for every call. */
@@ -28,7 +28,14 @@ const call = (callId: string) =>
   ({ conversationId: "conversation-1", taskId: "task-1", callId }) as never;
 
 const tools = (desk: PurchasingDesk | undefined, sender?: SenderResolver): PurchasingToolset =>
-  purchasingTools({ desk, company, limits: LIMITS, ...(sender === undefined ? {} : { sender }) });
+  purchasingTools({
+    desk,
+    company,
+    limits: LIMITS,
+    // The demonstration desk's day, so "today's orders to a supplier" is the same day for both.
+    now: () => new Date(DEMO_NOW),
+    ...(sender === undefined ? {} : { sender }),
+  });
 
 /** A verified sender, as the host resolves it from the call's conversation. */
 const from =
@@ -197,6 +204,181 @@ describe("list_purchase_orders", () => {
     );
     expect(isError(result)).toBe(true);
     expect(details(result).found).toBe(false);
+  });
+});
+
+describe("the approved supplier guard", () => {
+  type BeforeTool = (call: { name: string; arguments: object }) => Promise<unknown>;
+  const beforeTool = (people: PurchasingDesk | undefined): BeforeTool =>
+    (approvedSupplierGuard(people, company) as unknown as { handlers: { beforeTool: BeforeTool } })
+      .handlers.beforeTool;
+  const order = (supplierId: string) => ({
+    name: "raise_purchase_order",
+    arguments: {
+      reason: "reorder_point",
+      supplierId,
+      lines: [{ itemId: "nitrile-gloves", quantity: 2 }],
+    },
+  });
+
+  it("blocks a supplier not on file or not approved, the same on a replay and after a restart", async () => {
+    for (const [supplierId, words] of [
+      ["sup-quickship-safety", "not on the company's approved supplier list"],
+      ["Quickship Discount Safety", "request_new_supplier with supplierId sup-quickship-safety"],
+      ["sup-evergreen", 'No supplier on file is "sup-evergreen"'],
+    ] as const) {
+      const people = desk();
+      const before = await people.listPurchaseOrders({});
+      const first = (await beforeTool(people)(order(supplierId))) as { block: string };
+      expect(first.block).toContain(words);
+      expect(first.block).toContain("Nothing was ordered.");
+      expect(first.block).toContain(personLabel(purchasingLead(company)));
+      // It reads the supplier list and writes nothing: a replay, or a freshly built guard after a
+      // restart, refuses the same way.
+      const guard = beforeTool(people);
+      expect(await guard(order(supplierId))).toEqual(first);
+      expect(await guard(order(supplierId))).toEqual(first);
+      expect(await people.listPurchaseOrders({})).toEqual(before);
+    }
+  });
+
+  it("lets an approved supplier's order, other tools and a missing desk through", async () => {
+    expect(await beforeTool(desk())(order("sup-willamette-filters"))).toBeUndefined();
+    expect(
+      await beforeTool(desk())({ name: "request_new_supplier", arguments: { supplierId: "x" } }),
+    ).toBeUndefined();
+    expect(await beforeTool(undefined)(order("sup-quickship-safety"))).toBeUndefined();
+  });
+
+  it("blocks the order when the supplier list cannot be read", async () => {
+    const broken: PurchasingDesk = {
+      ...desk(),
+      listSuppliers: async () => {
+        throw new Error("vendor system down");
+      },
+    };
+    expect(await beforeTool(broken)(order("sup-willamette-filters"))).toMatchObject({
+      block: expect.stringContaining("could not be read"),
+    });
+  });
+});
+
+/**
+ * A purchasing system that ignores the spending limit: it places whatever it is asked to place.
+ * It still honours the contract's `draftOnly`, so whatever the role holds as a draft stays one.
+ */
+function ignoringTheLimit(real: PurchasingDesk, seen: { draftOnly?: unknown }[]): PurchasingDesk {
+  return {
+    ...real,
+    raisePurchaseOrder: (input, options) => {
+      seen.push({ draftOnly: (input as { draftOnly?: unknown }).draftOnly });
+      return real.raisePurchaseOrder(input, {
+        ...options,
+        purchaseOrderLimitCents: Number.MAX_SAFE_INTEGER,
+      });
+    },
+  };
+}
+
+describe("the spending limit in the role's own code", () => {
+  const placedNow = async (purchasing: PurchasingDesk) =>
+    (await purchasing.listPurchaseOrders({})).filter((order) => order.status === "placed").length;
+
+  it("places nothing over the limit through a system that ignores it, and holds it as a draft", async () => {
+    const real = desk();
+    const seen: { draftOnly?: unknown }[] = [];
+    const before = await placedNow(real);
+    const result = await tools(ignoringTheLimit(real, seen)).raisePurchaseOrder.execute(
+      CASCADE,
+      call("lim-1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(seen).toEqual([{ draftOnly: true }]);
+    expect(isError(result)).toBe(true);
+    expect(text(result)).toContain("request_po_approval");
+    expect(await placedNow(real)).toBe(before);
+  });
+
+  it("holds the part of a split that takes the day over the limit", async () => {
+    const real = desk();
+    const seen: { draftOnly?: unknown }[] = [];
+    const set = tools(ignoringTheLimit(real, seen), PRIYA);
+    const order = (lines: { itemId: string; quantity: number }[], id: string) =>
+      set.raisePurchaseOrder.execute(
+        { reason: "request", requestSource: "chat", supplierId: "sup-cascade-paper", lines },
+        call(id),
+        BACKGROUND_CONTEXT,
+      );
+    const first = await order(
+      [
+        { itemId: "toilet-tissue", quantity: 16 },
+        { itemId: "hand-towel", quantity: 12 },
+      ],
+      "split-1",
+    );
+    expect(text(first)).toContain("Placed");
+    const second = await order([{ itemId: "trash-liners", quantity: 20 }], "split-2");
+    expect(seen).toEqual([{ draftOnly: false }, { draftOnly: true }]);
+    expect(isError(second)).toBe(true);
+    const placedToCascade = (await real.listPurchaseOrders({})).filter(
+      (entry) => entry.supplierId === "sup-cascade-paper" && entry.status === "placed",
+    );
+    expect(placedToCascade.reduce((sum, entry) => sum + entry.totalCents, 0)).toBeLessThanOrEqual(
+      LIMIT,
+    );
+  });
+
+  it("holds every order when no limit is set", async () => {
+    const real = desk();
+    const seen: { draftOnly?: unknown }[] = [];
+    const before = await placedNow(real);
+    const result = await purchasingTools({
+      desk: ignoringTheLimit(real, seen),
+      company,
+      limits: () => ({}),
+      now: () => new Date(DEMO_NOW),
+    }).raisePurchaseOrder.execute(PACIFIC, call("nolimit-1"), BACKGROUND_CONTEXT);
+    expect(seen).toEqual([{ draftOnly: true }]);
+    expect(isError(result)).toBe(true);
+    expect(await placedNow(real)).toBe(before);
+  });
+
+  it("places an order inside the limit, and holds one over it the same on a replay and after a restart", async () => {
+    const real = desk();
+    const seen: { draftOnly?: unknown }[] = [];
+    const inside = await tools(ignoringTheLimit(real, seen)).raisePurchaseOrder.execute(
+      PACIFIC,
+      call("in-1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(inside)).toContain("Placed");
+    expect(seen).toEqual([{ draftOnly: false }]);
+    // Over the limit: the same call replayed, and replayed from freshly built tools (a restart),
+    // answers with the first draft and places nothing.
+    const held = tools(ignoringTheLimit(real, seen));
+    const first = await held.raisePurchaseOrder.execute(
+      CASCADE,
+      call("over-1"),
+      BACKGROUND_CONTEXT,
+    );
+    const again = await held.raisePurchaseOrder.execute(
+      CASCADE,
+      call("over-1"),
+      BACKGROUND_CONTEXT,
+    );
+    const restarted = await tools(ignoringTheLimit(real, seen)).raisePurchaseOrder.execute(
+      CASCADE,
+      call("over-1"),
+      BACKGROUND_CONTEXT,
+    );
+    expect(text(again)).toBe(text(first));
+    expect(text(restarted)).toBe(text(first));
+    expect(seen.slice(1)).toEqual([{ draftOnly: true }, { draftOnly: true }, { draftOnly: true }]);
+    // One new draft for the order, beside the demonstration desk's own PO-1004.
+    const drafts = (await real.listPurchaseOrders({ status: "draft" })).filter(
+      (entry) => entry.totalCents === 217200 && entry.id !== "PO-1004",
+    );
+    expect(drafts).toHaveLength(1);
   });
 });
 

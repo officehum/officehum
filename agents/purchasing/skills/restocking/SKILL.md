@@ -33,8 +33,9 @@ remember it.
    refuses orders to one supplier on one day that together pass the limit, and splitting is the
    thing the limit exists to stop. If an order to that supplier already went out today, the desk
    recalls it into the draft, so the draft is the whole order: say so.
-6. **Refused for the supplier.** A supplier not on the approved list is never ordered from. Use the
-   usual supplier from `list_stock`, or call `request_new_supplier` if someone wants that supplier.
+6. **Not for an unapproved supplier.** Never order from a supplier not on the approved list: the code
+   refuses it. Use the usual supplier from `list_stock`, or call `request_new_supplier` if someone
+   wants that supplier.
 7. **While an approval waits**, say the order is with the person who decides purchasing, by name, as
    the approval's result names them; do not say when they will answer. **If approved**, the receipt
    shows the order placed; give its number and expected date. **If declined**, say plainly the order

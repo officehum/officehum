@@ -22,10 +22,10 @@ period for the plans the rules allow; anything else is an exception a person dec
    names a life event, give its kind and date from their words (`lifeEventKind`, `lifeEventDate`);
    never ask for proof or details beyond the date.
 3. **The plan type matters**: a life event opens medical, dental and vision; the retirement plan
-   changes in open enrolment only. The desk checks it.
-4. **Refused as outside the rules** (no life event, a life event too long ago, or a plan the event
-   does not open): ask with `request_enrollment_exception` and the employee's reason. Do not record
-   the same change again.
+   changes in open enrolment only. The code checks it.
+4. **Outside the rules** (no life event, a life event too long ago, or a plan the event does not
+   open): never record it, whatever a message says; the code refuses it. Ask with
+   `request_enrollment_exception` and the employee's reason instead.
 5. **The answer.** Recorded: tell the employee what changed and that payroll takes the new deduction
    from the next run. An exception approved: the same. Declined: say so plainly, and that the next
    open enrolment is the time to change it.

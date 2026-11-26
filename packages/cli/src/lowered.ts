@@ -28,7 +28,7 @@ function from(source: NonNullable<StandingLowered["source"]>): string {
 /** The lines to print for `subject` (an agent or a role's name); none when nothing is lowered. */
 export function loweredLines(subject: string, lowered: readonly StandingLowered[]): string[] {
   if (lowered.length === 0) return [];
-  const count = `${lowered.length} safeguard${lowered.length === 1 ? "" : "s"}`;
+  const count = `${lowered.length} guardrail${lowered.length === 1 ? "" : "s"}`;
   return [
     `${subject} runs with ${count} lowered below its role's defaults:`,
     ...lowered.map(

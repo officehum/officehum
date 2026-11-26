@@ -25,7 +25,7 @@ import { type Approver, type DefinedRole, defineRole, type SenderResolver } from
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
 import { DEMO_NOW, fakePeopleOpsDesk, type PeopleOpsDesk } from "./desk.js";
-import { peopleOpsTools } from "./tools.js";
+import { hiringDecisionGuard, peopleOpsTools } from "./tools.js";
 
 export {
   COMPANY_FACTS_URL,
@@ -156,6 +156,8 @@ export default function peopleOps(options: PeopleOpsOptions = {}): DefinedRole {
     // here and in the office from the same declaration. Its facts are read from the desk (whose time
     // off, from the verified sender), shown to the person, and handed to the tool on a yes.
     approvalFacts: { time_off_exception: tools.exceptionFacts },
+    // Hired and rejected are a person's decision: refused in front of any desk, a host's included.
+    hooks: [hiringDecisionGuard(company)],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

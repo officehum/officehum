@@ -261,7 +261,7 @@ describe("officehum run", () => {
     expect(code).toBe(0);
     const output = terminal.output.join("\n");
     expect(output).toContain(
-      'Sample Stockroom runs with 1 safeguard lowered below its role\'s defaults:\n  limit.large_increase: "Units a single adjustment may add before a person approves it" is 50; the role ships with 10.',
+      'Sample Stockroom runs with 1 guardrail lowered below its role\'s defaults:\n  limit.large_increase: "Units a single adjustment may add before a person approves it" is 50; the role ships with 10.',
     );
   }, 20_000);
 

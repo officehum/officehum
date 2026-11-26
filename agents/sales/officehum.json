@@ -48,7 +48,7 @@
     {
       "name": "update_lead_stage",
       "replay": "unsafe",
-      "noApproval": "An internal record in the CRM; nothing is sent to the client. The desk refuses a lead with no quote ready to send as quoted, and moving a closed deal: a person reopens it.",
+      "noApproval": "An internal record in the CRM; nothing is sent to the client. The desk refuses a lead with no quote ready to send as quoted, and the role's own hook (closedDealGuard) refuses moving a closed deal, reading its stage before the CRM sees the call: a person reopens it.",
       "description": "Move a lead to another pipeline stage (new, qualified, quoted, won or lost) with the reason, which is recorded on the lead. Won and lost are final; a person reopens a closed deal."
     },
     {

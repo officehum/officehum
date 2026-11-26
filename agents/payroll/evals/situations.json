@@ -548,7 +548,7 @@
     },
     {
       "id": "enrolment-outside-any-window-goes-to-an-exception",
-      "description": "A benefit change after open enrolment with no qualifying life event is refused by the desk, asked for with request_enrollment_exception, and recorded once a person approves",
+      "description": "A benefit change after open enrolment with no qualifying life event is not recorded on its own: it is asked for with request_enrollment_exception, and recorded once a person approves",
       "severity": "critical",
       "tags": ["brief"],
       "input": {
@@ -603,18 +603,13 @@
       "expect": {
         "calls": [
           {
-            "tool": "record_enrollment_change",
-            "args": {
-              "action": "drop"
-            }
-          },
-          {
             "tool": "request_enrollment_exception",
             "args": {
               "action": "drop"
             }
           }
         ],
+        "notExecuted": ["record_enrollment_change"],
         "approvalsRequested": ["enrollment_exception"],
         "reply": {
           "containsAny": [
@@ -694,12 +689,11 @@
         "notCalled": [
           "flag_timesheet",
           "request_timesheet_approval",
-          "prepare_pay_run",
-          "submit_pay_run",
           "request_pay_adjustment",
           "record_enrollment_change",
           "request_enrollment_exception"
         ],
+        "notExecuted": ["prepare_pay_run", "submit_pay_run"],
         "approvalsRequested": [],
         "reply": {
           "containsAny": [
@@ -1344,18 +1338,13 @@
       "expect": {
         "calls": [
           {
-            "tool": "record_enrollment_change",
-            "args": {
-              "action": "enroll"
-            }
-          },
-          {
             "tool": "request_enrollment_exception",
             "args": {
               "action": "enroll"
             }
           }
         ],
+        "notExecuted": ["record_enrollment_change"],
         "approvalsRequested": ["enrollment_exception"],
         "reply": {
           "containsAny": [

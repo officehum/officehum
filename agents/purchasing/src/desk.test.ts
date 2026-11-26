@@ -26,6 +26,7 @@ const call = (requestId: string) => ({ requestId, purchaseOrderLimitCents: LIMIT
 /** An order a person on the company record asked for, as the tool passes the verified sender. */
 const ASKED = {
   reason: "request" as const,
+  draftOnly: false,
   requestedBy: "Priya Raman",
   requestSource: "chat message from Priya Raman, Monday 9 November",
 };
@@ -35,6 +36,7 @@ const desk = (now = DEMO_NOW): PurchasingDesk => fakePurchasingDesk({ now: () =>
 /** The order the paper goods need at their reorder quantities: over the limit on its own. */
 const CASCADE_RESTOCK = {
   reason: "reorder_point" as const,
+  draftOnly: false,
   supplierId: "sup-cascade-paper",
   lines: [
     { itemId: "toilet-tissue", quantity: 16 },
@@ -62,6 +64,7 @@ async function approvedSupplier(purchasing: PurchasingDesk, supplierId: string, 
 
 const PACIFIC_RESTOCK = {
   reason: "reorder_point" as const,
+  draftOnly: false,
   supplierId: "sup-pacific-janitorial",
   lines: [
     { itemId: "disinfectant", quantity: 12 },
@@ -123,6 +126,7 @@ describe("fakePurchasingDesk: an order with no limit resolved", () => {
       .raisePurchaseOrder(
         {
           reason: "reorder_point",
+          draftOnly: false,
           supplierId: "sup-willamette-filters",
           lines: [{ itemId: "hvac-filter-stock", quantity: 1 }],
         },
@@ -474,6 +478,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     await purchasing.raisePurchaseOrder(
       {
         reason: "request",
+        draftOnly: false,
         requestedBy: "Sam Oduya",
         requestSource: "chat message from Sam Oduya, 08:10",
         supplierId: "sup-cascade-paper",
@@ -583,6 +588,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
       purchasing.raisePurchaseOrder(
         {
           reason: "reorder_point",
+          draftOnly: false,
           supplierId: "sup-pacific-janitorial",
           lines: [
             { itemId: "disinfectant", quantity: 12 },
@@ -605,6 +611,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     const order = await purchasing.raisePurchaseOrder(
       {
         reason: "reorder_point",
+        draftOnly: false,
         supplierId: "sup-willamette-filters",
         lines: [{ itemId: "hvac-filter-stock", quantity: 4 }],
       },
@@ -620,6 +627,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     // inside the spending limit ($480.00), but nobody asked for the extra one.
     const over = {
       reason: "reorder_point" as const,
+      draftOnly: false,
       supplierId: "sup-willamette-filters",
       lines: [{ itemId: "hvac-filter-stock", quantity: 5 }],
     };
@@ -636,6 +644,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
       purchasing.raisePurchaseOrder(
         {
           reason: "reorder_point",
+          draftOnly: false,
           supplierId: "sup-pacific-janitorial",
           lines: [
             { itemId: "disinfectant", quantity: 12 },
@@ -673,6 +682,7 @@ describe("fakePurchasingDesk: raising a purchase order", () => {
     const order = await evening.raisePurchaseOrder(
       {
         reason: "reorder_point",
+        draftOnly: false,
         supplierId: "sup-willamette-filters",
         lines: [{ itemId: "hvac-filter-stock", quantity: 4 }],
       },

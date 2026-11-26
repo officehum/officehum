@@ -69,7 +69,7 @@ anyone.
 | Tool | Replay | Gate | What it is for |
 | --- | --- | --- | --- |
 | `list_candidates` | safe | — | The pipeline by opening, stage or candidate; no contact details. Only for a colleague asking from inside the office |
-| `update_candidate_stage` | unsafe | `noApproval`; the pipeline is internal, and hired and rejected are refused | Move a candidate between applied, screening, interview and final_review |
+| `update_candidate_stage` | unsafe | `noApproval`; the pipeline is internal, and hired and rejected are refused in code (`hiringDecisionGuard`) before any desk sees the call | Move a candidate between applied, screening, interview and final_review |
 | `onboarding_checklist` | unsafe | `noApproval`; creates a checklist for someone a person hired | Who to tell, orientation, paperwork, first tasks and access, due dates from the start date |
 | `record_time_off_request` | unsafe | `noApproval`; records a request as pending | The sender's own time off (or one a person on the record files for someone), refused for short notice unless the reason may be protected |
 | `request_time_off_exception` | unsafe | approval `time_off_exception`, every call | Short-notice time off, with the notice the desk worked out |

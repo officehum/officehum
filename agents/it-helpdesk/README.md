@@ -70,7 +70,7 @@ the real tool says; `src/package.test.ts` checks the `read_company` ones.
 | `escalate_ticket` | unsafe | `noApproval` | Hand an open ticket to the system's owner, or to whoever decides IT, with notes |
 | `resolve_ticket` | unsafe | `noApproval`; closes only with the reporter's confirmation | Record the fix and whether the reporter confirmed it |
 | `list_my_access` | safe | — | The sender's own account and groups, never anyone else's |
-| `send_password_reset` | unsafe | `noApproval`; the sender's own account only, never a privileged one | A reset link to the address on file, and a notice to the holder |
+| `send_password_reset` | unsafe | `noApproval`; the sender's own account only, never a privileged one: the role's own hook (`adminResetGuard`) reads the account (`myAccess`) and refuses before any directory sees the call | A reset link to the address on file, and a notice to the holder |
 | `request_sign_in_method_change` | unsafe | approval `sign_in_method_change`, every call | A new or lost sign-in phone, on the sender's own account |
 | `request_access` | unsafe | approval `access_grant`, every call; an administrator group is refused outright | Add someone to an access group |
 | `request_account_setup` | unsafe | approval `account_setup`, every call | A new joiner's account, with the standard staff groups |

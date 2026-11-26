@@ -33,7 +33,7 @@ import {
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, financeLead, loadCompanyFacts, personLabel } from "./company.js";
 import { type AccountingDesk, DEMO_NOW, fakeAccountingDesk } from "./desk.js";
-import { payablesTools } from "./payables.js";
+import { payablesTools, supplierGuard } from "./payables.js";
 import {
   bookkeeperTools,
   largeInvoiceCondition,
@@ -254,18 +254,20 @@ export default function bookkeeper(options: BookkeeperOptions): DefinedRole {
         payables.paymentApprovalFacts,
       ),
     },
-    // A sender the host says wrote from outside gets no customer's records; with no resolver there
-    // is nobody to tell apart, so the lookups answer as they always have.
-    ...(options.sender === undefined
-      ? {}
-      : {
-          hooks: [
+    // A bill from a supplier not on file or not approved is refused in front of any accounting
+    // system. A sender the host says wrote from outside gets no customer's records; with no resolver
+    // there is nobody to tell apart, so the lookups answer as they always have.
+    hooks: [
+      supplierGuard(company),
+      ...(options.sender === undefined
+        ? []
+        : [
             outsideSenderLookupGuard(
               options.sender,
               personLabel(financeLead(company), "the person who owns billing"),
             ),
-          ],
-        }),
+          ]),
+    ],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
     ...(options.packs === undefined ? {} : { packs: options.packs }),

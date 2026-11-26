@@ -67,7 +67,7 @@ passed on to anyone.
 | `list_suppliers` | safe | — | The suppliers on file, their lead times and items, and whether each is approved |
 | `compare_suppliers` | safe | — | One item's suppliers: unit cost and lead time from the price lists, cheapest first |
 | `list_purchase_orders` | safe | — | Orders by number, supplier or status: lines, total, dates, what was received |
-| `raise_purchase_order` | unsafe | `noApproval`; the desk refuses an order nobody asked for, over the limit, a split order, or an unapproved supplier | Order items and quantities from one supplier, with the reason |
+| `raise_purchase_order` | unsafe | `noApproval`; the desk refuses an order nobody asked for, over the limit, or a split order; the role's own hook (`approvedSupplierGuard`) refuses a supplier not on file or not approved, read from `listSuppliers`, before any desk sees the call | Order items and quantities from one supplier, with the reason |
 | `request_po_approval` | unsafe | approval `po_over_limit`, every call | Place one draft the desk refused for the limit, named by its id |
 | `request_new_supplier` | unsafe | approval `new_supplier`, every call | Add a supplier on file to the approved list, named by its id, with the reason |
 | `record_receipt` | unsafe | `noApproval`; the verified sender's report, checked against the order | Record goods received against a placed order |
@@ -88,6 +88,13 @@ business changes it in an overlay's `settings.json`, with no edit to this packag
 
 The role reads the resolved limit at every call, so the figure `read_company` states and the figure
 the desk enforces are the same number. With no limit resolved, every order waits for a person.
+
+**The role decides the limit itself.** Before it raises an order, the tool prices each line from
+`compareSuppliers`, adds today's orders to that supplier from `listPurchaseOrders` (placed, not
+drafts, not recalled), and compares the sum with the resolved limit, all in code. When the order would
+pass the limit on its own, when today's orders to that supplier with it would (a split), or when no
+limit is set, it passes `draftOnly: true` to `raisePurchaseOrder`, and the desk saves a draft and
+places nothing. So a host's purchasing system that ignores the limit still places nothing over it.
 
 **Over the limit.** The desk refuses the order, saves it as a draft with its own purchase order
 number, and the refusal names `request_po_approval` with that draft's id and the person who decides.
@@ -179,8 +186,11 @@ The role ships no ERP or inventory connection. `fakePurchasingDesk` is the demon
 binds a `PurchasingDesk` (`src/desk.ts`): `listStock`, `listSuppliers`, `compareSuppliers`,
 `listPurchaseOrders`, `raisePurchaseOrder`, `placeDraft`, `addSupplier` and `recordReceipt`. Every
 write carries a `requestId` derived from the durable call identity, so a retried call returns what it
-already did, including a refusal that saved a draft. The desk owns the pricing, the limit and the
-refusals; a refusal is a `PurchasingDeskError` with a `code` the tools turn into the next step.
+already did, including a refusal that saved a draft. The desk owns the pricing and its refusals; a
+refusal is a `PurchasingDeskError` with a `code` the tools turn into the next step. `raisePurchaseOrder`
+takes a required `draftOnly`: when the role sets it, the desk must save the order as a draft and place
+nothing, refusing with `over_limit` (or `split_order`, recalling today's unapproved orders to that
+supplier into the draft) and the draft's id, even when its own limit would let the order through.
 
 ```ts
 import purchasing from "@officehum/purchasing";

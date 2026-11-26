@@ -36,7 +36,7 @@
     {
       "name": "prepare_pay_run",
       "replay": "unsafe",
-      "noApproval": "Prepares a draft pay run nobody is paid from: the desk works out regular and overtime hours per workweek and gross pay. It refuses while a timesheet is missing or unapproved. Submitting the draft needs a person's approval.",
+      "noApproval": "Prepares a draft pay run nobody is paid from: the desk works out regular and overtime hours per workweek and gross pay. It refuses while a timesheet is missing or unapproved, and the role's hook (payRunAskerGuard) refuses anyone but office staff. Submitting needs a person's approval.",
       "description": "Prepare the draft pay run for a closed pay period, with hours and gross pay worked out by the desk."
     },
     {
@@ -62,7 +62,7 @@
     {
       "name": "record_enrollment_change",
       "replay": "unsafe",
-      "noApproval": "Records the sender's own benefit change inside open enrolment, or within the special enrolment period after a qualifying life event, which the plan rules allow. The desk refuses the rest and points to request_enrollment_exception.",
+      "noApproval": "Records the sender's own benefit change inside open enrolment, or within the special enrolment period after a qualifying life event, which the plan rules allow. The role's own hook (enrollmentWindowGuard) refuses the rest before the desk sees it and points to request_enrollment_exception.",
       "description": "Record the sender's own enrolment in, or removal from, a benefit plan, inside open enrolment or after a qualifying life event."
     },
     {

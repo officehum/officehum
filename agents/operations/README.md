@@ -55,9 +55,9 @@ member's pay rise the role cannot decide, never claimed as passed on to anyone.
 | --- | --- | --- | --- |
 | `list_jobs` | safe | — | The schedule, by date, crew or client: hours, crew, one-off or contract visit |
 | `list_crews` | safe | — | Each crew's week: hours booked, cap, approved overtime, hours left, time off |
-| `assign_crew` | unsafe | `noApproval`; the desk refuses past the cap, on time off, or a different crew on a contract visit | Put a crew on a job |
+| `assign_crew` | unsafe | `noApproval`; the role's own hook (`scheduleDecisionGuard`) refuses past the cap, working out the overtime, or a different crew on a contract visit, before any desk sees the call; the desk refuses time off | Put a crew on a job |
 | `request_overtime` | unsafe | approval `overtime`, every call while the company's `staffPolicies.overtimeNeedsApproval` holds | Overtime so a crew can take a job its cap cannot hold |
-| `reschedule_job` | unsafe | `noApproval`; the desk refuses a contract visit | Move a one-off job |
+| `reschedule_job` | unsafe | `noApproval`; the role's own hook (`scheduleDecisionGuard`) refuses a contract visit before any desk sees the call | Move a one-off job |
 | `request_contract_reschedule` | unsafe | approval `contract_reschedule`, every call | Move a visit on a recurring contract |
 | `record_callout` | unsafe | `noApproval`: an internal record | Record a call-out request; it books nothing |
 | `read_company` | safe | — | One section of the company record, including the crews and staff policies |

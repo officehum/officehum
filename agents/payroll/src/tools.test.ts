@@ -15,7 +15,14 @@ import {
   timesheetApprover,
 } from "./company.js";
 import { DEMO_NOW, type DeskRefusal, fakePayrollDesk, type PayrollDesk } from "./desk.js";
-import { HINTS, type PayrollToolset, payrollTools, SPECIAL_ENROLLMENT_DAYS } from "./tools.js";
+import {
+  enrollmentWindowGuard,
+  HINTS,
+  type PayrollToolset,
+  payRunAskerGuard,
+  payrollTools,
+  SPECIAL_ENROLLMENT_DAYS,
+} from "./tools.js";
 
 const company = loadCompanyFacts();
 const NOW = new Date(DEMO_NOW);
@@ -98,6 +105,140 @@ describe("refusal hints", () => {
     expect(hints.outside_window).toContain("request_enrollment_exception");
     expect(hints.timesheets_open).toContain("request_timesheet_approval");
     expect(hints.already_approved).toContain("request_pay_adjustment");
+  });
+});
+
+describe("the pay run asker guard", () => {
+  type BeforeTool = (
+    call: { name: string; arguments: object },
+    api: { conversationId: unknown; taskId: unknown },
+  ) => Promise<unknown>;
+  const guardFor = (sender: VerifiedSender | undefined): BeforeTool =>
+    (
+      payRunAskerGuard(company, async () => sender) as unknown as {
+        handlers: { beforeTool: BeforeTool };
+      }
+    ).handlers.beforeTool;
+  const API = { conversationId: 1, taskId: 1 };
+  const prepare = { name: "prepare_pay_run", arguments: { period: "2026-11-23" } };
+  const crewMember: VerifiedSender = {
+    origin: "external",
+    channel: "chat",
+    contact: "luis.moreno@crew.example",
+  };
+  const officeStaff: VerifiedSender = {
+    origin: "internal",
+    channel: "chat",
+    contact: "jules-okafor",
+  };
+
+  it("blocks anyone but office staff, the same on a replay and after a restart", async () => {
+    for (const [sender, words] of [
+      [crewMember, "not a person on the company record asking from inside the office"],
+      [undefined, "Nobody verified who sent this"],
+    ] as const) {
+      const first = (await guardFor(sender)(prepare, API)) as { block: string };
+      expect(first.block).toContain(words);
+      expect(first.block).toContain("no pay run is prepared for them");
+      const guard = guardFor(sender);
+      expect(await guard(prepare, API)).toEqual(first);
+      expect(await guard(prepare, API)).toEqual(first);
+    }
+  });
+
+  it("lets office staff prepare, and leaves other tools alone", async () => {
+    expect(await guardFor(officeStaff)(prepare, API)).toBeUndefined();
+    expect(
+      await guardFor(crewMember)({ name: "get_pay_statement", arguments: {} }, API),
+    ).toBeUndefined();
+  });
+
+  it("asks nobody to approve a pay run a crew member put up, before the desk is read", async () => {
+    const reads: unknown[] = [];
+    const people = desk();
+    const watched = {
+      ...people,
+      payRunFacts: async (input: Parameters<typeof people.payRunFacts>[0]) => {
+        reads.push(input);
+        return people.payRunFacts(input);
+      },
+    };
+    const set = payrollTools({ desk: watched, company, sender: async () => crewMember });
+    await expect(
+      set.payRunApprovalFacts(
+        { runId: "PR-2026-11-23" },
+        {} as never,
+        { conversationId: 1, taskId: 1 } as never,
+      ),
+    ).rejects.toThrow(/no pay run is put to a person for them.*Nothing was put to a person/su);
+    expect(reads).toEqual([]);
+  });
+});
+
+describe("the enrolment window guard", () => {
+  type BeforeTool = (call: { name: string; arguments: object }) => Promise<unknown>;
+  const guardAt = (iso: string, special: number | null = 30): BeforeTool =>
+    (
+      enrollmentWindowGuard({
+        company,
+        now: () => new Date(iso),
+        limits: () => (special === null ? {} : { [SPECIAL_ENROLLMENT_DAYS]: special }),
+      }) as unknown as { handlers: { beforeTool: BeforeTool } }
+    ).handlers.beforeTool;
+  const change = (extra: Record<string, unknown>) => ({
+    name: "record_enrollment_change",
+    arguments: { planId: "vision", action: "enroll", ...extra },
+  });
+  const DECEMBER = "2026-12-07T16:00:00.000Z";
+
+  it("blocks each change outside the rules, the same on a replay and after a restart", async () => {
+    for (const [extra, words, special] of [
+      [{}, "Open enrolment ran 2026-11-01 to 2026-11-30, and no qualifying life event was given"],
+      [
+        { lifeEventKind: "birth", lifeEventDate: "2026-10-20" },
+        "was 48 days ago, past the 30-day special enrolment period",
+      ],
+      [
+        { planId: "retirement-401k", lifeEventKind: "marriage", lifeEventDate: "2026-11-28" },
+        "A life event does not open 401(k) retirement plan",
+      ],
+      [{ lifeEventKind: "marriage", lifeEventDate: "2026-12-20" }, "is not a past date"],
+      [
+        { lifeEventKind: "marriage", lifeEventDate: "2026-11-28" },
+        "No special enrolment period is set",
+        null,
+      ],
+    ] as const) {
+      const first = (await guardAt(DECEMBER, special)(change(extra))) as { block: string };
+      expect(first.block, words).toContain(words);
+      expect(first.block, words).toContain("Nothing was recorded.");
+      // It reads only the record, the clock, the limit and the call, and writes nothing: a replay,
+      // or a freshly built guard after a restart, refuses the same way.
+      const guard = guardAt(DECEMBER, special);
+      expect(await guard(change(extra))).toEqual(first);
+      expect(await guard(change(extra))).toEqual(first);
+    }
+  });
+
+  it("lets a change in open enrolment, or after a recent life event, and other tools through", async () => {
+    expect(await guardAt("2026-11-15T16:00:00.000Z")(change({}))).toBeUndefined();
+    expect(
+      await guardAt(DECEMBER)(change({ lifeEventKind: "marriage", lifeEventDate: "2026-11-28" })),
+    ).toBeUndefined();
+    expect(
+      await guardAt(DECEMBER)(
+        change({ planId: "no-such-plan", lifeEventKind: "birth", lifeEventDate: "2026-12-01" }),
+      ),
+    ).toBeUndefined();
+    expect(
+      await guardAt(DECEMBER)({ name: "request_enrollment_exception", arguments: {} }),
+    ).toBeUndefined();
+  });
+
+  it("reads today in the company's time zone, not UTC", async () => {
+    // 06:30 UTC on 1 November is still 31 October in Portland: open enrolment has not begun.
+    const block = (await guardAt("2026-11-01T06:30:00.000Z")(change({}))) as { block: string };
+    expect(block.block).toContain("no qualifying life event was given");
   });
 });
 

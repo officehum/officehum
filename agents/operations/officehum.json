@@ -24,7 +24,7 @@
     {
       "name": "assign_crew",
       "replay": "unsafe",
-      "noApproval": "Routine dispatch inside a crew's weekly hours cap. The desk refuses an assignment that would pass the cap, pointing to request_overtime, and one on a day the crew has approved time off.",
+      "noApproval": "Routine dispatch inside a crew's weekly hours cap. The role's own hook (scheduleDecisionGuard) refuses one past the cap, pointing to request_overtime, or another crew on a contract visit; the desk refuses a day the crew has approved time off.",
       "description": "Assign a crew to a job. The desk refuses it when the crew's week would pass its weekly hours cap, when the crew has approved time off that day, or when a contract visit already has a different crew."
     },
     {
@@ -35,7 +35,7 @@
     {
       "name": "reschedule_job",
       "replay": "unsafe",
-      "noApproval": "Moves a one-off job only. The desk refuses a visit on a recurring contract, pointing to request_contract_reschedule, and a date the crew's hours cap or time off cannot take.",
+      "noApproval": "Moves a one-off job only. The role's own hook (scheduleDecisionGuard) refuses a visit on a recurring contract, pointing to request_contract_reschedule; the desk refuses a date the crew's hours cap or time off cannot take.",
       "description": "Move a one-off job to a new date. A visit on a recurring contract is refused here and goes through request_contract_reschedule."
     },
     {

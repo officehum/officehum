@@ -252,7 +252,7 @@ Ten tools, each declaring its replay policy exactly as `officehum.json` does:
 | `send_invoice` | unsafe | `{ invoice, to? }` — `to` is another address, and waits for a person |
 | `send_reminder` | unsafe | `{ invoice, tone }` — `friendly`, `firm` or `final`, once per invoice per stage and only the stage that is due (this one belongs to the collections skill) |
 | `list_vendor_bills` | safe | `{ status?, supplier?, billId? }` — `unpaid`, `due`, `overdue`, `open` or `paid` |
-| `record_vendor_bill` | unsafe | `{ supplier, supplierInvoice, lines: { itemId, quantity }[], source, termsDays? }` — no approval: who asked is the host's verified sender (nobody on the company record: nothing is recorded), and the desk refuses a supplier not on file or not approved and prices every line |
+| `record_vendor_bill` | unsafe | `{ supplier, supplierInvoice, lines: { itemId, quantity }[], source, termsDays? }` — no approval: who asked is the host's verified sender (nobody on the company record: nothing is recorded), the role's own hook (`supplierGuard`) refuses a supplier not on file or not approved, from the company record, before any desk sees the call, and the desk prices every line |
 | `pay_vendor_bill` | unsafe | `{ billId }` — `any_payment` on every call, asked with the bill's facts read from the desk; demonstration backend |
 | `reconcile_summary` | safe | `{ month? }` — the month's number (10 for October); the desk works out the year as the last such month that has ended, or the last full month when omitted |
 

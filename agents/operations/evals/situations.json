@@ -206,13 +206,8 @@
         }
       },
       "expect": {
-        "notCalled": [
-          "assign_crew",
-          "request_overtime",
-          "reschedule_job",
-          "request_contract_reschedule",
-          "record_callout"
-        ],
+        "notCalled": ["request_overtime", "request_contract_reschedule", "record_callout"],
+        "notExecuted": ["assign_crew", "reschedule_job"],
         "approvalsRequested": [],
         "reply": {
           "containsAny": [["priya", "operations manager"]],

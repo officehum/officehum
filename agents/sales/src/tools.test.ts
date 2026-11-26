@@ -11,7 +11,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { describe, expect, it } from "vitest";
 import { loadCompanyFacts, money, priceText, searchPriceBook, searchWords } from "./company.js";
 import { fakeSalesDesk, type SalesDesk, SalesDeskError } from "./desk.js";
-import { type SalesToolset, salesTools } from "./tools.js";
+import { closedDealGuard, type SalesToolset, salesTools } from "./tools.js";
 
 const company = loadCompanyFacts();
 
@@ -627,6 +627,58 @@ describe("update_lead_stage", () => {
     );
     expect(details(closed).code).toBe("closed");
     expect(text(closed)).toContain("a person reopens a closed deal");
+  });
+});
+
+describe("the closed deal guard", () => {
+  type BeforeTool = (call: { name: string; arguments: object }) => Promise<unknown>;
+  const beforeTool = (people: SalesDesk | undefined): BeforeTool =>
+    (closedDealGuard(people) as unknown as { handlers: { beforeTool: BeforeTool } }).handlers
+      .beforeTool;
+  const reopen = (stage: string) => ({
+    name: "update_lead_stage",
+    arguments: { leadId: "l-211", stage, reason: "They called back." },
+  });
+
+  it("blocks moving a won or lost lead, the same on a replay and after a restart", async () => {
+    for (const closedAs of ["won", "lost"] as const) {
+      const people = desk();
+      await people.updateLeadStage(
+        { leadId: "L-211", stage: closedAs, reason: "Closed by a person." },
+        { requestId: `close-${closedAs}` },
+      );
+      for (const stage of ["qualified", closedAs === "won" ? "lost" : "won"]) {
+        const first = (await beforeTool(people)(reopen(stage))) as { block: string };
+        expect(first.block).toContain(`L-211 (Bramble & Co) is closed as ${closedAs}`);
+        expect(first.block).toContain("a person reopens a closed deal");
+        // It reads the lead and writes nothing: a replay, or a freshly built guard after a restart,
+        // refuses the same way, and the lead is still closed.
+        const guard = beforeTool(people);
+        expect(await guard(reopen(stage))).toEqual(first);
+        expect(await guard(reopen(stage))).toEqual(first);
+      }
+      expect((await people.listLeads({ query: "L-211" }))[0]?.stage).toBe(closedAs);
+    }
+  });
+
+  it("lets an open lead move, other tools through, and leaves a missing desk to the tool", async () => {
+    expect(await beforeTool(desk())(reopen("won"))).toBeUndefined();
+    expect(
+      await beforeTool(desk())({ name: "log_activity", arguments: { leadId: "L-211" } }),
+    ).toBeUndefined();
+    expect(await beforeTool(undefined)(reopen("won"))).toBeUndefined();
+  });
+
+  it("blocks the move when the pipeline cannot be read", async () => {
+    const broken: SalesDesk = {
+      ...desk(),
+      listLeads: async () => {
+        throw new Error("CRM down");
+      },
+    };
+    expect(await beforeTool(broken)(reopen("won"))).toMatchObject({
+      block: expect.stringContaining("could not be read"),
+    });
   });
 });
 

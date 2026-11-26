@@ -50,6 +50,16 @@ Every role ships the same fictitious company, Northwind Facilities (`company/def
 and every eval run out of the box. The [catalogue](agents/README.md) lists every tool and every action
 each role asks a person about.
 
+## Guardrails
+
+An agent's instructions tell it what to do. Its guardrails are what hold even when the model ignores
+an instruction: they are code and manifest data, not prompt text. They are the approvals a person
+must give before a gated action runs, the limits an action is checked against, and the refusals of
+decisions that belong to a person (who is hired, a deal reopened, an order over the spending limit).
+They apply whatever system is connected: a role checks them itself, so a backend that accepts
+anything still cannot get round them. The [catalogue](agents/README.md) lists what each role asks a
+person about, and [agent-package.md](docs/design/agent-package.md) describes how they work.
+
 ## Run and test one
 
 - **Grade it.** `officehum eval agents/<role> --model scripted` runs the role's suite on a fresh Pi

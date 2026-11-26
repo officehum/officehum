@@ -32,7 +32,7 @@ import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
 import { DEMO_NOW, fakePurchasingDesk, type PurchasingDesk } from "./desk.js";
 import { purchaseOrderReplyCheck } from "./reply-check.js";
-import { purchasingTools } from "./tools.js";
+import { approvedSupplierGuard, purchasingTools } from "./tools.js";
 
 export {
   type Address,
@@ -144,6 +144,7 @@ export default function purchasing(options: PurchasingOptions = {}): DefinedRole
     desk,
     company,
     limits,
+    now,
     ...(options.sender === undefined ? {} : { sender: options.sender }),
   });
   role = defineRole({
@@ -175,7 +176,8 @@ export default function purchasing(options: PurchasingOptions = {}): DefinedRole
       new_supplier: tools.newSupplierApprovalFacts,
     },
     // A purchase order number named only in a reply reaches no tool; this checks it against the desk.
-    hooks: [purchaseOrderReplyCheck(desk)],
+    // An order to an unapproved supplier is refused in front of any purchasing system.
+    hooks: [approvedSupplierGuard(desk, company), purchaseOrderReplyCheck(desk)],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

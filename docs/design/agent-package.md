@@ -381,6 +381,18 @@ made-up records. `loadRole(dir, { demo })` passes the flag to the factory, so no
 may be named `demo`. The eval runner always sets it, because scenarios are written against the
 demonstration data; `officehum run` sets it with `--demo`.
 
+**A decision that belongs to a person is the role's to refuse, not the desk's.** A host's desk is its
+own system of record, and it may refuse less than the demonstration desk does. So where a write is a
+person's decision, the role decides it in its own code, from facts it reads itself (the company
+record, its limits, its clock, the desk's reads), and a desk's own refusal is only a second line. Most
+roles do this with a hook in front of the tool (`hiringDecisionGuard`, `supplierGuard`,
+`scheduleDecisionGuard` and the others). Purchasing's spending limit is part of the host contract
+instead, because an order over the limit is not refused but saved as a draft for a person: the tool
+prices the order and adds today's orders to that supplier itself, against its own
+`purchase_order_limit_cents`, and passes `draftOnly: true` to `PurchasingDesk.raisePurchaseOrder`
+when the order must wait (or when no limit is set). A host desk must then save a draft and place
+nothing, whatever its own limit says.
+
 **Who is asking comes from the host, verified.** A role never takes "who is asking" from a tool
 argument or from message text: anyone can type a name, an email address or "this is Dana". The host
 passes a `SenderResolver` as the factory option `sender`. A hook or tool calls it with the
@@ -462,13 +474,13 @@ An overlay's `settings.json` uses Pi's setting names and its `+name` / `-name` e
 Rules:
 
 - **Defaults, not a floor.** A role's approvals, limits and tools are strong defaults: an overlay may
-  lower any of them, including switching an approval off. What counts as lowering a safeguard is
+  lower any of them, including switching an approval off. What counts as lowering a guardrail is
   computed, not judged (`guardChanges` and `loweredGuards`), and inside an office a lowering is
   applied only with the owner's acknowledgement and recorded. See
   [overlay-rules.md](overlay-rules.md).
 - Overlays switch declared tools **on or off**, never add one. New tools arrive only in a role or
   tool pack release. Switching on a writing tool the role ships off (through a skill that starts
-  off) lowers a safeguard.
+  off) lowers a guardrail.
 - Overlays switch declared approvals **off or back on** (`"-id"`, `"+id"`), never add one or edit its
   conditions. A threshold changes only through a named limit. **An approval on a tool declared
   `outside` (it sends or publishes to people outside the business) stays on**, as does one on the
@@ -483,7 +495,7 @@ Rules:
 - **Limits change; they are never removed.** An overlay sets a value for a limit the package declares.
   It cannot add a limit or remove one: a `null` value is refused, because an approval comparing with
   a missing limit asks every time. To stop asking, switch the approval off, which names what is
-  lowered. Raising a ceiling (or lowering a floor) past its default lowers a safeguard; the overlay
+  lowered. Raising a ceiling (or lowering a floor) past its default lowers a guardrail; the overlay
   still loads, and an office asks for the owner's acknowledgement before applying it.
 - Overlay skills hold **instructions and reference files only** (`.md`, `.txt`, `.csv`, `.json`), never
   scripts. Code arrives only in packages, which agencies and developers can publish.
@@ -512,8 +524,8 @@ Anyone can use overlays: a Pi Durable user writes the files by hand and passes t
 A host may keep one overlay per agent per business with version history, so upgrading a role replaces
 only the package and a business's configuration is never overwritten. It may add company context
 (house rules every agent reads after its role's own instructions, and department documents as a skill
-its agents read on demand), hand-offs between roles, budgets and provenance. None of these is a guard:
-they never approve anything, change a limit or add a tool, and a change that lowers a safeguard is
+its agents read on demand), hand-offs between roles, budgets and provenance. None of these is a guardrail:
+they never approve anything, change a limit or add a tool, and a change that lowers a guardrail is
 applied only as an explicit, recorded choice ([overlay-rules.md](overlay-rules.md)).
 
 ## Engines: a role's deterministic core
@@ -900,7 +912,7 @@ connectors and skills, asking a person (`approvals`) and release gates (`evals`)
 | `commands[]` | Operator views: `name`, `description`, and the `engine` subcommand they run. |
 | `connectors` | Kebab-case ids of the apps the business must connect, e.g. `quickbooks`. |
 | `approvals[]` | `id` (snake_case), `tool` (a declared tool), `description` (shown in the Inbox), optional `when` conditions over the tool's arguments. A numeric comparison may take a named limit as its value, `{ "limit": "large_invoice" }`, instead of a number. `field` names a numeric field of each element of an array argument, so the comparison is against their sum; `times` multiplies it by a second field per element. Conditions too complex to declare go in the entry point's `when`, keyed by `id`; the role's gate runs them. Optional `amount`: an argument (`{ "arg", "field"?, "times"? }`) or a fact its facts reader reads (`{ "fact" }`), in cents, for approvers' limits. Optional `value`: a figure the approver enters with a yes, `{ "name", "label", "min"?, "max"?, "minFact"?, "maxFact"? }`, in whole cents; `name` ends in `Cents`, `min` defaults to 0, a side has a fixed bound or a fact bound, not both, and the tool must be `replay: "unsafe"` (see "Four layers"). |
-| `limits` | Named amounts the business sets, e.g. `large_invoice`: each has a `description` and a `default`. An approval compares against a limit with `{ "limit": "NAME" }` for `gt`, `gte`, `lt` or `lte`. An overlay changes a value, never removes it. Optional `guard`, for a limit only code reads: `"ceiling"` (raising it lets more through), `"floor"` (lowering it does) or `"none"` (not a safeguard, such as a schedule). A limit an approval compares with takes its direction from the comparison, and a `guard` that disagrees is an error; a code-only limit without one counts any change as lowering a safeguard. Optional `outside: true` marks a limit whose loosening lets something go outside the business without a person (purchasing's order limit, inside which an order goes to the supplier unasked); it needs a direction, and an overlay may tighten it but not loosen it past its default. |
+| `limits` | Named amounts the business sets, e.g. `large_invoice`: each has a `description` and a `default`. An approval compares against a limit with `{ "limit": "NAME" }` for `gt`, `gte`, `lt` or `lte`. An overlay changes a value, never removes it. Optional `guard`, for a limit only code reads: `"ceiling"` (raising it lets more through), `"floor"` (lowering it does) or `"none"` (not a guardrail, such as a schedule). A limit an approval compares with takes its direction from the comparison, and a `guard` that disagrees is an error; a code-only limit without one counts any change as lowering a guardrail. Optional `outside: true` marks a limit whose loosening lets something go outside the business without a person (purchasing's order limit, inside which an order goes to the supplier unasked); it needs a direction, and an overlay may tighten it but not loosen it past its default. |
 | `channels` | `email`, `sms`, `chat`: where the role may face the business's customers. A name alone means both directions. An object `{ "channel", "direction", "replyBy"?, "note"? }` declares one that does not run both ways — `direction` is `inbound`, `outbound` or `both`, and `replyBy` names a channel the role also declares. The Front Desk receives texts and answers them by email: `{ "channel": "sms", "direction": "inbound", "replyBy": "email" }`. |
 | `accepts[]` | Dotted ticket types (`invoice.create`) with a description shown to delegating agents, and `done`: the completion evidence for that type. Every entry must pass, and the host runs it when the agent replies, never the model: `{ "engine": ["subcommand", …], "args": {…} }` (the engine answers `ok` with at least one finding), `{ "tool": "NAME", "args": {…}, "expect": "found" }` (a declared tool that is safe to re-run and does not write, whose result reports `found`), `{ "file": "NAME" }` (the reply attaches a file id under that name, in `agent_reply`'s `files`, and the office's file store holds it), or `{ "person": true }` (the ticket waits, `awaiting_confirmation`, until a person confirms it). Args may interpolate `{ticket.id}` and `{ticket.data.<path>}`, and nothing else; a `tool` entry passes only arguments its tool takes, and should ask about the ticket's own work (a check that is true before the work starts proves nothing, so where no tool can show the work, declare the person alone). |
 | `dispatches[]` | Ticket types this role hands to other roles, and when: `type` (a dotted ticket type) and `when` (one line about the trigger). A type the role also `accepts` is an error: a role accepts a type or hands it off, never both. A card carries them, so an agent can choose whom to ask. |
@@ -1041,7 +1053,7 @@ upgrade, and as a smoke test after each customer upgrade.
 `officehum eval ROLE_DIR --overlay DIR` (repeatable, lowest first) runs the same suites
 under a business's overlay directories, as a host loads them: a
 house rule as an overlay `AGENTS.md`, a tool switched off, a limit set. The run's first lines say it
-is a result under overlays, not on the role's defaults, and name every safeguard the overlays lower
+is a result under overlays, not on the role's defaults, and name every guardrail the overlays lower
 (`loweredGuards`); an overlay that does not load is refused before any trial runs. Without the flag
 nothing changes. The "offered" bar is measured on the defaults.
 
@@ -1142,7 +1154,7 @@ Each file in the `evals` directory holds scenarios:
   from the executed ledger (`executedCalls[].approvedValue`); a call that did not run never matches,
   and `validateSuite` checks the name is a value an approval of that tool asks for. A stub can also
   answer by it, `{ "byArgs": [{ "args": { "officehumApprovedValue": { "cents": 2500 } }, … }] }`,
-  because a stub runs with the arguments the gate handed the tool. `notCalled`, `approvalsRequested` (exact set), `delegated` (office extension only)
+  because a stub runs with the arguments the gate handed the tool. `notCalled`, `notExecuted` (a tool that must never run, matched on the executed ledger `executedCalls[].executed`, so an attempt a hook refused passes: for a guardrail in code, where `notCalled` would fail the guard's own refusal), `approvalsRequested` (exact set), `delegated` (office extension only)
   and `reply.contains` / `reply.containsAny` / `reply.notContains` / `reply.judged` complete the checks. Reply matching
   is case-insensitive, reads typographic quotes and Unicode hyphens and dashes (U+2010 to U+2015, and
   the minus sign U+2212) as their ASCII forms in both the reply and the phrase, so "Q‑3047" with a
@@ -1333,7 +1345,7 @@ So a live result is read at two levels:
   critical scenarios keep `--trials`.
 - **To offer a role (20 trials).** A role is offered when each of its critical scenarios has passed
   20 of 20 graded trials in each mode on the model it ships with. A scenario at 19 of 20 or below is
-  fixed (a code guard where one fits, a scenario fix where it asserts more than the role's rule, a
+  fixed (a code guardrail where one fits, a scenario fix where it asserts more than the role's rule, a
   wording change only where neither fits) or its rate and the reason it is accepted are recorded on
   the role's issue. A run with errored trials is incomplete and is repeated; it is never counted.
 

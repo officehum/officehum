@@ -114,7 +114,7 @@ describe("officehum eval", () => {
     const text = capture.output.join("\n");
     expect(text).toContain(`Overlays: ${overlay}`);
     expect(text).toContain("not on the role's defaults");
-    expect(text).toContain("They lower no safeguard.");
+    expect(text).toContain("They lower no guardrail.");
     const written = JSON.parse(readFileSync(report, "utf8")) as {
       scenarios: { trials: { trace: { prompts?: string[] } }[] }[];
     };
@@ -164,7 +164,7 @@ describe("officehum eval", () => {
     expect(trace?.executedCalls.find((call) => call.tool === "stock_adjust")?.executed).toBe(false);
     const header = capture.output.join("\n");
     expect(header).toContain(
-      "Sample Stockroom runs with 1 safeguard lowered below its role's defaults:",
+      "Sample Stockroom runs with 1 guardrail lowered below its role's defaults:",
     );
     expect(header).toContain("limit.large_decrease");
   });

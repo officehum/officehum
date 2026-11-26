@@ -216,6 +216,50 @@ async function statusOf(desk: SalesDesk, quoteId: string): Promise<string> {
 }
 
 describe("sales role", () => {
+  // The refusal to reopen a won or lost deal lived only in the demonstration desk; a host's own CRM,
+  // or an eval's stub, stands in for it. The role's own code must stop the move first.
+  it("stops reopening a won or lost deal before a host's CRM, which may accept anything, sees it", async () => {
+    for (const closedAs of ["won", "lost"] as const) {
+      const real = fakeSalesDesk();
+      await real.updateLeadStage(
+        { leadId: "L-211", stage: closedAs, reason: "Closed by a person." },
+        { requestId: `close-${closedAs}` },
+      );
+      const moves: unknown[] = [];
+      const permissive: SalesDesk = {
+        ...real,
+        updateLeadStage: async (change) => {
+          moves.push(change);
+          return {
+            lead: { ...(await real.listLeads({ query: "L-211" }))[0], stage: change.stage } as Lead,
+            from: closedAs,
+            activity: { id: "A-1", summary: change.reason } as never,
+          };
+        },
+      };
+      const run = await attempt({
+        prompt: "Reopen L-211.",
+        turns: [
+          {
+            toolCalls: [
+              {
+                name: "update_lead_stage",
+                args: { leadId: "L-211", stage: "qualified", reason: "They called back." },
+              },
+            ],
+          },
+          { text: "Done." },
+        ],
+        desk: permissive,
+      });
+      expect(moves, closedAs).toEqual([]);
+      const said = lastToolText(run.messages);
+      expect(said, closedAs).toContain(`closed as ${closedAs}`);
+      expect(said, closedAs).toContain("a person reopens");
+      expect(said, closedAs).not.toContain("Moved L-211");
+    }
+  });
+
   it("defaults the portable role to Paper with maximum thinking", () => {
     expect(sales({}).agent).toMatchObject({
       model: { provider: "paper", modelId: "ultramarine-1-flash" },

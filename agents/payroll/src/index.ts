@@ -31,7 +31,7 @@ import {
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
 import { DEMO_NOW, fakePayrollDesk, type PayrollDesk } from "./desk.js";
-import { payrollTools } from "./tools.js";
+import { enrollmentWindowGuard, payRunAskerGuard, payrollTools } from "./tools.js";
 
 export {
   type BenefitPlanFact,
@@ -166,6 +166,13 @@ export default function payroll(options: PayrollOptions = {}): DefinedRole {
     now,
     // The prompt's "today" is the company's day, the same one the desk counts periods from.
     timeZone: company.hours.timezone,
+    // Outside the enrolment windows a benefit change is a person's decision: refused in front of any
+    // payroll system, from the company record, the role's clock and its own limits.
+    hooks: [
+      enrollmentWindowGuard({ company, now, limits }),
+      // Only office staff prepare a pay run, whatever the payroll system would accept.
+      payRunAskerGuard(company, options.sender),
+    ],
     tools: [
       tools.listPayPeriods,
       tools.listTimesheets,

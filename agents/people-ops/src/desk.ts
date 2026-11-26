@@ -60,6 +60,11 @@ export const REVIEW_STAGES: readonly Stage[] = [
   "final_review",
 ];
 
+/** The stages only a person sets: who is hired and who is turned down. */
+export const DECISION_STAGES: readonly Stage[] = STAGES.filter(
+  (stage) => !REVIEW_STAGES.includes(stage),
+);
+
 /** A candidate in the pipeline: where they stand, never how to reach them. */
 export interface Candidate {
   readonly id: string;

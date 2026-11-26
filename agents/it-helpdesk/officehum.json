@@ -43,8 +43,8 @@
       "name": "send_password_reset",
       "outside": true,
       "replay": "unsafe",
-      "noApproval": "Sends a reset link only to the address already on file for the verified sender's own account, and a notice to the account holder. No password or code is shown to anyone; another person's account, a privileged one and an unknown sender are refused.",
-      "description": "Send a password reset link for one system to the address on file for the sender's own account, and a notice to them that a reset was asked for. Nothing secret is shown. The desk refuses another person's account, an account that holds administrator rights, and an unknown sender."
+      "noApproval": "Sends a reset link only to the address already on file for the verified sender's own account, and a notice to the account holder. No password or code is shown to anyone; another person's account and an unknown sender are refused, and the role's own hook (adminResetGuard) refuses a privileged one.",
+      "description": "Send a password reset link for one system to the address on file for the sender's own account, and a notice to them. Nothing secret is shown. Never for an account that holds administrator rights: the code refuses it. Another person's account and an unknown sender are refused."
     },
     {
       "name": "request_sign_in_method_change",

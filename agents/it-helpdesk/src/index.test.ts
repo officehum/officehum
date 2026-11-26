@@ -166,6 +166,30 @@ const holds = async (it: ItDesk, group: string): Promise<boolean> =>
   ).groups.some((entry) => entry.id === group);
 
 describe("it help desk role", () => {
+  // An account with administrator rights was refused a reset only by the demonstration desk; a host's
+  // directory, or an eval's stub, stands in for it. The role's own code must stop the reset first.
+  it("sends no reset for an administrator's account, before a host's desk, which may accept anything, sees it", async () => {
+    const real = desk();
+    const resets: unknown[] = [];
+    const permissive: ItDesk = {
+      ...real,
+      passwordReset: async (input, options) => {
+        resets.push(input);
+        return real.passwordReset({ ...input, from: await NOAH({} as never) }, options);
+      },
+    };
+    const run = await attempt({
+      turns: one("send_password_reset", { systemId: "email" }),
+      desk: permissive,
+      sender: as("dana-whitfield"),
+    });
+    expect(resets).toEqual([]);
+    const said = lastToolText(run.messages);
+    expect(said).toContain("administrator rights");
+    expect(said).toContain("Nothing was sent");
+    expect(said).not.toContain("Sent a password reset link");
+  });
+
   it("defaults the portable role to Paper with maximum thinking", () => {
     expect(itHelpdesk({}).agent).toMatchObject({
       model: { provider: "paper", modelId: "ultramarine-1-flash" },

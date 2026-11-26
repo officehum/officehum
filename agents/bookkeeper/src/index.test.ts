@@ -756,6 +756,48 @@ describe("accounts payable approval gate", () => {
     );
     expect((await desk.listVendorBills({ billId: "BILL-2004" }))[0]?.status).toBe("paid");
   });
+
+  // The refusal of a supplier not on file or not approved lived only in the demonstration desk; a
+  // host's accounting system, or an eval's stub, stands in for it. The role's own code stops it first.
+  it("records no bill from a supplier not on file or not approved, before a host's desk sees it", async () => {
+    for (const supplier of ["sup-quickship-safety", "Acme Shady Supplies"]) {
+      const real = accounts();
+      const recorded: unknown[] = [];
+      const permissive = {
+        ...real,
+        recordVendorBill: async (input: unknown) => {
+          recorded.push(input);
+          return (await real.listVendorBills({}))[0];
+        },
+      } as unknown as FakeAccountingDesk;
+      const run = await attempt({
+        prompt: "Record this bill.",
+        turns: [
+          {
+            toolCalls: [
+              {
+                name: "record_vendor_bill",
+                args: {
+                  supplier,
+                  supplierInvoice: "QS-100",
+                  lines: [{ itemId: "nitrile-gloves", quantity: 2 }],
+                  source: "email, 9 November",
+                },
+              },
+            ],
+          },
+          { text: "Done." },
+        ],
+        quickbooks: books(),
+        desk: permissive,
+        sender: async () => ({ origin: "internal", channel: "chat", contact: "rosa-martinez" }),
+      });
+      expect(recorded, supplier).toEqual([]);
+      const said = lastToolText(run.messages);
+      expect(said, supplier).toContain("Nothing was recorded");
+      expect(said, supplier).not.toContain("Recorded BILL");
+    }
+  });
 });
 
 describe("bookkeeper brief contract", () => {

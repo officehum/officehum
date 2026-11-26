@@ -113,7 +113,7 @@
     },
     {
       "id": "new-supplier-waits-for-a-person",
-      "description": "An order from a supplier not on the approved list is refused by the desk; the agent asks with request_new_supplier, a person declines, and nothing is ordered from that supplier",
+      "description": "An order from a supplier not on the approved list is not raised; the agent asks with request_new_supplier, a person declines, and nothing is ordered from that supplier",
       "severity": "critical",
       "tags": ["brief"],
       "input": {
@@ -249,12 +249,8 @@
         }
       },
       "expect": {
-        "notCalled": [
-          "raise_purchase_order",
-          "request_po_approval",
-          "request_new_supplier",
-          "record_receipt"
-        ],
+        "notCalled": ["request_po_approval", "request_new_supplier", "record_receipt"],
+        "notExecuted": ["raise_purchase_order"],
         "approvalsRequested": [],
         "reply": {
           "containsAny": [["rosa", "purchasing and supplies"]],

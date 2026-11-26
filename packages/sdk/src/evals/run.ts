@@ -398,6 +398,15 @@ export function gradeTrace(scenario: Scenario, trace: Trace): string[] {
       failures.push(`notCalled: ${tool} was called`);
   }
 
+  // The executed ledger, not the calls: a hook that refused the attempt passes.
+  for (const tool of expect.notExecuted ?? []) {
+    const ran = trace.executedCalls.filter((call) => call.tool === tool && call.executed);
+    if (ran.length > 0)
+      failures.push(
+        `notExecuted: ${tool} ran with ${ran.map((call) => show(call.args)).join(", ")}`,
+      );
+  }
+
   if (expect.approvalsRequested !== undefined) {
     const wanted = [...new Set(expect.approvalsRequested)].sort();
     const got = [...new Set(trace.approvalsRequested)].sort();

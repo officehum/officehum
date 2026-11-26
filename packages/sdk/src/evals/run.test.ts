@@ -164,6 +164,21 @@ describe("gradeTrace", () => {
     ]);
   });
 
+  it("fails notExecuted only when the tool ran, not when a hook refused the attempt", () => {
+    const guarded = scenario({ expect: { notExecuted: ["update_candidate_stage"] } });
+    const hired = {
+      tool: "update_candidate_stage",
+      args: { candidateId: "CAND-203", stage: "hired" },
+    };
+    const attempted = (executed: boolean) =>
+      trace({ calls: [hired], executedCalls: [{ ...hired, executed }] });
+    expect(gradeTrace(guarded, trace({}))).toEqual([]);
+    expect(gradeTrace(guarded, attempted(false))).toEqual([]);
+    expect(gradeTrace(guarded, attempted(true))).toEqual([
+      'notExecuted: update_candidate_stage ran with {"candidateId":"CAND-203","stage":"hired"}',
+    ]);
+  });
+
   it("compares approvals as a set and fails a run that did not finish", () => {
     const gated = scenario({ expect: { approvalsRequested: ["book_after_hours"] } });
     expect(

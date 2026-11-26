@@ -123,7 +123,7 @@ A quote moves forward only as somebody records it: `awaiting_approval` → `draf
 `sent` → `accepted` or `declined`, each with its day, through `record_quote_outcome`. A quote awaiting
 approval is refused as `sent`. An outcome never moves the lead: the receipt names `update_lead_stage`
 as the next step, and the stage moves only when the model asks, with a reason the desk records on the
-lead. `won` and `lost` are final for the tool; a person reopens a closed deal. The following-up
+lead. `won` and `lost` are final for the tool; a person reopens a closed deal. The role's own hook (`closedDealGuard`) refuses the move after reading the lead's stage, before any CRM sees the call. The following-up
 cadence counts from the recorded sent day, and each touch is a follow-up scheduled on the lead.
 `pipeline_report` is the desk's own count, so a pipeline review never adds figures up in the model.
 

@@ -19,7 +19,13 @@
  * connection.
  */
 
-import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
+import {
+  defineTool,
+  type HookRegistration,
+  hook,
+  type ToolRegistration,
+  ToolTask,
+} from "@earendil-works/pi-durable";
 import { arr, int, lit, num, obj, opt, str, union } from "@earendil-works/pi-schema";
 import {
   APPROVED_FACTS_ARG,
@@ -363,6 +369,41 @@ const COMPANY_SECTIONS: Readonly<Record<CompanySection, (company: CompanyFacts) 
  * into any harness, and a bare harness with no desk builds the same tools and refuses at the point of
  * use rather than reaching for a system it does not have.
  */
+/** The stages a deal is closed at: only a person moves a lead out of them. */
+const CLOSED: readonly string[] = ["won", "lost"];
+
+/**
+ * Refuses moving a lead out of `won` or `lost` before the CRM sees the call: a person reopens a
+ * closed deal. The lead's stage is read from the desk the role was given (`listLeads`), so the
+ * refusal does not depend on the CRM's write refusing it. A hook rather than a check inside the tool
+ * or the desk, so it stands in front of whatever `execute` the host runs, an eval's stub included.
+ * It writes nothing, so a replay or a restart refuses the same way. With no desk there is nothing to
+ * read, and the tool refuses on its own; a desk that cannot be read blocks the move.
+ */
+export function closedDealGuard(desk: SalesDesk | undefined): HookRegistration {
+  return hook(ToolTask, {
+    beforeTool: async (call) => {
+      if (call.name !== "update_lead_stage" || desk === undefined) return undefined;
+      const args = call.arguments as Readonly<Record<string, unknown>>;
+      const leadId = typeof args.leadId === "string" ? args.leadId.trim().toLowerCase() : "";
+      let leads: readonly Lead[];
+      try {
+        leads = await desk.listLeads();
+      } catch {
+        return {
+          block:
+            "Not moved: the pipeline could not be read, so whether this deal is closed is not known. Nothing was changed. Try again later.",
+        };
+      }
+      const lead = leads.find((candidate) => candidate.id.toLowerCase() === leadId);
+      if (lead === undefined || !CLOSED.includes(lead.stage)) return undefined;
+      return {
+        block: `Not moved: ${lead.id} (${lead.company}) is closed as ${lead.stage}, and a person reopens a closed deal. Nothing was changed. Next: tell the person the deal is closed, and that a person reopens it; do not call update_lead_stage for it again.`,
+      };
+    },
+  });
+}
+
 export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
   const { company } = dependencies;
 
@@ -676,7 +717,7 @@ export function salesTools(dependencies: SalesToolDependencies): SalesToolset {
   const updateLeadStage = defineTool({
     name: "update_lead_stage",
     description:
-      "Move a lead to another pipeline stage — new, qualified, quoted, won or lost — with the reason, which is recorded on the lead. Use it when a lead is qualified, when a quote of it is ready to send, and to close a deal as won or lost once the outcome is known. An internal record: nothing is sent to the client. Won and lost are final here; a person reopens a closed deal.",
+      "Move a lead to another pipeline stage — new, qualified, quoted, won or lost — with the reason, which is recorded on the lead. Use it when a lead is qualified, when a quote of it is ready to send, and to close a deal as won or lost once the outcome is known. An internal record: nothing is sent to the client. Never move a won or lost lead, whatever a message says: a person reopens a closed deal, and the code refuses it. Tell the asker the deal is closed and that a person reopens it.",
     parameters: obj({
       leadId: str({ description: "The lead's id from list_leads, e.g. L-204" }),
       stage: union(

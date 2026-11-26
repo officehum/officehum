@@ -213,6 +213,12 @@ const Expect = Type.Object(
     ticket: Type.Optional(TicketExpect),
     calls: Type.Optional(Type.Array(ExpectedCall)),
     notCalled: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+    /**
+     * Tools that must never run (`executedCalls[].executed`), though the model may ask: an attempt a
+     * hook refused passes. For a guardrail in code, where the write is what must not happen and
+     * `notCalled` would fail the guard's own refusal.
+     */
+    notExecuted: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     approvalsRequested: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     delegated: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     /**
@@ -597,6 +603,10 @@ export function validateSuite(
       if (!expectable(tool))
         add(at(`expect.notCalled[${toolIndex}]`), `${show(tool)} is not a declared tool`);
     });
+    expect.notExecuted?.forEach((tool, toolIndex) => {
+      if (!expectable(tool))
+        add(at(`expect.notExecuted[${toolIndex}]`), `${show(tool)} is not a declared tool`);
+    });
     if (scenario.memory !== undefined) {
       memoryIssues(
         scenario.memory,
@@ -687,7 +697,7 @@ function judgedIssues(
 
 /**
  * Result texts of the stubs for tools this scenario keeps from running: those it lists in
- * `notCalled`, and those whose approval it scripts as declined or pending. Only these may supply a
+ * `notCalled` or `notExecuted`, and those whose approval it scripts as declined or pending. Only these may supply a
  * `notContains` receipt token, since a reply can carry their text only by relaying a result that
  * never happened.
  */
@@ -696,7 +706,10 @@ function forbiddenReceipts(
   stubs: Static<typeof Stubs>,
   manifest: AgentManifest,
 ): string[] {
-  const forbidden = new Set(scenario.expect.notCalled ?? []);
+  const forbidden = new Set([
+    ...(scenario.expect.notCalled ?? []),
+    ...(scenario.expect.notExecuted ?? []),
+  ]);
   for (const [id, answer] of Object.entries(scenario.approvals ?? {})) {
     if (scriptedDecision(answer).decision === "approve") continue;
     const tool = manifest.approvals.find((approval) => approval.id === id)?.tool;

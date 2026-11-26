@@ -10,7 +10,7 @@ import { APPROVED_FACTS_ARG, type VerifiedSender } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { itApprover, loadCompanyFacts, personLabel } from "./company.js";
 import { DEMO_NOW, type DeskRefusal, fakeItDesk, type ItDesk } from "./desk.js";
-import { HINTS, type ItHelpdeskToolset, itHelpdeskTools } from "./tools.js";
+import { adminResetGuard, HINTS, type ItHelpdeskToolset, itHelpdeskTools } from "./tools.js";
 
 const company = loadCompanyFacts();
 const approver = personLabel(itApprover(company));
@@ -94,6 +94,65 @@ describe("list_my_access", () => {
     const nobody = await run(tools(desk(), null).listMyAccess, {});
     expect(details(nobody)).toMatchObject({ code: "unknown_sender" });
     expect(text(nobody)).toContain("Nothing was read, sent or changed");
+  });
+});
+
+describe("the administrator reset guard", () => {
+  type BeforeTool = (
+    call: { name: string; arguments: object },
+    api: { conversationId: unknown; taskId: unknown },
+  ) => Promise<unknown>;
+  const beforeTool = (people: ItDesk | undefined, sender: VerifiedSender | null): BeforeTool =>
+    (
+      adminResetGuard(people, company, async () => sender ?? undefined) as unknown as {
+        handlers: { beforeTool: BeforeTool };
+      }
+    ).handlers.beforeTool;
+  const API = { conversationId: "conversation-1", taskId: "task-1" };
+  const reset = { name: "send_password_reset", arguments: { systemId: "email" } };
+
+  it("blocks an administrator's reset, naming who decides, the same on a replay and after a restart", async () => {
+    const people = desk();
+    const first = (await beforeTool(people, DANA)(reset, API)) as { block: string };
+    expect(first.block).toContain("holds administrator rights");
+    expect(first.block).toContain("Nothing was sent.");
+    expect(first.block).toContain("decides how it is reset, in person");
+    // It reads the account and writes nothing: a replay, or a freshly built guard after a restart,
+    // refuses the same way, and no reset is on the desk.
+    const guard = beforeTool(people, DANA);
+    expect(await guard(reset, API)).toEqual(first);
+    expect(await guard(reset, API)).toEqual(first);
+    expect(await people.resetsSent()).toEqual([]);
+  });
+
+  it("refuses with the desk's own words when the account cannot be read for this sender", async () => {
+    const unknown = (await beforeTool(desk(), null)(reset, API)) as { block: string };
+    expect(unknown.block).toContain("nothing was read, sent or changed");
+    const someoneElse = (await beforeTool(desk(), NOAH)(
+      { name: "send_password_reset", arguments: { systemId: "email", person: "Dana Whitfield" } },
+      API,
+    )) as { block: string };
+    expect(someoneElse.block).toContain("each person asks about their own account");
+  });
+
+  it("lets an ordinary account's reset, other tools and a missing desk through", async () => {
+    expect(await beforeTool(desk(), NOAH)(reset, API)).toBeUndefined();
+    expect(
+      await beforeTool(desk(), DANA)({ name: "list_my_access", arguments: {} }, API),
+    ).toBeUndefined();
+    expect(await beforeTool(undefined, DANA)(reset, API)).toBeUndefined();
+  });
+
+  it("blocks the reset when the account cannot be read at all", async () => {
+    const broken: ItDesk = {
+      ...desk(),
+      myAccess: async () => {
+        throw new Error("directory down");
+      },
+    };
+    expect(await beforeTool(broken, NOAH)(reset, API)).toMatchObject({
+      block: expect.stringContaining("could not be read"),
+    });
   });
 });
 

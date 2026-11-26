@@ -25,7 +25,7 @@ import { type Approver, type DefinedRole, defineRole, type SenderResolver } from
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
 import { DEMO_NOW, fakeItDesk, type ItDesk } from "./desk.js";
-import { itHelpdeskTools } from "./tools.js";
+import { adminResetGuard, itHelpdeskTools } from "./tools.js";
 
 export {
   type AccessGroup,
@@ -175,6 +175,8 @@ export default function itHelpdesk(options: ItHelpdeskOptions = {}): DefinedRole
       account_setup: tools.setupFacts,
       account_disable: tools.disableFacts,
     },
+    // An administrator's account is reset only in person: refused in front of any directory.
+    hooks: [adminResetGuard(desk, company, options.sender)],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

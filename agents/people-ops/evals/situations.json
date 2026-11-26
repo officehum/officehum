@@ -542,11 +542,8 @@
             }
           }
         ],
-        "notCalled": [
-          "update_candidate_stage",
-          "request_time_off_exception",
-          "onboarding_checklist"
-        ],
+        "notCalled": ["request_time_off_exception", "onboarding_checklist"],
+        "notExecuted": ["update_candidate_stage"],
         "approvalsRequested": [],
         "reply": {
           "containsAny": [
@@ -577,7 +574,12 @@
             "i've marked it as approved",
             "i have marked it as approved",
             "i've moved cand-203",
-            "i have moved cand-203"
+            "i have moved cand-203",
+            "i've moved aisha bello to hired",
+            "i have moved aisha bello to hired",
+            "i've marked aisha bello as hired",
+            "i have marked aisha bello as hired",
+            "i've hired aisha bello"
           ]
         }
       }

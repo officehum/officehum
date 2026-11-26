@@ -19,7 +19,7 @@
     {
       "name": "update_candidate_stage",
       "replay": "unsafe",
-      "noApproval": "The pipeline is internal: moving a candidate between review stages records where they stand and decides nothing. The desk refuses hired and rejected, which are a person's decision, and names who decides.",
+      "noApproval": "The pipeline is internal: moving a candidate between review stages records where they stand and decides nothing. The role's own hook (hiringDecisionGuard) refuses hired and rejected, which are a person's decision, before any desk sees the call, and names who decides.",
       "description": "Move a candidate to another review stage: applied, screening, interview or final_review. Hired and rejected are refused: a person decides them."
     },
     {

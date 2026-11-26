@@ -8,8 +8,15 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { APPROVED_FACTS_ARG, type VerifiedSender } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { companyHead, loadCompanyFacts, peopleOwner, person, personLabel } from "./company.js";
-import { type DeskRefusal, demoEmployees, fakePeopleOpsDesk, type PeopleOpsDesk } from "./desk.js";
-import { HINTS, type PeopleOpsToolset, peopleOpsTools } from "./tools.js";
+import {
+  DECISION_STAGES,
+  type DeskRefusal,
+  demoEmployees,
+  fakePeopleOpsDesk,
+  type PeopleOpsDesk,
+  REVIEW_STAGES,
+} from "./desk.js";
+import { HINTS, hiringDecisionGuard, type PeopleOpsToolset, peopleOpsTools } from "./tools.js";
 
 const company = loadCompanyFacts();
 const staff = company.staffPolicies;
@@ -131,6 +138,45 @@ describe("update_candidate_stage", () => {
     expect((await people.listCandidates({ candidateId: "CAND-203" }))[0]?.stage).toBe(
       "final_review",
     );
+  });
+});
+
+describe("the hiring decision guard", () => {
+  type BeforeTool = (call: { name: string; arguments: object }) => Promise<unknown>;
+  const beforeTool = (): BeforeTool =>
+    (hiringDecisionGuard(company) as unknown as { handlers: { beforeTool: BeforeTool } }).handlers
+      .beforeTool;
+
+  it("blocks hired and rejected, naming who decides, the same on a replay and after a restart", async () => {
+    for (const stage of DECISION_STAGES) {
+      const call = {
+        name: "update_candidate_stage",
+        arguments: { candidateId: "CAND-203", stage },
+      };
+      const first = (await beforeTool()(call)) as { block: string };
+      expect(first.block).toContain(`moving CAND-203 to ${stage} is a hiring decision`);
+      expect(first.block).toContain(decider);
+      expect(first.block).toContain("do not call update_candidate_stage for it again");
+      // The guard writes nothing and reads only the call: a replayed call, or the same call after a
+      // restart (a freshly built guard), is refused with the same words.
+      const guard = beforeTool();
+      expect(await guard(call)).toEqual(first);
+      expect(await guard(call)).toEqual(first);
+    }
+  });
+
+  it("lets every review stage, and every other tool, through", async () => {
+    for (const stage of REVIEW_STAGES) {
+      expect(
+        await beforeTool()({
+          name: "update_candidate_stage",
+          arguments: { candidateId: "CAND-202", stage },
+        }),
+      ).toBeUndefined();
+    }
+    expect(
+      await beforeTool()({ name: "list_candidates", arguments: { stage: "hired" } }),
+    ).toBeUndefined();
   });
 });
 

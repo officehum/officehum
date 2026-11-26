@@ -24,7 +24,7 @@ import { type Approver, companyData, type DefinedRole, defineRole } from "@offic
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
 import { DEMO_NOW, fakeOperationsDesk, type OperationsDesk } from "./desk.js";
-import { operationsTools } from "./tools.js";
+import { operationsTools, scheduleDecisionGuard } from "./tools.js";
 
 export {
   type Address,
@@ -151,6 +151,9 @@ export default function operations(options: OperationsOptions = {}): DefinedRole
       overtime: tools.overtimeFacts,
       contract_reschedule: tools.contractRescheduleFacts,
     },
+    // A contract visit's move or crew, and a week past its cap, are a person's decision: refused in
+    // front of any scheduling system, from the schedule the desk reports.
+    hooks: [scheduleDecisionGuard(desk, company)],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

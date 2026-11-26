@@ -31,7 +31,7 @@ import {
 import manifest from "../officehum.json" with { type: "json" };
 import { type CompanyFacts, loadCompanyFacts } from "./company.js";
 import { DEMO_NOW, fakeSalesDesk, type SalesDesk } from "./desk.js";
-import { salesTools } from "./tools.js";
+import { closedDealGuard, salesTools } from "./tools.js";
 
 export {
   type Address,
@@ -194,6 +194,8 @@ export default function sales(options: SalesOptions = {}): DefinedRole {
         tools.quoteApprovalFacts,
       ),
     },
+    // A won or lost deal is reopened only by a person: refused in front of any CRM, a host's included.
+    hooks: [closedDealGuard(desk)],
     ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
     ...(options.approve === undefined ? {} : { approve: options.approve }),
   });

@@ -148,6 +148,37 @@ const OVERTIME = { crewId: "cleaning-central", jobId: "J-2101", hours: 7 };
 const CONTRACT_MOVE = { jobId: "J-1034", newDate: "2026-11-14", reason: "New carpet on Thursday" };
 
 describe("operations role", () => {
+  // A contract visit's move, another crew on a contract visit, and an assignment past a crew's weekly
+  // cap were refused only by the demonstration desk; a host's scheduling system, or an eval's stub,
+  // stands in for it. The role's own code must stop each before the system sees it.
+  it("moves no contract visit and passes no crew's cap, before a host's desk, which may accept anything, sees it", async () => {
+    const cases: readonly [string, JsonObject, string][] = [
+      ["reschedule_job", { jobId: "J-1034", newDate: "2026-11-14" }, "request_contract_reschedule"],
+      ["assign_crew", { jobId: "J-2101", crewId: "cleaning-central" }, "request_overtime"],
+      ["assign_crew", { jobId: "J-1051", crewId: "cleaning-central" }, "keeps its crew"],
+    ];
+    for (const [tool, args, words] of cases) {
+      const real = fakeOperationsDesk();
+      const writes: unknown[] = [];
+      const permissive: OperationsDesk = {
+        ...real,
+        assignCrew: async (input) => {
+          writes.push(input);
+          return {} as Awaited<ReturnType<OperationsDesk["assignCrew"]>>;
+        },
+        rescheduleJob: async (input) => {
+          writes.push(input);
+          return {} as Awaited<ReturnType<OperationsDesk["rescheduleJob"]>>;
+        },
+      };
+      const run = await attempt({ turns: one(tool, args), desk: permissive });
+      expect(writes, `${tool} ${JSON.stringify(args)}`).toEqual([]);
+      const said = lastToolText(run.messages);
+      expect(said, tool).toContain(words);
+      expect(said, tool).toMatch(/Nothing was (assigned|moved)\./u);
+    }
+  });
+
   it("defaults the portable role to Paper with maximum thinking", () => {
     expect(operations({}).agent).toMatchObject({
       model: { provider: "paper", modelId: "ultramarine-1-flash" },

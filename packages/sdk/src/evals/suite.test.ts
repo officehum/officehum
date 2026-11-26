@@ -376,6 +376,26 @@ describe("validateSuite reply prohibitions", () => {
     expect(result.issues).toEqual([]);
   });
 
+  it("checks notExecuted names declared tools, and accepts their receipt tokens", () => {
+    const listed = (tool: string) =>
+      validateSuite(
+        {
+          scenarios: [
+            {
+              ...withReply([]).scenarios[0],
+              expect: { notExecuted: [tool], reply: { notContains: ["sent as snd-77"] } },
+            },
+          ],
+        },
+        gated,
+        "x",
+      );
+    expect(listed("send_invoice").issues).toEqual([]);
+    expect(listed("no_such_tool").issues.map((issue) => issue.path)).toContain(
+      "scenarios[0].expect.notExecuted[0]",
+    );
+  });
+
   it("accepts a receipt token of a tool the scenario lists in notCalled", () => {
     const result = validateSuite(
       {

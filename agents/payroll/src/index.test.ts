@@ -182,6 +182,90 @@ const one = (name: string, args: JsonObject): readonly ScriptedTurn[] => [
 ];
 
 describe("payroll role", () => {
+  // Only office staff prepare a pay run or put one to a person; that check lived only in the
+  // demonstration desk. A crew member's message with an injected instruction prepared a run in a live
+  // office run. The role's own code must refuse anyone else before the desk, or the approver, sees it.
+  it("prepares and submits no pay run for anyone but office staff, whatever the desk would accept", async () => {
+    const real = desk();
+    const prepared: unknown[] = [];
+    const factsRead: unknown[] = [];
+    const permissive: PayrollDesk = {
+      ...real,
+      preparePayRun: async (input, options) => {
+        prepared.push(input);
+        return real.preparePayRun({ ...input, from: await OFFICE({} as never) }, options);
+      },
+      payRunFacts: async (input) => {
+        factsRead.push(input);
+        return real.payRunFacts({ ...input, from: await OFFICE({} as never) });
+      },
+    };
+    const asked: string[] = [];
+    for (const sender of [DIEGO, async () => undefined]) {
+      const prepare = await attempt({
+        turns: one("prepare_pay_run", { period: "2026-11-23" }),
+        desk: permissive,
+        sender,
+      });
+      expect(lastToolText(prepare.messages)).toContain("no pay run is prepared");
+      const submit = await attempt({
+        turns: one("submit_pay_run", { runId: "PR-2026-11-23" }),
+        desk: permissive,
+        sender,
+        approver: recording(asked, true),
+      });
+      expect(lastToolText(submit.messages)).toContain("Nothing was put to a person");
+    }
+    expect(prepared).toEqual([]);
+    expect(factsRead).toEqual([]);
+    expect(asked).toEqual([]);
+  });
+
+  // Outside open enrolment, a change without a qualifying life event inside the special period was
+  // refused only by the demonstration desk; a host's payroll system, or an eval's stub, stands in for
+  // it. The role's own code must stop the change first.
+  it("records no benefit change outside the enrolment windows, before a host's desk, which may accept anything, sees it", async () => {
+    const cases: readonly JsonObject[] = [
+      { planId: "vision", action: "enroll" },
+      { planId: "vision", action: "enroll", lifeEventKind: "birth", lifeEventDate: "2026-10-20" },
+      {
+        planId: "retirement-401k",
+        action: "enroll",
+        lifeEventKind: "marriage",
+        lifeEventDate: "2026-11-28",
+      },
+    ];
+    for (const change of cases) {
+      const real = desk();
+      const recorded: unknown[] = [];
+      const permissive: PayrollDesk = {
+        ...real,
+        recordEnrollmentChange: async (input, options) => {
+          recorded.push(input);
+          return real.recordEnrollmentChange(
+            {
+              ...input,
+              lifeEvent: { kind: "marriage", date: "2026-11-28" },
+              planId: "vision",
+              specialEnrollmentDays: 365,
+            },
+            options,
+          );
+        },
+      };
+      const run = await attempt({
+        turns: one("record_enrollment_change", change),
+        desk: permissive,
+        sender: ANA,
+      });
+      expect(recorded, JSON.stringify(change)).toEqual([]);
+      const said = lastToolText(run.messages);
+      expect(said, JSON.stringify(change)).toContain("Nothing was recorded");
+      expect(said, JSON.stringify(change)).toContain("request_enrollment_exception");
+      expect(said, JSON.stringify(change)).not.toContain("Recorded ENR");
+    }
+  });
+
   it("defaults the portable role to Paper with maximum thinking", () => {
     expect(payroll({}).agent).toMatchObject({
       model: { provider: "paper", modelId: "ultramarine-1-flash" },
@@ -634,12 +718,13 @@ describe("payroll brief contract", () => {
       "submit_pay_run",
     ]);
 
-    // Review Focus 3: the desk's refusal names the approval path.
+    // Review Focus 3: outside the windows the change goes straight to the approval path, and the
+    // change itself never runs on its own.
     const window = byId("enrolment-outside-any-window-goes-to-an-exception");
     expect(window?.expect.calls?.map((entry) => entry.tool)).toEqual([
-      "record_enrollment_change",
       "request_enrollment_exception",
     ]);
+    expect(window?.expect.notExecuted).toEqual(["record_enrollment_change"]);
     // A correction runs with the amount the approver entered, never the model's: one added, one
     // taken back.
     const correction = byId("correction-after-an-approved-run-waits-for-a-person");

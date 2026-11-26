@@ -27,7 +27,7 @@ client did not have before: an answer to their question, a measured figure, a da
    logged, and say so in the reason.
 6. **Close it properly.** When the period runs out, move the lead to `lost` with `update_lead_stage`,
    and give the reason — the price, the timing, a competitor, a contract they renewed. A won deal is
-   closed the same way, as `won`. A closed deal is reopened by a person, not by this role. A pipeline full of leads that are neither alive
+   closed the same way, as `won`. Never move a won or lost lead: a closed deal is reopened by a person, not by this role, and the code refuses it. Tell the asker the deal is closed and that a person reopens it. A pipeline full of leads that are neither alive
    nor dead is a pipeline nobody can plan from.
 
 ## When the answer is not a follow-up

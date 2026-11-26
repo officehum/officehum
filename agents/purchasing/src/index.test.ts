@@ -188,6 +188,36 @@ const CASCADE = {
 const withDraft = (): PurchasingDesk => fakePurchasingDesk();
 
 describe("purchasing role", () => {
+  // The refusal of an unapproved supplier lived only in the demonstration desk; a host's purchasing
+  // system, or an eval's stub, stands in for it. The role's own code must stop the order first.
+  it("orders nothing from an unapproved supplier, before a host's desk, which may accept anything, sees it", async () => {
+    const real = fakePurchasingDesk();
+    const raised: unknown[] = [];
+    const permissive: PurchasingDesk = {
+      ...real,
+      raisePurchaseOrder: async (input, options) => {
+        raised.push(input);
+        return real.raisePurchaseOrder(
+          { ...input, supplierId: "sup-willamette-filters" } as typeof input,
+          options,
+        );
+      },
+    };
+    const run = await attempt({
+      turns: one("raise_purchase_order", {
+        reason: "reorder_point",
+        supplierId: "sup-quickship-safety",
+        lines: [{ itemId: "nitrile-gloves", quantity: 2 }],
+      }),
+      desk: permissive,
+    });
+    expect(raised).toEqual([]);
+    const said = lastToolText(run.messages);
+    expect(said).toContain("not on the company's approved supplier list");
+    expect(said).toContain("request_new_supplier");
+    expect(said).not.toContain("Placed PO");
+  });
+
   it("defaults the portable role to Paper with maximum thinking", () => {
     expect(purchasing({}).agent).toMatchObject({
       model: { provider: "paper", modelId: "ultramarine-1-flash" },

@@ -161,7 +161,7 @@ An overlay can switch declared tools and approvals off or back on and set a decl
 never add a tool, add code (overlay skills hold instructions and reference files only), or remove a
 limit.
 
-**Lowering a safeguard is recorded.** A role's approvals, limits
+**Lowering a guardrail is recorded.** A role's approvals, limits
 and tools are strong defaults, and which changes lower one is computed by code (`guardChanges`,
 `loweredGuards`), not judged. On its own, the role loads and says what is lowered. Run against the
 Bookkeeper with an overlay that switches its payment approval off, the eval runner prints:
@@ -174,11 +174,11 @@ npx officehum eval agents/bookkeeper --model scripted --overlay .officehum/overl
 
 ```text
 Overlays: .officehum/overlay-test (a result under a business's overlays, not on the role's defaults)
-Accounting runs with 1 safeguard lowered below its role's defaults:
+Accounting runs with 1 guardrail lowered below its role's defaults:
   approval.any_payment: Accounting does not ask a person before: Approve paying this supplier bill ...
 ```
 
-A host decides who may apply a change that lowers a safeguard; each lowering is named, and none can
+A host decides who may apply a change that lowers a guardrail; each lowering is named, and none can
 be acknowledged in bulk ([the acknowledgement mechanism](design/overlay-rules.md#3-the-acknowledgement-mechanism)).
 
 **The hard floor** is what no overlay reaches, acknowledged or not

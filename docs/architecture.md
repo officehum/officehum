@@ -50,7 +50,7 @@ unsettled.
   must match.
 - **Approvals are hooks, not instructions.** A gated call waits for the host's approver; with no
   approver, a gated action is refused. A role's limits are manifest data an overlay can raise or lower,
-  and a run under overlays names every safeguard they lower.
+  and a run under overlays names every guardrail they lower.
 - **Numbers come from code.** Figures come from engines, connected systems or tools, never from model
   arithmetic; the eval suites check that a reply's figures are the ones a tool returned.
 - **Who is asking is the host's to say.** A role reads its sender from what the host verified, never
@@ -64,7 +64,7 @@ unsettled.
 
 - [agent-package.md](design/agent-package.md): the role package contract, field by field.
 - [overlay-rules.md](design/overlay-rules.md): what a business may change in a role, and how a lowered
-  safeguard is shown.
+  guardrail is shown.
 - [tool-sources.md](design/tool-sources.md): MCP servers and CLIs as a role's tools.
 - [role-spec.md](design/role-spec.md): the Role Factory's spec.
 - [file-store.md](design/file-store.md) and [approver-values.md](design/approver-values.md).

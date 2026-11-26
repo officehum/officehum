@@ -9,7 +9,7 @@ import { APPROVED_FACTS_ARG, type ApprovalFactsReader } from "@officehum/sdk";
 import { describe, expect, it } from "vitest";
 import { loadCompanyFacts, personLabel, scheduleOwner } from "./company.js";
 import { fakeOperationsDesk, type OperationsDesk } from "./desk.js";
-import { type OperationsToolset, operationsTools } from "./tools.js";
+import { type OperationsToolset, operationsTools, scheduleDecisionGuard } from "./tools.js";
 
 const company = loadCompanyFacts();
 const owner = personLabel(scheduleOwner(company));
@@ -108,6 +108,82 @@ describe("list_crews", () => {
     expect(text(result)).toContain("approved time off on 2026-11-12");
     const crews = details(result).crews as { crewId: string; bookedHours: number }[];
     expect(crews.map((crew) => crew.crewId)).toEqual(company.crews.map((crew) => crew.id));
+  });
+});
+
+describe("the schedule decision guard", () => {
+  type BeforeTool = (call: { name: string; arguments: object }) => Promise<unknown>;
+  const beforeTool = (people: OperationsDesk | undefined): BeforeTool =>
+    (scheduleDecisionGuard(people, company) as unknown as { handlers: { beforeTool: BeforeTool } })
+      .handlers.beforeTool;
+
+  it("blocks each decision with the desk's words, the same on a replay and after a restart", async () => {
+    for (const [name, args, words] of [
+      [
+        "reschedule_job",
+        { jobId: "J-1034", newDate: "2026-11-14" },
+        "is a visit on recurring contract",
+      ],
+      [
+        "assign_crew",
+        { jobId: "J-2101", crewId: "cleaning-central" },
+        "That is 7 hours of overtime, which a person approves: call request_overtime with crewId cleaning-central, jobId J-2101 and hours 7.",
+      ],
+      ["assign_crew", { jobId: "j-1051", crewId: "cleaning-central" }, "which keeps its crew"],
+    ] as const) {
+      const people = desk();
+      const before = await people.listJobs();
+      const first = (await beforeTool(people)({ name, arguments: args })) as { block: string };
+      expect(first.block, words).toContain(words);
+      expect(first.block, words).toContain(owner);
+      // It reads the schedule and writes nothing: a replay, or a freshly built guard after a
+      // restart, refuses the same way, and the schedule is as it was.
+      const guard = beforeTool(people);
+      expect(await guard({ name, arguments: args })).toEqual(first);
+      expect(await guard({ name, arguments: args })).toEqual(first);
+      expect(await people.listJobs()).toEqual(before);
+    }
+  });
+
+  it("agrees with the desk: what the desk would take, the guard lets through", async () => {
+    const people = desk();
+    // A one-off job, the contract visit's own crew, and an assignment inside the cap.
+    for (const [name, args] of [
+      ["reschedule_job", { jobId: "J-2101", newDate: "2026-11-13" }],
+      ["assign_crew", { jobId: "J-1051", crewId: "cleaning-south" }],
+      ["assign_crew", { jobId: "J-2101", crewId: "cleaning-north" }],
+      ["list_jobs", {}],
+    ] as const) {
+      expect(
+        await beforeTool(people)({ name, arguments: args }),
+        `${name} ${JSON.stringify(args)}`,
+      ).toBeUndefined();
+    }
+    expect(
+      await beforeTool(undefined)({ name: "reschedule_job", arguments: { jobId: "J-1034" } }),
+    ).toBeUndefined();
+    // And the desk does take them.
+    await expect(
+      people.rescheduleJob({ jobId: "J-2101", newDate: "2026-11-13" }, { requestId: "ok-1" }),
+    ).resolves.toMatchObject({ toDate: "2026-11-13" });
+    await expect(
+      people.assignCrew({ jobId: "J-2101", crewId: "cleaning-north" }, { requestId: "ok-2" }),
+    ).resolves.toMatchObject({ crewId: "cleaning-north" });
+  });
+
+  it("blocks the call when the schedule cannot be read", async () => {
+    const broken: OperationsDesk = {
+      ...desk(),
+      listJobs: async () => {
+        throw new Error("scheduler down");
+      },
+    };
+    expect(
+      await beforeTool(broken)({
+        name: "assign_crew",
+        arguments: { jobId: "J-2101", crewId: "x" },
+      }),
+    ).toMatchObject({ block: expect.stringContaining("could not be read") });
   });
 });
 

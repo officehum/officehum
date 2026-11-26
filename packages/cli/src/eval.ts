@@ -193,7 +193,7 @@ const EVAL_USAGE =
   "--pack gives the role a tool pack its office would supply (data), its tools stubbed; a suite that " +
   "declares the pack runs only with it\n" +
   "--overlay evaluates the role under a business's overlay directories (lowest first); the run says so " +
-  "and names each safeguard they lower\n" +
+  "and names each guardrail they lower\n" +
   "--trials sets every scenario's trial count; --normal-trials sets the normal scenarios' instead\n" +
   `--max-output-tokens caps each model request's output, reasoning included (default ${DEFAULT_EVAL_MAX_OUTPUT_TOKENS}); ` +
   "a trial whose reply hits it is errored, not graded\n" +
@@ -374,7 +374,7 @@ export async function runEvalCommand(
     overlayLines = [
       `Overlays: ${parsed.overlays.join(", ")} (a result under a business's overlays, not on the role's defaults)`,
       ...(lowered.length === 0
-        ? ["They lower no safeguard."]
+        ? ["They lower no guardrail."]
         : loweredLines(pkg.manifest.name, lowered)),
     ];
   }

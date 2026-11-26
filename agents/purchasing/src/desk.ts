@@ -178,6 +178,12 @@ export interface RaisePurchaseOrderInput {
   readonly requestedBy?: string;
   /** For a `request`: the message the request came from. */
   readonly requestSource?: string;
+  /**
+   * Set by the tool, never by the model: `true` when the role's own reckoning (its prices, today's
+   * orders to the supplier and its limit) says the order must wait for a person. The desk then saves
+   * it as a draft and places nothing, whatever its own limit says.
+   */
+  readonly draftOnly: boolean;
 }
 
 /** Goods to record as received against a placed order. */
@@ -240,7 +246,15 @@ export interface PurchasingDesk {
   compareSuppliers(itemId: string): Promise<SupplierComparison>;
   listPurchaseOrders(filter?: OrderFilter): Promise<readonly PurchaseOrder[]>;
   /**
-   * Prices and places an order inside `purchaseOrderLimitCents`, or refuses it. A host desk must hold
+   * Prices and places an order inside `purchaseOrderLimitCents`, or refuses it.
+   *
+   * With `draftOnly`, the order is the role's to hold: the desk saves it as a draft, places nothing,
+   * and refuses with `over_limit` (or `split_order`) naming the draft, so a person approves it through
+   * `placeDraft`. A host desk must honour `draftOnly` even when its own limit would let the order
+   * through: the role worked out from its own prices, today's orders and its own limit that it must
+   * wait, and nothing is placed over the limit however the host checks it.
+   *
+   * Without `draftOnly`, a host desk may still check the limit itself, as a second line. It must hold
    * every order for approval when that limit is `undefined`, never treat a missing limit as no limit.
    * A host desk must refuse with
    * `unrequested` an order whose reason is `reorder_point` for an item that is not at or below its
@@ -884,6 +898,14 @@ export function fakePurchasingDesk(options: FakePurchasingDeskOptions = {}): Pur
           "split_order",
           `Needs approval: ${supplier.name} already has ${placedToday.map((other) => other.id).join(", ")} placed today for ${money(earlier)}; with this order (${money(totalCents)}) that is ${money(earlier + totalCents)}, over the ${money(limit)} a purchase order may reach without a person's approval. Orders are not split to stay under the limit.${recallText}${keptText} Draft ${order.id} is saved and has not been sent. Nothing was ordered.`,
           { draftId: order.id, totalCents: order.totalCents },
+        );
+      }
+      // The role's own reckoning holds it even when this desk's limit would let it through.
+      if (refusal === undefined && input.draftOnly) {
+        refusal = new PurchasingDeskError(
+          "over_limit",
+          `Needs approval: this order to ${supplier.name} comes to ${money(totalCents)} and waits for a person's approval before it goes out. It is saved as draft ${order.id} and has not been sent; do not raise it again or split it. Nothing was ordered.`,
+          { draftId: order.id, totalCents },
         );
       }
       orders.push(order);

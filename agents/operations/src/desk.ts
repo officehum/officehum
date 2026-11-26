@@ -438,12 +438,12 @@ function weekOf(value: string): { readonly start: string; readonly end: string }
 }
 
 /** Hours as a person reads them: whole hours plainly, anything else to two places. */
-function hoursText(hours: number): string {
+export function hoursText(hours: number): string {
   return Number.isInteger(hours) ? String(hours) : hours.toFixed(2);
 }
 
 /** Sums of hours, kept to two places so a fractional job does not drift. */
-function round(hours: number): number {
+export function round(hours: number): number {
   return Math.round(hours * 100) / 100;
 }
 

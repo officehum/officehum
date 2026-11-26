@@ -49,5 +49,5 @@ test fixture, imported by source path, so `officehum run` cannot load it
 - [Build a role](../../docs/build-a-role.md): the guide.
 - [agent-package.md](../../docs/design/agent-package.md): the full contract, including every
   `officehum.json` field, completion evidence and the eval format.
-- [overlay-rules.md](../../docs/design/overlay-rules.md): what counts as lowering a safeguard.
+- [overlay-rules.md](../../docs/design/overlay-rules.md): what counts as lowering a guardrail.
 - The JSON Schema for `officehum.json`: [`schema/officehum.schema.json`](schema/officehum.schema.json).
