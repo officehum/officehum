@@ -1,0 +1,66 @@
+{
+  "name": "@officehum/sdk",
+  "version": "0.0.0",
+  "description": "Build portable Pi Durable role agents: role files, skills, overlays, manifest checks and evals.",
+  "keywords": [
+    "officehum",
+    "pi-durable",
+    "pi-ai",
+    "pi-agent",
+    "ai-agents"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schema/officehum.schema.json": "./schema/officehum.schema.json"
+  },
+  "files": [
+    "dist",
+    "schema"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officehum/officehum.git",
+    "directory": "packages/sdk"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/emit-schema.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "semver": "7.8.6",
+    "typebox": "1.4.6",
+    "yaml": "2.9.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "1.6.x",
+    "@earendil-works/pi-durable": "1.6.x",
+    "@earendil-works/pi-mcp": "1.6.0",
+    "@earendil-works/pi-schema": "1.6.x"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-mcp": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-durable": "1.6.0",
+    "@earendil-works/pi-mcp": "1.6.0",
+    "@earendil-works/pi-schema": "1.6.0",
+    "@types/semver": "7.8.0"
+  }
+}

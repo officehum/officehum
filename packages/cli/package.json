@@ -1,0 +1,64 @@
+{
+  "name": "@officehum/cli",
+  "version": "0.0.0",
+  "description": "Command line for one Office Hum role: run it in the terminal, grade its evals, verify its role.md, and review a document before it is published.",
+  "keywords": [
+    "officehum",
+    "pi-durable",
+    "pi-ai",
+    "pi-agent",
+    "ai-agents"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "officehum": "./dist/index.js"
+  },
+  "main": "./dist/lib.js",
+  "types": "./dist/lib.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/lib.d.ts",
+      "import": "./dist/lib.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officehum/officehum.git",
+    "directory": "packages/cli"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "1.6.0",
+    "@officehum/provider-paper": "0.0.0",
+    "@officehum/runner": "0.0.0",
+    "@officehum/sdk": "0.0.0",
+    "@officehum/tools-paper-office": "0.0.0"
+  },
+  "peerDependencies": {
+    "@officehum/tools-data": "0.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@officehum/tools-data": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/chord": "1.6.0",
+    "@earendil-works/pi-durable": "1.6.0",
+    "@officehum/tools-data": "0.0.0"
+  }
+}

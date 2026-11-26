@@ -1,0 +1,67 @@
+{
+  "$schema": "../../schema/officehum.schema.json",
+  "schemaVersion": 1,
+  "id": "sample-labels",
+  "name": "Sample Labels",
+  "department": "operations",
+  "role": "Labels issues in the tracker through the tracker's command-line tool",
+  "defaultModel": { "provider": "anthropic", "modelId": "claude-sonnet-5-5" },
+  "runtimes": [{ "name": "node", "version": ">=22" }],
+  "clis": {
+    "tracker": { "command": ["node", "./cli/fake-cli.mjs"], "env": ["FAKE_TRACKER_TOKEN"] }
+  },
+  "tools": [
+    {
+      "name": "add_label",
+      "replay": "unsafe",
+      "description": "Add a label to an issue in the tracker.",
+      "cli": {
+        "use": "tracker",
+        "args": [
+          "label",
+          "add",
+          "--issue",
+          "{issue}",
+          "--label",
+          "{label}",
+          "--note",
+          "{note}",
+          "--request",
+          "{callId}"
+        ],
+        "output": "json"
+      },
+      "parameters": {
+        "issue": { "type": "integer", "description": "The issue's number", "required": true },
+        "label": { "type": "string", "description": "The label to add", "required": true },
+        "note": { "type": "string", "description": "Why the label was added, in one line" }
+      },
+      "guidelines": ["Quote the label exactly as the tracker shows it."]
+    }
+  ],
+  "connectors": [],
+  "approvals": [
+    {
+      "id": "protected_label",
+      "tool": "add_label",
+      "description": "Release and security labels change who is paged",
+      "when": [{ "arg": "label", "op": "in", "value": ["release-blocker", "security"] }]
+    }
+  ],
+  "channels": ["chat"],
+  "accepts": [
+    {
+      "type": "issue.label",
+      "description": "Label an issue in the tracker",
+      "done": [{ "person": true }]
+    }
+  ],
+  "skills": [],
+  "mayNot": [
+    {
+      "action": "Say a label was added without the tracker's answer",
+      "instead": "call add_label and report what the tracker returned"
+    }
+  ],
+  "evals": "evals"
+}

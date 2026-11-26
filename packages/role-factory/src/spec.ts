@@ -1,0 +1,391 @@
+/**
+ * `ROLE_SPEC.md`: the one reviewable document a role is generated from, organised by the four layers
+ * — context and knowledge inform the agent, wisdom and workflow control it. The interview writes it;
+ * the generator reads it and writes the role package. There is no mapping layer: the
+ * fields the spec shares with `officehum.json` keep the manifest's names, so what a person reviews is
+ * what the generator writes.
+ *
+ * `parseRoleSpec` reports every problem a document has at once, each with the path it sits at and the
+ * layer it belongs to. See docs/design/role-spec.md.
+ */
+
+import {
+  type AgentManifest,
+  type FourLayer,
+  type Issue,
+  MANIFEST_SCHEMA_VERSION,
+  ManifestSchema,
+  OverlaySettingsSchema,
+  ScenarioSchema,
+  schemaIssues,
+  type Validation,
+} from "@officehum/sdk";
+import { type Static, Type } from "typebox";
+import { parse as parseYaml } from "yaml";
+import { ContextProfileSchema } from "./context/advisor.js";
+import {
+  ContextPlanSchema,
+  contextPlanIssues,
+  contextPlanOf,
+  toolsWithPlan,
+} from "./context/plan.js";
+import {
+  businessConcerns,
+  contextIssues,
+  declarationIssues,
+  evalIssues,
+  knowledgeIssues,
+  layerForPath,
+  type Mapping,
+  mapping,
+  separationIssues,
+  toolSourceIssues,
+  wisdomIssues,
+  workflowIssues,
+} from "./rules.js";
+
+/** The file the interview writes and the generator reads. */
+export const ROLE_SPEC_FILE = "ROLE_SPEC.md";
+
+/** The spec format this parser reads. */
+export const ROLE_SPEC_SCHEMA_VERSION = 1;
+
+/** Where the generator writes the spec's scenarios: the manifest's `evals`, a directory of files. */
+export const EVALS_DIR = "evals";
+
+const Text = (maxLength: number) => Type.String({ minLength: 1, maxLength });
+
+/**
+ * The fields the spec shares with `officehum.json` are the SDK's own schemas, taken from the manifest
+ * schema field by field: a spec accepts exactly what the manifest does, and cannot drift from it.
+ */
+const Manifest = ManifestSchema.properties;
+
+/** One thing to try, and what it did instead, with the enforcement that makes it hold. */
+const MayNotDeclaration = Type.Object(
+  {
+    ...Manifest.mayNot.items.properties,
+    /** `approval:<id>`, `no_tool` or `person_only`; see docs/design/role-spec.md. */
+    enforced_by: Type.String({
+      pattern: "^(approval:[a-z][a-z0-9]*(_[a-z0-9]+)*|no_tool|person_only)$",
+      "x-hint": '"approval:<id>", "no_tool" or "person_only"',
+    }),
+  },
+  { additionalProperties: false },
+);
+
+/** What the role may do, what it never does, and how each prohibition is enforced. */
+const AuthorityDeclaration = Type.Object(
+  { may: Type.Array(Text(200)), may_not: Type.Array(MayNotDeclaration) },
+  { additionalProperties: false },
+);
+
+/** Where a tool comes from; see docs/design/tool-sources.md. `pack` is refused until tool packs can be named. */
+export const TOOL_SOURCES = ["code", "engine", "mcp", "cli", "pack"] as const;
+export type ToolSource = (typeof TOOL_SOURCES)[number];
+
+/**
+ * One tool: the manifest's declaration, plus two fields a person reviews and the manifest does not
+ * carry. `source` says where the tool comes from, and must agree with the fields it states.
+ * `reviewed_read_only` records that a person checked an MCP or CLI tool only reads, which is what lets
+ * such a tool be `replay: "safe"` (tool-sources.md, section 7).
+ */
+const ToolSpecDeclaration = Type.Object(
+  {
+    ...Manifest.tools.items.properties,
+    source: Type.Optional(Type.Enum([...TOOL_SOURCES])),
+    reviewed_read_only: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
+/**
+ * The role: identity and capabilities, in the manifest's own names. `limits` is here as well as in
+ * `officehum.json`, because the values a business sets in `business.settings` must be values for a
+ * limit the role declares.
+ */
+const RoleBlock = Type.Object(
+  {
+    id: Manifest.id,
+    name: Manifest.name,
+    department: Manifest.department,
+    role: Manifest.role,
+    defaultModel: Manifest.defaultModel,
+    runtimes: Manifest.runtimes,
+    engine: Manifest.engine,
+    mcpServers: Manifest.mcpServers,
+    clis: Manifest.clis,
+    tools: Type.Array(ToolSpecDeclaration),
+    connectors: Manifest.connectors,
+    channels: Manifest.channels,
+    limits: Manifest.limits,
+  },
+  { additionalProperties: false },
+);
+
+/** One reference file a skill points to, written below `skills/<id>/references/`. */
+const ReferenceDeclaration = Type.Object(
+  { path: Text(128), content: Type.String({ minLength: 1 }) },
+  { additionalProperties: false },
+);
+
+/** Extra lines for APPEND_SYSTEM.md; the generator adds the standard rules itself. */
+const ContextBlock = Type.Object(
+  { append_system: Type.Optional(Type.String({ minLength: 1 })) },
+  { additionalProperties: false },
+);
+
+/** A bundled skill: `skills/<id>/SKILL.md`, and the reference files it points to. */
+const SkillDeclaration = Type.Object(
+  {
+    id: Manifest.skills.items.properties.id,
+    /** The Agent Skills description: what the skill does and when to use it. */
+    description: Text(1024),
+    enabled_by_default: Type.Boolean(),
+    instructions: Type.String({ minLength: 1 }),
+    references: Type.Optional(Type.Array(ReferenceDeclaration)),
+  },
+  { additionalProperties: false },
+);
+
+const KnowledgeBlock = Type.Object(
+  { skills: Type.Array(SkillDeclaration) },
+  { additionalProperties: false },
+);
+
+const WisdomBlock = Type.Object(
+  { approvals: Manifest.approvals, authority: AuthorityDeclaration },
+  { additionalProperties: false },
+);
+
+const WorkflowBlock = Type.Object(
+  { accepts: Manifest.accepts, commands: Manifest.commands },
+  { additionalProperties: false },
+);
+
+/** One business's specifics: written to an overlay, never to the package. */
+const BusinessBlock = Type.Object(
+  {
+    name: Text(64),
+    /** Lines the business adds to its own AGENTS.md, in its overlay. */
+    agents_md: Type.Optional(Type.String({ minLength: 1 })),
+    /** The business's overlay `settings.json`, including its values for the role's limits. */
+    settings: Type.Optional(OverlaySettingsSchema),
+  },
+  { additionalProperties: false },
+);
+
+/**
+ * The `ROLE_SPEC.md` frontmatter schema, version 1. Unknown keys are refused at every level: a field
+ * the generator would not write is a field nobody would review.
+ */
+export const RoleSpecSchema = Type.Object(
+  {
+    schema: Type.Literal(ROLE_SPEC_SCHEMA_VERSION),
+    role: RoleBlock,
+    context: Type.Optional(ContextBlock),
+    knowledge: Type.Optional(KnowledgeBlock),
+    wisdom: WisdomBlock,
+    workflow: WorkflowBlock,
+    evals: Type.Array(ScenarioSchema),
+    business: Type.Optional(BusinessBlock),
+    /** What the interview learned about how the role works, which the context advisor reads. */
+    context_profile: Type.Optional(ContextProfileSchema),
+    /** The advisor's recommendations and a person's decision on each; see "The context plan". */
+    context_plan: Type.Optional(ContextPlanSchema),
+  },
+  { additionalProperties: false },
+);
+
+export type RoleSpecFrontmatter = Static<typeof RoleSpecSchema>;
+export type RoleBlockDeclaration = Static<typeof RoleBlock>;
+export type ToolSpec = Static<typeof ToolSpecDeclaration>;
+export type SkillDeclaration = Static<typeof SkillDeclaration>;
+export type WisdomDeclaration = Static<typeof WisdomBlock>;
+export type WorkflowDeclaration = Static<typeof WorkflowBlock>;
+export type BusinessDeclaration = Static<typeof BusinessBlock>;
+
+/** A parsed, valid spec: the frontmatter plus the body, the role's AGENTS.md context. */
+export interface RoleSpec extends RoleSpecFrontmatter {
+  readonly body: string;
+}
+
+/** The frontmatter and the body, or nothing when the document does not start with frontmatter. */
+const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+
+/**
+ * Parses and checks one `ROLE_SPEC.md`, reporting every problem at once: the schema, the four layers,
+ * the declarations and references inside the spec, the separation of the role from one business, and
+ * the eval scenarios in the SDK's own format. `source` names the document in every issue.
+ */
+export function parseRoleSpec(text: string, source = ROLE_SPEC_FILE): Validation<RoleSpec> {
+  const match = FRONTMATTER.exec(text);
+  if (match === null) {
+    return {
+      ok: false,
+      issues: [
+        {
+          source,
+          path: "",
+          message:
+            "must start with YAML frontmatter between --- lines: the role, the four layers and the evals",
+        },
+      ],
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(match[1] ?? "");
+  } catch (error) {
+    const message = error instanceof Error ? error.message.split("\n")[0] : String(error);
+    return {
+      ok: false,
+      issues: [{ source, path: "", message: `frontmatter is not valid YAML: ${message}` }],
+    };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, issues: [{ source, path: "", message: "frontmatter must be a mapping" }] };
+  }
+
+  const frontmatter = parsed as Mapping;
+  const body = (match[2] ?? "").trim();
+  // A separation rule says where a misplaced concern belongs, so its message replaces the schema's
+  // "is not a known field" at the same key, which says less.
+  const separation = separationIssues(frontmatter, source, businessConcerns(frontmatter));
+  const explained = new Set(separation.map((issue) => issue.path));
+
+  const schema = schemaIssues(RoleSpecSchema, frontmatter, source);
+  const issues: Issue[] = [
+    ...schema
+      .filter((issue) => !(issue.message === "is not a known field" && explained.has(issue.path)))
+      .map((issue) => withLayer(issue, layerForPath(issue.path))),
+    ...contextIssues(frontmatter, body, source),
+    ...knowledgeIssues(frontmatter, source),
+    ...wisdomIssues(frontmatter, source),
+    ...workflowIssues(frontmatter, source),
+    ...declarationIssues(frontmatter, source),
+    ...toolSourceIssues(
+      frontmatter,
+      schema.map((issue) => issue.path),
+      source,
+    ),
+    ...separation,
+    ...evalIssues(frontmatter, mergedForChecks(frontmatter), source),
+    ...(Array.isArray(frontmatter.context_plan)
+      ? contextPlanIssues(
+          frontmatter.context_plan,
+          Array.isArray(mapping(frontmatter.role)?.tools)
+            ? (mapping(frontmatter.role)?.tools as unknown[])
+            : [],
+          source,
+        )
+      : []),
+  ];
+
+  const all = once(issues);
+  if (all.some((issue) => issue.severity !== "warning")) return { ok: false, issues: all };
+  return { ok: true, value: { ...(frontmatter as RoleSpecFrontmatter), body }, issues: all };
+}
+
+/**
+ * The merged `officehum.json`: `role`, `wisdom.approvals`, `workflow.accepts` and `workflow.commands`,
+ * field names unchanged. `wisdom.authority` is not a manifest field — the generator turns it into the
+ * "You may" and "You may not" sections of AGENTS.md — and `business` is written to an overlay, never
+ * to the package. `evals` is the directory the generator writes the spec's scenarios into.
+ */
+export function manifestFromRoleSpec(spec: RoleSpec): AgentManifest {
+  const { role, wisdom, workflow, knowledge } = spec;
+  // Only the accepted entries of a built technique reach the manifest; a spec with no plan, or none
+  // accepted, merges exactly as it did before there was one.
+  const contextPlan = contextPlanOf(Array.isArray(spec.context_plan) ? spec.context_plan : []);
+  // This merge also runs over a *broken* spec, so the checker can report every problem at once: a
+  // missing `authority` is one of those problems, not a reason to throw here.
+  const prohibitions = Array.isArray(wisdom.authority?.may_not) ? wisdom.authority.may_not : [];
+  return {
+    schemaVersion: MANIFEST_SCHEMA_VERSION,
+    id: role.id,
+    name: role.name,
+    department: role.department,
+    role: role.role,
+    defaultModel: role.defaultModel,
+    ...(role.runtimes === undefined ? {} : { runtimes: role.runtimes }),
+    ...(role.engine === undefined ? {} : { engine: role.engine }),
+    ...(role.mcpServers === undefined ? {} : { mcpServers: role.mcpServers }),
+    ...(role.clis === undefined ? {} : { clis: role.clis }),
+    // `source` and `reviewed_read_only` are what a person reviews about a tool, not what the SDK
+    // builds it from: the manifest states the source by its fields, and the replay policy itself.
+    // The relevance filter's `context_recall` is built by the SDK; the generator declares it with
+    // the filter, the way the manifest requires.
+    tools: toolsWithPlan(
+      (Array.isArray(role.tools) ? role.tools : []).map(
+        ({ source: _source, reviewed_read_only: _reviewed, ...tool }) => tool,
+      ),
+      contextPlan,
+    ),
+    ...(workflow.commands === undefined ? {} : { commands: workflow.commands }),
+    connectors: role.connectors,
+    approvals: wisdom.approvals,
+    ...(role.limits === undefined ? {} : { limits: role.limits }),
+    channels: role.channels,
+    accepts: workflow.accepts,
+    // `enforced_by` is a factory check, not a manifest field: the manifest carries what the role
+    // never does and what it does instead, which is what the agent card and the prompt show.
+    ...(prohibitions.length === 0
+      ? {}
+      : {
+          mayNot: prohibitions.map((entry) => ({
+            action: entry.action,
+            instead: entry.instead,
+          })),
+        }),
+    ...(contextPlan === undefined ? {} : { contextPlan }),
+    skills: (knowledge?.skills ?? []).map((skill) => ({
+      id: skill.id,
+      enabledByDefault: skill.enabled_by_default,
+    })),
+    evals: EVALS_DIR,
+  };
+}
+
+/**
+ * The merged manifest for the SDK's own suite check, when the frontmatter carries enough of it. The
+ * check reads the names the spec declares, so a value the schema has refused elsewhere in the
+ * document is harmless here; it is a value to check a suite against, never the generator's output.
+ */
+function mergedForChecks(frontmatter: Mapping): AgentManifest | undefined {
+  const role = mapping(frontmatter.role);
+  const wisdom = mapping(frontmatter.wisdom);
+  const workflow = mapping(frontmatter.workflow);
+  const knowledge = mapping(frontmatter.knowledge);
+  const sound =
+    role !== undefined &&
+    Array.isArray(role.tools) &&
+    Array.isArray(role.connectors) &&
+    Array.isArray(role.channels) &&
+    wisdom !== undefined &&
+    Array.isArray(wisdom.approvals) &&
+    workflow !== undefined &&
+    Array.isArray(workflow.accepts) &&
+    (knowledge === undefined || Array.isArray(knowledge.skills));
+  if (!sound) return undefined;
+  return manifestFromRoleSpec(frontmatter as unknown as RoleSpec);
+}
+
+/** An issue with the layer its path belongs to, when it belongs to one. */
+function withLayer(issue: Issue, layer: FourLayer | undefined): Issue {
+  return layer === undefined ? issue : { ...issue, layer };
+}
+
+/** Every issue once: the schema and the SDK's suite check can name the same problem. */
+function once(issues: readonly Issue[]): Issue[] {
+  const seen = new Set<string>();
+  const unique: Issue[] = [];
+  for (const issue of issues) {
+    const key = `${issue.path}\u0000${issue.message}\u0000${issue.layer ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(issue);
+  }
+  return unique;
+}

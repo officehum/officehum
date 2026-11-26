@@ -1,0 +1,1028 @@
+{
+  "schema": 1,
+  "role": "payroll",
+  "researchedOn": "2026-11-22",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/43-3051.00",
+      "title": "O*NET OnLine: Payroll and Timekeeping Clerks (43-3051.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/details/43-3051.00",
+      "title": "O*NET OnLine (details): Payroll and Timekeeping Clerks (43-3051.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.bls.gov/ooh/office-and-administrative-support/financial-clerks.htm",
+      "title": "BLS Occupational Outlook Handbook: Financial Clerks",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.onetonline.org/link/summary/13-1141.00",
+      "title": "O*NET OnLine: Compensation, Benefits, and Job Analysis Specialists (13-1141.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.onetonline.org/link/summary/43-4161.00",
+      "title": "O*NET OnLine: Human Resources Assistants, Except Payroll and Timekeeping (43-4161.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S6",
+      "url": "https://www.onetonline.org/link/summary/11-3111.00",
+      "title": "O*NET OnLine: Compensation and Benefits Managers (11-3111.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.dol.gov/agencies/whd/fact-sheets/23-flsa-overtime-pay",
+      "title": "U.S. Department of Labor, Wage and Hour Division: Fact Sheet #23, Overtime Pay Requirements of the FLSA",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.dol.gov/agencies/whd/fact-sheets/21-flsa-recordkeeping",
+      "title": "U.S. Department of Labor, Wage and Hour Division: Fact Sheet #21, Recordkeeping Requirements under the FLSA",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S9",
+      "url": "https://www.dol.gov/agencies/whd/fact-sheets/22-flsa-hours-worked",
+      "title": "U.S. Department of Labor, Wage and Hour Division: Fact Sheet #22, Hours Worked Under the FLSA",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.dol.gov/agencies/whd/fact-sheets/30-cppa",
+      "title": "U.S. Department of Labor, Wage and Hour Division: Fact Sheet #30, Wage Garnishment Protections of the CCPA",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.irs.gov/businesses/small-businesses-self-employed/understanding-employment-taxes",
+      "title": "IRS: Understanding employment taxes",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.irs.gov/taxtopics/tc753",
+      "title": "IRS: Topic no. 753, Form W-4, Employees Withholding Certificate",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S13",
+      "url": "https://www.irs.gov/businesses/small-businesses-self-employed/employment-tax-recordkeeping",
+      "title": "IRS: Employment tax recordkeeping",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S14",
+      "url": "https://www.irs.gov/businesses/small-businesses-self-employed/correcting-employment-taxes",
+      "title": "IRS: Correcting employment taxes",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S15",
+      "url": "https://www.healthcare.gov/glossary/open-enrollment-period/",
+      "title": "HealthCare.gov glossary: Open Enrollment Period",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S16",
+      "url": "https://www.healthcare.gov/glossary/qualifying-life-event/",
+      "title": "HealthCare.gov glossary: Qualifying life event (QLE)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S17",
+      "url": "https://www.healthcare.gov/glossary/special-enrollment-period/",
+      "title": "HealthCare.gov glossary: Special Enrollment Period (SEP)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S18",
+      "url": "https://nationalcareers.service.gov.uk/job-profiles/payroll-administrator",
+      "title": "National Careers Service (UK): Payroll administrator",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S19",
+      "url": "https://www.ftc.gov/business-guidance/resources/protecting-personal-information-guide-business",
+      "title": "Federal Trade Commission: Protecting Personal Information, A Guide for Business",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S20",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/human-resources/hr-benefits-management-overview",
+      "title": "Microsoft Learn: Benefits management overview (Dynamics 365 Human Resources)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S21",
+      "url": "https://www.zoho.com/us/payroll/help/employer/pay-runs/regular-payroll.html",
+      "title": "Zoho Payroll Help: Regular Payroll",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S22",
+      "url": "https://www.adp.com/resources/articles-and-insights/articles/p/payroll-processing.aspx",
+      "title": "ADP: What is payroll processing?",
+      "kind": "other",
+      "fetchedOn": "2026-11-22"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Compile and record employee time and payroll data. May compute employees' time worked, production, and commission. May compute and post wages and deductions, or prepare paychecks."
+        },
+        {
+          "source": "S3",
+          "passage": "Payroll and timekeeping clerks compile and post employee time and payroll data."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "They make sure that employees are paid on time and that their paychecks are correct."
+        },
+        {
+          "source": "S18",
+          "passage": "Payroll administrators make sure employees get paid the right amount on the right date."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Complete, verify, and process forms and documentation for administration of benefits, such as pension plans, and unemployment and medical insurance."
+        },
+        {
+          "source": "S5",
+          "passage": "Provide assistance in administering employee benefit programs and worker's compensation plans."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Provide information to employees and managers on payroll matters, tax issues, benefit plans, and collective agreement provisions."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Formulate policies, procedures and programs for recruitment, testing, placement, classification, orientation, benefits and compensation, and labor and industrial relations."
+        },
+        {
+          "source": "S6",
+          "passage": "Administer, direct, and review employee benefit programs, including the integration of benefit programs following mergers and acquisitions."
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Distribute and collect timecards each pay period."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Verify attendance, hours worked, and pay adjustments, and post information onto designated records."
+        },
+        {
+          "source": "S3",
+          "passage": "They verify and record attendance, hours worked, and pay adjustments."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Review time sheets, work charts, wage computation, and other information to detect and reconcile payroll discrepancies."
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Compute wages and deductions, and enter data into computers."
+        },
+        {
+          "source": "S18",
+          "passage": "process wages, overtime, deductions and send out pay slips"
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Process and issue employee paychecks and statements of earnings and deductions."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Process paperwork for new employees and enter employee information into the payroll system."
+        },
+        {
+          "source": "S12",
+          "passage": "When you hire an employee, you must have the employee complete a Form W-4, Employee's Withholding Certificate."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Record employee information, such as exemptions, transfers, and resignations, to maintain and update payroll records."
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Issue and record adjustments to pay related to previous errors or retroactive increases."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Keep track of leave time, such as vacation, personal, and sick leave, for employees."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Prepare and balance period-end reports, and reconcile issued payrolls to bank statements."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Compile statistical reports, statements, and summaries related to pay and benefits accounts, and submit them to appropriate departments."
+        },
+        {
+          "source": "S18",
+          "passage": "create payroll reports for management"
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "answer staff queries about timesheets or pay slips"
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Explain company personnel policies, benefits, and procedures to employees or job applicants."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Keep informed about changes in tax and deduction laws that apply to the payroll process."
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Conduct verifications of employment."
+        },
+        {
+          "source": "S5",
+          "passage": "Search employee files to obtain information for authorized persons and organizations, such as credit bureaus and finance companies."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "Payroll cycles may be weekly, biweekly, semimonthly or monthly, depending on state requirements, employee needs and the employer's budget."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "An employee's workweek is a fixed and regularly recurring period of 168 hours -- seven consecutive 24-hour periods."
+        },
+        {
+          "source": "S7",
+          "passage": "It need not coincide with the calendar week, but may begin on any day and at any hour of the day."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "The workweek ordinarily includes all time during which an employee is necessarily required to be on the employer's premises, on duty or at a prescribed work place."
+        },
+        {
+          "source": "S9",
+          "passage": "Work not requested but suffered or permitted to be performed is work time that must be paid for by the employer."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Unless specifically exempted, employees covered by the Act must receive overtime pay for hours worked in excess of 40 in a workweek at a rate not less than time and one-half their regular rates of pay."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The regular rate includes all remuneration for employment except certain payments excluded by the Act itself."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Every covered employer must keep certain records for each non-exempt worker."
+        },
+        {
+          "source": "S4",
+          "passage": "Evaluate job positions, determining classification, exempt or non-exempt status, and salary."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "Calculating the gross pay (total earnings before deductions) and net pay (earnings after taxes and deductions) for each employee."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Employers generally must withhold federal income tax from employees' wages."
+        },
+        {
+          "source": "S11",
+          "passage": "Employers generally must withhold Social Security and Medicare taxes from employees' wages and pay the employer share of these taxes."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Form W-4 tells you the employee's filing status, multiple jobs adjustments, amount of credits, amount of other income, amount of deductions, and any additional amount to withhold from each paycheck to use to compute the amount of federal income tax to deduct and withhold from the employee's pay."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "Voluntary payroll deductions: Document employee-authorized deductions, such as benefits, retirement contributions or other elective programs."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "A wage garnishment is any legal or equitable procedure through which some portion of a person's earnings is required to be withheld for the payment of a debt."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "At the end of the year, you must prepare and file Form W-2, Wage and Tax Statement to report wages, tips and other compensation (including noncash payments) paid to each employee in your trade or business."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Benefit periods - A benefit period is the period when employees will have benefit coverage. It's also known as a plan year. The open enrollment periods are also set up here."
+        },
+        {
+          "source": "S15",
+          "passage": "Job-based plans may have different Open Enrollment Periods."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "A change in your situation - like getting married, having a baby, or losing health coverage - that can make you eligible for a Special Enrollment Period, allowing you to enroll in health insurance outside the yearly Open Enrollment Period."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "A time outside the yearly Open Enrollment Period when you can sign up for health insurance."
+        },
+        {
+          "source": "S17",
+          "passage": "Job-based plans must provide a Special Enrollment Period of at least 30 days."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Employers may use any timekeeping method they choose."
+        },
+        {
+          "source": "S8",
+          "passage": "Any timekeeping plan is acceptable as long as it is complete and accurate."
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "Time and attendance: Define how employees record time worked and how managers approve time records."
+        },
+        {
+          "source": "S22",
+          "passage": "workers must submit accurate information and managers need to promptly approve timecards in order for payroll processors to manage payroll correctly and on time."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "An announcement by the employer that no overtime work will be permitted, or that overtime work will not be paid for unless authorized in advance, also will not impair the employee's right to compensation for compensable overtime hours that are worked."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Rest periods of short duration, usually 20 minutes or less, are common in industry (and promote the efficiency of the employee) and are customarily paid for as working time."
+        },
+        {
+          "source": "S9",
+          "passage": "Bona fide meal periods (typically 30 minutes or more) generally need not be compensated as work time."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The Act applies on a workweek basis."
+        },
+        {
+          "source": "S7",
+          "passage": "Averaging of hours over two or more weeks is not permitted."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "Payroll processing is the process of calculating employee wages, withholding taxes and deductions, issuing payments and maintaining payroll records."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "While a payroll is in Draft status, you can review employee details and make necessary changes before proceeding for approval."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "If you don't have approval permissions, click Submit for Approval on the top right. An authorized user will then review and approve the payroll."
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "Warning: Once a regular payroll is approved, it cannot be edited or deleted."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Normally, overtime pay earned in a particular workweek must be paid on the regular pay day for the pay period in which the wages were earned."
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "If you receive a revised Form W-4 from an employee, you must put it into effect no later than the start of the first payroll period ending on or after the 30th day from the date you received the revised Form W-4."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Employers should use the corresponding \"X\" forms listed below to correct employment tax errors as soon as they are discovered."
+        },
+        {
+          "source": "S14",
+          "passage": "Generally, you may correct federal income tax withholding errors only if you discovered the errors in the same calendar year you paid the wages."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Process employees to determine eligibility. Employees select plans via employee self-service (optional). Confirm employee plan selections."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Life event types - Life events are events that allow for a change in an employee's coverage."
+        },
+        {
+          "source": "S17",
+          "passage": "Job-based plans must provide a Special Enrollment Period of at least 30 days."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "For example, a medical plan type might allow for changes to plans because of a birth or adoption, or because of a change in marital status. However, an insurance plan type might not allow for any changes because of life events."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Deductions - The deductions are basically the header information/codes that will be passed on to the payroll system to identify the deduction for the benefit."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "You must provide a copy of Form W-2 to your employees so they can accurately report the wages you paid to them."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Attention to Detail - A tendency to be detail-oriented, organized, and thorough in completing work."
+        },
+        {
+          "source": "S18",
+          "passage": "to be thorough and pay attention to detail"
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Integrity - A tendency to be honest and ethical at work."
+        },
+        {
+          "source": "S2",
+          "passage": "Cautiousness - A tendency to be careful, deliberate, and risk-avoidant when making work-related decisions or doing work."
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "The law requires this information to be accurate."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The overtime requirement may not be waived by agreement between the employer and employees."
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Limit access to personal information to employees with a \"need to know.\""
+        },
+        {
+          "source": "S19",
+          "passage": "Follow the \"principle of least privilege.\" That means each employee should have access only to those resources needed to do their particular job."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Search employee files to obtain information for authorized persons and organizations, such as credit bureaus and finance companies."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Use Social Security numbers only for required and lawful purposes- like reporting employee taxes."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Regular email is not a secure method for sending sensitive data."
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Form W-4 includes detailed worksheets to help employees figure their correct adjustments. Employees may also want to access the IRS Tax Withholding Estimator for help in completing Form W-4."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "Additional payroll deductions: Track any other approved deductions and maintain supporting authorization or documentation."
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "sensitivity and understanding"
+        },
+        {
+          "source": "S22",
+          "passage": "Document the recordkeeping laws that apply to you and how you will maintain confidentiality."
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Time accounting software - Kronos Workforce Payroll; Kronos Workforce Timekeeper"
+        },
+        {
+          "source": "S2",
+          "passage": "Accounting software - Fund accounting software; Intuit QuickBooks"
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "Payroll software can reduce manual work and errors by automating calculations, tax filing and recordkeeping while integrating with HR, timekeeping and accounting systems."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Hours worked each day. Total hours worked each workweek."
+        },
+        {
+          "source": "S8",
+          "passage": "Regular hourly pay rate. Total daily or weekly straight-time earnings. Total overtime earnings for the workweek. All additions to or deductions from the employee's wages. Total wages paid each pay period. Date of payment and the pay period covered by the payment."
+        }
+      ]
+    },
+    {
+      "id": "C67",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Each employer shall preserve for at least three years payroll records, collective bargaining agreements, sales and purchase records."
+        },
+        {
+          "source": "S8",
+          "passage": "Records on which wage computations are based should be retained for two years, i.e., time cards and piece work tickets, wage rate tables, work and time schedules, and records of additions to or deductions from wages."
+        }
+      ]
+    },
+    {
+      "id": "C68",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Keep all records of employment taxes for at least four years after filing the 4th quarter for the year."
+        },
+        {
+          "source": "S13",
+          "passage": "Copies of employees' and recipients' income tax withholding certificates (Forms W-4, W-4P, W-4S, and W-4V)."
+        }
+      ]
+    },
+    {
+      "id": "C69",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "Once your regular payroll is approved, Zoho Payroll will automatically deposit salaries into employees' bank accounts on the scheduled pay date if you've set up Direct Deposit for your organization and employees."
+        }
+      ]
+    },
+    {
+      "id": "C70",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Eligibility rules - Use eligibility rules to determine whether an employee is eligible for a plan."
+        },
+        {
+          "source": "S20",
+          "passage": "Online benefits enrollment provides an easy experience for your employees."
+        }
+      ]
+    },
+    {
+      "id": "C71",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "develop a written records retention policy to identify what information must be kept, how to secure it, how long to keep it, and how to dispose of it securely when you no longer need it."
+        }
+      ]
+    },
+    {
+      "id": "C72",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Evaluate job positions, determining classification, exempt or non-exempt status, and salary."
+        },
+        {
+          "source": "S4",
+          "passage": "Develop and administer compensation programs, such as merit or incentive pay."
+        }
+      ]
+    },
+    {
+      "id": "C73",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "Overtime: Identify who is eligible for overtime and how overtime hours are calculated and approved."
+        },
+        {
+          "source": "S22",
+          "passage": "A consistent tracking process can also help managers review exceptions before payroll is finalized."
+        }
+      ]
+    },
+    {
+      "id": "C74",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Provide advice on the resolution of classification and salary complaints."
+        }
+      ]
+    },
+    {
+      "id": "C75",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Design, evaluate, and modify benefits policies to ensure that programs are current, competitive, and in compliance with legal requirements."
+        },
+        {
+          "source": "S20",
+          "passage": "Life event types are linked to a plan type."
+        }
+      ]
+    },
+    {
+      "id": "C76",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "To ensure that your payroll is accurate, processed timely and in accordance with all regulations, you'll need to establish guidelines with both your employees and your payroll department."
+        }
+      ]
+    },
+    {
+      "id": "C77",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Questions relating to other garnishment issues should be directed to the court or agency initiating the garnishment action."
+        }
+      ]
+    },
+    {
+      "id": "C78",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Advise managers and employees on state and federal employment regulations, collective agreements, benefit and compensation policies, personnel procedures, and classification programs."
+        }
+      ]
+    },
+    {
+      "id": "C79",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Time Pressure - How often does this job require the worker to meet strict deadlines?"
+        },
+        {
+          "source": "S11",
+          "passage": "You must file employment tax returns by set deadlines."
+        }
+      ]
+    },
+    {
+      "id": "C80",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "As you add more employees, tracking and calculating everything manually becomes more challenging, and the cost of errors increases, potentially resulting in costly tax penalties."
+        }
+      ]
+    },
+    {
+      "id": "C81",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "These records must be open for inspection by the Division's representatives, who may ask the employer to make extensions, computations, or transcriptions."
+        }
+      ]
+    }
+  ]
+}

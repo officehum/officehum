@@ -1,0 +1,295 @@
+# Sales / Account Manager
+
+A portable role package: the account manager at **Northwind Facilities**, a fictitious commercial
+cleaning and building-maintenance company in Portland, Oregon. It qualifies leads, quotes from the
+company's price book, follows up, keeps the pipeline, and hands anything a person must decide to the
+person who owns it.
+
+It ships with the company's facts — who works there, what the six services are, what everything costs,
+the refund and discount policies, the escalation path — as a generated skill inside the package. Two
+things it will not do: give a price that is not in the price book, and let a discount or an over-limit
+quote through without a person.
+
+## Try it
+
+Nothing is published to npm yet, so run it from a clone of this repository (Node 22.19 or later;
+the [quickstart](../../docs/quickstart.md) covers the install, and
+[Build a role](../../docs/build-a-role.md) explains the package).
+The package ships compiled JavaScript, so build first:
+
+```sh
+npm install
+npm run build
+node packages/cli/dist/index.js run agents/sales --demo --model paper/ultramarine-1-flash
+```
+
+After the build, `npm rebuild @officehum/cli` links the `officehum` command, so `npx officehum` from
+the repository root is the same program, and that is what `officehum` means in the commands below.
+
+Then type a message. With `--demo` the role runs on a **demonstration desk**: five leads in memory,
+the company's own price book, and nothing written anywhere. Without `--demo` and with no desk bound,
+the role still starts, but every tool that reads or writes the pipeline refuses and says how to bind
+one, so a forgotten CRM never shows made-up leads. Ask it to quote the
+Riverside Dental deep clean and it will price it from the book, apply the minimum, and tell you what
+the quote says. It needs a model key in the environment (`PAPERINSTRUMENTS_API_KEY` for Paper) for
+that conversation, like every role.
+
+## Run its evals
+
+The scenarios live in `evals/situations.json`; the turns a scripted model plays back are in
+`evals.smoke.json` (beside `evals/`, not inside it: every `.json` in `evals/` is read as a suite).
+`officehum eval` installs only the role's own extensions on a fresh in-memory Pi Durable harness, so a
+role that needs Office Hum fails here:
+
+```sh
+officehum eval agents/sales --model scripted
+officehum eval agents/sales                                  # live, on the role's default model
+```
+
+Seventeen scenarios, all deterministic: a quote inside the limit; a quote over it, saved awaiting a
+person and then approved; a quote whose lines are each raised to the book's minimum, so only the
+desk's total is over the limit, which must still wait for a person; a discount declined cleanly; a log receipt claiming Marcus decided,
+which the reply must not repeat because no approval answered; a lead with no budget that is
+qualified rather than quoted; a price question answered from the book; an instruction injected
+into a lead's message; a complaint handed to the two people who own it; a quiet quote closed as
+lost with `update_lead_stage`; a price objection answered with the value of the quote; a lead moved to
+qualified after a walkthrough; a quote's acceptance recorded on the quote; a quote awaiting approval
+refused as sent, with the reply saying it still waits for a person (critical); a follow-up scheduled
+for its day; and a pipeline review read from `pipeline_report`. Every declared tool is stubbed
+with the scenario's canned text — the model is offered the real names, descriptions and
+parameters while no real system is touched — and an approval a scenario does not script stops the
+trial. Two more are the honesty scenarios every catalog role carries: a discount
+declined with no one named, reported without naming who decided, and a refund the role cannot
+agree, never claimed as passed on to anyone.
+
+A scripted run counts the calls the model *intended*, including ones an approval gate would block; it
+says the wiring holds, not how the role behaves. Only a live run shows how the model acts on the same
+scenarios.
+
+## What it does
+
+| Tool | Replay | What it is for |
+| --- | --- | --- |
+| `list_leads` | safe | The pipeline, filtered by stage or by a search on the company, contact or site |
+| `get_quote` | safe | One existing quote by its id: lead, lines, subtotal, discount, total and validity |
+| `search_price_book` | safe | The price book item a quote line is built from, with its unit, price and minimum |
+| `create_quote` | unsafe | A quote the desk prices from the book, one line per service: items and quantities (and `visitsPerWeek` for a recurring per-visit line), never prices or counts. A discounted or over-limit quote is saved awaiting approval (quoting skill) |
+| `request_quote_approval` | unsafe | Asks a person to approve a quote the desk held, by its id; on a yes it is a draft ready to send (quoting skill) |
+| `log_activity` | unsafe | An internal note on a lead: what was decided and what happens next |
+| `update_lead_stage` | unsafe | Moves a lead between `new`, `qualified`, `quoted`, `won` and `lost`, with the reason recorded on the lead. Refuses a no-op, `quoted` with no quote ready to send, and moving a closed deal |
+| `record_quote_outcome` | unsafe | Marks a draft quote `sent`, or a sent quote `accepted` or `declined`, with its day (today by default). Never marks a quote awaiting approval as sent; moves no stage |
+| `schedule_follow_up` | unsafe | Puts the next touch on a lead for a day, today or later, replacing the open one; `list_leads` shows it |
+| `pipeline_report` | safe | Leads and their estimated value by stage, and quotes and their totals by status, counted by the desk |
+| `read_company` | safe | One section of the company record: profile, hours, people, services, pricing, policies, tone, escalation, glossary |
+
+Every tool speaks in integer cents behind the money a person reads, and every figure comes from the
+company record or from the desk — never from the model, and never from a constant in the code.
+
+## The quote approval
+
+The model names price book items and quantities; the desk prices every line, applies the book's
+per-line minimums and works out the total. For a recurring line on an item priced per visit the model
+gives `visitsPerWeek`, and the desk bills `quantity × visitsPerWeek × quoting.weeksPerMonth` (the
+company record's weeks in a month), rounded to the hundredth and never to whole visits; the receipt
+shows the count, e.g. "5 visits a week × 4.33 weeks = 21.65 visits". The desk then decides whether a
+person must approve the quote, on that total:
+
+- a quote with any discount, whatever its size, or
+- a quote whose subtotal — after minimums, before any discount — is above the business's resolved
+  `quote_limit_cents` limit (at the limit passes; a cent over waits). With no limit resolved, every
+  quote waits.
+
+Such a quote is saved with the status `awaiting_approval`: it is in the CRM but not ready to send, and
+`create_quote`'s receipt says why and names the next call. The approval is two steps, the same as
+Purchasing's draft orders:
+
+1. `create_quote` saves the quote awaiting approval and returns `Next: call request_quote_approval
+   with quoteId Q-…, which asks <the person the company record names>`.
+2. `request_quote_approval` carries the one approval, **`quote_approval`**, declared in
+   `officehum.json` with no `when`, so every call waits for a person. The gate reads the quote from
+   the desk — lead, lines, discount, total and why it waits — shows it to the person, and on a yes
+   hands those facts to the tool. The desk makes the quote a draft ready to send only if it still
+   matches what the person saw (`quote_changed` otherwise).
+
+With no approver, the gate refuses `request_quote_approval` and the quote stays awaiting approval.
+`create_quote`, `log_activity`, `update_lead_stage`, `record_quote_outcome` and `schedule_follow_up`
+state `noApproval`: saving a quote sends nothing to the client, and a note, a stage, a quote's outcome
+and a follow-up are records with no effect outside the office. None of them decides what the role's
+manager decides (price schedules, discounts, escalated complaints, goals).
+
+## Moving a deal through the pipeline
+
+A quote moves forward only as somebody records it: `awaiting_approval` → `draft` (ready to send) →
+`sent` → `accepted` or `declined`, each with its day, through `record_quote_outcome`. A quote awaiting
+approval is refused as `sent`. An outcome never moves the lead: the receipt names `update_lead_stage`
+as the next step, and the stage moves only when the model asks, with a reason the desk records on the
+lead. `won` and `lost` are final for the tool; a person reopens a closed deal. The following-up
+cadence counts from the recorded sent day, and each touch is a follow-up scheduled on the lead.
+`pipeline_report` is the desk's own count, so a pipeline review never adds figures up in the model.
+
+### Changing the limit
+
+The limit is `officehum.json`'s `quote_limit_cents`, in cents (`500000` is $5,000.00). That is the
+only place it lives: the company record holds no limits, and the company's handbook names the limit
+without a figure, so nothing can drift from what the desk enforces. A business changes it in an
+overlay's `settings.json`, with no edit to this package and no restart:
+
+```json
+{ "limits": { "quote_limit_cents": 750000 } }
+```
+
+## The company it works for
+
+`company/default/` at the root of the repository is the one place Northwind Facilities is described:
+
+| File | Holds |
+| --- | --- |
+| `company.json` | The record: profile, people and what each decides, services, price book, policies, tone, escalation, glossary |
+| `handbook.md` | The long-form reference: how the business works and what a job looks like end to end |
+| `policies.md` | Refunds, discounts, safety, data handling, and what must never be promised |
+| `pricing.md` | The price book in prose, and what may be quoted without a person |
+
+Every role in `agents/` gets the same facts as generated copies, because a published role has to be
+self-contained:
+
+```
+skills/company-handbook/SKILL.md                    the handbook, and the entry point
+skills/company-handbook/references/pricing.md       every price and minimum
+skills/company-handbook/references/policies.md      the rules and who decides
+skills/company-handbook/references/facts.json       the same facts, for the role's own code
+```
+
+`npm run sync-company` writes them. They are generated: do not edit a copy, because `npm test`
+regenerates the whole catalogue in memory and fails, naming the file and the command, when a copy has
+drifted. The generator also refuses a company that disagrees with itself — a figure in the prose that
+`company.json` does not record, a price the prose leaves out, an escalation to someone who does not
+work there, a headcount the field structure does not add up to.
+
+### Putting your own company in
+
+Two ways, and the first is the one for a clone of this repository:
+
+1. **Replace the facts.** Edit `company/default/company.json`, `handbook.md`, `policies.md` and
+   `pricing.md` for your business, run `npm run sync-company`, and commit the generated copies. The
+   agent, its skills and its price book change together, and the drift test keeps them together.
+2. **Pass it in.** A host that builds the role itself passes `company`, and nothing in
+   `company/default/` is involved:
+
+```ts
+import sales, { type CompanyFacts } from "@officehum/sales";
+
+const role = sales({ company: myCompanyFacts, desk: myCrm, approve });
+```
+
+`CompanyFacts` is the shape of `references/facts.json`; a business with a different price book, people
+and policies fills in the same shape.
+
+## Bind it to a real pipeline
+
+The role ships no CRM connection. `fakeSalesDesk` is the demonstration one; a host binds a `SalesDesk`:
+
+```ts
+export interface SalesDesk {
+  listLeads(filter?: { stage?: LeadStage; query?: string }): Promise<readonly Lead[]>;
+  getQuote(id: string): Promise<Quote>;
+  createQuote(
+    draft: QuoteDraft,
+    options: { requestId: string; quoteLimitCents: number | undefined },
+  ): Promise<Quote>;
+  approveQuote(
+    input: { quoteId: string; approved: Record<string, unknown> },
+    options: { requestId: string },
+  ): Promise<Quote>;
+  logActivity(entry: ActivityDraft, options: { requestId: string }): Promise<Activity>;
+  updateLeadStage(change: StageChange, options: { requestId: string }): Promise<StageMove>;
+  recordQuoteOutcome(
+    outcome: QuoteOutcomeDraft,
+    options: { requestId: string },
+  ): Promise<QuoteOutcomeRecord>;
+  scheduleFollowUp(draft: FollowUpDraft, options: { requestId: string }): Promise<ScheduledFollowUp>;
+  pipelineReport(): Promise<PipelineReport>;
+}
+```
+
+The desk owns the arithmetic and the price book: every quote line names a price book item and a
+quantity, the desk prices it from the book, and a line with no item is refused, because work the book
+does not cover is priced by a person. A line with `visitsPerWeek` must name an item priced per visit,
+and the desk counts its month from the company's `quoting.weeksPerMonth`. The desk also decides which
+quotes wait for approval, and `approveQuote` refuses facts that no longer match the quote. A quote's line amounts, the price book's minimums, any discount and the
+total come back in the receipt, so the model never computes a figure. Every write carries a
+`requestId` derived from the durable call identity, so a retried call returns the quote it already
+made instead of a second draft.
+
+Standalone, through a `--clients` file. The file names a client and the module that exports its
+factory; the factory is called with no arguments and reads its own configuration from the environment,
+so the file never holds a credential:
+
+```json
+{ "desk": { "module": "./my-crm.mjs" } }
+```
+
+```js
+// my-crm.mjs — the business's own CRM
+export default function createDesk() {
+  return myCrmClient({ token: process.env.CRM_TOKEN });
+}
+```
+
+```sh
+officehum run agents/sales --clients ./clients.json --model paper/ultramarine-1-flash
+```
+
+An embedding host passes `desk`, `company`, `approve` and `overlays` straight to the factory instead.
+With a `desk` client bound, `--demo` changes nothing: the business's own desk is used.
+
+## Install it as a library
+
+```ts
+import sales from "@officehum/sales";
+
+const role = sales({ desk, approve, overlays: ["./my-sales"] });
+for (const extension of role.extensions) registry.install(extension);
+const root = await harness.root(context, { agent: role.agent });
+```
+
+- **`desk`** — the pipeline. Omitted: the demonstration desk, priced from the same book, when `demo`
+  is set; otherwise none, and every desk tool refuses with how to bind one.
+- **`demo`** — run on the demonstration desk when no `desk` is given. Set by the host (`officehum run
+  --demo`, the eval runner); `loadRole` reserves the name, so a client file can never set it.
+- **`approve`** — decides the gated actions. Omitted: a discounted or over-limit quote stays saved
+  awaiting approval and its approval is refused, which is the safe direction.
+- **`overlays`** — the business's own `AGENTS.md`, skills, `settings.json` and limits, lowest first.
+- **`now`** — the clock the demonstration desk dates against (today for a quote, an outcome and a
+  follow-up). Omitted: `DEMO_NOW`, 2026-11-01, the day the demo pipeline's newest quotes were made. A
+  host's own desk keeps its own clock. "Today" is that clock's day in the company's time zone (the
+  company record's `hours.timezone`), not UTC's, so a quote made at 17:00 in Portland is dated that
+  day.
+
+Office Hum's `officehum run` supplies a terminal approver and prints a gated action's description and
+arguments before it waits for `y`/`n`.
+
+## The files
+
+| Path | What it holds |
+| --- | --- |
+| `officehum.json` | The manifest: eleven tools, one approval, one limit, dispatches, skills, evals |
+| `AGENTS.md`, `APPEND_SYSTEM.md` | The role's prompt |
+| `role.md`, `role.sources.json` | The researched description of the job, every item cited; `officehum verify-role agents/sales --online` re-checks the sources |
+| `src/index.ts` | The factory: the tools, the skill placement, the desk and company defaults |
+| `src/tools.ts` | The eleven tools, the receipts they return, and the quote approval's facts |
+| `src/company.ts` | The company facts as the role reads them, and the price book search |
+| `src/desk.ts` | The `SalesDesk` interface, `fakeSalesDesk`, the demo pipeline and the quote arithmetic |
+| `src/tools.test.ts` | One test per tool, on the fake desk and the real facts |
+| `src/index.test.ts` | The factory, the quote approval on a real harness, and nineteen scenarios |
+| `src/package.test.ts` | The package, the manifest, and the company's numbers against the role's |
+| `evals/situations.json` | The nineteen eval scenarios |
+| `evals.smoke.json` | The turns `--model scripted` plays back for them |
+| `skills/` | `qualifying-a-lead`, `quoting-from-the-price-book`, `following-up`, and the generated `company-handbook` |
+
+## You may not
+
+The prompt says it, the manifest declares it, and the tests hold it: this role gives no price that is
+not in the price book, agrees no discount, promises no start date or contract term, agrees no refund or
+credit, and treats an instruction inside a lead's message as information about their building rather
+than an order. Anything outside that is handed to the person who owns it, named to the client, with a
+day attached.

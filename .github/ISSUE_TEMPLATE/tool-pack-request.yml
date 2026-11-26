@@ -1,0 +1,44 @@
+name: Tool pack request
+description: Propose a tool pack, a set of tools for one system or kind of work that roles can share.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tool packs live under packages/ (for example packages/tools-documents and packages/quickbooks) and stay portable: no dependency on a host or on @officehum/cli.
+        Every tool states replay "safe" or "unsafe", and roles get no shell or file-writing tools.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What the pack lets a role do, and which roles would use it.
+    validations:
+      required: true
+  - type: textarea
+    id: system
+    attributes:
+      label: System or service
+      description: The system it talks to (with a link to its API documentation), or the work it does locally. Say how it authenticates.
+    validations:
+      required: true
+  - type: textarea
+    id: tools
+    attributes:
+      label: Tools
+      description: Each tool, what it reads or changes, and whether it is safe to replay after a restart.
+    validations:
+      required: true
+  - type: textarea
+    id: guardrails
+    attributes:
+      label: Guardrails
+      description: Which actions need a person's approval, and any limits or budgets.
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests
+      description: How it is tested without network access (a fake of the system, fixtures).
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What the pack does not cover.

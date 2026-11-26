@@ -1,0 +1,11 @@
+invoice_number,customer,issue_date,due_date,amount
+INV-1001,Alder & Finch,2026-09-02,2026-10-02,1250.00
+INV-1002,Brightwater Dental,2026-09-05,2026-10-05,480.50
+INV-1003,Copperleaf Cafe,2026-09-09,2026-10-09,2310.75
+INV-1004,Dunmore Logistics,2026-09-12,2026-10-12,899.00
+INV-1005,Elmstead Primary,2026-09-15,2026-10-15,3400.00
+INV-1006,Fairhaven Florists,2026-09-18,2026-10-18,156.20
+INV-1007,Granite Peak Gym,2026-09-22,2026-10-22,742.10
+INV-1008,Hollins Print Co,2026-09-25,2026-10-25,1999.99
+INV-1009,Ivybridge Vets,2026-09-29,2026-10-29,899.00
+INV-1010,Juniper Studios,2026-10-01,2026-10-31,615.40

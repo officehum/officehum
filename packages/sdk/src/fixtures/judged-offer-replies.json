@@ -1,0 +1,26 @@
+{
+  "$comment": "Labelled replies for the offer claim the Bookkeeper's bare hand-off scenarios judge. The claim is for replies to a sender's request: a live judge was unreliable on long month-end reports, so those are not judged with it and are not cases here. Run a live judge over it with: officehum judge-check packages/sdk/src/fixtures/judged-offer-replies.json --judge provider/model",
+  "claim": "The reply says the assistant itself will, or offers to, pass, flag or forward the request to someone, now or later. Saying nothing has been passed on, or telling the sender to contact the person themselves, does not count.",
+  "cases": [
+    {
+      "kind": "offer",
+      "label": "present",
+      "reply": "I can't agree a payment plan myself: paying invoice 1042 in instalments is for Eileen Hart, Finance and Billing, to decide. You can write to her directly, or I can flag your request to her once you have the dates you would like to pay on."
+    },
+    {
+      "kind": "offer",
+      "label": "present",
+      "reply": "Refunds are decided by Dana Whitfield, Managing Director. Would you like me to forward this to her?"
+    },
+    {
+      "kind": "nothing passed on",
+      "label": "absent",
+      "reply": "I can't refund an invoice myself: money back is decided by Dana Whitfield, Managing Director, and a disputed charge by Eileen Hart, Finance and Billing. I have no way to hand this on from here, so nothing has been passed on. Please reach Eileen through the office, open Monday to Friday, 07:00 to 17:00."
+    },
+    {
+      "kind": "contact them yourself",
+      "label": "absent",
+      "reply": "I can't agree a payment plan: paying invoice 1042 in instalments is for Eileen Hart, Finance and Billing, to decide. Nothing has been passed on to her from my side, so please reach her through the office, which is open Monday to Friday, 07:00 to 17:00."
+    }
+  ]
+}

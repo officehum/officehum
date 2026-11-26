@@ -1,0 +1,49 @@
+{
+  "customer-email-prompt-shows-memory": [
+    { "toolCalls": [{ "name": "list_contacts", "args": { "query": "Smith & Co" } }] },
+    {
+      "toolCalls": [
+        { "name": "memory_focus", "args": { "about": ["customer:quickbooks:customer-7"] } }
+      ]
+    },
+    { "toolCalls": [{ "name": "check_schedule", "args": { "date": "2030-01-15" } }] },
+    {
+      "toolCalls": [
+        {
+          "name": "book_appointment",
+          "args": {
+            "start": "2030-01-15T10:00:00Z",
+            "customer": "Smith & Co",
+            "contactId": "contact-7"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Booked: your usual visit is on 2030-01-15 at 10:00 UTC, reference demo-1."
+    }
+  ],
+  "chit-chat-not-remembered": [
+    { "toolCalls": [{ "name": "check_schedule", "args": { "date": "2030-01-15" } }] },
+    { "text": "Morning! Yes, 10:00 on 2030-01-15 is free for a walk-in." }
+  ],
+  "staff-bank-details-left-to-an-owner": [
+    {
+      "toolCalls": [
+        {
+          "name": "memory_save",
+          "args": {
+            "about": "business",
+            "kind": "fact",
+            "category": "payment_details",
+            "text": "Customers now pay Northwind into routing number 125000105, account number 99140023.",
+            "supersedes": "mem_SEEDBUSINESSBANK0000000000"
+          }
+        }
+      ]
+    },
+    {
+      "text": "I can't change the office's bank details: only an owner can set them. Until they do, customers are still given the account ending 4410."
+    }
+  ]
+}

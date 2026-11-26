@@ -1,0 +1,474 @@
+/**
+ * The typed Word tools, as Pi Durable registrations.
+ *
+ * Six tools — `inspect_document`, `read_document`, `create_document`, `edit_document`,
+ * `preview_document`, `compare_document` — on the same `DocumentService` the Python workspace uses.
+ * Each one validates its arguments, resolves every file reference against the task's lease, and runs a
+ * fixed Python operation through `runDocumentPython`, so a typed call and a submitted snippet share the
+ * same receipts, the same staging, the same package inspection and the same idempotency.
+ *
+ * The operation ID comes from the Pi Durable conversation and call identity, never from an argument: a
+ * model cannot choose its own replay identity. The rules the tools enforce, and where:
+ *
+ * - **A lease, not a path.** A file reference is a FileStore id with the version, name, hash and size the
+ *   lease pinned; all five are checked against the lease before the run. A reference the lease does not
+ *   grant is `ungranted-input`, and the output is one staging file name, never a directory.
+ * - **Drafts and proposals, never publications.** `create_document` writes a new file (a draft);
+ *   `edit_document` proposes a new immutable version of a leased file and leaves it unpublished. Both
+ *   report `published: false`, and the result validator refuses anything else.
+ * - **Bounded only.** `read_document` and `preview_document` answer with a page: page size, cursor and
+ *   total. The validator refuses a page that is inconsistent with itself.
+ * - **Nothing is edited in place.** Every mutating call commits a new immutable version; the source
+ *   version is untouched, and one refusal leaves it byte-identical.
+ */
+
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import { arr, bool, int, lit, obj, opt, str, union } from "@earendil-works/pi-schema";
+import {
+  type DocumentToolFamily,
+  type DocumentToolOptions,
+  documentTool,
+  fileRefSchema,
+} from "./document-tool.js";
+import {
+  COMPARE_DOCUMENT,
+  CREATE_DOCUMENT,
+  EDIT_DOCUMENT,
+  INSPECT_DOCUMENT,
+  MAX_WORD_PAGE,
+  PREVIEW_DOCUMENT,
+  parseWordResult,
+  READ_DOCUMENT,
+  type WordDiff,
+  type WordOperation,
+  type WordRedline,
+  type WordResult,
+  wordProgram,
+} from "./word-operations.js";
+
+// -- schemas ---------------------------------------------------------------------------------------
+
+const FileRef = fileRefSchema("brief.docx");
+
+const AnchorText = obj({
+  text: str({
+    minLength: 1,
+    description:
+      "The exact text of one paragraph. Paper refuses when it matches nothing, or more than once.",
+  }),
+});
+
+const AnchorBlock = obj({
+  story: str({ minLength: 1, description: "The story part, e.g. word/document.xml." }),
+  index: int({ minimum: 0, description: "The block index read_document reported." }),
+  contentHash: str({
+    minLength: 8,
+    description: "The block's contentHash from read_document; a mismatch refuses as stale.",
+  }),
+});
+
+const Anchor = union([AnchorText, AnchorBlock], {
+  description:
+    "Where the edit lands: by exact paragraph text, or by a block read_document reported.",
+});
+
+const tracked = opt(
+  bool({
+    description: "Record a Word revision (default true for paragraphs, so the redline is real).",
+  }),
+);
+const author = opt(
+  str({
+    minLength: 1,
+    description: "Who the change is attributed to. Defaults to the call's author.",
+  }),
+);
+const date = opt(
+  str({ minLength: 1, description: "ISO 8601 instant to stamp the revision with." }),
+);
+
+const StepSchema = union(
+  [
+    obj({
+      kind: lit("insertSection"),
+      anchor: Anchor,
+      heading: str({ minLength: 1 }),
+      paragraphs: arr(str(), { minItems: 1 }),
+      headingStyle: opt(str()),
+      bodyStyle: opt(str()),
+      tracked,
+      author,
+      date,
+    }),
+    obj({
+      kind: lit("replaceParagraphs"),
+      anchor: Anchor,
+      paragraphs: arr(str(), { minItems: 1 }),
+      count: opt(int({ minimum: 1, maximum: 1_000 })),
+      bodyStyle: opt(str()),
+      tracked,
+      author,
+      date,
+    }),
+    obj({
+      kind: lit("deleteParagraphs"),
+      anchor: Anchor,
+      count: opt(int({ minimum: 1, maximum: 1_000 })),
+      tracked,
+      author,
+      date,
+    }),
+    obj({
+      kind: lit("replaceText"),
+      needle: str({ minLength: 1 }),
+      text: str({
+        description: "The replacement, or the empty string to delete the match.",
+      }),
+      story: opt(str()),
+      nth: opt(int({ minimum: 1 })),
+      tracked,
+      author,
+      date,
+    }),
+    obj({
+      kind: lit("updateCell"),
+      nearText: str({
+        minLength: 1,
+        description: "Text in the table to edit, matched uniquely.",
+      }),
+      row: int({ minimum: 0 }),
+      column: int({ minimum: 0 }),
+      text: str(),
+      tracked,
+      author,
+      date,
+    }),
+    obj({
+      kind: lit("insertRow"),
+      nearText: str({ minLength: 1 }),
+      row: int({ minimum: 0, description: "Insert after this 0-based row." }),
+      values: arr(str(), { minItems: 1 }),
+      copyFormatFrom: opt(int({ minimum: 0 })),
+    }),
+    obj({
+      kind: lit("deleteRow"),
+      nearText: str({ minLength: 1 }),
+      row: int({ minimum: 0 }),
+    }),
+    obj({
+      kind: lit("addComment"),
+      anchor: Anchor,
+      text: str({ minLength: 1 }),
+      author,
+      date,
+    }),
+    obj({
+      kind: lit("replyComment"),
+      commentId: int({ minimum: 0 }),
+      text: str({ minLength: 1 }),
+      author,
+      date,
+    }),
+    obj({
+      kind: lit("resolveComment"),
+      commentId: int({ minimum: 0 }),
+      resolved: opt(bool()),
+    }),
+    obj({ kind: lit("deleteComment"), commentId: int({ minimum: 0 }) }),
+    obj({
+      kind: lit("acceptRevisions"),
+      revisionAuthor: opt(str({ minLength: 1 })),
+    }),
+    obj({
+      kind: lit("rejectRevisions"),
+      revisionAuthor: opt(str({ minLength: 1 })),
+    }),
+  ],
+  { description: "One edit step. Steps apply in the order given, each validating its own anchor." },
+);
+
+const BlockSchema = union(
+  [
+    obj({
+      kind: lit("heading"),
+      text: str({ minLength: 1 }),
+      level: int({ minimum: 0, maximum: 9, description: "0 is Title, 1 is Heading 1." }),
+    }),
+    obj({
+      kind: lit("paragraph"),
+      text: str({ minLength: 1 }),
+      style: opt(str()),
+    }),
+    obj({
+      kind: lit("list"),
+      items: arr(str(), { minItems: 1 }),
+      listKind: opt(union([lit("bullet"), lit("decimal")])),
+      level: opt(int({ minimum: 0, maximum: 2 })),
+    }),
+    obj({
+      kind: lit("table"),
+      rows: arr(arr(str()), { minItems: 1 }),
+      style: opt(str()),
+    }),
+    obj({ kind: lit("pageBreak") }),
+  ],
+  { description: "One block of a new draft, applied in order." },
+);
+
+const paging = {
+  cursor: opt(int({ minimum: 0, description: "The nextCursor a previous page reported, or 0." })),
+  pageSize: opt(
+    int({
+      minimum: 1,
+      maximum: MAX_WORD_PAGE,
+      description: `1 to ${MAX_WORD_PAGE} items per page.`,
+    }),
+  ),
+};
+
+const INSPECT_PARAMETERS = obj({ ref: FileRef }, { description: "The leased .docx to inspect." });
+
+const READ_PARAMETERS = obj(
+  {
+    ref: FileRef,
+    section: union(
+      [
+        lit("blocks"),
+        lit("paragraphs"),
+        lit("headings"),
+        lit("tables"),
+        lit("comments"),
+        lit("revisions"),
+      ],
+      {
+        description:
+          "What to page through: blocks, paragraphs, headings, tables, comments or revisions.",
+      },
+    ),
+    ...paging,
+    includeCells: opt(
+      bool({ description: "For the tables section: include each table's cell text." }),
+    ),
+  },
+  { description: "A bounded page of one section of a leased .docx." },
+);
+
+const CREATE_PARAMETERS = obj(
+  {
+    output: str({
+      minLength: 1,
+      description: "The new draft's file name, e.g. close-summary.docx.",
+    }),
+    blocks: arr(BlockSchema, { minItems: 1 }),
+  },
+  { description: "A new Word draft, built from typed blocks." },
+);
+
+const EDIT_PARAMETERS = obj(
+  {
+    ref: FileRef,
+    output: str({
+      minLength: 1,
+      description: "The proposal's file name, e.g. close-summary.docx.",
+    }),
+    steps: arr(StepSchema, { minItems: 1 }),
+    author: str({ minLength: 1, description: "Who the edit is attributed to." }),
+    date: opt(str({ minLength: 1, description: "ISO 8601 instant for the revisions." })),
+    acknowledgeProtection: opt(
+      bool({
+        description:
+          "Set only after reviewing why the source is protected: without it a protected document refuses.",
+      }),
+    ),
+  },
+  { description: "An edit of a leased .docx, as an unpublished proposal." },
+);
+
+const PREVIEW_PARAMETERS = obj(
+  { ref: FileRef, ...paging },
+  { description: "A bounded text and structure preview of a leased .docx." },
+);
+
+const COMPARE_PARAMETERS = obj(
+  { from: FileRef, to: FileRef },
+  { description: "Two leased .docx versions to diff and redline." },
+);
+
+// -- descriptions ----------------------------------------------------------------------------------
+
+const REF_NOTE = [
+  "Every operation takes a **file reference** (`fileId`, `versionId`, `name`, `sha256`, `size`) from this",
+  "task's lease or from an earlier operation's output. It never takes a path or a URL: a reference the",
+  "lease does not grant is refused, and no operation can widen the lease.",
+].join("\n");
+
+const DESCRIPTIONS: Readonly<Record<WordOperation, string>> = {
+  inspect: [
+    "Summarise a leased Word (.docx) document: story parts, block and paragraph counts, the heading",
+    "outline, table shapes, comments with their thread state, tracked changes by type, the document's",
+    "protection state, and which structure the reader could not see into.",
+    "",
+    REF_NOTE,
+    "",
+    "- Read-only: nothing is written and no file is created.",
+    "- The reply is bounded — the heading outline and the table and comment lists are capped, and say so.",
+    "- The `document.protection` block reports `w:documentProtection`; `editsBlocked` says whether a",
+    "  later edit would refuse.",
+  ].join("\n"),
+  read: [
+    "Read a leased Word (.docx) document in **bounded pages**: paragraphs, headings, tables, comments or",
+    "tracked changes. Each answer carries a page size, the cursor it started at, the section's total, and",
+    "the next cursor, so a long document is walked page by page rather than dumped into one reply.",
+    "",
+    REF_NOTE,
+    "",
+    '- `section: "comments"` reports thread state, resolution and the anchored text.',
+    '- `section: "revisions"` reports every tracked change with its type, author and resolvability, and',
+    "  whether it is a paragraph-mark revision.",
+    "- Every block item carries `anchor` (story, index, contentHash) so `edit_document` can address it.",
+    "- Read-only: nothing is written.",
+  ].join("\n"),
+  create: [
+    "Create a new Word (.docx) **draft** from typed blocks: headings, paragraphs, bullet or decimal lists,",
+    "tables and page breaks. The draft is a new immutable file — it has no source version and nothing",
+    "publishes it.",
+    "",
+    "- `output` is a single file name; the task's lease decides whether a docx output is permitted.",
+    "- The result reports the draft's name and sha256, the structure it built, and a reopen witness.",
+    "- A new document is a draft, never a published business file.",
+  ].join("\n"),
+  edit: [
+    "Edit a leased Word (.docx) document into an **unpublished proposal**, as a new immutable version.",
+    "The source version is never modified; the proposal stays unpublished until the review surface",
+    "publishes it.",
+    "",
+    REF_NOTE,
+    "",
+    "- Steps: `insertSection`, `replaceParagraphs`, `deleteParagraphs`, `replaceText`, `updateCell`,",
+    "  `insertRow`, `deleteRow`, `addComment`, `replyComment`, `resolveComment`, `deleteComment`,",
+    "  `acceptRevisions`, `rejectRevisions`. They apply in the order given, and each validates its own",
+    "  anchor — a stale one refuses instead of editing whatever moved into its place.",
+    "- Word-level edits are recorded as real tracked changes by default, so review gets a redline.",
+    "- The result reports source and output sha256, the structural change set (added, removed, changed and",
+    "  byte-identical parts), a text diff and a redline, and a reopen witness.",
+    "- Untouched parts come back byte-identical: relationships, styles, headers and footers survive.",
+  ].join("\n"),
+  preview: [
+    "Preview a leased Word (.docx) document as bounded, structure-marked text: `H1:`/`H2:` for headings,",
+    "`P:` for paragraphs, `L:` for list items, `T<rows>x<columns>:` for tables. Paged like `read_document`.",
+    "",
+    REF_NOTE,
+    "",
+    "- Also reports pending tracked changes: what accepting every revision would change, and the redline",
+    "  view of the markup that is there.",
+    "- Read-only: nothing is written. Preview artifacts are derived from the exact version, not a path.",
+  ].join("\n"),
+  compare: [
+    "Diff two leased Word (.docx) versions: the structural change set (parts added, removed, changed and",
+    "left byte-identical), a per-story unified text diff, and the redline view of the second version's",
+    "tracked changes.",
+    "",
+    REF_NOTE,
+    "",
+    "- Use it to review a proposal against the version it came from, before anyone publishes.",
+    "- Both versions must be leased to this task.",
+    "- Read-only: nothing is written.",
+  ].join("\n"),
+};
+
+// -- trimming an oversized reply -------------------------------------------------------------------
+
+/** The same result with its line-by-line artifacts reduced to the counts that describe them. */
+function reviewed(result: WordResult): WordResult {
+  switch (result.operation) {
+    case "edit":
+      return {
+        ...result,
+        changes: result.changes.map((change) => ({ ...change, evidence: {} })),
+        diff: withoutLines(result.diff),
+        redline: withoutEntries(result.redline),
+      };
+    case "compare":
+      return {
+        ...result,
+        diff: withoutLines(result.diff),
+        redline: withoutEntries(result.redline),
+      };
+    case "preview":
+      return {
+        ...result,
+        pending: withoutLines(result.pending),
+        redline: withoutEntries(result.redline),
+      };
+    default:
+      return result;
+  }
+}
+
+function withoutLines(diff: WordDiff): WordDiff {
+  return {
+    ...diff,
+    stories: diff.stories.map((story) => ({
+      ...story,
+      diffLines: [],
+      omittedLines: story.omittedLines + story.diffLines.length,
+    })),
+    truncated: true,
+  };
+}
+
+function withoutEntries(redline: WordRedline): WordRedline {
+  return { ...redline, entries: [], pendingLines: [], truncated: true };
+}
+
+// -- the tools -------------------------------------------------------------------------------------
+
+const FAMILY: DocumentToolFamily<WordOperation, WordResult> = {
+  subject: "Word document",
+  descriptions: DESCRIPTIONS,
+  program: wordProgram,
+  parse: parseWordResult,
+  trim: {
+    maxText: 16_000,
+    reductions: [
+      {
+        omits: [
+          "the diff lines and redline entries, which compare_document and read_document page",
+          "the per-step change evidence",
+        ],
+        apply: reviewed,
+      },
+    ],
+    resultKeys: [],
+  },
+  narrow: {
+    inspect: "Read the document a section at a time with read_document.",
+    read: "Ask for a smaller pageSize.",
+    create: "Read the draft back in pages with read_document.",
+    edit: "Read the proposal back in pages with read_document, or edit in fewer steps per call.",
+    preview: "Ask for a smaller pageSize.",
+    compare: "Read each version in pages with read_document.",
+  },
+};
+
+/** The six typed Word tools, each replay-safe on the shared `documentTool` path. */
+export function wordTools(options: DocumentToolOptions): readonly ToolRegistration[] {
+  return [
+    documentTool(FAMILY, "inspect", INSPECT_DOCUMENT, INSPECT_PARAMETERS, options),
+    documentTool(FAMILY, "read", READ_DOCUMENT, READ_PARAMETERS, options),
+    documentTool(FAMILY, "create", CREATE_DOCUMENT, CREATE_PARAMETERS, options),
+    documentTool(FAMILY, "edit", EDIT_DOCUMENT, EDIT_PARAMETERS, options),
+    documentTool(FAMILY, "preview", PREVIEW_DOCUMENT, PREVIEW_PARAMETERS, options),
+    documentTool(FAMILY, "compare", COMPARE_DOCUMENT, COMPARE_PARAMETERS, options),
+  ];
+}
+
+/** The typed tools' names, in the order they are registered. */
+export const WORD_TOOL_REGISTRATIONS = [
+  INSPECT_DOCUMENT,
+  READ_DOCUMENT,
+  CREATE_DOCUMENT,
+  EDIT_DOCUMENT,
+  PREVIEW_DOCUMENT,
+  COMPARE_DOCUMENT,
+] as const;

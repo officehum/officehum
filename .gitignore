@@ -1,0 +1,26 @@
+# Dependencies and build output
+node_modules/
+dist
+coverage
+*.tsbuildinfo
+*.tgz
+
+# Logs
+*.log
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Runtime data
+.officehum/
+
+# Python bytecode from the checked-in worker
+__pycache__/
+*.pyc
+
+# The provisioned Paper document worker interpreter
+packages/tools-paper-office/.worker/
+
+.DS_Store

@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../sdk/schema/officehum.schema.json",
+  "schemaVersion": 1,
+  "id": "memory-desk",
+  "name": "Memory Desk",
+  "department": "front-office",
+  "role": "Answers customers and remembers what it learns about them",
+  "defaultModel": {
+    "provider": "scripted",
+    "modelId": "scripted-1"
+  },
+  "tools": [],
+  "connectors": [],
+  "approvals": [],
+  "channels": ["chat"],
+  "accepts": [],
+  "skills": [],
+  "evals": "evals"
+}

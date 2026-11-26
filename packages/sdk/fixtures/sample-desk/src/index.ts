@@ -1,0 +1,78 @@
+/**
+ * Sample Desk: the smallest complete portable role, used to test @officehum/sdk. Its prompt and
+ * skills are files (AGENTS.md, APPEND_SYSTEM.md, skills/); this entry point only adds the tools,
+ * which take the app they work in (a calendar) from the factory's options.
+ *
+ *   const role = sampleDesk({ calendar, overlays: ["./my-desk"] });
+ *   for (const extension of role.extensions) registry.install(extension);
+ *   const root = await harness.root(context, { agent: role.agent });
+ */
+
+import { fileURLToPath } from "node:url";
+import { defineTool } from "@earendil-works/pi-durable";
+import { obj, str } from "@earendil-works/pi-schema";
+import { type Approver, type DefinedRole, defineRole, type ToolPack } from "../../../src/index.js";
+import manifest from "../officehum.json" with { type: "json" };
+
+/** The calendar the desk books into. Office Hum passes a gateway-backed one; anyone else, their own. */
+export interface Calendar {
+  freeSlots(date: string): Promise<string[]>;
+  book(start: string, customer: string): Promise<{ readonly id: string }>;
+}
+
+export interface SampleDeskOptions {
+  readonly calendar: Calendar;
+  /** Overlay directories with the business's own AGENTS.md, skills and settings. */
+  readonly overlays?: readonly string[];
+  /** Decides after-hours bookings. Omitted: they are blocked. */
+  readonly approve?: Approver;
+  /** The host's clock, for the prompt's `today` section. Omitted: no section. */
+  readonly now?: () => Date;
+  /** The business's IANA time zone, for which day `today` is. Omitted: UTC. */
+  readonly timeZone?: string;
+  /** Tool packs the host supplies, for tools the manifest declares with `"pack"`. Omitted: none. */
+  readonly packs?: readonly ToolPack[];
+}
+
+export default function sampleDesk(options: SampleDeskOptions): DefinedRole {
+  const checkSchedule = defineTool({
+    name: "check_schedule",
+    description: "List the free appointment slots on a date.",
+    parameters: obj({ date: str({ description: "The date, as YYYY-MM-DD" }) }, { open: true }),
+    replay: "safe",
+    execute: async (args) => {
+      const slots = await options.calendar.freeSlots(args.date);
+      const text = slots.length === 0 ? "No free slots" : `Free: ${slots.join(", ")}`;
+      return { output: [{ type: "text", text }] };
+    },
+  });
+
+  const bookAppointment = defineTool({
+    name: "book_appointment",
+    description: "Book an appointment that check_schedule showed as free.",
+    parameters: obj(
+      {
+        start: str({ description: "Start time, as YYYY-MM-DDTHH:MM" }),
+        customer: str({ description: "The customer's name or email" }),
+      },
+      { open: true },
+    ),
+    replay: "unsafe",
+    execute: async (args) => {
+      const booking = await options.calendar.book(args.start, args.customer);
+      return { output: [{ type: "text", text: `Booked ${booking.id} for ${args.start}` }] };
+    },
+  });
+
+  return defineRole({
+    packageDir: fileURLToPath(new URL("..", import.meta.url)),
+    manifest,
+    overlays: options.overlays,
+    approve: options.approve,
+    now: options.now,
+    timeZone: options.timeZone,
+    packs: options.packs,
+    tools: [checkSchedule, bookAppointment],
+    when: { book_after_hours: (args) => Number(String(args.start).slice(11, 13)) >= 18 },
+  });
+}

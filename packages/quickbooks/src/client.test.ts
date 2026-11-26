@@ -1,0 +1,369 @@
+/**
+ * The REST client against the recorded QuickBooks upstream (`fixtures/recorded-quickbooks.ts`): no
+ * network, no credential, no sandbox. It runs the shared `QuickBooks` contract, then asserts what is
+ * the REST client's alone: the exact request shape, including the `requestid` every write carries.
+ */
+
+import { describe, expect, it } from "vitest";
+import { quickbooksContract } from "./fixtures/quickbooks-contract.js";
+import {
+  COMPANY,
+  invoiceRecord,
+  json,
+  REALM,
+  recordedQuickBooks,
+  recordsOf,
+} from "./fixtures/recorded-quickbooks.js";
+import {
+  QuickBooksAuthError,
+  type QuickBooksError,
+  QuickBooksNetworkError,
+  QuickBooksNotFoundError,
+  QuickBooksServerError,
+  QuickBooksThrottleError,
+  QuickBooksValidationError,
+  quickbooksClient,
+} from "./index.js";
+
+function fixture(environment: "sandbox" | "production" = "sandbox") {
+  const recorded = recordedQuickBooks({
+    customers: [
+      {
+        Id: "58",
+        DisplayName: "Acme Corp",
+        Active: true,
+        PrimaryEmailAddr: { Address: "ap@acme.example" },
+      },
+      { Id: "59", DisplayName: "Bravo Ltd", Active: false },
+    ],
+    invoices: [invoiceRecord()],
+    payments: [
+      {
+        Id: "300",
+        TxnDate: "2026-01-20",
+        TotalAmt: 360,
+        CustomerRef: { value: "58" },
+        CurrencyRef: { value: "USD" },
+        Line: [{ LinkedTxn: [{ TxnId: "130", TxnType: "Invoice" }] }],
+      },
+    ],
+  });
+  const client = quickbooksClient({
+    realmId: REALM,
+    getAccessToken: async () => "sandbox-secret-token",
+    environment,
+    fetch: recorded.fetch,
+  });
+  return { client, calls: recorded.calls, invoices: recorded.invoices };
+}
+
+describe("QuickBooks contract: the REST client against the recorded upstream", () => {
+  quickbooksContract((seed) =>
+    quickbooksClient({
+      realmId: REALM,
+      getAccessToken: async () => "sandbox-secret-token",
+      environment: "sandbox",
+      fetch: recordedQuickBooks(recordsOf(seed)).fetch,
+    }),
+  );
+});
+const draft = {
+  customerId: "58",
+  issuedOn: "2026-01-05",
+  dueOn: "2026-02-04",
+  lines: [{ description: "Consulting", quantity: 3, unitPrice: { cents: 12000, currency: "USD" } }],
+};
+
+describe("QuickBooks REST client against recorded fixtures", () => {
+  it("reads one customer and searches by display name through the query endpoint", async () => {
+    const { client, calls } = fixture();
+
+    expect(await client.getCustomer("58")).toEqual({
+      id: "58",
+      displayName: "Acme Corp",
+      active: true,
+      email: "ap@acme.example",
+    });
+    const lookup = calls.at(-1);
+    expect(lookup?.method).toBe("GET");
+    expect(lookup?.url.pathname).toBe(`${COMPANY}/customer/58`);
+    expect(lookup?.headers.get("authorization")).toBe("Bearer sandbox-secret-token");
+
+    expect((await client.findCustomers("bravo")).map((c) => c.id)).toEqual(["59"]);
+    expect(calls.at(-1)?.url.searchParams.get("query")).toBe(
+      "select * from Customer where DisplayName like '%bravo%' startposition 1 maxresults 1000",
+    );
+    // An empty query lists every customer rather than building a `like '%%'`.
+    expect((await client.findCustomers("")).map((c) => c.id)).toEqual(["58", "59"]);
+    expect(calls.at(-1)?.url.searchParams.get("query")).toBe(
+      "select * from Customer startposition 1 maxresults 1000",
+    );
+  });
+
+  it("reads every page of a listing, not only the first", async () => {
+    const { client, calls, invoices } = fixture();
+    for (let index = 0; index < 1_500; index += 1) {
+      const id = String(2_000 + index);
+      invoices.set(id, invoiceRecord({ Id: id, DocNumber: id }));
+    }
+    const before = calls.length;
+    // A listing cut at one page would drop overdue invoices without saying so.
+    expect(await client.listInvoices()).toHaveLength(1_501);
+    expect(calls.slice(before).map((call) => call.url.searchParams.get("query"))).toEqual([
+      "select * from Invoice startposition 1 maxresults 1000",
+      "select * from Invoice startposition 1001 maxresults 1000",
+    ]);
+  });
+
+  it("builds the invoice and payment query filter and derives the overdue status", async () => {
+    const { client, calls } = fixture();
+
+    const invoices = await client.listInvoices({
+      customerId: "58",
+      status: "overdue",
+      since: "2026-01-01",
+    });
+    expect(calls.at(-1)?.url.searchParams.get("query")).toBe(
+      "select * from Invoice where CustomerRef = '58' and TxnDate >= '2026-01-01' startposition 1 maxresults 1000",
+    );
+    expect(invoices.map((invoice) => invoice.id)).toEqual(["130"]);
+    expect(invoices[0]).toMatchObject({
+      customerId: "58",
+      status: "overdue",
+      total: { cents: 36000, currency: "USD" },
+      balance: { cents: 36000, currency: "USD" },
+    });
+    // Only the sales-item line is an invoice line; the subtotal line is a total, not a line.
+    expect(invoices[0]?.lines).toEqual([
+      {
+        description: "Consulting",
+        quantity: 3,
+        unitPrice: { cents: 12000, currency: "USD" },
+        amount: { cents: 36000, currency: "USD" },
+        itemId: "1",
+      },
+    ]);
+
+    const payments = await client.listPayments({ customerId: "58" });
+    expect(calls.at(-1)?.url.searchParams.get("query")).toBe(
+      "select * from Payment where CustomerRef = '58' startposition 1 maxresults 1000",
+    );
+    expect(payments).toEqual([
+      {
+        id: "300",
+        customerId: "58",
+        receivedOn: "2026-01-20",
+        total: { cents: 36000, currency: "USD" },
+        invoiceIds: ["130"],
+      },
+    ]);
+  });
+
+  it("creates an invoice with the requestid parameter and replays it on a retry", async () => {
+    const { client, calls } = fixture();
+
+    const created = await client.createInvoice(draft, { requestId: "create-1" });
+    const call = calls.at(-1);
+    expect(call?.method).toBe("POST");
+    expect(call?.url.pathname).toBe(`${COMPANY}/invoice`);
+    expect(call?.url.searchParams.get("requestid")).toBe("create-1");
+    expect(call?.headers.get("content-type")).toBe("application/json");
+    expect(call?.body).toEqual({
+      CustomerRef: { value: "58" },
+      TxnDate: "2026-01-05",
+      DueDate: "2026-02-04",
+      Line: [
+        {
+          LineNum: 1,
+          Description: "Consulting",
+          Amount: 360,
+          DetailType: "SalesItemLineDetail",
+          SalesItemLineDetail: { Qty: 3, UnitPrice: 120 },
+        },
+      ],
+    });
+    expect(created).toMatchObject({
+      customerId: "58",
+      total: { cents: 36000, currency: "USD" },
+      balance: { cents: 36000, currency: "USD" },
+    });
+
+    const retried = await client.createInvoice(draft, { requestId: "create-1" });
+    expect(retried.id).toBe(created.id);
+  });
+
+  it("sends an invoice with the requestid and the sendTo address, and never a body", async () => {
+    const { client, calls } = fixture();
+
+    const sent = await client.sendInvoice("130", { requestId: "send-1", to: "ap@acme.example" });
+    const call = calls.at(-1);
+    expect(call?.method).toBe("POST");
+    expect(call?.url.pathname).toBe(`${COMPANY}/invoice/130/send`);
+    expect(call?.url.searchParams.get("requestid")).toBe("send-1");
+    expect(call?.url.searchParams.get("sendTo")).toBe("ap@acme.example");
+    expect(call?.body).toBeUndefined();
+    expect(sent.id).toBe("130");
+
+    await client.sendInvoice("130", { requestId: "send-2" });
+    expect(calls.at(-1)?.url.searchParams.get("sendTo")).toBeNull();
+  });
+
+  it("carries requestid on every write it makes, and only on writes", async () => {
+    const { client, calls } = fixture();
+    await client.findCustomers("acme");
+    await client.getCustomer("58");
+    await client.listInvoices();
+    await client.createInvoice(draft, { requestId: "write-a" });
+    await client.sendInvoice("130", { requestId: "write-b" });
+
+    const writes = calls.filter((call) => call.method !== "GET");
+    expect(writes.map((call) => call.url.searchParams.get("requestid"))).toEqual([
+      "write-a",
+      "write-b",
+    ]);
+    for (const call of calls.filter((entry) => entry.method === "GET")) {
+      expect(call.url.searchParams.get("requestid")).toBeNull();
+    }
+  });
+
+  it("uses the sandbox base URL or the production one as the environment asks", async () => {
+    const sandbox = fixture("sandbox");
+    await sandbox.client.getCustomer("58");
+    expect(sandbox.calls[0]?.url.origin).toBe("https://sandbox-quickbooks.api.intuit.com");
+
+    const production = fixture("production");
+    await production.client.getCustomer("58");
+    expect(production.calls[0]?.url.origin).toBe("https://quickbooks.api.intuit.com");
+    expect(production.calls[0]?.url.searchParams.get("minorversion")).toBe("75");
+  });
+
+  it("maps an unknown id to a not-found error carrying QuickBooks' own message", async () => {
+    const { client } = fixture();
+    let caught: unknown;
+    try {
+      await client.getInvoice("missing");
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(QuickBooksNotFoundError);
+    const error = caught as QuickBooksNotFoundError;
+    expect(error.status).toBe(404);
+    expect(error.message).toContain("Object Not Found");
+    expect(error.message).toContain("610");
+    expect(error.message).toMatch(/deleted/i);
+  });
+
+  it.each([
+    [401, QuickBooksAuthError],
+    [403, QuickBooksAuthError],
+    [400, QuickBooksValidationError],
+    [422, QuickBooksValidationError],
+    [429, QuickBooksThrottleError],
+    [500, QuickBooksServerError],
+    [503, QuickBooksServerError],
+  ])("maps HTTP %i to a typed error that keeps the API message and code", async (status, Type) => {
+    const client = quickbooksClient({
+      realmId: REALM,
+      getAccessToken: async () => "token",
+      environment: "sandbox",
+      fetch: async () =>
+        json(status, {
+          Fault: {
+            type: "ValidationFault",
+            Error: [
+              {
+                Message: "Duplicate Name Exists Error",
+                Detail: "The name supplied already exists.",
+                code: "6240",
+                element: "DisplayName",
+              },
+            ],
+          },
+        }),
+    });
+
+    let caught: unknown;
+    try {
+      await client.createInvoice(draft, { requestId: "boom" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Type);
+    const error = caught as QuickBooksError;
+    expect(error.status).toBe(status);
+    expect(error.code).toBe("6240");
+    expect(error.type).toBe("ValidationFault");
+    // The API's own words survive into the message, alongside a hint at the fix.
+    expect(error.message).toContain("Duplicate Name Exists Error");
+    expect(error.message).toMatch(/retry|reconnect|wait|Fix/i);
+  });
+
+  it("maps a dropped connection, a refused token and malformed JSON to typed errors", async () => {
+    const network = quickbooksClient({
+      realmId: REALM,
+      getAccessToken: async () => "token",
+      environment: "sandbox",
+      fetch: async () => {
+        throw new Error("network-secret");
+      },
+    });
+    let caught: unknown;
+    try {
+      await network.findCustomers("acme");
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(QuickBooksNetworkError);
+    expect((caught as Error).message).toMatch(/check the network/i);
+    expect((caught as Error).message).not.toContain("network-secret");
+
+    const refused = quickbooksClient({
+      realmId: REALM,
+      getAccessToken: async () => "",
+      environment: "sandbox",
+      fetch: async () => json(200, {}),
+    });
+    await expect(refused.getCustomer("58")).rejects.toThrow(/nonempty access token/i);
+
+    const thrown = quickbooksClient({
+      realmId: REALM,
+      getAccessToken: async () => {
+        throw new Error("token-callback-secret");
+      },
+      environment: "sandbox",
+      fetch: async () => json(200, {}),
+    });
+    await expect(thrown.getCustomer("58")).rejects.toThrow(/could not obtain/i);
+
+    const malformed = quickbooksClient({
+      realmId: REALM,
+      getAccessToken: async () => "token",
+      environment: "sandbox",
+      fetch: async () => new Response("not json", { status: 200 }),
+    });
+    await expect(malformed.getCustomer("58")).rejects.toThrow(/malformed/i);
+  });
+
+  it("validates its options and the draft before it sends anything", async () => {
+    expect(() =>
+      quickbooksClient({
+        realmId: REALM,
+        getAccessToken: async () => "token",
+        environment: "live" as "sandbox",
+        fetch: async () => json(200, {}),
+      }),
+    ).toThrow(/sandbox.*production/i);
+
+    const { client, calls } = fixture();
+    await expect(
+      client.createInvoice(
+        {
+          customerId: "58",
+          lines: [{ description: "X", quantity: 0, unitPrice: { cents: 1, currency: "USD" } }],
+        },
+        { requestId: "bad-draft" },
+      ),
+    ).rejects.toThrow(/line 1 quantity/i);
+    expect(calls).toHaveLength(0);
+  });
+});

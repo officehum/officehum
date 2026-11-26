@@ -1,0 +1,63 @@
+{
+  "name": "@officehum/tools-documents",
+  "version": "0.0.0",
+  "description": "Portable document reading pack: PDF, Word, Excel, CSV and email files to text and tables, with page and sheet references; OCR and checked extraction for bills, receipts and invoices.",
+  "keywords": [
+    "officehum",
+    "pi-durable",
+    "pi-ai",
+    "pi-agent",
+    "ai-agents"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "python",
+    "tessdata",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officehum/officehum.git",
+    "directory": "packages/tools-documents"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "1.1.0",
+    "@officehum/sdk": "0.0.0",
+    "@officehum/tools-paper-office": "0.0.0",
+    "postal-mime": "4.2.0",
+    "tesseract.js": "7.0.0",
+    "unpdf": "1.9.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "1.6.x",
+    "@earendil-works/pi-durable": "1.6.x",
+    "@earendil-works/pi-schema": "1.6.x"
+  },
+  "devDependencies": {
+    "@earendil-works/chord": "1.6.0",
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-durable": "1.6.0",
+    "@earendil-works/pi-schema": "1.6.0"
+  }
+}

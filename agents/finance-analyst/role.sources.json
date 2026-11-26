@@ -1,0 +1,940 @@
+{
+  "schema": 1,
+  "role": "finance-analyst",
+  "researchedOn": "2026-11-22",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/13-2031.00",
+      "title": "O*NET OnLine: Budget Analysts (13-2031.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/summary/13-2011.00",
+      "title": "O*NET OnLine: Accountants and Auditors (13-2011.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.bls.gov/ooh/business-and-financial/budget-analysts.htm",
+      "title": "BLS Occupational Outlook Handbook: Budget Analysts",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.bls.gov/ooh/business-and-financial/accountants-and-auditors.htm",
+      "title": "BLS Occupational Outlook Handbook: Accountants and Auditors",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S5",
+      "url": "https://nationalcareers.service.gov.uk/job-profiles/management-accountant",
+      "title": "National Careers Service: Management accountant",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S6",
+      "url": "https://www.business.qld.gov.au/running-business/finance/essentials/budgets-forecasts",
+      "title": "Business Queensland: Budgets and forecasts",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.business.qld.gov.au/running-business/finance/improve-performance/profit",
+      "title": "Business Queensland: Grow your profit",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S8",
+      "url": "https://business.gov.au/finance/financial-tools-and-templates/create-a-budget",
+      "title": "business.gov.au: Create a budget",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S9",
+      "url": "https://business.gov.au/finance/cash-flow/set-up-a-cash-flow-statement",
+      "title": "business.gov.au: Set up a cash flow statement",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.gov.uk/government/publications/academy-trust-management-accounting/academy-trust-management-accounting-good-practice-guide",
+      "title": "GOV.UK: Academy trust management accounting, good practice guide",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.gov.uk/government/publications/college-management-accounts-good-practice-guide/management-accounts-good-practice-guide-for-colleges",
+      "title": "GOV.UK: Management accounts, good practice guide for colleges",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.accaglobal.com/gb/en/student/exam-support-resources/fundamentals-exams-study-resources/f5/technical-articles/interpreting-financial-data.html",
+      "title": "ACCA: Interpreting financial data (technical article)",
+      "kind": "professional-body",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S13",
+      "url": "https://www.icaew.com/regulation/regulatory-news/regulatory-news-2026-07/protecting-client-confidentiality",
+      "title": "ICAEW: Protecting client confidentiality, internal controls and the ICAEW Code of Ethics",
+      "kind": "professional-body",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S14",
+      "url": "https://courses.lumenlearning.com/wm-accountingformanagers/chapter/favorable-versus-unfavorable-variances/",
+      "title": "Lumen Learning, Accounting for Managers: Favorable versus Unfavorable Variances",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S15",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/finance-how-create-budgets",
+      "title": "Microsoft Learn: Create G/L budgets (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S16",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/bi-how-work-account-schedule",
+      "title": "Microsoft Learn: Build financial reports using financial data and account categories (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S17",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/finance-analyze-cash-flow",
+      "title": "Microsoft Learn: Analyze cash flows (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S18",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/reports/report-120",
+      "title": "Microsoft Learn: Aged Accounts Receivables report (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Examine budget estimates for completeness, accuracy, and conformance with procedures and regulations. Analyze budgeting and accounting reports."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Budget analysts help public and private organizations plan their finances. They prepare budget reports and monitor organizational spending."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "They combine accounting and financial information to guide business decision making."
+        },
+        {
+          "source": "S4",
+          "passage": "Management accountants often prepare budgets and evaluate performance."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "monitor spending and budgets analyse the company's financial performance make business decisions audit departments in your company forecast and plan future spending and ways to reduce costs"
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "control performance against your budget in good time and effectively, by reporting on actual financial performance to date compared with budget to date forecast your finances reliably, by projecting the forecast financial out-turn for the year, taking into account actual performance to date"
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Although government officials or top executives in a private company usually decide on an organization's budget, they rely on the work of budget analysts to prepare the information for that decision."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "The information that management accountants prepare is intended for internal use by business managers, not for the public."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Analyze monthly department budgeting and accounting reports to maintain expenditure controls."
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Develop, maintain, or analyze budgets, preparing periodic reports that compare budgeted costs to actual costs."
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "if there is a difference between the approved budget and actual spending, budget analysts may write a report explaining those discrepancies and recommend changes to reconcile them."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Monitor organizational spending to ensure that it is within budget"
+        },
+        {
+          "source": "S3",
+          "passage": "Inform program managers of the status and availability of funds"
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Analyze business operations, trends, costs, revenues, financial commitments, and obligations to project future revenues and expenses or to provide advice."
+        },
+        {
+          "source": "S3",
+          "passage": "Estimate future financial needs"
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Remove unprofitable products and services-concentrate on popular products or services with the highest gross profit margin."
+        },
+        {
+          "source": "S7",
+          "passage": "However, decreasing gross and net profit margins can signal challenges in areas such as pricing, sales and costs."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Work with program and project managers to develop the organization's budget"
+        },
+        {
+          "source": "S1",
+          "passage": "Provide advice and technical assistance with cost analysis, fiscal allocation, and budget preparation."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Summarize budgets and submit recommendations for the approval or disapproval of funds requests."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Consult with managers to ensure that budget adjustments are made in accordance with program changes."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "They prepare annual and special reports and evaluate budget proposals."
+        },
+        {
+          "source": "S1",
+          "passage": "Communicate financial reports and budgets to stakeholders."
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Budget analysts must present written technical information in a way that is understandable to the intended audience."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "A budget is a spending plan based on what you want to happen, while a forecast predicts what is likely to happen based on your past and present finances."
+        },
+        {
+          "source": "S8",
+          "passage": "Write your budget once a year and consider a mid-year review. Update your forecast more often - monthly or quarterly."
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "It's important to compare your 'actuals' (real income and costs) with your budget (estimated income and costs)."
+        },
+        {
+          "source": "S8",
+          "passage": "Your profit and loss statement shows you what you earned and spent over time. You can use these figures to compare your actuals with your budget."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Review and update your forecasts at the end of each month when you compare your actual trading results with your original budgets (variance)."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Favorable variances are defined as either generating more revenue than expected or incurring fewer costs than expected. Unfavorable variances are the opposite."
+        },
+        {
+          "source": "S12",
+          "passage": "Adverse sales volume variance means that the business hasn't achieved its budget, which is likely to disappoint management."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "a one-off occurrence (called a timing variance, where you may not have hit your targets this month but are likely to in future periods)"
+        },
+        {
+          "source": "S6",
+          "passage": "an emerging permanent trend (called a permanent variance, where your estimates are unlikely to occur at all)"
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "They must include: an income and expenditure account a variation to budget report rolling cash flow forecasts a balance sheet"
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "It is important to include commentary within the management accounts: explaining any significant variances between the budget and the actual position noting any common trends highlighting any potential areas of risk"
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "the actual results against budget for the month just ended, and variance (value and percentage) the actual results against budget for the academic year to date, and variance (value and percentage) the latest forecast outturn against budget for the full academic year, and variance (value and percentage)."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "A cash flow forecast is an estimate of how much money is likely to move in and out of your business over a period. It helps you predict cash surpluses or shortages and shows if your business has the cash it needs to keep running."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Closing balance - calculate your funds available at the end of the month by adding the net cash flow to the opening balance. This will become your opening balance for the next month."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Your profit margin shows whether the average mark-up on your products or services is enough to cover your direct expenses and make a profit."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "The Aged Accounts Receivables report shows the amounts outstanding on customer invoices, credit memos, and payments as of Aged As Of."
+        },
+        {
+          "source": "S18",
+          "passage": "Use Due Date to distinguish overdue amounts from amounts that aren't due yet."
+        },
+        {
+          "source": "S18",
+          "passage": "To help you easily identify the current state of customer debts, the report calculates a total percentage of outstanding amounts for each period."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "The majority of colleges have long-term loans with defined covenants attached that are measured monthly, quarterly or annually."
+        },
+        {
+          "source": "S11",
+          "passage": "You should report on actual and forecast covenant compliance in the monthly management accounts."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "When producing the management accounts, you should take the following actions: reconcile all bank accounts (including credit cards)"
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Trustees may wish to set a threshold beyond which variances are to be explained."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "hypothesise as to possible causes and be prepared to select the most likely"
+        },
+        {
+          "source": "S12",
+          "passage": "Revenue growth can be the result of extra volume or increasing prices."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Performance should be assessed by taking into account the environment in which a business operates and separating the controllable from the uncontrollable."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Either may be good or bad, as these variances are based on a budgeted amount."
+        },
+        {
+          "source": "S14",
+          "passage": "So favorable or unfavorable variances don't mean much if you look at them individually."
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "do a monthly review and update of the forecast out-turn with appropriate involvement of budget holders to improve accuracy and ensure ownership"
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "You should then revise your forecasts for the rest of the financial year, considering where your business is heading. Your original budgets do not change."
+        },
+        {
+          "source": "S11",
+          "passage": "Avoid making in-year revisions to budget targets and report actuals against the original budget."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "You can forecast cash incoming by looking at previous years, identifying seasonal trends and accounting for regular sources of income."
+        },
+        {
+          "source": "S9",
+          "passage": "Cash incoming can include: sales debtor receipts grants tax rebates."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Handles confirmed sales and purchases. Subtracts payables and adds receivables."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Once you've completed your cash flow forecast, you'll continue to use it throughout the period to review your actual cash flows against your original estimates. Review this regularly - weekly or fortnightly is recommended."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "If you anticipate any cash shortfalls, you will need to plan how to cover your costs."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Another example is to calculate profit margins on dimensions such as departments or customer groups."
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Where this does not include a full apportionment of indirect overhead costs, make this clear."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "debtors - include a separate 'aged debtor' analysis of this figure"
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "avoid or fully explain terminology and abbreviations (both financial and college-related) fully explain tables and graphs provide the source of information where appropriate"
+        },
+        {
+          "source": "S11",
+          "passage": "a short 1 to 2 page summary of the main points at the start of the management accounts"
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "If your management accounts are to inform actions to address underperformance, you need to produce them early enough to allow time for this."
+        },
+        {
+          "source": "S11",
+          "passage": "Management accounts should be available within 15 working days or less of month end."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Historical financial data can help you estimate your income and costs."
+        },
+        {
+          "source": "S6",
+          "passage": "document assumptions such as cost of supplies (anticipating supply and demand considerations) and staffing costs"
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Cash flow forecasting is an estimate only, and your actual future income and expenses may vary from your original plan."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "If you use estimated costs, label and explain them clearly."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Key forecasting assumptions should be: clearly explained in the commentary to the management accounts referenced to actual performance to date and relevant non-financial data"
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "you should run checks to ensure important control totals, such as the monthly overall cash balance and forecast year end cash, reconcile to the balance sheet."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Examine and evaluate financial and information systems, recommending controls to ensure system reliability and data integrity."
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "If you do provide different reports to different users, you must ensure: data and important messages are consistent"
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "However, an 'assessment' requires a qualitative comment or two."
+        },
+        {
+          "source": "S12",
+          "passage": "a ratio alone is not enough"
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "CFOs should consider the level of detail provided based on the audience."
+        },
+        {
+          "source": "S11",
+          "passage": "too little detail can make it harder to scrutinise performance and can rely too much on the finance director or management accountant's interpretation"
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "The Code requires professional accountants to respect the confidentiality of information acquired in the course of professional and business relationships."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Firms also need to consider whether information is being shared internally only with those who need to know it for a legitimate professional or business purpose"
+        },
+        {
+          "source": "S13",
+          "passage": "Limit access to client files, records and systems to those who need it for their role."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "The Code also prohibits a professional accountant from using confidential information for the advantage of the accountant, the firm, or a third party."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "they should ensure that confidential client information is not entered into systems without appropriate due diligence, contractual protections and internal approval."
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "You can create multiple budgets for the same period so you can work with multiple budget versions or revisions."
+        },
+        {
+          "source": "S15",
+          "passage": "You can create budgets for dimensions too, so you can analyze budget variances per dimension."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "You use financial reports to analyze general ledger accounts or to compare general ledger entries with budget entries."
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Active, to indicate that a report is current and ready-to-use."
+        },
+        {
+          "source": "S16",
+          "passage": "Draft, to indicate that a report is being developed and you shouldn't use it."
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "If you want the report output to include an introductory and/or a closing paragraph, you can use the Edit introductory/closing paragraphs action on the Definitions menu."
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "If you change a setting, you can refresh the forecast by choosing Cash Flow Forecast, and then Recalculate Forecast."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "You can export data on budget pages to Microsoft Excel for further processing or analysis and then import budget data back in Business Central."
+        }
+      ]
+    },
+    {
+      "id": "C67",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Some finance packages will have an in-built feature which will allow CFOs to produce the relevant reports."
+        }
+      ]
+    },
+    {
+      "id": "C68",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "The board must ensure appropriate and timely action is being taken to maintain financial viability. This includes addressing variances between the budget and actual income and expenditure."
+        }
+      ]
+    },
+    {
+      "id": "C69",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "The ATH requires that the monthly management accounts must be shared with the chair of the trust every month. You may also wish to consider who else to share the monthly management accounts with."
+        }
+      ]
+    },
+    {
+      "id": "C70",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Other groups may need management accounts, such as: external stakeholders, like banks or lenders"
+        },
+        {
+          "source": "S8",
+          "passage": "It can also help you get a loan - it shows lenders you can pay them back."
+        }
+      ]
+    },
+    {
+      "id": "C71",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "if the firm cannot clearly explain the professional reason for sharing it, it should pause and consider whether it has the right consent, authority or safeguards in place."
+        }
+      ]
+    },
+    {
+      "id": "C72",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Where you report an actual or forecast breach you should set out: the implications any actions you are taking to address the issue"
+        }
+      ]
+    },
+    {
+      "id": "C73",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Review accounts for discrepancies and reconcile differences."
+        },
+        {
+          "source": "S2",
+          "passage": "Prepare adjusting journal entries."
+        }
+      ]
+    },
+    {
+      "id": "C74",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Compute taxes owed, prepare tax returns, and ensure that taxes are paid properly and on time"
+        },
+        {
+          "source": "S6",
+          "passage": "Seek specific advice from your tax adviser."
+        }
+      ]
+    },
+    {
+      "id": "C75",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "measure and report cash days in hand model transparently the extent of cash headroom"
+        }
+      ]
+    },
+    {
+      "id": "C76",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "cash movements are in line with predictions trends, such as cash balances continually moving away from predictions are investigated and addressed."
+        }
+      ]
+    },
+    {
+      "id": "C77",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "pay costs as percentage of turnover debtor days creditor days"
+        }
+      ]
+    }
+  ]
+}

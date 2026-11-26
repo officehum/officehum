@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "role": "sales",
+  "researchedOn": "2026-11-05",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://example.com/selling",
+      "title": "Selling guide",
+      "kind": "textbook",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S2",
+      "url": "https://example.com/quoting",
+      "title": "Quoting standard",
+      "kind": "standard",
+      "fetchedOn": "2026-11-05"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [{ "source": "S1", "passage": "Selling turns interest into agreed deals." }]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "A lead is qualified once need, budget, authority and timing are known."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [{ "source": "S2", "passage": "A quote states price, scope and validity." }]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        { "source": "S2", "passage": "Discounts need sign-off." },
+        { "source": "S1", "passage": "Do not overpromise." }
+      ]
+    }
+  ]
+}

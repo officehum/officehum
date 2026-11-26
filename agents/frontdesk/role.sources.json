@@ -1,0 +1,865 @@
+{
+  "schema": 1,
+  "role": "frontdesk",
+  "researchedOn": "2026-11-22",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/43-4171.00",
+      "title": "O*NET OnLine: Receptionists and Information Clerks (43-4171.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.bls.gov/ooh/office-and-administrative-support/receptionists.htm",
+      "title": "BLS Occupational Outlook Handbook: Receptionists",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S3",
+      "url": "https://nationalcareers.service.gov.uk/job-profiles/receptionist",
+      "title": "National Careers Service: Receptionist",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.onetonline.org/link/summary/43-1011.00",
+      "title": "O*NET OnLine: First-Line Supervisors of Office and Administrative Support Workers (43-1011.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.hhs.gov/hipaa/for-professionals/privacy/guidance/incidental-uses-and-disclosures/index.html",
+      "title": "HHS: HIPAA Privacy Rule guidance, Incidental Uses and Disclosures",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S6",
+      "url": "https://www.hhs.gov/hipaa/for-professionals/faq/199/may-health-care-providers-use-sign-in-sheets/index.html",
+      "title": "HHS HIPAA FAQ 199: sign-in sheets and calling out names in waiting rooms",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.hhs.gov/hipaa/for-professionals/faq/198/may-health-care-providers-leave-messages/index.html",
+      "title": "HHS HIPAA FAQ 198: leaving messages for patients",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.ftc.gov/business-guidance/resources/protecting-personal-information-guide-business",
+      "title": "Federal Trade Commission: Protecting Personal Information, A Guide for Business",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S9",
+      "url": "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/data-protection-principles/a-guide-to-the-data-protection-principles/accuracy/",
+      "title": "Information Commissioner's Office: Principle (d), Accuracy",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.gov.uk/hmrc-internal-manuals/information-disclosure-guide/idg30230",
+      "title": "HMRC Information Disclosure Guide IDG30230: disclosure over the telephone",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.iup.edu/studentemployment/job-tips/telephone-guidelines.html",
+      "title": "Indiana University of Pennsylvania, Student Employment: Telephone Guidelines",
+      "kind": "other",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S12",
+      "url": "https://support.google.com/calendar/answer/10729749",
+      "title": "Google Calendar Help: Create an appointment schedule",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S13",
+      "url": "https://support.google.com/calendar/answer/10737245",
+      "title": "Google Calendar Help: Cancel appointments on your calendar",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S14",
+      "url": "https://learn.microsoft.com/en-us/microsoft-365/bookings/define-service-offerings",
+      "title": "Microsoft Learn: Define your services in Shared Bookings",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S15",
+      "url": "https://learn.microsoft.com/en-us/microsoftteams/plan-auto-attendant-call-queue",
+      "title": "Microsoft Learn: Planning, Overview of voice applications (Microsoft Teams)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S16",
+      "url": "https://learn.microsoft.com/en-us/microsoftteams/aa-cq-cqd-historical-reports",
+      "title": "Microsoft Learn: Reporting, Voice applications historical reports (Microsoft Teams)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S17",
+      "url": "https://calendly.com/help/calendly-analytics",
+      "title": "Calendly Help: Calendly analytics",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S18",
+      "url": "https://calendly.com/help/how-to-mark-no-shows-for-meetings",
+      "title": "Calendly Help: How to mark no-shows for meetings",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Answer inquiries and provide information to the general public, customers, visitors, and other interested parties regarding activities conducted at establishment and location of departments, offices, and employees within the organization."
+        },
+        {
+          "source": "S3",
+          "passage": "answer enquiries in person, by phone and online"
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Receptionists are the first point of contact for visitors to an organisation."
+        },
+        {
+          "source": "S2",
+          "passage": "Receptionists are often the first employee of an organization to have contact with a customer or client. They are responsible for making a good first impression for the organization."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Communicating with people outside the organization, representing the organization to customers, the public, government, and other external sources. This information can be exchanged in person, in writing, or by telephone or e-mail."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Provide employees with guidance in handling difficult or complex problems or in resolving escalated complaints or disputes."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Receptionists' specific responsibilities vary by employer."
+        },
+        {
+          "source": "S3",
+          "passage": "As a receptionist, your tasks will depend on where you work."
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Operate telephone switchboard to answer, screen, or forward calls, providing information, taking messages, or scheduling appointments."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Greet persons entering establishment, determine nature and purpose of visit, and direct or escort them to specific destinations."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Schedule and confirm appointments and maintain calendars"
+        },
+        {
+          "source": "S1",
+          "passage": "Schedule appointments and maintain and update appointment calendars."
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Inform other employees of visitors' arrivals or cancellations"
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Provide information about establishment, such as location of departments or offices, employees within the organization, or services provided."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Enter and update databases of contact information, such as names, addresses, and phone numbers."
+        },
+        {
+          "source": "S2",
+          "passage": "Enter customer information into the organization's database"
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Keep a current record of staff members' whereabouts and availability."
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Hear and resolve complaints from customers or the public."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "File and maintain records."
+        },
+        {
+          "source": "S2",
+          "passage": "Copy, file, and maintain paper or electronic documents"
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "manage people signing in and give out security passes"
+        },
+        {
+          "source": "S2",
+          "passage": "they may control access to the organization by issuing visitor passes and escorting visitors to their destination."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Operate telephone switchboard to answer, screen, or forward calls"
+        },
+        {
+          "source": "S11",
+          "passage": "While you are listening, write down the following information: The caller's name Their reason for calling With whom they would like to speak"
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Caller's name (first and last) with the correct spelling."
+        },
+        {
+          "source": "S11",
+          "passage": "Caller's telephone number. Repeat it back to the caller to make sure you have recorded it correctly."
+        },
+        {
+          "source": "S11",
+          "passage": "If the caller does not offer to tell you why they are calling, ask, \"May I ask what this is in reference to"
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "The primary purpose of an auto attendant is to direct a caller to an appropriate person or department based on the caller's input to the provided menu options."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "A call queue is analogous to a waiting room in a physical building. Callers wait on hold while calls are routed to the representatives in the queue."
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Calendar automatically generates a booking page. This page is set up based on your weekday availability and doesn't show times when you're busy."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "The maximum time in advance others can schedule an appointment with you. The minimum lead time you require for others to schedule an appointment with you."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Buffer time: Enabling this setting allows for the addition of extra time to the staff's calendar every time an appointment is booked."
+        },
+        {
+          "source": "S12",
+          "passage": "Buffer time: Add time between appointments on your calendar."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Include co-hosts' calendars in availability checks to prevent double-bookings."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Use Calendly's no-show feature to mark whether someone attended a meeting."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "An incidental use or disclosure is a secondary use or disclosure that cannot reasonably be prevented, is limited in nature, and that occurs as a result of another use or disclosure that is permitted by the Rule."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Limit access to personal information to employees with a \"need to know.\""
+        },
+        {
+          "source": "S8",
+          "passage": "Follow the \"principle of least privilege.\" That means each employee should have access only to those resources needed to do their particular job."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Salutation - \"Good morning!\" Identification - \"___(name of office)______, this is ______.\" Solicitation - \" How may I help you?\""
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Prepare the caller to be placed on hold or to be transferred"
+        },
+        {
+          "source": "S11",
+          "passage": "After having the caller on hold, be sure to thank them for holding before you continue with the next step of the process."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "I'm sorry, no one is available to take your call right now, could I take a message and have someone return your call as soon as possible?"
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Immediately take the phone message to its proper location within the office"
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Check in visitors and direct or escort them to their destinations"
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "To avoid schedule conflicts, select Check calendars for availability."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "These notifications are sent out to customers, staff members, or both, when the booking is created or changed, at a specified time before the appointment, and at a specified time after the appointment."
+        },
+        {
+          "source": "S14",
+          "passage": "You can include any additional text you would like here, such as information about rescheduling or what customers should bring for the appointment."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "The appointment is removed from your calendar. A cancellation email is sent to the person who booked the appointment. The canceled appointment time appears available on your booking page."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "a covered entity might want to consider leaving only its name and number and other information necessary to confirm an appointment, or ask the individual to call back."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "When speaking on the telephone you must take every step to ensure that you do not disclose any HMRC information until you are wholly satisfied that the person you are speaking to is the person they claim to be."
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Irate callers have a reason for calling. Listen to their concerns, empathize with them without cutting down your office or any employee or supervisor"
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Receptionists represent the organization, so they should be courteous, professional, and helpful to customers and the public."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Receptionists may handle confidential data, especially in medical and legal offices. They must be trustworthy and protect clients' privacy."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Information about a customer should never be provided to a third party unless you are sure that there is lawful authority to disclose that information."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "You must be alert to individuals or organisations attempting to gain confidential information by deception."
+        },
+        {
+          "source": "S8",
+          "passage": "Warn employees about possible calls from identity thieves attempting to deceive them into giving out their passwords by impersonating members of your IT staff."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "By speaking quietly when discussing a patient's condition with family members in a waiting room or other public area"
+        },
+        {
+          "source": "S5",
+          "passage": "By avoiding using patients' names in public hallways and elevators"
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "the sign-in sheet may not display medical information that is not necessary for the purpose of signing in"
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Covered entities also must implement reasonable minimum necessary policies and procedures that limit how much protected health information is used, disclosed, and requested for certain purposes."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "In situations where a patient has requested that the covered entity communicate with him in a confidential manner, such as by alternative means or at an alternative location, the covered entity must accommodate that request, if reasonable."
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "You should take all reasonable steps to ensure the personal data you hold is not incorrect or misleading as to any matter of fact."
+        },
+        {
+          "source": "S9",
+          "passage": "If you discover that personal data is incorrect or misleading, you must take reasonable steps to correct or erase it as soon as possible."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Remind employees not to leave sensitive papers out on their desks when they are away from their workstations."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "patience and the ability to remain calm in stressful situations"
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "to be thorough and pay attention to detail"
+        },
+        {
+          "source": "S1",
+          "passage": "Importance of Being Exact or Accurate - 63% responded \"Very important.\""
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Never give an \"I don't know\" answer."
+        },
+        {
+          "source": "S11",
+          "passage": "take the initiative to find out who can help them or take a message indicating you will do your best to track down someone who can return the call and help them."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Dependability - A tendency to be reliable, responsible, and consistent in meeting work-related obligations."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Receptionists use telephones, computers, and other office equipment, such as shredders and printers."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Calendar and scheduling software - Appointment scheduling software; Electronic calendar management software"
+        },
+        {
+          "source": "S1",
+          "passage": "Customer relationship management CRM software"
+        },
+        {
+          "source": "S1",
+          "passage": "Electronic mail software - Email software"
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Different call-routing options can be specified for business hours, after hours, and holidays."
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Call queue exception handling allows you to redirect calls to specific people, voicemail, other call queues, auto attendants, or Teams Phone Agents in the following situations: There are no agents logged in."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Add fields for attendees to fill out, which includes required fields for: First name Last name Email address"
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "you set a service name, description, location (choose whether you want to meet in person or have an online meeting), duration, default reminders to customers and staff, internal notes about the service, and pricing."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Store paper documents or files, as well as thumb drives and backups containing personally identifiable information in a locked room or in a locked file cabinet."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Rude callers should be directed to your supervisor in the same manner that polite callers are...with kindness and understanding."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "If you have any doubt about the identity of the caller having followed the procedures in the guidance you must not disclose confidential information to the caller."
+        },
+        {
+          "source": "S10",
+          "passage": "Any security incidents must be reported"
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Tell employees what to do and whom to call if they see an unfamiliar person on the premises."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Implement corporate or departmental policies, procedures, and service standards in conjunction with management."
+        },
+        {
+          "source": "S4",
+          "passage": "Develop or update procedures, policies, or standards."
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Prepare and issue work schedules, deadlines, and duty assignments for office or administrative staff."
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "These minimum necessary policies and procedures also reasonably must limit who within the entity has access to protected health information, and under what conditions, based on job responsibilities and the nature of the business."
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "The breakdown shows the average call duration in the Call Queue before a caller is answered or they abandon."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Abandoned - Caller disconnected before a representative (agent) answered or before Call Timeout occurred"
+        },
+        {
+          "source": "S16",
+          "passage": "The breakdown shows the number of calls received and abandoned per hour"
+        }
+      ]
+    },
+    {
+      "id": "C67",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Easily keep track of: Created events Completed events and trends Rescheduled events Canceled events"
+        }
+      ]
+    },
+    {
+      "id": "C68",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "No-show status is included in your Meetings CSV export."
+        }
+      ]
+    },
+    {
+      "id": "C69",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Answer by the third ring."
+        },
+        {
+          "source": "S11",
+          "passage": "Do not keep callers on hold for more than a few seconds."
+        }
+      ]
+    },
+    {
+      "id": "C70",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "This includes customer needs assessment, meeting quality standards for services, and evaluation of customer satisfaction."
+        }
+      ]
+    }
+  ]
+}

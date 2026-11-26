@@ -1,0 +1,224 @@
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+import { notesPack, packRole } from "../testing/pack-role.js";
+import { recordingRole } from "../testing/recording-role.js";
+import { PI_DURABLE_VERSION } from "../version.js";
+import { loadRole } from "./load-role.js";
+
+const sampleDesk = fileURLToPath(new URL("../../../sdk/fixtures/sample-desk", import.meta.url));
+const sampleStockroom = fileURLToPath(
+  new URL("../../../sdk/fixtures/sample-stockroom", import.meta.url),
+);
+const frontDesk = fileURLToPath(new URL("../../../../agents/frontdesk", import.meta.url));
+const temps: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(temps.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+/** A copy of a fixture package with one JSON file changed, for the refusal cases. */
+async function fixtureWith(
+  source: string,
+  file: string,
+  change: (json: Record<string, unknown>) => void,
+): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "officehum-role-"));
+  temps.push(dir);
+  await cp(source, dir, { recursive: true });
+  const json = JSON.parse(await readFile(join(dir, file), "utf8")) as Record<string, unknown>;
+  change(json);
+  await writeFile(join(dir, file), JSON.stringify(json));
+  return dir;
+}
+
+const calendar = {
+  freeSlots: async () => [] as string[],
+  book: async (_start: string, _customer: string) => ({ id: "booking-1" }),
+};
+
+describe("loadRole", () => {
+  it("loads the Sample Desk fixture with its named calendar client", async () => {
+    const loaded = await loadRole(sampleDesk, { clients: { calendar } });
+    expect(loaded.manifest.id).toBe("sample-desk");
+    expect(loaded.package.name).toBe("@officehum/sample-desk");
+    expect(loaded.bundle.extensions[0]?.name).toBe("sample-desk");
+    const tools = loaded.bundle.extensions.flatMap((extension) =>
+      (extension.tools ?? []).map((tool) => tool.name),
+    );
+    expect(tools).toEqual(
+      expect.arrayContaining(["check_schedule", "book_appointment", "read_skill"]),
+    );
+    expect(loaded.reload).toBeTypeOf("function");
+  });
+
+  it("loads the Sample Stockroom fixture and builds its engine from the manifest", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "officehum-role-"));
+    temps.push(dir);
+    const loaded = await loadRole(sampleStockroom, {
+      dataDir: join(dir, "data"),
+      workDir: join(dir, "work"),
+    });
+    expect(loaded.manifest.id).toBe("sample-stockroom");
+    expect(loaded.engine).toBeDefined();
+    const tools = loaded.bundle.extensions.flatMap((extension) =>
+      (extension.tools ?? []).map((tool) => tool.name),
+    );
+    expect(tools).toEqual(expect.arrayContaining(["stock_levels", "stock_adjust"]));
+  });
+
+  it("loads the built Front Desk role package with its calendar client", async () => {
+    const loaded = await loadRole(frontDesk, { clients: { calendar } });
+    expect(loaded.manifest.id).toBe("frontdesk");
+    expect(loaded.package.name).toBe("@officehum/frontdesk");
+    expect(loaded.bundle.extensions[0]?.name).toBe("frontdesk");
+  });
+
+  it("refuses a package whose Pi Durable peer range excludes this release", async () => {
+    const dir = await fixtureWith(sampleDesk, "package.json", (pkg) => {
+      pkg.peerDependencies = {
+        "@earendil-works/pi-ai": "1.0.x",
+        "@earendil-works/pi-durable": "1.0.x",
+      };
+    });
+    await expect(loadRole(dir, { clients: { calendar } })).rejects.toThrow(
+      new RegExp(
+        `@officehum/sample-desk 0\\.1\\.0 supports Pi Durable 1\\.0\\.x, but this Office runs ${PI_DURABLE_VERSION.replaceAll(".", "\\.")}`,
+      ),
+    );
+  });
+
+  it("refuses a package whose required runtime is not satisfied", async () => {
+    const dir = await fixtureWith(sampleStockroom, "officehum.json", (manifest) => {
+      manifest.runtimes = [{ name: "python3", version: ">=99" }];
+    });
+    await expect(
+      loadRole(dir, { dataDir: join(dir, "data"), workDir: join(dir, "work") }),
+    ).rejects.toThrow(/sample-stockroom needs programs this machine is missing[\s\S]*python3/);
+  });
+
+  it("names every validation problem at once", async () => {
+    const dir = await fixtureWith(sampleDesk, "package.json", (pkg) => {
+      pkg.dependencies = { "@officehum/sdk": "0.0.0", "@officehum/office": "0.0.0" };
+    });
+    await expect(loadRole(dir)).rejects.toThrow(/@officehum\/office.*not allowed/);
+  });
+
+  it("explains an entry point it cannot import", async () => {
+    // A copy outside the repo: the fixture's relative SDK import no longer resolves, which is the
+    // shape of a TypeScript source package the run command cannot load.
+    const dir = await mkdtemp(join(tmpdir(), "officehum-role-"));
+    temps.push(dir);
+    await cp(sampleDesk, dir, { recursive: true });
+    await expect(loadRole(dir, { clients: { calendar } })).rejects.toThrow(
+      /Could not import @officehum\/sample-desk's entry point[\s\S]*compiled JavaScript/,
+    );
+  });
+
+  it("loadRole passes now to the factory", async () => {
+    const loaded = await loadRole(sampleDesk, {
+      clients: { calendar },
+      now: () => new Date("2027-02-01T09:00:00.000Z"),
+    });
+    const today = loaded.bundle.extensions[0]?.sections?.find((section) => section.key === "today");
+    expect(await today?.render({} as never, {} as never)).toMatch(
+      /^Today is 2027-02-01 \(Monday\)\./,
+    );
+  });
+
+  it("a client named now is refused", async () => {
+    await expect(
+      loadRole(sampleDesk, { clients: { calendar, now: () => new Date() } }),
+    ).rejects.toThrow(/The client named "now" is reserved/);
+  });
+
+  it("loadRole passes sender to the factory", async () => {
+    const recording = await recordingRole(sampleDesk);
+    temps.push(recording.dir);
+    const sender = async () => ({ origin: "internal", channel: "chat", contact: "dana" }) as const;
+    await loadRole(recording.dir, { clients: { calendar }, sender });
+    expect(recording.options()?.sender).toBe(sender);
+  });
+
+  it("a client named sender is refused", async () => {
+    await expect(
+      loadRole(sampleDesk, { clients: { calendar, sender: async () => undefined } }),
+    ).rejects.toThrow(/The client named "sender" is reserved/);
+  });
+
+  it("loadRole passes demo to the factory only when the host sets it", async () => {
+    const recording = await recordingRole(sampleDesk);
+    temps.push(recording.dir);
+    await loadRole(recording.dir, { clients: { calendar }, demo: true });
+    expect(recording.options()?.demo).toBe(true);
+    await loadRole(recording.dir, { clients: { calendar } });
+    expect(recording.options()).not.toHaveProperty("demo");
+  });
+
+  it("a client named demo is refused", async () => {
+    await expect(loadRole(sampleDesk, { clients: { calendar, demo: true } })).rejects.toThrow(
+      /The client named "demo" is reserved/,
+    );
+  });
+
+  it("refuses a client named after a factory option loadRole sets itself", async () => {
+    await expect(loadRole(sampleDesk, { clients: { calendar, overlays: [] } })).rejects.toThrow(
+      /The client named "overlays" is reserved/,
+    );
+  });
+});
+
+describe("loadRole with tool packs", () => {
+  const withPackTool = async () => {
+    const dir = await packRole();
+    temps.push(dir);
+    return dir;
+  };
+  const toolNames = (loaded: Awaited<ReturnType<typeof loadRole>>) =>
+    loaded.bundle.extensions.flatMap((extension) =>
+      (extension.tools ?? []).map((tool) => tool.name),
+    );
+
+  it("gives the factory the packs the host builds for its manifest, and checks their tools", async () => {
+    const dir = await withPackTool();
+    const asked: string[] = [];
+    const loaded = await loadRole(dir, {
+      clients: { calendar },
+      packs: (manifest) => {
+        asked.push(manifest.id);
+        return [notesPack];
+      },
+    });
+    expect(asked).toEqual(["sample-desk"]);
+    expect(toolNames(loaded)).toContain("take_note");
+  });
+
+  it("loads a role without the pack, and it does not offer the pack's tools", async () => {
+    const loaded = await loadRole(await withPackTool(), { clients: { calendar } });
+    expect(toolNames(loaded)).not.toContain("take_note");
+  });
+
+  it("refuses a role given a pack that lacks a tool it declares", async () => {
+    await expect(
+      loadRole(await withPackTool(), {
+        clients: { calendar },
+        packs: () => [{ id: "notes", tools: [] }],
+      }),
+    ).rejects.toThrow(/the notes pack has no tool "take_note"/);
+  });
+
+  it("passes no packs option when the host builds none", async () => {
+    const recording = await recordingRole(sampleDesk);
+    temps.push(recording.dir);
+    await loadRole(recording.dir, { clients: { calendar }, packs: () => [] });
+    expect(recording.options()).not.toHaveProperty("packs");
+  });
+
+  it("a client named packs is refused", async () => {
+    await expect(loadRole(sampleDesk, { clients: { calendar, packs: [] } })).rejects.toThrow(
+      /The client named "packs" is reserved/,
+    );
+  });
+});

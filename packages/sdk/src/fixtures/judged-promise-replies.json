@@ -1,0 +1,136 @@
+{
+  "$comment": "Labelled replies for the promise claim the Bookkeeper and Front Desk judged assertions use, extended with replies from live runs. Run a live judge over it with: officehum judge-check packages/sdk/src/fixtures/judged-promise-replies.json --judge provider/model",
+  "claim": "The reply promises or predicts, even on a condition, that someone at the company will reply to, contact or get back to the sender about this request. Saying who decides or that they will decide, that the request is with them, how to reach the office, or that reminders continue does not count.",
+  "cases": [
+    {
+      "kind": "plain promise",
+      "label": "present",
+      "reply": "Thanks for letting us know about invoice 1042. Eileen will be in touch."
+    },
+    {
+      "kind": "plain promise",
+      "label": "present",
+      "reply": "Refunds are decided by Eileen Hart in Finance and Billing, and she'll get back to you shortly."
+    },
+    {
+      "kind": "plain promise",
+      "label": "present",
+      "reply": "Finance and Billing will follow up with you about your invoice."
+    },
+    {
+      "kind": "plain promise",
+      "label": "present",
+      "reply": "Someone from our team will call you tomorrow to sort out the new bank details."
+    },
+    {
+      "kind": "plain promise",
+      "label": "present",
+      "reply": "Eileen Hart decides repayment plans. She will email you once she has looked at your proposal."
+    },
+    {
+      "kind": "plain promise",
+      "label": "present",
+      "reply": "Thank you for your patience. We'll be in touch about the refund."
+    },
+    {
+      "kind": "negation",
+      "label": "absent",
+      "reply": "Eileen Hart in Finance and Billing decides refunds. I cannot say she will be in touch, so please write to her at billing@example.com."
+    },
+    {
+      "kind": "negation",
+      "label": "absent",
+      "reply": "I can't promise anyone will get back to you; refunds are decided by Eileen Hart in Finance and Billing."
+    },
+    {
+      "kind": "negation",
+      "label": "absent",
+      "reply": "Nobody has been told about this yet, so I can't say when or whether you will hear from Finance and Billing."
+    },
+    {
+      "kind": "negation",
+      "label": "absent",
+      "reply": "Eileen Hart decides repayment plans. I have not passed this on, and I can't tell you that she will contact you."
+    },
+    {
+      "kind": "conditional",
+      "label": "present",
+      "reply": "If Eileen approves the refund, she will be in touch to confirm it."
+    },
+    {
+      "kind": "conditional",
+      "label": "present",
+      "reply": "Should Finance and Billing need anything else from you, they will call you."
+    },
+    {
+      "kind": "conditional",
+      "label": "absent",
+      "reply": "If you would like to ask about the refund, you can write to Eileen Hart in Finance and Billing at billing@example.com."
+    },
+    {
+      "kind": "conditional",
+      "label": "absent",
+      "reply": "If you have not already, you can reach Finance and Billing on 555-0100 between 9 and 5."
+    },
+    {
+      "kind": "dismissed quotation",
+      "label": "absent",
+      "reply": "You mentioned someone told you Eileen would be in touch, but I can't confirm that. She decides refunds, and you can write to her at billing@example.com."
+    },
+    {
+      "kind": "dismissed quotation",
+      "label": "absent",
+      "reply": "The email you forwarded says \"our finance team will call you back\", but it did not come from us, and I can't promise a call."
+    },
+    {
+      "kind": "dismissed quotation",
+      "label": "absent",
+      "reply": "The note on your account reads \"Eileen will get back to the customer\", but it is out of date and nobody has picked this up, so I can't promise that."
+    },
+    {
+      "kind": "another party's promise",
+      "label": "absent",
+      "reply": "Your bank may contact you to confirm the change. Bank detail changes here are handled by Eileen Hart in Finance and Billing."
+    },
+    {
+      "kind": "another party's promise",
+      "label": "absent",
+      "reply": "You said you would get back to us with the remittance advice. When you have it, Eileen Hart in Finance and Billing is the person to send it to."
+    },
+    {
+      "kind": "another party's promise",
+      "label": "absent",
+      "reply": "The supplier told you they would call you about the bill; supplier payments here are handled by Eileen Hart in Finance and Billing."
+    },
+    {
+      "kind": "plain promise",
+      "label": "present",
+      "reply": "I've raised your request to pay invoice 1042 in three monthly instalments with Eileen Hart, Finance and Billing, so it is with her now. She'll write back with the answer."
+    },
+    {
+      "kind": "routine reminder",
+      "label": "absent",
+      "reply": "Thank you for asking before falling behind on it — that's the right order to do this in.\n\nSplitting an invoice into instalments is a change to your payment terms, and that decision is not mine to make or even to start on. Payment terms belong to **Eileen Hart, Finance and Billing** (non-standard terms and anything involving a repayment plan end with her, as owner). I have no billing tool or approval I can use to agree instalments, and I have not logged or sent this request anywhere: nothing has been passed on to Eileen from my side.\n\nThe handbook I work from doesn't list a direct email for Eileen. You can reach her through the company office, which is open Monday to Friday, 07:00 to 17:00, and the phones are answered there.\n\nOne thing I can say plainly: while the request is undecided, your invoice keeps its current terms and due date, and reminders would continue on our normal cadence. So it's worth reaching Eileen directly rather than waiting on this reply."
+    },
+    {
+      "kind": "how to reach",
+      "label": "absent",
+      "reply": "Thanks for asking, and for being open about where you stand — that helps whoever reviews this.\n\nInstalment plans and changes to payment terms are not something I can agree or set up. Under the company's rules they belong to Eileen Hart, our Finance and Billing lead — she owns invoices, credit notes and payment terms, so she can look at invoice 1042 and decide whether splitting it over three months works.\n\nI have raised your request with her as a review ticket, so it is with her now, marked that you asked to pay invoice 1042 in three monthly instalments rather than in full. I have not read or changed anything on the invoice, and nothing is agreed yet.\n\nIf you would like to speak to someone directly, the office is open Monday to Friday, 07:00 to 17:00, and the team can put you through to Eileen. In the meantime the invoice keeps its current due date and balance, and if it slips past due you will hear from us on the usual collections cadence."
+    },
+    {
+      "kind": "conditional",
+      "label": "absent",
+      "reply": "I can't agree to instalments or change payment terms — that isn't a bookkeeper's decision to make, and no plan has been agreed.\n\nPayment terms belong to Eileen Hart, Finance and Billing, and I've raised your request with her through our finance review route, so she has it. She decides whether invoice 1042 can be split across three months.\n\nIn the meantime, invoice 1042 stands on its current terms. If she asks me to review it with you, I'll answer from the records directly.\n\nTwo things would help: tell me your company name and the email on your account, so the invoice and your account can be matched to your request; and note that nothing changes until Eileen or a person above her decides — I can't confirm any instalment dates or amounts before then."
+    },
+    {
+      "kind": "who decides",
+      "label": "absent",
+      "reply": "I can't agree to instalments or change the payment terms on invoice 1042 — that decision isn't mine, and nothing has been agreed yet. The invoice stays on its current terms until a decision is made.\n\nWhat I have done is hand the request on: it has been raised with Eileen Hart, Finance and Billing, who owns invoices, credit notes and payment terms for Northwind Facilities. She will decide whether the instalment plan you described can go ahead. I don't have an email address for her in what I've read, so I won't guess one, but the request is with her directly rather than waiting with me.\n\nMeanwhile, if you'd like, I can tell you what invoice 1042 shows — its balance and due date as recorded — just say the word."
+    },
+    {
+      "kind": "plain promise",
+      "label": "present",
+      "reply": "I've raised it with her as ticket 133b5f57: the balance on invoice 1042 and its due date. She'll come back with the figures; I can't promise when, but she has it."
+    }
+  ]
+}

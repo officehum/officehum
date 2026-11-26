@@ -1,0 +1,49 @@
+{
+  "name": "@officehum/role-factory",
+  "version": "0.0.0",
+  "description": "The Role Factory: ROLE_SPEC.md, the one reviewable document a role is generated from, and the parser and generator that validate it and write the role package from it.",
+  "keywords": [
+    "officehum",
+    "pi-durable",
+    "pi-ai",
+    "pi-agent",
+    "ai-agents"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "officehum-role": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officehum/officehum.git",
+    "directory": "packages/role-factory"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@officehum/sdk": "0.0.0",
+    "typebox": "1.4.6",
+    "yaml": "2.9.1"
+  }
+}

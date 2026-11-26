@@ -1,0 +1,939 @@
+{
+  "schema": 1,
+  "role": "purchasing",
+  "researchedOn": "2026-11-05",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/13-1023.00",
+      "title": "O*NET OnLine: Purchasing Agents, Except Wholesale, Retail, and Farm Products (13-1023.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/summary/43-3061.00",
+      "title": "O*NET OnLine: Procurement Clerks (43-3061.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.onetonline.org/link/summary/11-3061.00",
+      "title": "O*NET OnLine: Purchasing Managers (11-3061.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.onetonline.org/link/summary/43-5071.00",
+      "title": "O*NET OnLine: Shipping, Receiving, and Inventory Clerks (43-5071.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.onetonline.org/link/summary/53-7065.00",
+      "title": "O*NET OnLine: Stockers and Order Fillers (53-7065.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S6",
+      "url": "https://www.bls.gov/ooh/business-and-financial/purchasing-managers-buyers-and-purchasing-agents.htm",
+      "title": "BLS Occupational Outlook Handbook: Purchasing Managers, Buyers, and Purchasing Agents",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.bls.gov/ooh/office-and-administrative-support/material-recording-clerks.htm",
+      "title": "BLS Occupational Outlook Handbook: Material Recording Clerks",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.irs.gov/businesses/small-businesses-self-employed/what-kind-of-records-should-i-keep",
+      "title": "IRS: What kind of records should I keep",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S9",
+      "url": "https://www.acquisition.gov/far/3.101-1",
+      "title": "Federal Acquisition Regulation 3.101-1: Standards of conduct, general",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.acquisition.gov/far/9.103",
+      "title": "Federal Acquisition Regulation 9.103: Policy (responsible prospective contractors)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.acquisition.gov/far/9.104-1",
+      "title": "Federal Acquisition Regulation 9.104-1: General standards (responsibility)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.acquisition.gov/far/9.201",
+      "title": "Federal Acquisition Regulation 9.201: Definitions (qualification requirements)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S13",
+      "url": "https://www.acquisition.gov/far/13.101",
+      "title": "Federal Acquisition Regulation 13.101: General (simplified acquisition procedures)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S14",
+      "url": "https://www.acquisition.gov/far/13.106-3",
+      "title": "Federal Acquisition Regulation 13.106-3: Award and documentation",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S15",
+      "url": "https://www.acquisition.gov/far/32.905",
+      "title": "Federal Acquisition Regulation 32.905: Payment documentation and process",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S16",
+      "url": "https://www.acquisition.gov/far/46.501",
+      "title": "Federal Acquisition Regulation 46.501: Acceptance, general",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S17",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/design-details-handling-reordering-policies",
+      "title": "Microsoft Learn: Design details, handling reordering policies (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S18",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/purchasing-date-calculation-for-purchases",
+      "title": "Microsoft Learn: Date calculation for purchases (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S19",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/purchasing-manage-purchasing",
+      "title": "Microsoft Learn: Purchasing overview (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S20",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/across-how-use-approval-workflows",
+      "title": "Microsoft Learn: Use approval workflows (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S21",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/across-how-to-set-up-approval-users",
+      "title": "Microsoft Learn: Set up approval users (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S22",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/warehouse-how-receive-items",
+      "title": "Microsoft Learn: Receive items with warehouse receipts (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S23",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/supply-chain/procurement/purchase-order-overview",
+      "title": "Microsoft Learn: Purchase order overview (Dynamics 365 Supply Chain Management)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S24",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/supply-chain/procurement/purchase-order-approval-confirmation",
+      "title": "Microsoft Learn: Approve and confirm purchase orders (Dynamics 365 Supply Chain Management)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S25",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/supply-chain/procurement/product-receipt-against-purchase-orders",
+      "title": "Microsoft Learn: Product receipt against purchase orders (Dynamics 365 Supply Chain Management)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S26",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/finance/accounts-payable/accounts-payable-invoice-matching",
+      "title": "Microsoft Learn: Accounts payable invoice matching (Dynamics 365 Finance)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S27",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/supply-chain/procurement/vendor-onboarding",
+      "title": "Microsoft Learn: Onboard vendors (Dynamics 365 Supply Chain Management)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Purchasing agents, except wholesale, retail, and farm products buy items for the operation of an organization. Examples of these items are chemicals for a manufacturing plant and industrial equipment, machinery, and office supplies for operating an establishment."
+        },
+        {
+          "source": "S6",
+          "passage": "They evaluate suppliers, negotiate contracts, and review the quality of products."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Purchasing agents and buyers consider price, quality, availability, reliability, and technical support when choosing suppliers and merchandise."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "They enter into contracts with suppliers who meet the organization's needs and then place orders."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Purchasing managers oversee the work of buyers and purchasing agents and typically handle more complex procurement tasks."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Shipping, receiving, and inventory clerks keep track of and record outgoing and incoming shipments."
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Determine if inventory quantities are sufficient for needs, ordering more materials when necessary."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Buyers and purchasing agents study sales records and inventory levels of current stock, identify suppliers, and keep up to date with changes affecting both the supply of and demand for products and materials."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Review requisition orders to verify accuracy, terminology, and specifications."
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Locate suppliers, using sources such as catalogs and the internet, and interview them to gather information about products to be ordered."
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Research and evaluate suppliers, based on price, quality, selection, service, support, availability, reliability, production and distribution capabilities, and the supplier's reputation and history."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Purchasing managers, buyers, and purchasing agents must be able to calculate costs and compare prices from different suppliers to ensure that their organization is getting the best deal."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Prepare purchase orders and send copies to suppliers and to departments originating requests."
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Track the status of requisitions, contracts, and orders."
+        },
+        {
+          "source": "S2",
+          "passage": "Respond to customer and supplier inquiries about order status, changes, or cancellations."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Work out agreements with suppliers, such as when products will be delivered"
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Expediting clerks maintain contact with vendors to ensure that supplies and equipment are shipped on time."
+        },
+        {
+          "source": "S2",
+          "passage": "Contact suppliers to schedule or expedite deliveries and to resolve shortages, missed or late deliveries, and other problems."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Check shipments when they arrive to ensure that orders have been filled correctly and that goods meet specifications."
+        },
+        {
+          "source": "S4",
+          "passage": "Examine shipment contents and compare with records, such as manifests, invoices, or orders, to verify accuracy."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "They verify the quantity and quality of items they are assigned to examine, checking for defects and recording what they find."
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Meet with staff and vendors to discuss defective or unacceptable goods or services and determine corrective action"
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Compare suppliers' bills with bids and purchase orders to verify accuracy."
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Maintain and review records of items bought, costs, deliveries, product performance, and inventories"
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Evaluate and monitor contracts to be sure that vendors and suppliers comply with the terms and conditions of the contract and to determine the need for changes"
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Maintain knowledge of all organizational and governmental rules affecting purchases, and provide information about these rules to organization staff members and to vendors."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S23",
+          "passage": "A purchase order (PO) is a document that represents an agreement with a vendor to buy goods or services. The document also helps keep track of product receipts that are made toward the order and, later, the accounting of vendor invoices that the vendor bills toward the order."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Prepare purchase orders, solicit bid proposals, and review requisitions for goods and services."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "A reorder point represents demand during lead time. When inventory is projected to pass below the level defined by the reorder point, it's time to order more."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Safety stock must always be available for unexpected demand."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "If you want to have items in inventory on a certain date, Business Central can automatically calculate the date on which you must order them."
+        },
+        {
+          "source": "S18",
+          "passage": "requested receipt date - lead time calculation = order date"
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Qualified bidders list (QBL) means a list of bidders who have had their products examined and tested and who have satisfied all applicable qualification requirements for that product or have otherwise satisfied all applicable qualification requirements."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S25",
+          "passage": "Product receipt is the process of recording that products you ordered are received so that the purchase order (PO) lines can be processed for invoicing."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Acceptance constitutes acknowledgment that the supplies or services conform with applicable contract quality and quantity requirements"
+        },
+        {
+          "source": "S16",
+          "passage": "Acceptance shall ordinarily be evidenced by execution of an acceptance certificate on an inspection or receiving report form or commercial shipping document/packing list."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S26",
+          "passage": "Three-way matching - Match the price information on the invoice to the price information on the purchase order. Also match the quantity information on the invoice to the quantity information on the product receipts that are selected for the invoice."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Requisition merchandise from supplier, based on available space, merchandise on hand, customer demand, or advertised specials."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "The planning system suggests a forward-scheduled supply order at the point when the inventory passes below the reorder point."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Before making award, the contracting officer must determine that the proposed price is fair and reasonable."
+        },
+        {
+          "source": "S14",
+          "passage": "Whenever possible, base price reasonableness on competitive quotations or offers."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Include related items (such as small hardware items or spare parts for vehicles) in one solicitation"
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Comparison of the proposed price with prices found reasonable on previous purchases;"
+        },
+        {
+          "source": "S14",
+          "passage": "Current price lists, catalogs, or advertisements. However, inclusion of a price in a price list, catalog, or advertisement does not, in and of itself, establish fairness and reasonableness of the price;"
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "The contracting office should establish and maintain records of oral price quotations in order to reflect clearly the propriety of placing the order at the price paid with the supplier concerned. In most cases, this will consist merely of showing the names of the suppliers contacted and the prices and other terms and conditions quoted by each."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Explaining the absence of competition (see 13.106-1 for brand name purchases) if only one source is solicited"
+        },
+        {
+          "source": "S14",
+          "passage": "Supporting the award decision if other than price-related factors were considered in selecting the supplier;"
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Occasionally an item can be obtained only from a supplier that quotes a minimum order price or quantity that either unreasonably exceeds stated quantity requirements or results in an unreasonable price for the quantity required."
+        },
+        {
+          "source": "S14",
+          "passage": "In these instances, the contracting officer should inform the requiring activity of all facts regarding the quotation or offer and ask it to confirm or alter its requirement."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "When someone must approve a record, such as a new purchase document or customer, you can send an approval request as part of a workflow."
+        },
+        {
+          "source": "S20",
+          "passage": "The status of the record, such as a purchase invoice, is updated from Open to Pending Approval and remains locked for processing until all approvers approve the record."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S24",
+          "passage": "After you create a PO, it might need to go through an approval process. After the vendor agrees to the order, set the PO to a status of Confirmed."
+        },
+        {
+          "source": "S24",
+          "passage": "A PO can't be confirmed until it has been approved."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S25",
+          "passage": "You can modify the quantities on each order line that you mark as Received, to account for any discrepancies, such as under-delivery and over-delivery."
+        },
+        {
+          "source": "S25",
+          "passage": "During product receipt, specify a product receipt identifier, which is typically a reference to the packing slip from the supplier. This identifier is required for accounting, because it enables checks or audits of supplier packing slips against what is received"
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S26",
+          "passage": "Accounts payable invoice matching is the process of matching vendor invoice, purchase order, and product receipt information. When matching documents, differences among these documents are called matching discrepancies. Matching discrepancies are compared with the tolerances that are specified."
+        },
+        {
+          "source": "S15",
+          "passage": "All invoice payments, with the exception of interim payments on cost-reimbursement contracts for services, must be supported by a receiving report or other Government documentation authorizing payment"
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S27",
+          "passage": "Based on the information that is provided in the prospective vendor registration request, a procurement professional decides whether the vendor should be onboarded."
+        },
+        {
+          "source": "S27",
+          "passage": "This vendor request is submitted to a workflow, and is routed for review and approval."
+        },
+        {
+          "source": "S27",
+          "passage": "When the vendor request is approved, a vendor record is created."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Have adequate financial resources to perform the contract, or the ability to obtain them"
+        },
+        {
+          "source": "S11",
+          "passage": "Be able to comply with the required or proposed delivery or performance schedule, taking into consideration all existing commercial and governmental business commitments;"
+        },
+        {
+          "source": "S11",
+          "passage": "Have a satisfactory record of integrity and business ethics"
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Purchase the highest quality merchandise at the lowest possible price and in correct amounts."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Purchasing managers, buyers, and purchasing agents must evaluate options and choose suppliers with the best combination of price, quality, delivery, or service."
+        },
+        {
+          "source": "S10",
+          "passage": "The award of a contract to a supplier based on lowest evaluated price alone can be false economy if there is subsequent default, late deliveries, or other unsatisfactory performance resulting in additional contractual or administrative costs."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Purchases shall be made from, and contracts shall be awarded to, responsible prospective contractors only."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Make maximum effort to obtain trade and prompt payment discounts"
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "They also develop their organization's procurement policies and procedures to help ensure that workers who handle procurement meet ethical standards and avoid potential conflicts of interest."
+        },
+        {
+          "source": "S9",
+          "passage": "The general rule is to avoid strictly any conflict of interest or even the appearance of a conflict of interest in Government-contractor relationships."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Integrity - A tendency to be honest and ethical at work."
+        },
+        {
+          "source": "S2",
+          "passage": "Dependability - A tendency to be reliable, responsible, and consistent in meeting work-related obligations."
+        },
+        {
+          "source": "S2",
+          "passage": "Attention to Detail - A tendency to be detail-oriented, organized, and thorough in completing work."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Your supporting documents should identify the payee, the amount paid, proof of payment, the date incurred, and include a description of the item to show that the amount was for purchases."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "it's important that the same user isn't both a requestor and an approver in a workflow user group."
+        },
+        {
+          "source": "S21",
+          "passage": "Their requests are always approved automatically."
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Accounting software - Intuit QuickBooks"
+        },
+        {
+          "source": "S2",
+          "passage": "Enterprise resource planning ERP software"
+        },
+        {
+          "source": "S2",
+          "passage": "Enterprise application integration software - Electronic data interchange EDI software"
+        },
+        {
+          "source": "S2",
+          "passage": "Inventory management software - Inventory tracking software"
+        },
+        {
+          "source": "S2",
+          "passage": "Spreadsheet software - Microsoft Excel"
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Clerks may scan barcodes with handheld devices or use radio frequency identification (RFID) scanners to keep track of inventory."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "You must use purchase orders if your purchasing process requires that you record partial receipts of an order quantity."
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "Purchase Amount Approval Limit Specify the maximum purchase amount in LCY that the person identified in the User ID field can approve."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "If the increase is within the tolerance specified by an assigned over-receipt code, the Over-Receipt Quantity field updates to show the quantity by which the value in the Quantity field is exceeded. If the increase is over the tolerance, the over-receipt isn't allowed."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "For all purchase processes, you can use an approval workflow, for example, to require that an accounting manager approves large purchases."
+        },
+        {
+          "source": "S3",
+          "passage": "Control purchasing department budgets."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "No purchase or award shall be made unless the contracting officer makes an affirmative determination of responsibility."
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Purchasing managers plan and coordinate the work of buyers and purchasing agents and hire and train new staff. They also develop their organization's procurement policies and procedures"
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Review purchase order claims and contracts for conformance to company policy."
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Represent companies in negotiating contracts and formulating policies with suppliers."
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Resolve vendor or contractor grievances and claims against suppliers."
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Recommend disposal of excess, defective, or obsolete stock."
+        },
+        {
+          "source": "S3",
+          "passage": "Arrange for disposal of surplus materials."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Evaluate suppliers on the basis of the price, quality, and speed of delivery of their products and services"
+        }
+      ]
+    },
+    {
+      "id": "C67",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Develop cost reduction strategies and savings plans."
+        },
+        {
+          "source": "S3",
+          "passage": "Prepare reports regarding market conditions and merchandise costs."
+        }
+      ]
+    },
+    {
+      "id": "C68",
+      "sources": [
+        {
+          "source": "S23",
+          "passage": "It includes lists that give insight into receipts that are overdue, or that will soon be due for delivery by the supplier."
+        }
+      ]
+    },
+    {
+      "id": "C69",
+      "sources": [
+        {
+          "source": "S26",
+          "passage": "If a matching discrepancy exceeds the tolerance percentage or amount, match variance icons are displayed on the Vendor invoice page and on the Invoice history and matching details page."
+        }
+      ]
+    }
+  ]
+}

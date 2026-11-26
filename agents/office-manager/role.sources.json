@@ -1,0 +1,926 @@
+{
+  "schema": 1,
+  "role": "office-manager",
+  "researchedOn": "2026-11-22",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/43-1011.00",
+      "title": "O*NET OnLine: First-Line Supervisors of Office and Administrative Support Workers (43-1011.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/summary/11-3012.00",
+      "title": "O*NET OnLine: Administrative Services Managers (11-3012.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.onetonline.org/link/summary/43-6014.00",
+      "title": "O*NET OnLine: Secretaries and Administrative Assistants, Except Legal, Medical, and Executive (43-6014.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.onetonline.org/link/summary/43-6011.00",
+      "title": "O*NET OnLine: Executive Secretaries and Executive Administrative Assistants (43-6011.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.bls.gov/ooh/management/administrative-services-managers.htm",
+      "title": "BLS Occupational Outlook Handbook: Administrative Services and Facilities Managers",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S6",
+      "url": "https://nationalcareers.service.gov.uk/job-profiles/office-manager",
+      "title": "National Careers Service: Office manager",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.archives.gov/records-mgmt/faqs/general.html",
+      "title": "U.S. National Archives: Frequently Asked Questions about Records Management in General",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.nationalarchives.gov.uk/information-management/manage-information/policy-process/disposal/",
+      "title": "The National Archives (UK): Disposing of records",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S9",
+      "url": "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/data-protection-principles/a-guide-to-the-data-protection-principles/storage-limitation/",
+      "title": "Information Commissioner's Office: Principle (e), Storage limitation",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.csueastbay.edu/its/processes-policies/impact-urgency.html",
+      "title": "California State University, East Bay: Impact and Urgency Charts",
+      "kind": "other",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.conncoll.edu/information-services/technology-services/it-service-desk/ticket-priority-matrix/",
+      "title": "Connecticut College IT Service Desk: Ticket Priority Matrix",
+      "kind": "other",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.ncsc.gov.uk/guidance/phishing",
+      "title": "National Cyber Security Centre: Phishing attacks, defending your organisation",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S13",
+      "url": "https://www.cisa.gov/secure-our-world/teach-employees-avoid-phishing",
+      "title": "CISA: Teach Employees to Avoid Phishing",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S14",
+      "url": "https://linear.app/docs/triage",
+      "title": "Linear Docs: Triage",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S15",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/customer-service/administer/overview-unified-routing",
+      "title": "Microsoft Learn: Overview of unified routing (Dynamics 365 Customer Service)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S16",
+      "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/email/about-shared-mailboxes",
+      "title": "Microsoft Learn: About shared mailboxes in Microsoft 365",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S17",
+      "url": "https://support.google.com/a/users/answer/167430",
+      "title": "Google Workspace Learning Center: Use a group as a Collaborative Inbox",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S18",
+      "url": "https://knowledge.hubspot.com/properties/hubspots-default-ticket-properties",
+      "title": "HubSpot Knowledge Base: HubSpot's default ticket properties",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S19",
+      "url": "https://knowledge.hubspot.com/object-settings/set-up-and-customize-pipelines",
+      "title": "HubSpot Knowledge Base: Set up and manage object pipelines",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S20",
+      "url": "https://www.atlassian.com/team-playbook/plays/weekly-project-updates",
+      "title": "Atlassian Team Playbook: Weekly Project Updates",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S21",
+      "url": "https://www.ifma.org/about/what-is-fm/",
+      "title": "IFMA: What is Facility Management?",
+      "kind": "professional-body",
+      "fetchedOn": "2026-11-22"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Office managers oversee the day-to-day operations in an office or department."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Plan, direct, or coordinate one or more administrative services of an organization, such as records and information management, mail distribution, and other office support services."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "In a small organization, they may direct all support services and may be called the business office manager."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Read and analyze incoming memos, submissions, and reports to determine their significance and plan their distribution."
+        },
+        {
+          "source": "S3",
+          "passage": "Greet visitors or callers and handle their inquiries or direct them to the appropriate persons according to their needs."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "prepare reports for the senior management team"
+        },
+        {
+          "source": "S2",
+          "passage": "Prepare and review operational reports and schedules to ensure accuracy and efficiency."
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Administrative services and facilities managers plan, direct, and coordinate activities that help an organization run efficiently."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Open, read, route, and distribute incoming mail or other materials and answer routine letters."
+        },
+        {
+          "source": "S4",
+          "passage": "Open, sort, and distribute incoming correspondence, including faxes and email."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Answer telephones and give information to callers, take messages, or transfer calls to appropriate individuals."
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Locate and attach appropriate files to incoming correspondence requiring replies."
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Operate electronic mail systems and coordinate the flow of information, internally or with other organizations."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Represent work unit at meetings or conferences and serve as liaison for requests or complaints."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Coordinate activities with other supervisory personnel or with other work units or departments."
+        },
+        {
+          "source": "S6",
+          "passage": "work closely with other departments, like finance and human resources"
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Prepare and issue work schedules, deadlines, and duty assignments for office or administrative staff."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Research, compile, and prepare reports, manuals, correspondence, or other information required by management or governmental agencies."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Monitor inventory levels and requisition or purchase supplies as needed."
+        },
+        {
+          "source": "S2",
+          "passage": "Acquire, distribute and store supplies."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Communicate with and provide guidance for external vendors and service providers to ensure the organization, department, or work unit's business needs are met."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Plan for or coordinate office services, such as equipment or supply acquisition or organization, disposal of assets, relocation, parking, maintenance, or security services."
+        },
+        {
+          "source": "S1",
+          "passage": "Arrange for necessary maintenance or repair work."
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Manage paper or electronic filing systems by recording information, updating paperwork, or maintaining documents, such as attendance records or correspondence."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Maintain records pertaining to inventory, personnel, orders, supplies, or machine maintenance."
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Interpret and communicate work procedures and company policies to staff."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Analyze internal processes and recommend and implement procedural or policy changes to improve operations, such as supply changes or the disposal of records."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Triage offers a opportunity to review, update, and prioritize issues before they are added to your team's workflow."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Unified routing has two main stages: classification and assignment."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Impact is a measures the effect of an Incident. Impact is often based on how service levels are affected."
+        },
+        {
+          "source": "S11",
+          "passage": "Impact (scale of affected users)"
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Urgency is a measure of how long it will be until an Incident has a significant impact on the Business."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Priority identifies the relative importance of an Incident. Incident priority is based on the combined Impact and Urgency assignments, and is used to identify the required action times."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Ticket status: the pipeline status that contains this ticket."
+        },
+        {
+          "source": "S19",
+          "passage": "a default Support Pipeline with four ticket statuses: New, Waiting on contact, Waiting on us, Closed."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "To resolve a conversation, you can mark it as complete, needing no further action, or a duplicate of another conversation."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "the field of management responsible for the systematic control of the creation, maintenance, use, and disposition of records."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The main tool used to manage the disposition of records is the records schedule."
+        },
+        {
+          "source": "S8",
+          "passage": "Information should be retained only as long as it is needed for business, legal or historical purposes and a retention policy needs to be devised and applied to all information held."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Use shared mailboxes when multiple people need access to the same mailbox, such as for: Company information addresses. Support email addresses. Reception or front-desk mailboxes."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "Facility Management is an organizational function which integrates people, place and process within the built environment with the purpose of improving the quality of life of people and the productivity of the core business."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Phishing happens when attackers trick people, like small business owners or employees, into clicking harmful links, opening fake emails or downloading malicious attachments."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "In the classification stage, rules and machine learning (ML) models can be used to add information on the work item, which can be used to find the best-suited service representative."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Open the issue to review it and take one of the following issue actions: accept with 1, decline with 2, mark as duplicate with 3, or snooze with H."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "To ask for more information from the user who created the issue, comment on the issue and keep it in Triage or snooze it until you're ready to take an action."
+        },
+        {
+          "source": "S11",
+          "passage": "Please provide as much information as possible to the IT Service Desk so we can assign the appropriate priority to your ticket."
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "All calls or tickets submitted to the IT Service Desk are assigned a priority. This priority determines how quickly you can expect a technician to resolve/address your request."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "You can assign responsibility for a conversation to yourself or another group member."
+        },
+        {
+          "source": "S17",
+          "passage": "When a conversation is assigned to a user, they receive an automated email notification."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Prioritizing work items within a queue using work item attributes, added context, or related-entity attributes, which helps ensure that the business uses the representative's time on the most important work items first as per the business need."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Snoozing will hide the issue from the triage queue to return at a time of your choosing, or when there's new activity on that issue: whichever comes first."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Wins: What was accomplished this week Needs Input: Any blockers or questions Focus: What's next"
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "A tight headline and 1-3 sentences help a busy person quickly understand what is happening, why they should care, and what you need from them."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "If a message feels off or unexpected, staff should verify it- but not by replying or using any phone number or link in the message."
+        },
+        {
+          "source": "S12",
+          "passage": "Make processes more resistant to phishing by ensuring that all important email requests are verified using a second type of communication (such as SMS message, a phone call, logging into an account, or confirmation by post or in-person)."
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Take care of records so that information can be found when needed."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Authorities should define how long they need to keep particular records, should dispose of them when they are no longer needed and should be able to explain why records are no longer held."
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Train employees to watch for red flags such as strange or unexpected requests, urgent language or suspicious links."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "For example, a high Impact Incident may have low Urgency, if the Impact will not affect the university until the end of the quarter."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Messages may appear to come from known contacts whose accounts were compromised."
+        },
+        {
+          "source": "S12",
+          "passage": "Attackers can exploit 'ways of working' to trick users into handing over information (including passwords), or making unauthorised payments."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Ensure staff are familiar with the normal ways of working for key tasks (such as how payments are made), so they're better equipped to recognise unusual requests."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Create records needed to do the business of their agency, record decisions and actions taken, and document activities for which they are responsible"
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Tell stakeholders the solutions you've considered so far, where you're hitting roadblocks, next steps, and specific help you need - even if it's just help figuring out what to do next."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "keep the message as short as possible, clear, and direct so others can quickly understand it and take action."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Creates a clear, accountable record of project progress"
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Attention to Detail - A tendency to be detail-oriented, organized, and thorough in completing work."
+        },
+        {
+          "source": "S6",
+          "passage": "to be thorough and pay attention to detail"
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Dependability - A tendency to be reliable, responsible, and consistent in meeting work-related obligations."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "patience and the ability to remain calm in stressful situations"
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "You must not keep personal data for longer than you need it."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Users with the appropriate permissions can send as or send on behalf of a shared mailbox."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "You can also search conversations based on their assignment status."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Triggered on filterable properties, triage rules can update an issue's team, status, assignee, label, project and priority."
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Enable triage responsibility to define who handles incoming issues."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Priority: the level of attention needed on the ticket."
+        },
+        {
+          "source": "S18",
+          "passage": "Source: how the ticket was created."
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Tools for maintaining and using records include file plans, indexes, controlled vocabularies, taxonomies, data dictionaries, and access and security procedures."
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Create, maintain, and enter information into databases."
+        },
+        {
+          "source": "S3",
+          "passage": "Use computers for various applications, such as database management or word processing."
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Operate office equipment, such as fax machines, copiers, or phone systems and arrange for repairs when equipment malfunctions."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Provide employees with guidance in handling difficult or complex problems or in resolving escalated complaints or disputes."
+        }
+      ]
+    },
+    {
+      "id": "C67",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Make recommendations to management concerning such issues as staffing decisions or procedural changes."
+        }
+      ]
+    },
+    {
+      "id": "C68",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Implement corporate or departmental policies, procedures, and service standards in conjunction with management."
+        }
+      ]
+    },
+    {
+      "id": "C69",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Meet with other departmental leaders to establish organizational goals, strategic plans, and objectives, as well as make decisions about personnel, resources, and space or equipment needs."
+        }
+      ]
+    },
+    {
+      "id": "C70",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Analyze financial activities of establishments or departments and provide input into budget planning and preparation processes."
+        }
+      ]
+    },
+    {
+      "id": "C71",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "If you disagree with the priority assigned, after reviewing this matrix, please ask to speak to the IT Service Desk Manager."
+        }
+      ]
+    },
+    {
+      "id": "C72",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "You need a policy setting standard retention periods wherever possible, to comply with documentation requirements."
+        }
+      ]
+    },
+    {
+      "id": "C73",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Time to first rep assignment: time between a ticket's creation and the first time a human agent was assigned."
+        }
+      ]
+    },
+    {
+      "id": "C74",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Time to close: the time between when the ticket was created and closed."
+        }
+      ]
+    },
+    {
+      "id": "C75",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "The target time frames for each of our priorities is defined in the priority matrix."
+        }
+      ]
+    },
+    {
+      "id": "C76",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "you can filter the conversation list to show only conversations in an unresolved (active) state."
+        }
+      ]
+    },
+    {
+      "id": "C77",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Supervise the work of office, administrative, or customer service employees to ensure adherence to quality standards, deadlines, and proper procedures, correcting errors or problems."
+        },
+        {
+          "source": "S2",
+          "passage": "Set goals and deadlines for the department."
+        }
+      ]
+    },
+    {
+      "id": "C78",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Review records or reports pertaining to activities such as production, payroll, or shipping to verify details, monitor work activities, or evaluate performance."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../sdk/schema/officehum.schema.json",
+  "schemaVersion": 1,
+  "id": "document-desk",
+  "name": "Document Desk",
+  "department": "operations",
+  "role": "Writes the office's letters, memos, reports, quotes, statements and meeting notes from templates",
+  "defaultModel": {
+    "provider": "scripted",
+    "modelId": "scripted-1"
+  },
+  "runtimes": [{ "name": "typst", "version": "0.13.1" }],
+  "tools": [
+    {
+      "name": "document_generate",
+      "replay": "safe",
+      "writes": true,
+      "noApproval": "saves a new draft document into the office file store, once per call; it changes no existing file and nothing leaves the office"
+    },
+    {
+      "name": "document_templates",
+      "replay": "safe"
+    }
+  ],
+  "connectors": [],
+  "approvals": [],
+  "channels": ["chat"],
+  "accepts": [],
+  "skills": [],
+  "evals": "evals"
+}

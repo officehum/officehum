@@ -1,0 +1,115 @@
+{
+  "collections-skips-payment-plan": [
+    {
+      "toolCalls": [
+        {
+          "name": "list_invoices",
+          "args": {
+            "status": "overdue"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "memory_recall",
+          "args": {
+            "about": "customer:quickbooks:customer-7"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "send_reminder",
+          "args": {
+            "invoice": "1042",
+            "tone": "friendly"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Sent a friendly reminder for invoice 1042. Invoice 1050 for Smith & Co was not chased: they are on a payment plan until the end of March 2027."
+    }
+  ],
+  "contact-update-supersedes": [
+    {
+      "toolCalls": [
+        {
+          "name": "memory_recall",
+          "args": {
+            "about": "customer:quickbooks:customer-42",
+            "query": "AP contact"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "memory_save",
+          "args": {
+            "about": "customer:quickbooks:customer-42",
+            "kind": "fact",
+            "category": "contact",
+            "text": "Acme's AP contact is Raj Patel.",
+            "supersedes": "mem_SEEDACMEAPJANE000000000000"
+          }
+        }
+      ]
+    },
+    {
+      "toolCalls": [
+        {
+          "name": "memory_recall",
+          "args": {
+            "about": "customer:quickbooks:customer-42",
+            "query": "AP contact"
+          }
+        }
+      ]
+    },
+    {
+      "text": "Updated: Acme's AP contact is now Raj Patel."
+    }
+  ],
+  "recall-limit-most-relevant": [
+    {
+      "toolCalls": [
+        {
+          "name": "memory_recall",
+          "args": {
+            "about": "customer:quickbooks:customer-42",
+            "query": "purchase order invoice",
+            "limit": 2
+          }
+        }
+      ]
+    },
+    {
+      "text": "Acme needs purchase order PO-7781 quoted on every invoice; it covers invoices dated up to 2027-06-30."
+    }
+  ],
+  "staff-bank-details-left-to-an-owner": [
+    {
+      "toolCalls": [
+        {
+          "name": "memory_save",
+          "args": {
+            "about": "customer:quickbooks:customer-42",
+            "kind": "fact",
+            "category": "payment_details",
+            "text": "Acme's refunds go to routing number 125000105, account number 99140023.",
+            "supersedes": "mem_SEEDACMEREFUNDBANK00000000"
+          }
+        }
+      ]
+    },
+    {
+      "text": "I can't change Acme's refund account: only an owner can set bank details. The account on file still applies."
+    }
+  ]
+}

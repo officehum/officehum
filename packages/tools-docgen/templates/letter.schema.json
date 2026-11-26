@@ -1,0 +1,58 @@
+{
+  "title": "Letter",
+  "description": "A business letter on the letterhead: date, recipient, optional subject, salutation, body paragraphs, closing and signature.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["date", "recipient", "salutation", "body", "closing", "signature"],
+  "properties": {
+    "date": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "recipient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "address": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+        }
+      }
+    },
+    "subject": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "salutation": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "body": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 60,
+      "items": { "type": "string", "minLength": 1, "maxLength": 4000 }
+    },
+    "closing": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    }
+  },
+  "examples": [
+    {
+      "date": "24 November 2026",
+      "recipient": {
+        "name": "Jordan Lee",
+        "address": ["Lee Hardware", "12 Mill Road", "Springfield"]
+      },
+      "subject": "Your new account",
+      "salutation": "Dear Jordan,",
+      "body": [
+        "Thank you for opening an account with us. Your account is ready to use from today.",
+        "Your account manager will call next week to talk through delivery times."
+      ],
+      "closing": "Kind regards,",
+      "signature": { "name": "Sam Rivera", "title": "Office Manager" }
+    }
+  ]
+}

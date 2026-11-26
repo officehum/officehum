@@ -1,0 +1,33 @@
+{
+  "name": "officehum",
+  "private": true,
+  "description": "Office Hum's free agents: portable Pi Durable roles for a business, each installable, runnable and testable on its own.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "agents/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @officehum/sdk -w @officehum/memory -w @officehum/runner -w @officehum/role-factory -w @officehum/frontdesk -w @officehum/google-calendar -w @officehum/quickbooks -w @officehum/bookkeeper -w @officehum/office-manager -w @officehum/provider-paper -w @officehum/tools-paper-office -w @officehum/tools-documents -w @officehum/tools-docgen -w @officehum/tools-data -w @officehum/tools-esign -w @officehum/sales -w @officehum/operations -w @officehum/purchasing -w @officehum/marketing -w @officehum/support -w @officehum/people-ops -w @officehum/payroll -w @officehum/quality -w @officehum/inventory -w @officehum/safety -w @officehum/it-helpdesk -w @officehum/finance-analyst -w @officehum/cli",
+    "typecheck": "npm exec --workspaces -- tsc -p tsconfig.test.json && tsc -p scripts/tsconfig.json",
+    "sync-company": "node scripts/sync-company.ts",
+    "licences": "node scripts/licence-scan.ts",
+    "publish-check": "node scripts/publish-check.ts",
+    "test": "vitest run",
+    "test:all-format": "npm run build && vitest run packages/tools-paper-office/src/all-format-acceptance.test.ts packages/tools-paper-office/src/fixtures.test.ts packages/tools-paper-office/src/word-fixtures.test.ts packages/tools-paper-office/src/pptx-fixtures.test.ts packages/tools-paper-office/src/xlsx-fixtures.test.ts packages/tools-paper-office/src/review-service.test.ts packages/tools-paper-office/src/review.test.ts packages/tools-paper-office/src/publish-tool.test.ts packages/tools-paper-office/src/portability.test.ts",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "check": "npm run lint && npm run build && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.6",
+    "@changesets/cli": "3.0.3",
+    "@types/node": "^26.6.6",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

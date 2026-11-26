@@ -1,0 +1,387 @@
+/**
+ * The four accounts-payable and bank tools, over the accounts desk.
+ *
+ * `list_vendor_bills` and `reconcile_summary` only read. `record_vendor_bill` writes through the desk
+ * with no approval: the desk refuses a supplier that is not on file or not approved, prices every line
+ * from the supply catalogue, and works out the total and the due date. Who asked for a bill to be
+ * recorded is the host's verified sender (`SenderResolver`), a person on the company record, never an
+ * argument or the message: the person approving its payment later reads that name as fact. `pay_vendor_bill` waits for a
+ * person on every call (`any_payment` in `officehum.json`, evaluated by the SDK's gate before the
+ * tool runs). The model names only the bill: `paymentApprovalFacts` reads its facts from the desk for
+ * the person to approve, the gate hands those facts to the tool on a yes, and the desk pays the bill's
+ * own total and refuses when the bill no longer equals what was approved.
+ *
+ * No tool takes a bank account, a routing number or a remittance address: a supplier's payment
+ * details never come from a message. Every amount a tool speaks comes back from the desk, and every
+ * name from the company record.
+ */
+
+import { defineTool, type JsonObject, type ToolRegistration } from "@earendil-works/pi-durable";
+import { arr, int, lit, obj, opt, str, union } from "@earendil-works/pi-schema";
+import {
+  APPROVED_FACTS_ARG,
+  type ApprovalFactsReader,
+  approvedFacts,
+  approvedFactsParameter,
+  colleague,
+  deskRefusal,
+  refusal,
+  requestId,
+  requireDesk,
+  type SenderResolver,
+  textResult,
+} from "@officehum/sdk";
+import { type CompanyFacts, financeLead, money, personLabel, purchasingLead } from "./company.js";
+import {
+  type AccountingDesk,
+  AccountingDeskError,
+  type BillStatus,
+  billApprovalFacts,
+  type DeskRefusal,
+  type Reconciliation,
+  type VendorBill,
+  type VendorPayment,
+} from "./desk.js";
+
+/** The limit an unmatched bank item is measured against, in cents. */
+export const MAJOR_UNMATCHED_LIMIT = "major_unmatched_item";
+
+/**
+ * What the tools need: the desk, the company, the role's resolved limits, read per call, and who is
+ * asking.
+ */
+export interface PayablesToolDependencies {
+  readonly desk: AccountingDesk | undefined;
+  readonly company: CompanyFacts;
+  readonly limits: () => Readonly<Record<string, number>>;
+  /** The host's verified sender of each call's work. Omitted: every sender is unknown. */
+  readonly sender?: SenderResolver;
+}
+
+/**
+ * The four tools, named, so the factory places each one where the manifest declares it, and the
+ * reader the `any_payment` approval asks with.
+ */
+export interface PayablesToolset {
+  readonly listVendorBills: ToolRegistration;
+  readonly recordVendorBill: ToolRegistration;
+  readonly payVendorBill: ToolRegistration;
+  readonly reconcileSummary: ToolRegistration;
+  /** Reads a bill's facts from the desk for the person approving its payment. */
+  readonly paymentApprovalFacts: ApprovalFactsReader;
+}
+
+const STATUSES: readonly (BillStatus | "unpaid")[] = ["unpaid", "due", "overdue", "open", "paid"];
+
+const LINES = arr(
+  obj({
+    itemId: str({
+      description: "The item's id in the supply catalogue, e.g. microfiber-cloth",
+    }),
+    quantity: int({ minimum: 1, description: "How many of the item's unit, e.g. 20" }),
+  }),
+  { minItems: 1 },
+);
+
+function billDetails(bill: VendorBill): JsonObject {
+  return { ...bill, lines: bill.lines.map((line) => ({ ...line })) };
+}
+
+function dueText(bill: VendorBill): string {
+  if (bill.status === "paid") {
+    return `paid ${bill.paidOn ?? ""}${bill.paymentId === null ? "" : ` (${bill.paymentId})`}`;
+  }
+  if (bill.daysUntilDue < 0) {
+    const days = -bill.daysUntilDue;
+    return `due ${bill.dueOn}, overdue by ${days} ${days === 1 ? "day" : "days"}`;
+  }
+  if (bill.daysUntilDue === 0) return `due ${bill.dueOn}, today`;
+  return `due ${bill.dueOn}, in ${bill.daysUntilDue} ${bill.daysUntilDue === 1 ? "day" : "days"}`;
+}
+
+function billText(bill: VendorBill): string {
+  return [
+    `${bill.id} — ${bill.supplierName} (${bill.supplierId}) — supplier invoice ${bill.supplierInvoice} — total ${money(bill.totalCents)} (${bill.totalCents} cents) — ${bill.status.toUpperCase()}, ${dueText(bill)} — recorded ${bill.recordedOn} by ${bill.recordedBy}, from ${bill.source}`,
+    ...bill.lines.map(
+      (line) =>
+        `- ${line.quantity} × ${line.name} [${line.itemId}] (${line.unit}) at ${money(line.unitCostCents)} = ${money(line.lineTotalCents)}`,
+    ),
+  ].join("\n");
+}
+
+function paymentText(payment: VendorPayment): string {
+  const paid = `Paid ${payment.billId} (${payment.supplierName}, supplier invoice ${payment.supplierInvoice}): ${money(payment.amountCents)}, the bill's own total, on ${payment.paidOn}, payment ${payment.id}.`;
+  return payment.backend === "demo"
+    ? `${paid} Demonstration backend: the payment is recorded on the desk and no money moved.`
+    : paid;
+}
+
+function signed(cents: number): string {
+  return cents < 0 ? `-${money(-cents)}` : money(cents);
+}
+
+/**
+ * Builds the four tools over one desk and one company. Every one is plain Pi Durable: they install
+ * into any harness, and a harness with no desk builds the same tools and refuses at the point of use.
+ */
+export function payablesTools(dependencies: PayablesToolDependencies): PayablesToolset {
+  const { company } = dependencies;
+  const finance = personLabel(financeLead(company), "the person who owns finance");
+  const purchasing = personLabel(purchasingLead(company), "the person who decides purchasing");
+
+  /**
+   * The next step for every refusal code, chosen from the code and never from the message. The
+   * record is complete by type, so a new code cannot ship without one.
+   */
+  const NEXT: Record<DeskRefusal, (billId: string | undefined) => string> = {
+    not_found: () => " Next: find the bill with list_vendor_bills.",
+    invalid: () => " Next: correct the call as described; nothing was changed.",
+    unknown_supplier: () =>
+      ` Next: tell the person a new supplier is for ${purchasing} to decide, and the bill is for ${finance} to check; record and pay nothing.`,
+    unapproved_supplier: () =>
+      ` Next: tell the person approving the supplier is for ${purchasing} to decide, and the bill is for ${finance} to check; record and pay nothing.`,
+    not_supplied: () =>
+      ` Next: tell the person the bill is for ${finance} to check against what was ordered; record nothing.`,
+    duplicate_bill: (billId) =>
+      ` Next: use ${billId ?? "the bill already on the desk"}; do not record it again.`,
+    already_paid: () => " Next: tell the person it is already paid; there is nothing to pay.",
+    bill_changed: (billId) =>
+      ` Next: tell the person ${billId ?? "the bill"} changed after it was put to a person, so it was not paid; read it again with list_vendor_bills before anything else.`,
+    no_statement: () => " Next: ask which of the periods on file is wanted.",
+  };
+
+  const refused = (error: unknown, extra: JsonObject) => {
+    if (!(error instanceof AccountingDeskError)) throw error;
+    return deskRefusal(`${error.message}${NEXT[error.code](error.billId)}`, error.code, {
+      ...(error.billId === undefined ? {} : { billId: error.billId }),
+      ...extra,
+    });
+  };
+
+  const listVendorBills = defineTool({
+    name: "list_vendor_bills",
+    description:
+      "List the supplier bills on the desk, or one by its id: supplier, the supplier's invoice number, each line, the total, who recorded it and from what, and where it stands today (OPEN, DUE soon, OVERDUE or PAID), all worked out by the desk. Filter by status: unpaid, due, overdue, open or paid.",
+    parameters: obj({
+      status: opt(
+        union(
+          STATUSES.map((status) => lit(status)),
+          { description: "Only bills in this state; unpaid is every bill not yet paid" },
+        ),
+      ),
+      supplier: opt(str({ description: "All or part of the supplier's name, or its id" })),
+      billId: opt(str({ description: "One bill by its id, e.g. BILL-2001" })),
+    }),
+    replay: "safe",
+    execute: async (args) => {
+      const desk = requireDesk(dependencies.desk, "accounts");
+      const bills = await desk.listVendorBills({
+        ...(args.status === undefined ? {} : { status: args.status as BillStatus | "unpaid" }),
+        ...(args.supplier === undefined ? {} : { supplier: args.supplier }),
+        ...(args.billId === undefined ? {} : { billId: args.billId }),
+      });
+      const details = { found: bills.length > 0, bills: bills.map(billDetails) };
+      if (bills.length === 0) {
+        return refusal("No supplier bill matches that. Try fewer filters, or no filter.", details);
+      }
+      const unpaid = bills.filter((bill) => bill.status !== "paid");
+      const overdue = bills.filter((bill) => bill.status === "overdue");
+      return {
+        ...textResult(
+          [
+            `Supplier bills (${bills.length}; ${unpaid.length} unpaid, ${overdue.length} overdue):`,
+            ...bills.map(billText),
+            `Supplier payments and payment questions belong to ${finance}.`,
+          ].join("\n"),
+        ),
+        details,
+      };
+    },
+  });
+
+  const recordVendorBill = defineTool({
+    name: "record_vendor_bill",
+    description:
+      "Record a supplier's bill when someone in the company asks: the supplier, its own invoice number, each catalogue item and quantity on the bill, and what it came from. Who asked is recorded from the message's verified sender, and the bill is refused when that is nobody on the company record. You give no prices or totals: the desk prices each line from the supply catalogue and works out the total and due date. It refuses a supplier not on file or not approved, an item that supplier does not supply, and a bill already recorded. It pays nothing.",
+    parameters: obj({
+      supplier: str({
+        description: "The supplier's id or its name exactly as on file, e.g. sup-rainier-tools",
+      }),
+      supplierInvoice: str({
+        minLength: 1,
+        description: "The supplier's own invoice number on the bill, e.g. RT-5588",
+      }),
+      lines: LINES,
+      source: str({
+        minLength: 1,
+        description: "What the bill came from: the message or document, who sent it and when",
+      }),
+      termsDays: opt(
+        int({
+          minimum: 0,
+          maximum: 120,
+          description: "The days the bill allows for payment, e.g. 30 for net 30; omit if none",
+        }),
+      ),
+    }),
+    replay: "unsafe",
+    execute: async (args, api) => {
+      const desk = requireDesk(dependencies.desk, "accounts");
+      // Who asked is the host's verified sender, never the model's say-so: a colleague on the
+      // company record, writing from inside the office. Anyone else has no bill recorded.
+      const asker = colleague(
+        company,
+        await dependencies.sender?.({ conversationId: api.conversationId, taskId: api.taskId }),
+      );
+      if (asker === undefined) {
+        return deskRefusal(
+          `Nothing was recorded: a supplier's bill is recorded only when a person on the company record asks from inside the office, and this message's verified sender is not one. Next: tell the person the bill is for ${finance} to look at; record and pay nothing.`,
+          "unknown_sender",
+          { supplier: args.supplier },
+        );
+      }
+      try {
+        const bill = await desk.recordVendorBill(
+          {
+            supplier: args.supplier,
+            supplierInvoice: args.supplierInvoice,
+            lines: args.lines,
+            recordedBy: asker.name,
+            source: args.source,
+            ...(args.termsDays === undefined ? {} : { termsDays: args.termsDays }),
+          },
+          { requestId: requestId("record-bill", api) },
+        );
+        return {
+          ...textResult(`Recorded ${billText(bill)}\nNothing has been paid.`),
+          details: billDetails(bill),
+        };
+      } catch (error) {
+        return refused(error, { supplier: args.supplier });
+      }
+    },
+  });
+
+  /**
+   * The `any_payment` approval's facts: the bill as the desk holds it, read before anyone is asked. A
+   * bill that is not on the desk or is already paid has nothing to approve, so it throws and the gate
+   * asks nobody.
+   */
+  const paymentApprovalFacts: ApprovalFactsReader = async (args) => {
+    const desk = requireDesk(dependencies.desk, "accounts");
+    const billId = String(args.billId);
+    const [bill] = await desk.listVendorBills({ billId });
+    if (bill === undefined) {
+      throw new Error(
+        `No bill on the desk has the id ${JSON.stringify(billId)}. Nothing was put to a person and nothing was paid.${NEXT.not_found(billId)}`,
+      );
+    }
+    if (bill.status === "paid") {
+      throw new Error(
+        `${bill.id} (${bill.supplierName}, invoice ${bill.supplierInvoice}) was already paid on ${bill.paidOn ?? "an earlier date"}${bill.paymentId === null ? "" : ` as ${bill.paymentId}`}. Nothing was put to a person and nothing was paid again.${NEXT.already_paid(bill.id)}`,
+      );
+    }
+    return {
+      summary: `Pay ${bill.id} to ${bill.supplierName}, supplier invoice ${bill.supplierInvoice}: ${money(bill.totalCents)}, recorded by ${bill.recordedBy} from ${bill.source}`,
+      facts: billApprovalFacts(bill),
+    };
+  };
+
+  const payVendorBill = defineTool({
+    name: "pay_vendor_bill",
+    description:
+      "Ask a person to approve paying one supplier bill, named by its id from list_vendor_bills. The desk reads the bill's facts (supplier, invoice, who recorded it and from what, its lines and total) and shows them to the person; every call waits for a person. Once approved, the desk pays the bill's own total, and refuses if the bill changed since the person saw it. Demonstration backend: no money moves.",
+    parameters: obj({
+      billId: str({ description: "The bill's id, e.g. BILL-2001" }),
+      // Pi Durable re-validates the arguments the gate returns, so the gate's key is declared.
+      [APPROVED_FACTS_ARG]: approvedFactsParameter(),
+    }),
+    replay: "unsafe",
+    execute: async (args, api) => {
+      const desk = requireDesk(dependencies.desk, "accounts");
+      const approved = approvedFacts(args);
+      if (approved === undefined) {
+        return refusal(
+          `Nothing was paid: this call to pay ${args.billId} carries no facts a person approved. A payment runs only after the approval gate has put the bill to a person and they said yes. Next: tell the person paying it needs a person's approval and nothing was paid.`,
+          { code: "not_approved", billId: args.billId },
+        );
+      }
+      try {
+        const payment = await desk.payVendorBill(
+          { billId: args.billId, approved },
+          { requestId: requestId("pay-bill", api) },
+        );
+        return { ...textResult(paymentText(payment)), details: { ...payment } };
+      } catch (error) {
+        return refused(error, { billId: args.billId });
+      }
+    },
+  });
+
+  const reconcileText = (summary: Reconciliation): string => {
+    const limit =
+      summary.majorOverCents === null
+        ? "No major-item limit resolved, so every unmatched item is treated as major."
+        : `An unmatched item over ${money(summary.majorOverCents)} is major.`;
+    const unmatched =
+      summary.unmatched.length === 0
+        ? ["Unmatched: none."]
+        : [
+            `Unmatched (${summary.unmatched.length}):`,
+            ...summary.unmatched.map(
+              (item) =>
+                `- ${item.date} — ${item.description} — ${signed(item.amountCents)} — ${item.side === "statement_only" ? "on the statement, not in the books" : "in the books, not on the statement"} — ${item.major ? `MAJOR: goes to ${finance}; do not correct it yourself` : "minor: listed for the person who closes the month"}`,
+            ),
+          ];
+    return [
+      `Bank reconciliation for ${summary.period}: opening ${money(summary.openingCents)}, statement closing ${money(summary.statementClosingCents)}, books closing ${money(summary.booksClosingCents)}, difference ${signed(summary.differenceCents)}.`,
+      `Matched: ${summary.matched} statement lines.`,
+      ...unmatched,
+      limit,
+      "This is a summary: nothing was posted, corrected or closed.",
+    ].join("\n");
+  };
+
+  const reconcileSummary = defineTool({
+    name: "reconcile_summary",
+    description:
+      "Match one month's bank statement against the books and summarise it: the balances, how many lines matched, and every unmatched item, each marked major or minor by the desk. It posts, corrects and closes nothing. Give the month's number (never a year: the desk works it out), or leave it out for the last full month.",
+    parameters: obj({
+      month: opt(
+        int({
+          minimum: 1,
+          maximum: 12,
+          description:
+            "The month's number, e.g. 10 for October; omit it for the last full month. The desk works out the year.",
+        }),
+      ),
+    }),
+    replay: "safe",
+    execute: async (args) => {
+      const desk = requireDesk(dependencies.desk, "accounts");
+      const limit = dependencies.limits()[MAJOR_UNMATCHED_LIMIT];
+      const majorOverCents =
+        typeof limit === "number" && Number.isSafeInteger(limit) && limit >= 0 ? limit : null;
+      try {
+        const summary = await desk.reconcile({
+          ...(args.month === undefined ? {} : { month: args.month }),
+          majorOverCents,
+        });
+        return {
+          ...textResult(reconcileText(summary)),
+          details: { ...summary, unmatched: summary.unmatched.map((item) => ({ ...item })) },
+        };
+      } catch (error) {
+        return refused(error, { month: args.month ?? null });
+      }
+    },
+  });
+
+  return {
+    listVendorBills,
+    recordVendorBill,
+    payVendorBill,
+    reconcileSummary,
+    paymentApprovalFacts,
+  };
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "../../../sdk/schema/officehum.schema.json",
+  "schemaVersion": 1,
+  "id": "signing-desk",
+  "name": "Signing Desk",
+  "department": "operations",
+  "role": "Sends the office's documents to outside parties for signature, follows them and files the signed copies",
+  "defaultModel": {
+    "provider": "scripted",
+    "modelId": "scripted-1"
+  },
+  "tools": [
+    {
+      "name": "esign_templates",
+      "replay": "safe"
+    },
+    {
+      "name": "esign_send",
+      "replay": "unsafe"
+    },
+    {
+      "name": "esign_status",
+      "replay": "safe"
+    },
+    {
+      "name": "esign_download",
+      "replay": "safe",
+      "writes": true,
+      "noApproval": "saves a completed request's signed copy into the office file store as outside files, once per request; nothing leaves the office"
+    },
+    {
+      "name": "esign_void",
+      "replay": "unsafe"
+    }
+  ],
+  "connectors": [],
+  "approvals": [
+    {
+      "id": "send_for_signature",
+      "tool": "esign_send",
+      "description": "Sending documents to people outside the office for their signature"
+    },
+    {
+      "id": "void_signature_request",
+      "tool": "esign_void",
+      "description": "Voiding a signature request so nobody can sign it"
+    }
+  ],
+  "channels": ["chat"],
+  "accepts": [],
+  "skills": [],
+  "evals": "evals"
+}

@@ -1,0 +1,44 @@
+name: Bug
+description: Something in an agent, the CLI or a package does not work as documented.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report a security problem here. Use the Security tab's "Report a vulnerability" instead (see SECURITY.md).
+        Leave out API keys, tokens, customer data and anything else private from logs and screenshots.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The commands, the role, and the inputs that show the problem. A failing test is ideal.
+      placeholder: |
+        1. npm ci && npm run build
+        2. npx officehum ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The package version, or the commit you built from (`git rev-parse HEAD`).
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Node version (`node --version`), and Python version if a role engine or the document worker is involved.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output or logs
+      description: The relevant output, with secrets removed.
+      render: text

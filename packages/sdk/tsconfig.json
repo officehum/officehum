@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/test-helpers.ts",
+    "src/fixtures/communication-cases.ts",
+    "src/fixtures/approver-values.ts",
+    "src/fixtures/file-store-contract.ts"
+  ]
+}

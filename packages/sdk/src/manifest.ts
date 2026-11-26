@@ -1,0 +1,1578 @@
+/**
+ * `officehum.json`: the metadata Office Hum reads from a role package without running its code.
+ * Pi Durable ignores this file. See docs/design/agent-package.md.
+ */
+
+import semver from "semver";
+import { type Static, Type } from "typebox";
+import { COMPANY_DATA_SECTIONS } from "./company-data.js";
+import { type Issue, joinPath, schemaIssues, show, type Validation } from "./issues.js";
+import { isReservedEnvName, reservedEnvMessage } from "./reserved-env.js";
+import { RESPONSIBILITY_IDS } from "./responsibilities.js";
+
+/** The manifest file every role package ships next to its package.json. */
+export const MANIFEST_FILE = "officehum.json";
+
+/** The manifest format this SDK reads and writes. */
+export const MANIFEST_SCHEMA_VERSION = 1;
+
+/** Departments a role can belong to. The UI groups the team by department. */
+export const DEPARTMENTS = [
+  "front-office",
+  "finance",
+  "operations",
+  "sales",
+  "marketing",
+  "people",
+] as const;
+
+/** Where a role may face the business's own customers. */
+export const CHANNELS = ["email", "sms", "chat"] as const;
+
+/** Which way a channel runs, when it is not symmetrical. */
+export const CHANNEL_DIRECTIONS = ["inbound", "outbound", "both"] as const;
+
+/**
+ * A channel, as either a name or a declaration that says something the name cannot.
+ *
+ * `"email"` is the shorthand, and it means the role can face a customer on it in both directions. The
+ * object form exists because a channel can be one-way: the Front Desk receives texts and answers them
+ * by email, and a bare `"sms"` would tell every reader — a card, an operator, the role's own prompt —
+ * that outbound SMS is a thing this office does. A declaration that names the direction is the
+ * difference between "we use SMS" and "customers can text us", and only the second is true.
+ */
+const ChannelDeclaration = Type.Union([
+  Type.Enum([...CHANNELS]),
+  Type.Object(
+    {
+      channel: Type.Enum([...CHANNELS]),
+      direction: Type.Enum([...CHANNEL_DIRECTIONS]),
+      /** Where a reply goes when this channel cannot carry one. Must be a channel the role declares. */
+      replyBy: Type.Optional(Type.Enum([...CHANNELS])),
+      /** One line a reader sees beside the channel. */
+      note: Type.Optional(Type.String({ maxLength: 160 })),
+    },
+    { additionalProperties: false },
+  ),
+]);
+
+/** Pi Durable thinking levels a manifest may recommend. */
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/** Models a sub-agent may run on: the office's small model, or the role's default one. */
+export const SUBAGENT_MODELS = ["small", "default"] as const;
+
+/** Which way a named limit guards; see `LimitDeclaration.guard`. */
+export const LIMIT_GUARDS = ["ceiling", "floor", "none"] as const;
+
+/**
+ * Subject kinds a role's memory may hold. A record's subject is one of these plus an id, e.g.
+ * `customer:acme` or `vendor:42`; see "Memory" in docs/design/agent-package.md.
+ */
+export const MEMORY_SUBJECTS = [
+  "business",
+  "customer",
+  "vendor",
+  "person",
+  "agent",
+  "topic",
+] as const;
+
+/** Tokens a role's stable prompt may use when its context plan sets no `promptBudgetTokens`. */
+export const DEFAULT_PROMPT_BUDGET_TOKENS = 4000;
+
+/** Tools the SDK gives every role built with `defineRole`; a manifest does not declare them. */
+export const SDK_TOOL_NAMES = ["read_skill"] as const;
+
+/**
+ * Tool names a role may not declare: the SDK's own, and those the Office provides through its
+ * extension, which would otherwise collide with the role's when both are selected.
+ *
+ * The `agent_*` five are the office extension's own tools (and the directory's two). The
+ * `board_*`, `delegate` and
+ * `ask` names are the ones this list has always carried; they are left as they are, not removed —
+ * reconciling the older names with the tools the Office actually ships is a documentation change, not
+ * this one.
+ */
+/**
+ * The approval id an office's practice mode asks under, as `<task>:<call>:practice`. A
+ * role may not declare it, so a practice approval is never mistaken for the role's own.
+ */
+export const RESERVED_APPROVAL_ID = "practice";
+
+export const RESERVED_TOOL_NAMES = [
+  ...SDK_TOOL_NAMES,
+  "board_create",
+  "board_claim",
+  "board_comment",
+  "board_complete",
+  "board_read",
+  "delegate",
+  "ask",
+  "agent_dispatch",
+  "agent_inbox",
+  "agent_reply",
+  "agent_directory",
+  "agent_card",
+] as const;
+
+const KebabId = Type.String({
+  pattern: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+  maxLength: 64,
+  "x-hint": 'kebab-case, like "front-desk"',
+});
+const SnakeName = Type.String({
+  pattern: "^[a-z][a-z0-9]*(_[a-z0-9]+)*$",
+  maxLength: 64,
+  "x-hint": 'snake_case, like "create_invoice"',
+});
+const TicketType = Type.String({
+  pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+  maxLength: 64,
+  "x-hint": 'a dotted ticket type, like "invoice.create"',
+});
+const Text = (maxLength: number) => Type.String({ minLength: 1, maxLength });
+const SNAKE_NAME = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
+const KEBAB_ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** An environment variable's name. Anything else in `env`, such as `TOKEN=abc`, is a value. */
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Words passed to the role's engine, e.g. `["variance", "--summary"]`. */
+const EngineArgs = Type.Array(Type.String({ minLength: 1 }), { minItems: 1 });
+
+/** One parameter of an engine tool; it reaches the engine as `--name value`. */
+const ParameterDeclaration = Type.Object(
+  {
+    type: Type.Enum(["string", "number", "integer", "boolean"]),
+    description: Text(300),
+    required: Type.Optional(Type.Boolean()),
+    enum: Type.Optional(Type.Array(Type.Union([Type.String(), Type.Number()]), { minItems: 1 })),
+  },
+  { additionalProperties: false },
+);
+
+/**
+ * MCP tools: the server a tool comes from and that server's own name for it. The model sees the
+ * manifest's name, description and parameters, never the server's. See docs/design/tool-sources.md.
+ */
+const McpToolSource = Type.Object(
+  {
+    /** A key of `mcpServers`. */
+    server: Type.String({ minLength: 1 }),
+    /** The server's own tool name, as its `tools/list` reports it. */
+    tool: Type.String({ minLength: 1, maxLength: 128 }),
+    /**
+     * The server tool's idempotency-key argument, if it has one. The SDK fills it with the Pi Durable
+     * tool call's identity, which is the same on a retry; the model never sees it.
+     */
+    idempotencyArg: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+  },
+  { additionalProperties: false },
+);
+
+/** A server started as a child process. `command` is an argv array, never a shell string. */
+const StdioMcpServer = Type.Object(
+  {
+    transport: Type.Literal("stdio"),
+    command: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
+    /** The NAMES of the environment variables the server needs. The host supplies the values. */
+    env: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  },
+  { additionalProperties: false },
+);
+
+/** A remote server. Validated here; the runtime refuses it until the connector gateway exists. */
+const HttpMcpServer = Type.Object(
+  {
+    transport: Type.Literal("http"),
+    url: Type.String({ pattern: "^https?://", maxLength: 2048, "x-hint": "an http(s) URL" }),
+    auth: Type.Object({ connector: KebabId }, { additionalProperties: false }),
+  },
+  { additionalProperties: false },
+);
+
+const McpServerDeclaration = Type.Union([StdioMcpServer, HttpMcpServer], {
+  "x-hint":
+    'must be { "transport": "stdio", "command": ["program", …], "env": ["NAME", …] } or { "transport": "http", "url": "https://…", "auth": { "connector": "ID" } }',
+});
+
+/**
+ * A service's command-line program, run once per call (docs/design/tool-sources.md, section 3).
+ * `command` is the program and any fixed leading arguments, an argv array, never a shell string. A
+ * fixed argument that starts with `./` names a file in the role package, because the program runs in
+ * an empty temporary directory.
+ */
+const CliDeclaration = Type.Object(
+  {
+    command: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
+    /** The NAMES of the environment variables the program needs. The host supplies the values. */
+    env: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+  },
+  { additionalProperties: false },
+);
+
+/** CLI tools: which declared CLI runs the tool, and the arguments appended to its command. */
+const CliToolSource = Type.Object(
+  {
+    /** A key of `clis`. */
+    use: Type.String({ minLength: 1 }),
+    /**
+     * Appended to the CLI's command. `{name}` is a whole argument that becomes one declared
+     * parameter's value; `{callId}` becomes the call's idempotency key.
+     */
+    args: Type.Array(Type.String()),
+    /** `"json"`: output that does not parse is an error result. */
+    output: Type.Enum(["json", "text"]),
+    /** Seconds before the program is killed. Default 60. */
+    timeoutSeconds: Type.Optional(Type.Number({ exclusiveMinimum: 0, maximum: 600 })),
+  },
+  { additionalProperties: false },
+);
+
+/**
+ * What a tool's successful result verifies: the connected system's id of a customer or a
+ * vendor, read from the result's `details` at `field`. A dispatch from the same conversation may name
+ * `<subject>:<system>:<id>` as a ticket's memory subject; nothing else may. `field` is dot-separated
+ * names, each optionally ending in `[]` to read every element of an array.
+ */
+const VerifiesDeclaration = Type.Object(
+  {
+    subject: Type.Enum(["customer", "vendor"]),
+    system: Type.String({
+      pattern: "^[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+      maxLength: 40,
+      "x-hint": 'the connected system in lower case, like "quickbooks"',
+    }),
+    field: Type.String({
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+      maxLength: 120,
+      "x-hint": 'a path into the result\'s details, like "customers[].id" or "invoice.customerId"',
+    }),
+  },
+  { additionalProperties: false },
+);
+
+const ToolDeclaration = Type.Object(
+  {
+    name: SnakeName,
+    /**
+     * Pi Durable's replay policy and nothing more: `"safe"` means an interrupted call may be run
+     * again (it reads, or it is idempotent); `"unsafe"` means it must not be. It does not say
+     * whether the tool changes anything; `writes` does.
+     */
+    replay: Type.Enum(["safe", "unsafe"]),
+    /**
+     * True for a tool that changes something and is still safe to run again, such as an idempotent
+     * booking. An unsafe tool always counts as writing and need not say so. A tool that writes
+     * states an approval decision, and is never a sub-agent's tool or completion evidence.
+     */
+    writes: Type.Optional(Type.Boolean()),
+    skill: Type.Optional(KebabId),
+    /** What the model reads about the tool. Required for engine, MCP and CLI tools, which have no code. */
+    description: Type.Optional(Text(1000)),
+    /** Engine tools: the subcommand this tool runs. `defineRole` builds the tool from the manifest. */
+    engine: Type.Optional(EngineArgs),
+    /** MCP tools: the server and its tool. `defineRole` builds the tool from the manifest. */
+    mcp: Type.Optional(McpToolSource),
+    /** CLI tools: the CLI and its arguments. `defineRole` builds the tool from the manifest. */
+    cli: Type.Optional(CliToolSource),
+    /**
+     * Pack tools: the id of the tool pack the office supplies this tool from, e.g.
+     * `"data"`. The role package has no code for it: `defineRole` takes the tool from the pack the
+     * host passes as `packs`, and a role loaded without that pack does not offer it. It is declared,
+     * reviewed and evaluated like any other tool: `replay`, a `description` (for the agent card and
+     * a reviewer; the model reads the pack's own) and, when it writes, an approval decision.
+     */
+    pack: Type.Optional(KebabId),
+    parameters: Type.Optional(Type.Record(Type.String(), ParameterDeclaration)),
+    /** Rules for using the tool, added to its description. */
+    guidelines: Type.Optional(Type.Array(Text(300))),
+    /**
+     * Why this writing tool needs no approval, e.g. "internal note; no outside effect". A tool that
+     * writes (unsafe, or `writes: true`) states exactly one of the two: an approval in `approvals`,
+     * or this note. A tool that changes nothing states neither.
+     */
+    noApproval: Type.Optional(Text(300)),
+    /**
+     * True for a tool that sends or publishes to people outside the business: an email or a text to
+     * a customer, a post, a purchase order to a supplier, a report to a regulator. An approval on such
+     * a tool is a floor no overlay may lower yet (docs/design/overlay-rules.md). Manifest data only:
+     * the model never sees it.
+     */
+    outside: Type.Optional(Type.Literal(true)),
+    /** The connected system's id this tool's result verifies, for a dispatched ticket's subjects. */
+    verifies: Type.Optional(VerifiesDeclaration),
+  },
+  { additionalProperties: false },
+);
+
+/**
+ * A number the business sets: the role declares the limit with a description and a default, and an
+ * overlay changes the value. Limits live in `officehum.json` and overlays, never in prompt text.
+ */
+const LimitDeclaration = Type.Object(
+  {
+    description: Text(300),
+    default: Type.Number(),
+    /**
+     * Which way the limit guards, for a limit only code reads (an approval condition that compares
+     * with it already says): `ceiling` when raising it lets more through, `floor` when lowering it
+     * does, `none` when it is not a safeguard at all (a schedule, say). Omitted on a code-only limit:
+     * any change counts as lowering a safeguard. See docs/design/overlay-rules.md.
+     */
+    guard: Type.Optional(Type.Enum([...LIMIT_GUARDS])),
+    /**
+     * True when loosening the limit lets something go outside the business without a person: inside
+     * it, a tool declared `outside` acts on its own (purchasing's order limit). Like a limit an
+     * approval on such a tool compares with, it may be tightened but never loosened by an overlay
+     * yet. It needs a direction. See docs/design/overlay-rules.md, "What no overlay can lower".
+     */
+    outside: Type.Optional(Type.Literal(true)),
+  },
+  { additionalProperties: false },
+);
+
+/**
+ * A condition's value that names a limit, e.g. `{ "limit": "large_invoice" }`, instead of a number.
+ * It resolves to the business's value for that limit when the approval gate runs.
+ */
+const LimitReference = Type.Object({ limit: SnakeName }, { additionalProperties: false });
+
+/** A field of an array's elements, e.g. `amountCents`, that a summed condition reads. */
+const ElementField = (hint: string) =>
+  Type.String({
+    pattern: "^[A-Za-z_][A-Za-z0-9_]*$",
+    maxLength: 64,
+    "x-hint": hint,
+  });
+
+/**
+ * A condition on a tool call's arguments, e.g. `{ "arg": "amount", "op": "gt", "value": 2500 }`.
+ *
+ * `field` makes the left-hand side a sum instead of the argument itself: `{ "arg": "lines", "op":
+ * "gt", "field": "unitPriceCents", "times": "quantity", "value": { "limit": "large_invoice" } }`
+ * compares the limit with the total of a price times a quantity over every line. `op` stays the
+ * comparison, so `gt`, `gte`, `lt` and `lte` mean here exactly what they mean on one number — a
+ * business rule about a total reads like every other threshold, and there is no second operator to
+ * learn. `times` is optional and multiplies each element's field by another field first, because a
+ * priced line is written as a price and a count, not as an amount.
+ *
+ * Nothing here is about invoices: it is an array of objects, one numeric field of each, and a
+ * threshold that is a literal or a named limit. A manifest cannot declare an array parameter, so a
+ * summed condition names an argument of a tool whose parameters are defined in code.
+ *
+ * `present` and `absent` take no value. They are the opt-in way to say what an absent argument means,
+ * because a comparison on a missing argument fails safe (it holds) and would gate every call.
+ */
+const ConditionDeclaration = Type.Object(
+  {
+    arg: Type.String({ minLength: 1 }),
+    op: Type.Enum(["gt", "gte", "lt", "lte", "eq", "ne", "in", "present", "absent"]),
+    field: Type.Optional(ElementField('a field of each element, like "amountCents"')),
+    times: Type.Optional(ElementField('the field to multiply it by, like "quantity"')),
+    value: Type.Optional(
+      Type.Union([
+        Type.Number(),
+        Type.String(),
+        Type.Boolean(),
+        Type.Array(Type.Union([Type.Number(), Type.String()])),
+        LimitReference,
+      ]),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+/**
+ * The money a call is about, which an approver's `approvalLimit` is checked against: an argument, or
+ * a field summed over an array argument (times another field per element, as conditions sum them),
+ * or — for an approval with a facts reader — a top-level fact the reader read from the role's own
+ * records (`{ "fact": "totalCents" }`), which is the figure the person is shown rather than a number
+ * the model wrote. It is in the office's minor currency unit (cents), the unit approval limits are
+ * written in. Without it an approval has no amount, and only an approver with no limit may approve it.
+ */
+const ApprovalAmountDeclaration = Type.Union([
+  Type.Object(
+    {
+      arg: Type.String({ minLength: 1 }),
+      field: Type.Optional(ElementField('a field of each element, like "amountCents"')),
+      times: Type.Optional(ElementField('the field to multiply it by, like "quantity"')),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { fact: ElementField('a top-level field of the approval\'s facts, like "totalCents"') },
+    { additionalProperties: false },
+  ),
+]);
+
+/**
+ * A value the person approving enters with their yes: money in whole cents, such as the
+ * credit to give or a budget line's revised figure, so the model never supplies a person's number.
+ * The bounds are whole cents: fixed (`min`, `max`; `min` defaults to 0) or read from a fact of the
+ * approval's facts reader (`minFact`, `maxFact`) when the person is asked, and pinned to the request.
+ * See docs/design/approver-values.md.
+ */
+const ApprovalValueDeclaration = Type.Object(
+  {
+    /** What the tool calls it, e.g. `creditCents`: `approvedValue(args, name)` reads it by this name. */
+    name: Type.String({
+      pattern: "^[a-z][A-Za-z0-9]*Cents$",
+      maxLength: 64,
+      "x-hint": 'a camelCase name ending in Cents, like "creditCents"',
+    }),
+    /** What the person is asked for, e.g. "Credit to give". */
+    label: Text(80),
+    min: Type.Optional(Type.Integer()),
+    max: Type.Optional(Type.Integer()),
+    minFact: Type.Optional(
+      ElementField('a top-level field of the approval\'s facts, like "lowestCents"'),
+    ),
+    maxFact: Type.Optional(
+      ElementField('a top-level field of the approval\'s facts, like "lineCents"'),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+const ApprovalDeclaration = Type.Object(
+  {
+    id: SnakeName,
+    tool: SnakeName,
+    description: Text(200),
+    /** The approval applies only when every condition holds. Omitted: every call of the tool. */
+    when: Type.Optional(Type.Array(ConditionDeclaration, { minItems: 1 })),
+    /** The call's amount in cents, for approvers' limits. Omitted: no amount, so no limited approver. */
+    amount: Type.Optional(ApprovalAmountDeclaration),
+    /** A value the approver enters with a yes. Omitted: a yes is the whole decision. */
+    value: Type.Optional(ApprovalValueDeclaration),
+  },
+  { additionalProperties: false },
+);
+
+/** A program the host must provide, e.g. `{ "name": "python3", "version": ">=3.10" }`. */
+const RuntimeDeclaration = Type.Object(
+  {
+    name: Type.String({
+      pattern: "^[a-z][a-z0-9._+-]*$",
+      maxLength: 64,
+      "x-hint": 'a program name, like "python3"',
+    }),
+    version: Type.String({ minLength: 1, maxLength: 64 }),
+  },
+  { additionalProperties: false },
+);
+
+/** The role's deterministic engine: a command run from the package root. */
+const EngineDeclaration = Type.Object(
+  { command: EngineArgs, description: Type.Optional(Text(300)) },
+  { additionalProperties: false },
+);
+
+/** An operator view: runs the engine and shows the result, without the model. */
+const CommandDeclaration = Type.Object(
+  { name: KebabId, description: Text(200), engine: EngineArgs },
+  { additionalProperties: false },
+);
+
+/** Values a completion-evidence entry passes; a string may interpolate the ticket, see `doneIssues`. */
+const EvidenceArguments = Type.Record(
+  Type.String(),
+  Type.Union([Type.String(), Type.Number(), Type.Boolean()]),
+);
+
+/**
+ * One piece of completion evidence: something that must check out before a ticket is done. The host
+ * runs it, never the model. Every entry of an `accepts[]` entry's `done` must pass.
+ */
+const CompletionEvidence = Type.Union(
+  [
+    /** The role's engine answers `ok` with at least one finding. */
+    Type.Object(
+      { engine: EngineArgs, args: Type.Optional(EvidenceArguments) },
+      { additionalProperties: false },
+    ),
+    /** A declared safe tool, run by the host, whose result reports `details.found`. */
+    Type.Object(
+      { tool: SnakeName, args: Type.Optional(EvidenceArguments), expect: Type.Literal("found") },
+      { additionalProperties: false },
+    ),
+    /** A file the ticket's result attaches under this name. */
+    Type.Object({ file: Text(128) }, { additionalProperties: false }),
+    /** A person confirms the work. */
+    Type.Object({ person: Type.Literal(true) }, { additionalProperties: false }),
+  ],
+  {
+    "x-hint":
+      'must be one of: { "engine": ["subcommand", …], "args": { "flag": "{ticket.data.<path>}" } }, { "tool": "NAME", "args": {…}, "expect": "found" }, { "file": "NAME" }, or { "person": true }',
+  },
+);
+export type DoneEvidence = Static<typeof CompletionEvidence>;
+
+const AcceptDeclaration = Type.Object(
+  {
+    type: TicketType,
+    description: Text(200),
+    /** Every entry must pass before a ticket of this type is done. */
+    done: Type.Optional(Type.Array(CompletionEvidence)),
+  },
+  { additionalProperties: false },
+);
+
+/** A bundled skill. Its name and description live in `skills/<id>/SKILL.md`, so they cannot drift. */
+const SkillDeclaration = Type.Object(
+  { id: KebabId, enabledByDefault: Type.Boolean() },
+  { additionalProperties: false },
+);
+
+const ModelDeclaration = Type.Object(
+  {
+    provider: Text(64),
+    modelId: Text(128),
+    thinkingLevel: Type.Optional(Type.Enum([...THINKING_LEVELS])),
+  },
+  { additionalProperties: false },
+);
+
+/** A ticket type this role hands to another role, and when it does. */
+const DispatchDeclaration = Type.Object(
+  { type: TicketType, when: Text(300) },
+  { additionalProperties: false },
+);
+
+/** Something the role never does, and what it does instead. Wisdom data, shown on its card. */
+const MayNotDeclaration = Type.Object(
+  { action: Text(200), instead: Text(300) },
+  { additionalProperties: false },
+);
+
+/** A business document the role needs searchable, instead of pasting it into the prompt. */
+const RetrievalSourceDeclaration = Type.Object(
+  { id: KebabId, description: Text(300) },
+  { additionalProperties: false },
+);
+
+/**
+ * A narrow worker the role may run: safe tools only, a small or default model, and the JSON Schema
+ * its result must match. See "Context engineering" in docs/design/agent-package.md.
+ */
+const SubagentDeclaration = Type.Object(
+  {
+    id: KebabId,
+    purpose: Text(300),
+    model: Type.Enum([...SUBAGENT_MODELS]),
+    tools: Type.Array(SnakeName, { minItems: 1 }),
+    skills: Type.Optional(Type.Array(KebabId, { minItems: 1 })),
+    output: Type.Object({}, { additionalProperties: true }),
+    maxParallel: Type.Optional(Type.Integer({ minimum: 1 })),
+  },
+  { additionalProperties: false },
+);
+
+/** What each request keeps from the transcript. */
+const HistoryFilterDeclaration = Type.Object(
+  {
+    keepRecentRounds: Type.Integer({ minimum: 0 }),
+    keepCitedIds: Type.Boolean(),
+    maxToolResultTokens: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+/** A set of tools offered only while the current ticket is one of `forTicketTypes`. */
+const ToolGroupDeclaration = Type.Object(
+  {
+    id: KebabId,
+    tools: Type.Array(SnakeName, { minItems: 1 }),
+    forTicketTypes: Type.Array(TicketType, { minItems: 1 }),
+  },
+  { additionalProperties: false },
+);
+
+/** How the role decides what each request sees: the context-engineering techniques it uses. */
+const ContextPlanDeclaration = Type.Object(
+  {
+    /** Tokens the role's stable prompt may use; default `DEFAULT_PROMPT_BUDGET_TOKENS`. */
+    promptBudgetTokens: Type.Optional(Type.Integer({ minimum: 1 })),
+    /** Business documents the role searches instead of pasting them in. */
+    retrieval: Type.Optional(
+      Type.Object(
+        { sources: Type.Array(RetrievalSourceDeclaration, { minItems: 1 }) },
+        { additionalProperties: false },
+      ),
+    ),
+    /** Narrow workers the role may run. */
+    subagents: Type.Optional(Type.Array(SubagentDeclaration, { minItems: 1 })),
+    /** What each request keeps from the transcript: the relevance filter and `context_recall`. */
+    historyFilter: Type.Optional(HistoryFilterDeclaration),
+    /** Mask sample amounts in skills and references (`read_skill`) when true. Off unless declared. */
+    maskAmounts: Type.Optional(Type.Boolean()),
+    /** Purposes that may run on the office's small model. */
+    modelTiers: Type.Optional(
+      Type.Object(
+        { small: Type.Array(Text(120), { minItems: 1 }) },
+        { additionalProperties: false },
+      ),
+    ),
+    /** Subject kinds the role should remember. */
+    memorySubjects: Type.Optional(Type.Array(Type.Enum([...MEMORY_SUBJECTS]), { minItems: 1 })),
+    /** Tool groups: only the group for the current ticket type is offered. */
+    toolGroups: Type.Optional(Type.Array(ToolGroupDeclaration, { minItems: 1 })),
+  },
+  { additionalProperties: false },
+);
+
+/** The `officehum.json` schema, version 1. */
+export const ManifestSchema = Type.Object(
+  {
+    $schema: Type.Optional(Type.String()),
+    schemaVersion: Type.Literal(MANIFEST_SCHEMA_VERSION),
+    id: KebabId,
+    name: Text(64),
+    department: Type.Enum([...DEPARTMENTS]),
+    role: Text(120),
+    defaultModel: ModelDeclaration,
+    runtimes: Type.Optional(Type.Array(RuntimeDeclaration)),
+    engine: Type.Optional(EngineDeclaration),
+    /** MCP servers the role's tools come from, by id. The role never starts one; the host does. */
+    mcpServers: Type.Optional(Type.Record(Type.String(), McpServerDeclaration)),
+    /** Service command-line programs the role's tools run, by id. One process per call. */
+    clis: Type.Optional(Type.Record(Type.String(), CliDeclaration)),
+    tools: Type.Array(ToolDeclaration),
+    commands: Type.Optional(Type.Array(CommandDeclaration)),
+    connectors: Type.Array(KebabId),
+    approvals: Type.Array(ApprovalDeclaration),
+    limits: Type.Optional(Type.Record(Type.String(), LimitDeclaration)),
+    channels: Type.Array(ChannelDeclaration),
+    accepts: Type.Array(AcceptDeclaration),
+    /** Ticket types this role hands to other roles, and when. */
+    dispatches: Type.Optional(Type.Array(DispatchDeclaration)),
+    /** What this role never does, and what it does instead. */
+    mayNot: Type.Optional(Type.Array(MayNotDeclaration)),
+    /** How the role decides what each request sees. */
+    contextPlan: Type.Optional(ContextPlanDeclaration),
+    skills: Type.Array(SkillDeclaration),
+    evals: Text(256),
+    /**
+     * What the role needs from the company record: the responsibilities it hands work to a person
+     * for, from the SDK's fixed vocabulary (`RESPONSIBILITIES`). An office says so plainly when
+     * nobody holds one. Data, not prose, so it travels with a portable role.
+     */
+    company: Type.Optional(
+      Type.Object(
+        {
+          responsibilities: Type.Optional(
+            Type.Array(Type.Enum([...RESPONSIBILITY_IDS]), { minItems: 1 }),
+          ),
+          /**
+           * The sections of role data the role's tools read (`COMPANY_DATA_SECTIONS`: its price
+           * book, crews and so on). An office whose company does not supply one is told so plainly,
+           * and the tool that needs it refuses.
+           */
+          data: Type.Optional(
+            Type.Array(Type.Enum(Object.keys(COMPANY_DATA_SECTIONS)), { minItems: 1 }),
+          ),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+export type AgentManifest = Static<typeof ManifestSchema>;
+export type Department = (typeof DEPARTMENTS)[number];
+export type Channel = (typeof CHANNELS)[number];
+export type ChannelDirection = (typeof CHANNEL_DIRECTIONS)[number];
+export type ChannelDeclaration = Static<typeof ChannelDeclaration>;
+export type ToolDeclaration = Static<typeof ToolDeclaration>;
+export type ApprovalDeclaration = Static<typeof ApprovalDeclaration>;
+export type ApprovalValueDeclaration = Static<typeof ApprovalValueDeclaration>;
+export type LimitDeclaration = Static<typeof LimitDeclaration>;
+export type AcceptDeclaration = Static<typeof AcceptDeclaration>;
+export type SkillDeclaration = Static<typeof SkillDeclaration>;
+export type ModelDeclaration = Static<typeof ModelDeclaration>;
+export type ParameterDeclaration = Static<typeof ParameterDeclaration>;
+export type ConditionDeclaration = Static<typeof ConditionDeclaration>;
+export type RuntimeDeclaration = Static<typeof RuntimeDeclaration>;
+export type EngineDeclaration = Static<typeof EngineDeclaration>;
+export type McpServerDeclaration = Static<typeof McpServerDeclaration>;
+export type McpToolSource = Static<typeof McpToolSource>;
+export type CliDeclaration = Static<typeof CliDeclaration>;
+export type CliToolSource = Static<typeof CliToolSource>;
+export type CommandDeclaration = Static<typeof CommandDeclaration>;
+export type DispatchDeclaration = Static<typeof DispatchDeclaration>;
+export type MayNotDeclaration = Static<typeof MayNotDeclaration>;
+export type RetrievalSourceDeclaration = Static<typeof RetrievalSourceDeclaration>;
+export type SubagentDeclaration = Static<typeof SubagentDeclaration>;
+export type HistoryFilterDeclaration = Static<typeof HistoryFilterDeclaration>;
+export type ToolGroupDeclaration = Static<typeof ToolGroupDeclaration>;
+export type ContextPlanDeclaration = Static<typeof ContextPlanDeclaration>;
+
+/**
+ * The limit a condition's value names, or `undefined` when the value is a literal. A named limit is
+ * resolved from the manifest's default and the business's overlay before it is compared.
+ */
+export function limitName(value: ConditionDeclaration["value"]): string | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const name = (value as { limit?: unknown }).limit;
+  return typeof name === "string" ? name : undefined;
+}
+
+/**
+ * Which way a named limit guards: `ceiling` (raising it lets more through), `floor` (lowering it
+ * does), `both` (any change does, as far as anyone can tell) or `none` (it is not a safeguard).
+ */
+export type LimitDirection = "ceiling" | "floor" | "both" | "none";
+
+/**
+ * Which way the given approvals' conditions compare with a limit: `gt`/`gte` make it a ceiling,
+ * `lt`/`lte` a floor, both kinds `both`; undefined when no condition names it.
+ */
+export function comparedDirection(
+  approvals: readonly ApprovalDeclaration[],
+  name: string,
+): Exclude<LimitDirection, "none"> | undefined {
+  let ceiling = false;
+  let floor = false;
+  for (const approval of approvals) {
+    for (const condition of approval.when ?? []) {
+      if (limitName(condition.value) !== name) continue;
+      if (condition.op === "gt" || condition.op === "gte") ceiling = true;
+      else if (condition.op === "lt" || condition.op === "lte") floor = true;
+      // `validateManifest` allows a limit only with the four comparisons; anything else is unknown.
+      else return "both";
+    }
+  }
+  if (ceiling && floor) return "both";
+  return ceiling ? "ceiling" : floor ? "floor" : undefined;
+}
+
+/**
+ * Which way a declared limit guards, mechanically: from the approval conditions that compare with
+ * it, else from its declared `guard`, else `both`, so a code-only limit nobody described counts as
+ * a safeguard either way. See docs/design/overlay-rules.md.
+ */
+export function limitDirection(manifest: AgentManifest, name: string): LimitDirection {
+  return comparedDirection(manifest.approvals, name) ?? manifest.limits?.[name]?.guard ?? "both";
+}
+
+/**
+ * Validates parsed `officehum.json` content: the schema, then the rules that span fields (no
+ * duplicates, no reserved tool names, approvals, skills and sub-agents that refer to what the
+ * manifest declares).
+ */
+export function validateManifest(
+  value: unknown,
+  source = MANIFEST_FILE,
+): Validation<AgentManifest> {
+  const issues = schemaIssues(ManifestSchema, value, source);
+  if (issues.length > 0) return { ok: false, issues };
+
+  const manifest = value as AgentManifest;
+  const crossIssues = crossFieldIssues(manifest, source);
+  return crossIssues.length > 0
+    ? { ok: false, issues: crossIssues }
+    : { ok: true, value: manifest, issues: [] };
+}
+
+/** The channel a declaration names, whether it is the shorthand or the object form. */
+function channelName(declaration: Static<typeof ChannelDeclaration>): string {
+  return typeof declaration === "string" ? declaration : declaration.channel;
+}
+
+function crossFieldIssues(manifest: AgentManifest, source: string): Issue[] {
+  const issues: Issue[] = [];
+  const add = (path: string, message: string) => issues.push({ source, path, message });
+
+  const duplicates = <T>(
+    list: readonly T[],
+    key: (item: T) => string,
+    field: string,
+    what: string,
+  ) => {
+    const seen = new Set<string>();
+    list.forEach((item, index) => {
+      const name = key(item);
+      if (seen.has(name))
+        add(joinPath(field, index), `${what} ${show(name)} is declared more than once`);
+      seen.add(name);
+    });
+  };
+
+  duplicates(manifest.tools, (tool) => tool.name, "tools", "tool");
+  duplicates(manifest.approvals, (approval) => approval.id, "approvals", "approval");
+  duplicates(manifest.accepts, (accept) => accept.type, "accepts", "ticket type");
+  duplicates(manifest.dispatches ?? [], (dispatch) => dispatch.type, "dispatches", "ticket type");
+  duplicates(manifest.skills, (skill) => skill.id, "skills", "skill");
+  duplicates(manifest.connectors, (connector) => connector, "connectors", "connector");
+  duplicates(manifest.channels, channelName, "channels", "channel");
+  duplicates(
+    manifest.company?.responsibilities ?? [],
+    (id) => id,
+    "company.responsibilities",
+    "responsibility",
+  );
+  duplicates(manifest.company?.data ?? [], (id) => id, "company.data", "data section");
+  // A declaration that says a reply leaves on another channel has to name one this role declares, and
+  // it cannot name itself: a channel that could carry the reply is the shorthand, and saying otherwise
+  // would leave a reader holding two answers to one question.
+  manifest.channels.forEach((declaration, index) => {
+    if (typeof declaration === "string" || declaration.replyBy === undefined) return;
+    const replyBy = declaration.replyBy;
+    if (replyBy === declaration.channel) {
+      add(
+        joinPath(joinPath("channels", index), "replyBy"),
+        `replyBy cannot be ${replyBy} itself; declare the channel without a direction instead`,
+      );
+      return;
+    }
+    if (!manifest.channels.some((candidate) => channelName(candidate) === replyBy)) {
+      add(
+        joinPath(joinPath("channels", index), "replyBy"),
+        `replyBy ${show(replyBy)} is not a channel this role declares`,
+      );
+    }
+  });
+  duplicates(
+    manifest.contextPlan?.retrieval?.sources ?? [],
+    (source) => source.id,
+    "contextPlan.retrieval.sources",
+    "retrieval source",
+  );
+  duplicates(
+    manifest.contextPlan?.subagents ?? [],
+    (subagent) => subagent.id,
+    "contextPlan.subagents",
+    "sub-agent",
+  );
+  duplicates(
+    manifest.contextPlan?.toolGroups ?? [],
+    (group) => group.id,
+    "contextPlan.toolGroups",
+    "tool group",
+  );
+
+  // A role either accepts a ticket type or hands it off, never both.
+  const accepted = new Set(manifest.accepts.map((accept) => accept.type));
+  (manifest.dispatches ?? []).forEach((dispatch, index) => {
+    if (accepted.has(dispatch.type)) {
+      add(
+        `dispatches[${index}].type`,
+        `${show(dispatch.type)} is also a type this role accepts; a role accepts a type or hands it off, never both — remove the accept or the dispatch`,
+      );
+    }
+  });
+
+  for (const name of Object.keys(manifest.limits ?? {})) {
+    if (!SNAKE_NAME.test(name)) {
+      add(joinPath("limits", name), 'must be named in snake_case, like "large_invoice"');
+    }
+  }
+
+  const reserved = new Set<string>(RESERVED_TOOL_NAMES);
+  const sdkTools = new Set<string>(SDK_TOOL_NAMES);
+  const skills = new Set(manifest.skills.map((skill) => skill.id));
+  manifest.tools.forEach((tool, index) => {
+    if (reserved.has(tool.name)) {
+      add(
+        joinPath(joinPath("tools", index), "name"),
+        `${show(tool.name)} is ${sdkTools.has(tool.name) ? "provided by the SDK" : "reserved by Office Hum"}; choose another name`,
+      );
+    }
+    if (tool.skill !== undefined && !skills.has(tool.skill)) {
+      add(
+        joinPath(joinPath("tools", index), "skill"),
+        `${show(tool.skill)} is not a declared skill`,
+      );
+    }
+  });
+
+  const tools = new Set(manifest.tools.map((tool) => tool.name));
+  decisionIssues(manifest, add);
+  manifest.approvals.forEach((approval, index) => {
+    if (approval.id === RESERVED_APPROVAL_ID) {
+      add(
+        joinPath(joinPath("approvals", index), "id"),
+        `${show(approval.id)} is reserved for the office's practice mode; give this approval another id`,
+      );
+    }
+    if (!tools.has(approval.tool)) {
+      add(
+        joinPath(joinPath("approvals", index), "tool"),
+        `${show(approval.tool)} is not a declared tool`,
+      );
+    }
+  });
+  approvalValueIssues(manifest, add);
+
+  doneIssues(manifest, add);
+  subagentIssues(manifest, add);
+  engineIssues(manifest, add);
+  mcpIssues(manifest, add);
+  cliIssues(manifest, add);
+  contextRecallIssues(manifest, add);
+  return issues;
+}
+
+/** The tool the SDK builds for a role with a `historyFilter`, to bring a stubbed result back. */
+export const CONTEXT_RECALL_TOOL = "context_recall";
+
+/**
+ * `context_recall` is built by the SDK, like an engine tool, and declared like every tool so its
+ * replay policy is stated in both places: a role with a `historyFilter` declares exactly
+ * `{ "name": "context_recall", "replay": "safe" }`, and a role without one does not declare it.
+ */
+export function contextRecallIssues(
+  manifest: AgentManifest,
+  add: (path: string, message: string) => void,
+) {
+  const index = manifest.tools.findIndex((tool) => tool.name === CONTEXT_RECALL_TOOL);
+  const filtered = manifest.contextPlan?.historyFilter !== undefined;
+  const shape = `{ "name": "${CONTEXT_RECALL_TOOL}", "replay": "safe" }`;
+  if (filtered && index === -1) {
+    add(
+      "contextPlan.historyFilter",
+      `turns on the relevance filter, whose stubs point at ${show(CONTEXT_RECALL_TOOL)}; declare it in tools as ${shape}`,
+    );
+    return;
+  }
+  if (index === -1) return;
+  if (!filtered) {
+    add(
+      `tools[${index}]`,
+      `${show(CONTEXT_RECALL_TOOL)} comes with contextPlan.historyFilter; declare a historyFilter or remove the tool`,
+    );
+    return;
+  }
+  const tool = manifest.tools[index];
+  const extra = Object.keys(tool ?? {}).filter((key) => key !== "name" && key !== "replay");
+  if (tool?.replay !== "safe" || extra.length > 0) {
+    add(
+      `tools[${index}]`,
+      `${show(CONTEXT_RECALL_TOOL)} is built by the SDK, reads only and is safe to re-run; declare it exactly as ${shape}`,
+    );
+  }
+}
+
+/**
+ * An approval's value must leave the approver something to enter, bound each side once,
+ * and reach its tool exactly once: so not on a tool Pi Durable may run again, and one value per tool,
+ * because one reserved argument (`officehumApprovedValue`) carries it. `checkAgent` checks the fact
+ * bounds against the facts reader, which only the code knows.
+ */
+function approvalValueIssues(
+  manifest: AgentManifest,
+  add: (path: string, message: string) => void,
+): void {
+  const replay = new Map(manifest.tools.map((tool) => [tool.name, tool.replay]));
+  const asking = new Map<string, string>();
+  manifest.approvals.forEach((approval, index) => {
+    const value = approval.value;
+    if (value === undefined) return;
+    const at = `approvals[${index}].value`;
+    if (value.min !== undefined && value.minFact !== undefined) {
+      add(`${at}.minFact`, "the low bound is given twice, as min and as minFact; keep one");
+    }
+    if (value.max !== undefined && value.maxFact !== undefined) {
+      add(`${at}.maxFact`, "the high bound is given twice, as max and as maxFact; keep one");
+    }
+    const min = value.min ?? (value.minFact === undefined ? 0 : undefined);
+    if (min !== undefined && value.max !== undefined && min > value.max) {
+      add(`${at}.min`, `${min} is above max ${value.max}; the approver could enter nothing`);
+    }
+    if (replay.get(approval.tool) === "safe") {
+      add(
+        at,
+        `${show(approval.tool)} is replay "safe", and a value the approver enters must reach the tool once; make the tool replay "unsafe"`,
+      );
+    }
+    const first = asking.get(approval.tool);
+    if (first !== undefined) {
+      add(
+        at,
+        `${show(approval.tool)} already has an approval that asks for a value (${show(first)}); one call carries one value`,
+      );
+    } else {
+      asking.set(approval.tool, approval.id);
+    }
+  });
+}
+
+/** Whether a declared tool changes something: every unsafe tool, and a safe one that says so. */
+function writes(tool: AgentManifest["tools"][number]): boolean {
+  return tool.replay === "unsafe" || tool.writes === true;
+}
+
+/** How a message describes a writing tool: by its replay policy when that alone makes it one. */
+function writing(tool: AgentManifest["tools"][number]): string {
+  return tool.replay === "unsafe" ? "is unsafe" : "writes";
+}
+
+/**
+ * The wisdom rule, for every role: a tool that writes states exactly one approval decision — an
+ * approval in `approvals`, or a `noApproval` note saying why it needs none — and a tool that changes
+ * nothing states neither. A safe tool an approval names changes something, so it must say `writes`.
+ */
+function decisionIssues(manifest: AgentManifest, add: (path: string, message: string) => void) {
+  const approved = new Set(manifest.approvals.map((approval) => approval.tool));
+  manifest.tools.forEach((tool, index) => {
+    const at = `tools[${index}]`;
+    const approval = approved.has(tool.name);
+    const note = tool.noApproval !== undefined;
+    if (tool.outside === true && !writes(tool)) {
+      add(
+        `${at}.outside`,
+        `${show(tool.name)} changes nothing, so it cannot send or publish anything; a tool that does is replay "unsafe" or states "writes": true`,
+      );
+    }
+    if (approval && !writes(tool)) {
+      add(
+        at,
+        `${show(tool.name)} is named by an approval, so it changes something; add "writes": true (replay "safe" only says an interrupted call may be run again)`,
+      );
+      return;
+    }
+    if (writes(tool) && approval && note) {
+      add(
+        at,
+        `${show(tool.name)} ${writing(tool)} and states two approval decisions; keep an approval in approvals[], or noApproval, never both`,
+      );
+      return;
+    }
+    if (writes(tool) && !approval && !note) {
+      add(
+        at,
+        `${show(tool.name)} ${writing(tool)} and states no approval decision; add an approval in approvals[], or a noApproval note saying why it needs none`,
+      );
+      return;
+    }
+    if (!writes(tool) && note) {
+      add(
+        `${at}.noApproval`,
+        `${show(tool.name)} is safe, so noApproval does not apply; remove it (noApproval explains a tool that writes but needs no approval)`,
+      );
+    }
+  });
+}
+
+/**
+ * A sub-agent's declared references must resolve: it runs only the role's declared tools that are
+ * safe to re-run and change nothing, and only the role's declared skills. Part of `validateManifest`; `checkAgent` applies it too.
+ */
+export function subagentIssues(
+  manifest: AgentManifest,
+  add: (path: string, message: string) => void,
+): void {
+  const tools = new Map(manifest.tools.map((tool) => [tool.name, tool]));
+  const skills = new Set(manifest.skills.map((skill) => skill.id));
+  (manifest.contextPlan?.subagents ?? []).forEach((subagent, index) => {
+    const at = `contextPlan.subagents[${index}]`;
+    subagent.tools.forEach((name, toolIndex) => {
+      const tool = tools.get(name);
+      if (tool === undefined) {
+        add(
+          `${at}.tools[${toolIndex}]`,
+          `${show(name)} is not a declared tool; a sub-agent runs only the role's declared safe tools`,
+        );
+      } else if (tool.replay !== "safe") {
+        add(
+          `${at}.tools[${toolIndex}]`,
+          `${show(name)} is unsafe; a sub-agent runs only the role's safe tools, never one that changes something`,
+        );
+      } else if (writes(tool)) {
+        add(
+          `${at}.tools[${toolIndex}]`,
+          `${show(name)} writes; a sub-agent runs only the role's tools that change nothing`,
+        );
+      }
+    });
+    subagent.skills?.forEach((id, skillIndex) => {
+      if (!skills.has(id)) {
+        add(`${at}.skills[${skillIndex}]`, `${show(id)} is not a declared skill`);
+      }
+    });
+  });
+}
+
+/** `{ticket.id}` and `{ticket.data.<path>}` are the only interpolation a completion argument may use. */
+export const EVIDENCE_PLACEHOLDER =
+  /^\{ticket\.(?:id|data\.[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\}$/;
+
+/**
+ * Completion evidence must name a tool of this role that is safe to re-run and changes nothing — the
+ * host runs it, never the model
+ * — and interpolate only `{ticket.id}` and `{ticket.data.<path>}`.
+ */
+function doneIssues(manifest: AgentManifest, add: (path: string, message: string) => void) {
+  const tools = new Map(manifest.tools.map((tool) => [tool.name, tool]));
+  manifest.accepts.forEach((accept, index) => {
+    accept.done?.forEach((entry, doneIndex) => {
+      const at = `accepts[${index}].done[${doneIndex}]`;
+      if ("tool" in entry) {
+        const tool = tools.get(entry.tool);
+        if (tool === undefined)
+          add(
+            `${at}.tool`,
+            `${show(entry.tool)} is not a declared tool; completion evidence names a safe tool of this role`,
+          );
+        else if (tool.replay !== "safe")
+          add(
+            `${at}.tool`,
+            `${show(entry.tool)} is unsafe; completion evidence runs a declared safe tool in the host, never the model`,
+          );
+        else if (writes(tool))
+          add(
+            `${at}.tool`,
+            `${show(entry.tool)} writes; completion evidence runs a declared tool that changes nothing, in the host, never the model`,
+          );
+      }
+      if (!("args" in entry) || entry.args === undefined) return;
+      for (const [flag, value] of Object.entries(entry.args)) {
+        if (typeof value !== "string") continue;
+        for (const placeholder of value.match(/\{[^{}]*\}/g) ?? []) {
+          if (EVIDENCE_PLACEHOLDER.test(placeholder)) continue;
+          add(
+            `${at}.args.${flag}`,
+            `${show(placeholder)} is not an interpolation; the only two are {ticket.id} and {ticket.data.<path>}`,
+          );
+        }
+      }
+    });
+  });
+}
+
+/**
+ * Rules for engine-backed roles: engine tools and commands need an engine, the engine's program must
+ * be a declared runtime (so a host knows to install it, e.g. python3), and approval conditions must
+ * name parameters the tool declares.
+ */
+function engineIssues(manifest: AgentManifest, add: (path: string, message: string) => void) {
+  const runtimes = manifest.runtimes ?? [];
+  runtimes.forEach((runtime, index) => {
+    if (semver.validRange(runtime.version) === null) {
+      add(
+        `runtimes[${index}].version`,
+        `must be a version range like ">=3.10" (got ${show(runtime.version)})`,
+      );
+    }
+  });
+  const declaredRuntimes = new Set(runtimes.map((runtime) => runtime.name));
+
+  const program = manifest.engine?.command[0];
+  if (program !== undefined && !program.includes("/") && !declaredRuntimes.has(program)) {
+    add(
+      "engine.command[0]",
+      `${show(program)} must be declared in runtimes, e.g. { "name": ${show(program)}, "version": ">=3.10" }, so hosts know to provide it`,
+    );
+  }
+
+  manifest.tools.forEach((tool, index) => {
+    const at = (field: string) => joinPath(joinPath("tools", index), field);
+    const sources = toolSources(tool);
+    if (sources.length > 1) {
+      add(
+        `tools[${index}]`,
+        `${show(tool.name)} states ${sources.length} sources, ${sources.join(" and ")}; a tool comes from exactly one (engine, mcp, cli, pack, or code with none)`,
+      );
+    }
+    if (sources.length === 0) {
+      if (tool.parameters !== undefined)
+        add(
+          at("parameters"),
+          "are only used by engine, MCP and CLI tools; declare engine, mcp or cli too, or define the tool's parameters in code",
+        );
+      return;
+    }
+    // A pack tool's code, description and parameters are the pack's; the manifest's description is
+    // what the agent card and a reviewer read, so it is required as for a tool with no code.
+    if (tool.pack !== undefined) {
+      if (tool.description === undefined)
+        add(
+          at("description"),
+          "is required for a pack tool: the agent card and a reviewer read it (the model reads the pack's own)",
+        );
+      if (tool.parameters !== undefined)
+        add(at("parameters"), `come from the ${tool.pack} pack; remove them`);
+      if (sources.length === 1) return;
+    }
+    if (tool.engine !== undefined) {
+      if (manifest.engine === undefined)
+        add(at("engine"), "needs the manifest's engine to be declared");
+      if (tool.description === undefined)
+        add(
+          at("description"),
+          "is required for an engine tool: it is all the model reads about it",
+        );
+    }
+    for (const [name, parameter] of Object.entries(tool.parameters ?? {})) {
+      // An engine parameter becomes a `--flag`, so it is snake_case. An MCP parameter is the server's
+      // own argument name, which is often camelCase, so it only has to be a plain identifier; so does
+      // a CLI parameter, which a `{placeholder}` names.
+      if (tool.engine !== undefined && !SNAKE_NAME.test(name)) {
+        add(at(`parameters.${name}`), 'must be named in snake_case, like "period"');
+      }
+      if (tool.mcp !== undefined && !IDENTIFIER.test(name)) {
+        add(
+          at(`parameters.${name}`),
+          'must be the server tool\'s argument name, a plain identifier like "title" or "issueId"',
+        );
+      }
+      if (tool.cli !== undefined && !IDENTIFIER.test(name)) {
+        add(
+          at(`parameters.${name}`),
+          'must be a plain identifier like "repo" or "issueId", so a {placeholder} can name it',
+        );
+      }
+      const numeric = parameter.type === "number" || parameter.type === "integer";
+      if (parameter.enum?.some((value) => (typeof value === "number") !== numeric)) {
+        add(
+          at(`parameters.${name}.enum`),
+          `values must match the parameter's type ${show(parameter.type)}`,
+        );
+      }
+    }
+  });
+
+  const toolsByName = new Map(manifest.tools.map((tool) => [tool.name, tool]));
+  const declaredLimits = new Set(Object.keys(manifest.limits ?? {}));
+  // A declared guard is for a limit only code reads; where conditions compare with it, it must agree.
+  for (const [name, limit] of Object.entries(manifest.limits ?? {})) {
+    // An outside limit is held to "never looser than it ships", which needs a way to be looser.
+    const direction = limitDirection(manifest, name);
+    if (limit.outside === true && direction !== "ceiling" && direction !== "floor") {
+      add(
+        joinPath(joinPath("limits", name), "outside"),
+        'needs a direction, because loosening it lets something go outside the business without a person; declare "guard": "ceiling" or "floor"',
+      );
+    }
+    if (limit.guard === undefined) continue;
+    const compared = comparedDirection(manifest.approvals, name);
+    if (compared === undefined || compared === limit.guard) continue;
+    const how =
+      compared === "ceiling"
+        ? "as a ceiling (raising it lets more through)"
+        : compared === "floor"
+          ? "as a floor (lowering it lets more through)"
+          : "both ways";
+    add(
+      joinPath(joinPath("limits", name), "guard"),
+      `is ${show(limit.guard)}, but approvals compare with it ${how}; ${compared === "both" ? "leave guard out" : `declare ${show(compared)} or leave guard out`}`,
+    );
+  }
+  manifest.approvals.forEach((approval, index) => {
+    const parameters = toolsByName.get(approval.tool)?.parameters;
+    // An amount read from the arguments is read as a condition's left-hand side is, so the same two
+    // rules hold: a declared parameter list must have the argument, and `times` needs `field`. An
+    // amount read from the facts is checked against the facts reader by `checkAgent`.
+    if (approval.amount !== undefined && "arg" in approval.amount) {
+      const at = `approvals[${index}].amount`;
+      if (parameters !== undefined && !(approval.amount.arg in parameters)) {
+        add(
+          `${at}.arg`,
+          `${show(approval.amount.arg)} is not a parameter of ${show(approval.tool)}`,
+        );
+      }
+      if (approval.amount.field === undefined && approval.amount.times !== undefined) {
+        add(
+          `${at}.times`,
+          'needs "field": it multiplies the summed field, so on its own it has nothing to multiply',
+        );
+      }
+    }
+    approval.when?.forEach((condition, conditionIndex) => {
+      const at = `approvals[${index}].when[${conditionIndex}]`;
+      if (parameters !== undefined && !(condition.arg in parameters)) {
+        add(`${at}.arg`, `${show(condition.arg)} is not a parameter of ${show(approval.tool)}`);
+      }
+      // `field` turns a scalar comparison into a sum over an array's elements, so it needs a numeric
+      // comparison to compare the total with, and `times` has nothing to multiply without a `field`.
+      if (condition.field === undefined) {
+        if (condition.times !== undefined) {
+          add(
+            `${at}.times`,
+            'needs "field": it multiplies the summed field, so on its own it has nothing to multiply',
+          );
+        }
+      } else {
+        if (!["gt", "gte", "lt", "lte"].includes(condition.op)) {
+          add(
+            `${at}.field`,
+            `sums an argument's elements, which needs a numeric comparison — "gt", "gte", "lt" or "lte" (op is ${show(condition.op)})`,
+          );
+        }
+        const parameter = parameters?.[condition.arg];
+        if (parameter !== undefined) {
+          add(
+            `${at}.field`,
+            `sums the elements of an array argument, and ${show(condition.arg)} is one declared ${show(parameter.type)} parameter; a manifest cannot declare an array, so a summed condition names a tool whose parameters are defined in code`,
+          );
+        }
+      }
+      if (condition.op === "present" || condition.op === "absent") {
+        if (condition.value !== undefined) {
+          add(`${at}.value`, `must be omitted when op is ${show(condition.op)}`);
+        }
+        return;
+      }
+      if (condition.value === undefined) {
+        add(`${at}.value`, 'needs a value unless the op is "present" or "absent"');
+        return;
+      }
+      const limit = limitName(condition.value);
+      if (limit !== undefined) {
+        // A named limit replaces a numeric threshold, so it needs one of the numeric comparisons.
+        if (!["gt", "gte", "lt", "lte"].includes(condition.op)) {
+          add(
+            `${at}.value`,
+            `names a limit, which needs "gt", "gte", "lt" or "lte" (op is ${show(condition.op)}); use a literal value instead`,
+          );
+        }
+        if (!declaredLimits.has(limit)) {
+          add(`${at}.value`, `${show(limit)} is not a declared limit`);
+        }
+        return;
+      }
+      if (condition.op === "in" && !Array.isArray(condition.value)) {
+        add(`${at}.value`, 'must be a list when op is "in"');
+      }
+      if (
+        ["gt", "gte", "lt", "lte"].includes(condition.op) &&
+        typeof condition.value !== "number"
+      ) {
+        add(`${at}.value`, `must be a number when op is ${show(condition.op)}`);
+      }
+    });
+  });
+
+  (manifest.commands ?? []).forEach((_command, index) => {
+    if (manifest.engine === undefined)
+      add(`commands[${index}]`, "needs the manifest's engine to be declared");
+  });
+  const commandNames = new Set<string>();
+  (manifest.commands ?? []).forEach((command, index) => {
+    if (commandNames.has(command.name))
+      add(`commands[${index}]`, `command ${show(command.name)} is declared more than once`);
+    commandNames.add(command.name);
+  });
+}
+
+/** The sources a tool states, by their manifest key. A tool with none is defined in code. */
+function toolSources(tool: AgentManifest["tools"][number]): string[] {
+  return (["engine", "mcp", "cli", "pack"] as const).filter((key) => tool[key] !== undefined);
+}
+
+/** The runtime a launcher needs: an `npx` server runs on node, a `uvx` one on python3. */
+const LAUNCHER_RUNTIMES: Readonly<Record<string, string>> = { npx: "node", uvx: "python3" };
+
+/** An exact Python package version, e.g. `1.4.2`, `2.0.0rc1`; never a range or a tag. */
+const PYTHON_VERSION = /^\d+(\.\d+)*((a|b|rc)\d+)?(\.post\d+)?(\.dev\d+)?$/;
+
+/**
+ * The package an `npx` or `uvx` command runs: the value of `--package`/`-p` (npx) or `--from` (uvx),
+ * or else the first argument that is not a flag.
+ */
+function launchedPackage(launcher: string, args: readonly string[]): string | undefined {
+  const flags = launcher === "npx" ? ["--package", "-p"] : ["--from"];
+  for (const [index, arg] of args.entries()) {
+    for (const flag of flags) {
+      if (arg === flag) return args[index + 1];
+      if (arg.startsWith(`${flag}=`)) return arg.slice(flag.length + 1);
+    }
+  }
+  return args.find((arg) => !arg.startsWith("-"));
+}
+
+/** Whether a launcher's package spec names one exact version. */
+function pinnedExactly(launcher: string, spec: string): boolean {
+  if (launcher === "npx") {
+    // `@scope/name@1.4.2` or `name@1.4.2`: the version follows the last "@" that is not the scope's.
+    const at = spec.lastIndexOf("@");
+    if (at <= 0) return false;
+    return semver.valid(spec.slice(at + 1)) !== null;
+  }
+  const match = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[^\]]*\])?(?:==|@)(.+)$/.exec(spec);
+  return match?.[1] !== undefined && PYTHON_VERSION.test(match[1]);
+}
+
+/**
+ * Rules for MCP tools (docs/design/tool-sources.md, sections 2 and 4): every MCP tool states its
+ * description and parameters and names a declared server; a server's program is a declared runtime;
+ * an `npx` or `uvx` server names its package with an exact version; `env` holds names, never values.
+ */
+export function mcpIssues(manifest: AgentManifest, add: (path: string, message: string) => void) {
+  const servers = manifest.mcpServers ?? {};
+  const runtimes = new Set((manifest.runtimes ?? []).map((runtime) => runtime.name));
+
+  for (const [id, server] of Object.entries(servers)) {
+    const at = joinPath("mcpServers", id);
+    if (!KEBAB_ID.test(id)) add(at, 'must be named in kebab-case, like "tickets"');
+    if (server.transport === "http") {
+      if (!URL.canParse(server.url)) add(`${at}.url`, `${show(server.url)} is not a URL`);
+      continue;
+    }
+    (server.env ?? []).forEach((name, index) => {
+      if (!ENV_NAME.test(name)) {
+        add(
+          `${at}.env[${index}]`,
+          `must be the NAME of an environment variable, like "TICKETS_TOKEN", never a value; the host supplies the value`,
+        );
+      } else if (isReservedEnvName(name)) {
+        add(`${at}.env[${index}]`, reservedEnvMessage(name));
+      }
+    });
+    const [program, ...args] = server.command;
+    if (program === undefined) continue;
+    const launcher = program.split("/").pop() ?? program;
+    const runtime = LAUNCHER_RUNTIMES[launcher] ?? (program.includes("/") ? undefined : program);
+    if (runtime !== undefined && !runtimes.has(runtime)) {
+      add(
+        `${at}.command[0]`,
+        `${show(program)} needs ${show(runtime)} declared in runtimes, e.g. { "name": ${show(runtime)}, "version": ">=22" }, so hosts know to provide it`,
+      );
+    }
+    if (LAUNCHER_RUNTIMES[launcher] !== undefined) {
+      const spec = launchedPackage(launcher, args);
+      if (spec === undefined || !pinnedExactly(launcher, spec)) {
+        const example = launcher === "npx" ? "@vendor/tickets-mcp@1.4.2" : "tickets-mcp==1.4.2";
+        add(
+          `${at}.command`,
+          `${launcher} must name its package with an exact version, like ${show(example)} (got ${show(spec ?? null)}); a bare name, a range or a tag runs a different program whenever the cache expires`,
+        );
+      }
+    }
+  }
+
+  manifest.tools.forEach((tool, index) => {
+    if (tool.mcp === undefined) return;
+    const at = (field: string) => joinPath(joinPath("tools", index), field);
+    if (tool.description === undefined) {
+      add(
+        at("description"),
+        "is required for an MCP tool: the model reads the manifest's description, never the server's",
+      );
+    }
+    if (tool.parameters === undefined) {
+      add(
+        at("parameters"),
+        "are required for an MCP tool, even when empty (\"parameters\": {}): the model reads the manifest's parameters, never the server's",
+      );
+    }
+    if (!Object.hasOwn(servers, tool.mcp.server)) {
+      add(at("mcp.server"), `${show(tool.mcp.server)} is not declared in mcpServers`);
+    }
+    const key = tool.mcp.idempotencyArg;
+    if (key !== undefined && Object.hasOwn(tool.parameters ?? {}, key)) {
+      add(
+        at("mcp.idempotencyArg"),
+        `${show(key)} is also a declared parameter; the SDK fills the idempotency key itself, so the model must not be offered it`,
+      );
+    }
+  });
+}
+
+/** The placeholder a CLI tool's `args` uses for the call's idempotency key. */
+export const CLI_CALL_ID = "callId";
+
+/** A whole-argument placeholder, `{name}`; group 1 is the name. */
+export const CLI_PLACEHOLDER = /^\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+
+/** A placeholder anywhere inside an argument, e.g. the `{repo}` in `--repo={repo}`. */
+const EMBEDDED_PLACEHOLDER = /\{[A-Za-z_][A-Za-z0-9_]*\}/;
+
+/**
+ * Rules for CLI tools (docs/design/tool-sources.md, sections 3 and 4): every CLI tool states its
+ * description and parameters and names a declared CLI; a CLI's program is a declared runtime; `env`
+ * holds names, never values; a placeholder is a whole argument naming a declared parameter or
+ * `{callId}`; every required parameter is passed.
+ */
+export function cliIssues(manifest: AgentManifest, add: (path: string, message: string) => void) {
+  const clis = manifest.clis ?? {};
+  const runtimes = new Set((manifest.runtimes ?? []).map((runtime) => runtime.name));
+
+  for (const [id, cli] of Object.entries(clis)) {
+    const at = joinPath("clis", id);
+    if (!KEBAB_ID.test(id)) add(at, 'must be named in kebab-case, like "gh"');
+    (cli.env ?? []).forEach((name, index) => {
+      if (!ENV_NAME.test(name)) {
+        add(
+          `${at}.env[${index}]`,
+          'must be the NAME of an environment variable, like "GH_TOKEN", never a value; the host supplies the value',
+        );
+      } else if (isReservedEnvName(name)) {
+        add(`${at}.env[${index}]`, reservedEnvMessage(name));
+      }
+    });
+    const [program] = cli.command;
+    if (program !== undefined && !program.includes("/") && !runtimes.has(program)) {
+      add(
+        `${at}.command[0]`,
+        `${show(program)} must be declared in runtimes, e.g. { "name": ${show(program)}, "version": ">=1.0" }, so hosts know to provide it`,
+      );
+    }
+    cli.command.forEach((arg, index) => {
+      if (arg.startsWith("./") && arg.split("/").includes("..")) {
+        add(
+          `${at}.command[${index}]`,
+          `${show(arg)} must stay inside the role package; a "./" argument names a file in the package and may not contain ".."`,
+        );
+      }
+    });
+  }
+
+  manifest.tools.forEach((tool, index) => {
+    if (tool.cli === undefined) return;
+    const at = (field: string) => joinPath(joinPath("tools", index), field);
+    if (tool.description === undefined) {
+      add(at("description"), "is required for a CLI tool: it is all the model reads about it");
+    }
+    if (tool.parameters === undefined) {
+      add(
+        at("parameters"),
+        'are required for a CLI tool, even when empty ("parameters": {}): they are all the model reads about its arguments',
+      );
+    }
+    if (!Object.hasOwn(clis, tool.cli.use)) {
+      add(at("cli.use"), `${show(tool.cli.use)} is not declared in clis`);
+    }
+    const parameters = tool.parameters ?? {};
+    if (Object.hasOwn(parameters, CLI_CALL_ID)) {
+      add(
+        at(`parameters.${CLI_CALL_ID}`),
+        `${show(CLI_CALL_ID)} is the SDK's placeholder for the call's idempotency key; the model must not be offered it, so choose another name`,
+      );
+    }
+    const passed = new Set<string>();
+    tool.cli.args.forEach((arg, argIndex) => {
+      const whole = CLI_PLACEHOLDER.exec(arg);
+      if (whole === null) {
+        if (EMBEDDED_PLACEHOLDER.test(arg)) {
+          add(
+            at(`cli.args[${argIndex}]`),
+            `${show(arg)} embeds a placeholder; a placeholder must be a whole argument, like "{issue}", so its value is passed as exactly one argument`,
+          );
+        }
+        return;
+      }
+      const name = whole[1] ?? "";
+      if (name === CLI_CALL_ID) return;
+      if (!Object.hasOwn(parameters, name)) {
+        add(
+          at(`cli.args[${argIndex}]`),
+          `${show(arg)} names no declared parameter; declare ${show(name)} in parameters, or use {callId} for the call's idempotency key`,
+        );
+        return;
+      }
+      passed.add(name);
+    });
+    for (const [name, parameter] of Object.entries(parameters)) {
+      if (parameter.required === true && !passed.has(name)) {
+        add(
+          at("cli.args"),
+          `never passes the required parameter ${show(name)}; add "{${name}}" to args, or make it optional`,
+        );
+      }
+    }
+  });
+}

@@ -1,0 +1,109 @@
+/**
+ * The tool-result shape guard: `defineRole` wraps every tool it returns, so a tool that still
+ * returns the pre-1.2.0 `content` field fails loudly at the call instead of handing the model an
+ * empty result. No model, no network.
+ */
+import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
+import { obj } from "@earendil-works/pi-schema";
+import { describe, expect, it } from "vitest";
+import sampleManifest from "../fixtures/sample-desk/officehum.json" with { type: "json" };
+import { defineRole } from "./role.js";
+import { SAMPLE_DIR } from "./test-helpers.js";
+import {
+  deskRefusal,
+  guardToolResultShape,
+  refusal,
+  requestId,
+  textResult,
+} from "./tool-result.js";
+
+/** A fixture tool whose result still uses `content`, the field Pi Durable renamed to `output`. */
+function leakyTool(): ToolRegistration {
+  return defineTool({
+    name: "leaky_tool",
+    description: "Returns its result under the field Pi Durable 1.2.0 renamed.",
+    parameters: obj({}, { open: true }),
+    replay: "safe",
+    // A known field, `details`, overlaps, so TypeScript does not flag the stray `content`.
+    execute: async () => ({ content: [{ type: "text", text: "looks fine" }], details: {} }),
+  });
+}
+
+/** A fixture tool that returns a correct result, for the pass case. */
+function goodTool(): ToolRegistration {
+  return defineTool({
+    name: "good_tool",
+    description: "Returns its result under `output`.",
+    parameters: obj({}, { open: true }),
+    replay: "safe",
+    execute: async () => ({ output: [{ type: "text", text: "ok" }], details: {} }),
+  });
+}
+
+function toolNamed(tools: readonly ToolRegistration[] | undefined, name: string): ToolRegistration {
+  const tool = tools?.find((candidate) => candidate.name === name);
+  if (tool === undefined) throw new Error(`no tool ${name}`);
+  return tool;
+}
+
+describe("tool-result shape guard", () => {
+  it("fails a fixture tool that returns content instead of output, naming the tool", async () => {
+    const role = defineRole({
+      packageDir: SAMPLE_DIR,
+      manifest: sampleManifest,
+      tools: [leakyTool()],
+    });
+    // The guard is installed by defineRole, so the tool in the built bundle is the wrapped one.
+    const leaky = toolNamed(role.extensions[0]?.tools, "leaky_tool");
+    await expect(leaky.execute({}, {} as never, {} as never)).rejects.toThrow(
+      /leaky_tool[\s\S]*"output"/,
+    );
+  });
+
+  it("passes a tool whose result uses output, and passes the result through unchanged", async () => {
+    const role = defineRole({
+      packageDir: SAMPLE_DIR,
+      manifest: sampleManifest,
+      tools: [goodTool()],
+    });
+    const good = toolNamed(role.extensions[0]?.tools, "good_tool");
+    expect(await good.execute({}, {} as never, {} as never)).toMatchObject({
+      output: [{ type: "text", text: "ok" }],
+    });
+  });
+
+  it("fires on content whether or not the result also sets output", () => {
+    expect(() => guardToolResultShape("t", { output: [] })).not.toThrow();
+    expect(() => guardToolResultShape("t", { output: [], isError: true })).not.toThrow();
+    expect(() => guardToolResultShape("t", { details: { nested: { content: [] } } })).not.toThrow();
+    expect(() => guardToolResultShape("t", undefined)).not.toThrow();
+    expect(() => guardToolResultShape("t", { content: [], output: [] })).toThrow(/t/);
+  });
+});
+
+describe("shared result builders", () => {
+  it("textResult wraps text in output", () => {
+    expect(textResult("hi")).toEqual({ output: [{ type: "text", text: "hi" }] });
+  });
+
+  it("refusal is an error result with details", () => {
+    expect(refusal("no", { code: "x" })).toEqual({
+      output: [{ type: "text", text: "no" }],
+      isError: true,
+      details: { code: "x" },
+    });
+  });
+
+  it("deskRefusal keeps the desk code when extra has a code key", () => {
+    const result = deskRefusal("x", "not_found", { code: "y", caseId: "c1" });
+    expect(result.details.code).toBe("not_found");
+    expect(result.details.caseId).toBe("c1");
+    expect(result.isError).toBe(true);
+  });
+
+  it("requestId joins kind and call identity", () => {
+    expect(requestId("pay-bill", { conversationId: "c", taskId: "t", callId: "k" })).toBe(
+      "pay-bill:c:t:k",
+    );
+  });
+});

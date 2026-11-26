@@ -1,0 +1,114 @@
+{
+  "$schema": "../../packages/sdk/schema/officehum.schema.json",
+  "schemaVersion": 1,
+  "id": "frontdesk",
+  "name": "Front Desk",
+  "department": "front-office",
+  "role": "Manages approved contacts, messages, and UTC appointments",
+  "defaultModel": { "provider": "paper", "modelId": "ultramarine-1-flash", "thinkingLevel": "max" },
+  "tools": [
+    { "name": "check_schedule", "replay": "safe" },
+    { "name": "list_bookings", "replay": "safe" },
+    { "name": "list_contacts", "replay": "safe" },
+    { "name": "create_contact", "replay": "safe", "writes": true },
+    { "name": "update_contact", "replay": "safe", "writes": true },
+    { "name": "send_message", "outside": true, "replay": "safe", "writes": true },
+    { "name": "reply_message", "outside": true, "replay": "safe", "writes": true },
+    { "name": "book_appointment", "replay": "safe", "writes": true },
+    { "name": "reschedule_appointment", "replay": "safe", "writes": true },
+    { "name": "cancel_appointment", "replay": "safe", "writes": true }
+  ],
+  "connectors": ["google-calendar"],
+  "limits": {
+    "booking_discount_percent": {
+      "description": "The discount rate, in percent, above which a booking needs a person's approval",
+      "default": 0
+    }
+  },
+  "approvals": [
+    {
+      "id": "confirm_contact_creation",
+      "tool": "create_contact",
+      "description": "Confirm this contact creation"
+    },
+    {
+      "id": "confirm_contact_update",
+      "tool": "update_contact",
+      "description": "Confirm this contact correction"
+    },
+    {
+      "id": "confirm_inbound_reply",
+      "tool": "reply_message",
+      "description": "Confirm this exact threaded reply to the authenticated inbound sender"
+    },
+    {
+      "id": "first_contact",
+      "tool": "send_message",
+      "description": "Confirm first contact with this destination and transport"
+    },
+    {
+      "id": "confirm_unrequested_message",
+      "tool": "send_message",
+      "description": "Confirm this message, which no member of staff asked for directly"
+    },
+    {
+      "id": "confirm_booking",
+      "tool": "book_appointment",
+      "description": "Confirm this appointment booking"
+    },
+    {
+      "id": "discount_booking",
+      "tool": "book_appointment",
+      "description": "Confirm a discounted booking above the business's set rate",
+      "when": [
+        { "arg": "discountPercent", "op": "present" },
+        { "arg": "discountPercent", "op": "gt", "value": { "limit": "booking_discount_percent" } }
+      ]
+    },
+    {
+      "id": "confirm_reschedule",
+      "tool": "reschedule_appointment",
+      "description": "Confirm this appointment reschedule"
+    },
+    {
+      "id": "confirm_cancellation",
+      "tool": "cancel_appointment",
+      "description": "Confirm this appointment cancellation"
+    }
+  ],
+  "channels": [
+    "email",
+    {
+      "channel": "sms",
+      "direction": "inbound",
+      "replyBy": "email",
+      "note": "Inbound only: a text is answered by email, and the office never sends SMS."
+    },
+    "chat"
+  ],
+  "accepts": [
+    {
+      "type": "booking.request",
+      "description": "Book an appointment for a customer",
+      "done": [{ "person": true }]
+    },
+    {
+      "type": "customer.reply",
+      "description": "Reply to an inbound customer message",
+      "done": [{ "person": true }]
+    }
+  ],
+  "dispatches": [
+    {
+      "type": "invoice.question",
+      "when": "a customer asks about an invoice, a price, or what they owe"
+    }
+  ],
+  "skills": [
+    { "id": "qualifying-inquiries", "enabledByDefault": true },
+    { "id": "rescheduling", "enabledByDefault": true },
+    { "id": "company-handbook", "enabledByDefault": true }
+  ],
+  "evals": "evals",
+  "company": { "responsibilities": ["billing"] }
+}

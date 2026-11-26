@@ -1,0 +1,63 @@
+{
+  "name": "@officehum/office-manager",
+  "version": "0.0.0",
+  "description": "Portable Office Manager role: reads a request and says what it is and where it belongs, and writes the day's digest.",
+  "keywords": [
+    "officehum",
+    "pi-durable",
+    "pi-ai",
+    "pi-agent",
+    "ai-agents",
+    "officehum-role"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officehum/officehum.git",
+    "directory": "agents/office-manager"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "officehum.json",
+    "AGENTS.md",
+    "APPEND_SYSTEM.md",
+    "role.md",
+    "role.sources.json",
+    "skills",
+    "evals"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "1.6.x",
+    "@earendil-works/pi-durable": "1.6.x",
+    "@earendil-works/pi-schema": "1.6.x"
+  },
+  "dependencies": {
+    "@officehum/sdk": "0.0.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-durable": "1.6.0",
+    "@earendil-works/pi-schema": "1.6.0",
+    "@officehum/runner": "0.0.0"
+  }
+}

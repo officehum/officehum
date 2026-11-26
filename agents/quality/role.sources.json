@@ -1,0 +1,958 @@
+{
+  "schema": 1,
+  "role": "quality",
+  "researchedOn": "2026-11-22",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/51-9061.00",
+      "title": "O*NET OnLine: Inspectors, Testers, Sorters, Samplers, and Weighers (51-9061.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/summary/11-3051.01",
+      "title": "O*NET OnLine: Quality Control Systems Managers (11-3051.01)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.bls.gov/ooh/production/quality-control-inspectors.htm",
+      "title": "BLS Occupational Outlook Handbook: Quality Control Inspectors",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S4",
+      "url": "https://nationalcareers.service.gov.uk/job-profiles/quality-control-assistant",
+      "title": "National Careers Service: Quality control officer",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.acquisition.gov/far/46.101",
+      "title": "Federal Acquisition Regulation 46.101: Definitions (quality assurance)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S6",
+      "url": "https://www.acquisition.gov/far/46.105",
+      "title": "Federal Acquisition Regulation 46.105: Contractor responsibilities",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.acquisition.gov/far/46.407",
+      "title": "Federal Acquisition Regulation 46.407: Nonconforming supplies or services",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.acquisition.gov/far/52.246-4",
+      "title": "Federal Acquisition Regulation 52.246-4: Inspection of Services, Fixed-Price",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S9",
+      "url": "https://www.govinfo.gov/content/pkg/CFR-2024-title21-vol8/xml/CFR-2024-title21-vol8-sec820-80.xml",
+      "title": "21 CFR 820.80 (2024 edition): Receiving, in-process, and finished device acceptance",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.govinfo.gov/content/pkg/CFR-2024-title21-vol8/xml/CFR-2024-title21-vol8-sec820-90.xml",
+      "title": "21 CFR 820.90 (2024 edition): Nonconforming product",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.govinfo.gov/content/pkg/CFR-2024-title21-vol8/xml/CFR-2024-title21-vol8-sec820-100.xml",
+      "title": "21 CFR 820.100 (2024 edition): Corrective and preventive action",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.govinfo.gov/content/pkg/CFR-2024-title21-vol8/xml/CFR-2024-title21-vol8-sec820-198.xml",
+      "title": "21 CFR 820.198 (2024 edition): Complaint files",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S13",
+      "url": "https://psnet.ahrq.gov/primer/root-cause-analysis",
+      "title": "AHRQ Patient Safety Network: Root Cause Analysis",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S14",
+      "url": "https://www.lean.org/lexicon-terms/5-whys/",
+      "title": "Lean Enterprise Institute Lean Lexicon: 5 Whys",
+      "kind": "other",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S15",
+      "url": "https://quality-one.com/8d/",
+      "title": "Quality-One International: Eight Disciplines of Problem Solving (8D)",
+      "kind": "other",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S16",
+      "url": "https://www.odoo.com/documentation/17.0/applications/inventory_and_mrp/quality/quality_management/quality_alerts.html",
+      "title": "Odoo 17.0 documentation: Quality alerts",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S17",
+      "url": "https://docs.frappe.io/erpnext/quality-inspection",
+      "title": "ERPNext documentation: Quality Inspection",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S18",
+      "url": "https://help.mitti.com/004327",
+      "title": "Mitti (by SafetyCulture) Help Center: Set up scoring for questions",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S19",
+      "url": "https://help.mitti.com/000139",
+      "title": "Mitti (by SafetyCulture) Help Center: View inspection performance in Analytics",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S20",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/supply-chain/inventory/quality-management-processes",
+      "title": "Microsoft Learn: Quality management overview (Dynamics 365 Supply Chain Management)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Quality control officers check that a company's products and services meet quality standards."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Inspect, test, or measure materials, products, installations, or work for conformance to specifications."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Controlling the quality of supplies or services"
+        },
+        {
+          "source": "S6",
+          "passage": "Tendering to the Government for acceptance only those supplies or services that conform to contract requirements"
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "record and report findings to managers"
+        },
+        {
+          "source": "S3",
+          "passage": "Quality control workers record the results of their inspections through test reports."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Plan, direct, or coordinate quality assurance programs. Formulate quality control policies and control quality of laboratory and production efforts."
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Read blueprints, data, manuals, or other materials to determine specifications, inspection and testing procedures, adjustment methods, certification processes, formulas, or measuring instruments required."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Verify that raw materials, purchased parts or components, in-process samples, and finished products meet established testing and inspection standards."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Record inspection or test data, such as weights, temperatures, grades, or moisture content, and quantities inspected or graded."
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Accept or reject finished items"
+        },
+        {
+          "source": "S1",
+          "passage": "Mark items with details, such as grade or acceptance-rejection status."
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Remove all products and materials that fail to meet specifications"
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Write test or inspection reports describing results, recommendations, or needed repairs."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Notify supervisors or other personnel of production problems."
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Recommend necessary corrective actions, based on inspection results."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "When they find defects, inspectors notify supervisors and help to analyze and correct production problems."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Compute defect percentages or averages, using formulas and calculators."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Each manufacturer shall review and evaluate all complaints to determine whether an investigation is necessary."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "assess the effectiveness of changes to processes or production"
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Acceptance activities include inspections, tests, or other verification activities."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Contract quality requirements means the technical requirements in the contract relating to the quality of the product or service and those contract clauses prescribing inspection, and other quality controls incumbent on the contractor, to assure that the product or service conforms to the contractual requirements."
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Each manufacturer shall establish and maintain procedures to control product that does not conform to specified requirements."
+        },
+        {
+          "source": "S20",
+          "passage": "A nonconformance describes an item that has a quality problem."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Critical nonconformance means a nonconformance that is likely to result in hazardous or unsafe conditions for individuals using, maintaining, or depending upon the supplies or services; or is likely to prevent performance of a vital agency mission."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Major nonconformance means a nonconformance, other than critical, that is likely to result in failure of the supplies or services, or to materially reduce the usability of the supplies or services for their intended purpose."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Minor nonconformance means a nonconformance that is not likely to materially reduce the usability of the supplies or services for their intended purpose, or is a departure from established standards having little bearing on the effective use or operation of the supplies or services."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Disposition of nonconforming product shall be documented."
+        },
+        {
+          "source": "S20",
+          "passage": "You can also print a nonconformance tag and a nonconformance report to guide the disposition of nonconforming material. For example, the tag and report might indicate a condition of Unusable or Restricted usage."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "procedures for rework, to include retesting and reevaluation of the nonconforming product after rework, to ensure that the product meets its current approved specifications"
+        },
+        {
+          "source": "S8",
+          "passage": "the Government may require the Contractor to perform the services again in conformity with contract requirements, at no increase in contract amount"
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Conditional acceptance means acceptance of supplies or services that do not conform to contract quality requirements, or are otherwise incomplete, that the contractor is required to correct or otherwise complete by a specified date."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "The Interim Containment Action (ICA) is temporary and is typically removed after the Permanent Correct Action (PCA) is taken."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "RCAs should generally follow a prespecified protocol that begins with data collection and reconstruction of the event in question through record review and participant interviews."
+        },
+        {
+          "source": "S15",
+          "passage": "The root cause must be identified to take permanent action to eliminate it."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "5 Whys is the practice of asking why repeatedly whenever a problem is encountered in order to get beyond the obvious symptoms to discover the root cause."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "The 8D problem solving process is a detailed, team oriented approach to solving critical problems in the production process."
+        },
+        {
+          "source": "S15",
+          "passage": "The goals of this method are to find the root cause of a problem, develop containment actions to protect customers and take corrective action to prevent similar problems in the future."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Identifying the action(s) needed to correct and prevent recurrence of nonconforming product and other quality problems"
+        },
+        {
+          "source": "S16",
+          "passage": "Use the Corrective Actions tab to detail the steps that should be taken to fix the issue. Use the Preventive Actions tab to detail what should be done to prevent the issue from occurring in the future."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "A single Quality Inspection consists of many Quality Checks (Parameters) within it."
+        },
+        {
+          "source": "S17",
+          "passage": "If the Reading Value does not match the Acceptance Criteria Value, the status on the row will be set to 'Rejected' automatically on Save."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "(1) The acceptance activities performed; (2) the dates acceptance activities are performed; (3) the results; (4) the signature of the individual(s) conducting the acceptance activities"
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "The procedures shall address the identification, documentation, evaluation, segregation, and disposition of nonconforming product."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "The evaluation of nonconformance shall include a determination of the need for an investigation and notification of the persons or organizations responsible for the nonconformance."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "In the interim, before the permanent corrective action has been determined, an action to protect the customer can be taken."
+        },
+        {
+          "source": "S15",
+          "passage": "Verification of effectiveness of the ICA is always recommended"
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The contracting officer ordinarily must give the contractor an opportunity to correct or replace nonconforming supplies or services when this can be accomplished within the required delivery schedule."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "The specific number five is not the point. Rather it is to keep asking until the root cause is reached and eliminated."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "D2: Describe the Problem"
+        },
+        {
+          "source": "S15",
+          "passage": "D3: Interim Containment Action"
+        },
+        {
+          "source": "S15",
+          "passage": "D4: Root Cause Analysis (RCA) and Escape Point"
+        },
+        {
+          "source": "S15",
+          "passage": "D5: Permanent Corrective Action (PCA)"
+        },
+        {
+          "source": "S15",
+          "passage": "D6: Implement and Validate the Permanent Corrective Action"
+        },
+        {
+          "source": "S15",
+          "passage": "D7: Prevent Recurrence"
+        },
+        {
+          "source": "S15",
+          "passage": "D8: Closure and Team Celebration"
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Customer complaints are received"
+        },
+        {
+          "source": "S15",
+          "passage": "Internal rejects, waste, scrap, poor performance or test failures are present at unacceptable levels"
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "The PCA is directed toward the root cause and removes / changes the conditions of the product or process that was responsible for the problem."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Verifying or validating the corrective and preventive action to ensure that such action is effective and does not adversely affect the finished device"
+        },
+        {
+          "source": "S15",
+          "passage": "Validation of improvements using measurement"
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Implementing and recording changes in methods and procedures needed to correct and prevent identified quality problems"
+        },
+        {
+          "source": "S15",
+          "passage": "Updating documents and procedures / work instructions are expected at this step to improve future use."
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Archive the 8D Documents for future reference"
+        },
+        {
+          "source": "S15",
+          "passage": "Document Lessons Learned on how to make problem solving better"
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "(1) All complaints are processed in a uniform and timely manner; (2) Oral complaints are documented upon receipt"
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Any complaint involving the possible failure of a device, labeling, or packaging to meet any of its specifications shall be reviewed, evaluated, and investigated, unless such investigation has already been performed for a similar complaint and another investigation is not necessary."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "When no investigation is made, the manufacturer shall maintain a record that includes the reason no investigation was made and the name of the individual responsible for the decision not to investigate."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Analyzing processes, work operations, concessions, quality audit reports, quality records, service records, complaints, returned product, and other sources of quality data to identify existing and potential causes of nonconforming product, or other quality problems."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The contracting officer should reject supplies or services not conforming in all respects to contract requirements"
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "A central tenet of RCA is to identify underlying problems that increase the likelihood of errors while avoiding the trap of focusing on mistakes by individuals."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Without repeatedly asking why, managers would simply replace the fuse or pump and the failure would recur."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "overreliance on weak solutions (such as educational interventions and enforcing existing policies)"
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "All activities required under this section, and their results, shall be documented."
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "to be thorough and pay attention to detail"
+        },
+        {
+          "source": "S3",
+          "passage": "Quality control inspectors must be able to focus to notice flaws or deficiencies in finished products or materials."
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The contracting officer must discourage the repeated tender of nonconforming supplies or services, including those with only minor nonconformances, by appropriate action, such as rejection and documenting the contractor's performance record."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "By setting up scoring at the question level, you can change your question's weighting depending on its importance. This way, some questions will be worth more points than others."
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Published changes made to templates only apply to new inspections moving forward."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "submission of a stock delivery/receipt document will be allowed only after a Quality Inspection is done against it"
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "You can change who it's inspected by and also add who it's verified by."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "In the Odoo Quality app, quality alerts are used to notify quality teams of product defects or other issues."
+        },
+        {
+          "source": "S16",
+          "passage": "Use the Root Cause field to select the cause of the quality issue, if known."
+        },
+        {
+          "source": "S16",
+          "passage": "If a specific employee should be responsible for the quality alert, select them from the Responsible drop-down menu."
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "The nonconformance process lets you create a nonconformance order that describes a quantity of nonconforming material, the problem source, the problem type, and explanatory notes."
+        },
+        {
+          "source": "S20",
+          "passage": "You can define a classification of problem types to make analysis of nonconforming material easier."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "(5) The nature and details of the complaint; (6) The dates and results of the investigation; (7) Any corrective action taken; and (8) Any reply to the complainant."
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Complete records of all inspection work performed by the Contractor shall be maintained and made available to the Government during contract performance and for as long afterwards as the contract requires."
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Each manufacturer shall establish and maintain procedures that define the responsibility for review and the authority for the disposition of nonconforming product."
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Documentation shall include the justification for use of nonconforming product and the signature of the individual(s) authorizing the use."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "A request from the contractor for acceptance of the nonconforming or otherwise incomplete supplies or services (if feasible)"
+        },
+        {
+          "source": "S7",
+          "passage": "The contract adjustment considered appropriate, including any adjustment offered by the contractor."
+        }
+      ]
+    },
+    {
+      "id": "C67",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Reduce the contract price to reflect the reduced value of the services performed."
+        },
+        {
+          "source": "S7",
+          "passage": "the contracting officer must modify the contract to provide for an equitable price reduction or other consideration"
+        }
+      ]
+    },
+    {
+      "id": "C68",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "The Champion or Sponsor is the one person who can affect change by agreeing with the findings and can provide final approval on such changes"
+        }
+      ]
+    },
+    {
+      "id": "C69",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Submitting relevant information on identified quality problems, as well as corrective and preventive actions, for management review."
+        }
+      ]
+    },
+    {
+      "id": "C70",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Stop production if serious product defects are present."
+        }
+      ]
+    },
+    {
+      "id": "C71",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Oversee workers including supervisors, inspectors, or laboratory workers engaged in testing activities."
+        },
+        {
+          "source": "S2",
+          "passage": "Instruct staff in quality control and analytical procedures."
+        }
+      ]
+    },
+    {
+      "id": "C72",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Create and implement inspection and testing criteria or procedures."
+        },
+        {
+          "source": "S2",
+          "passage": "Review and update standard operating procedures or quality assurance manuals."
+        }
+      ]
+    },
+    {
+      "id": "C73",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "The average score in New Analytics is calculated by adding up all the score percentages and then dividing by the number of inspections."
+        }
+      ]
+    },
+    {
+      "id": "C74",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Statistics about key performance indicators (KPIs) provide insight into nonconformance problems that have previously occurred and the solutions that were applied to correct them."
+        }
+      ]
+    },
+    {
+      "id": "C75",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Document the cost of managing a nonconformance. This cost can include the items (such as spare parts), miscellaneous charges, and the timesheet hours that are required to correct the nonconformance."
+        }
+      ]
+    },
+    {
+      "id": "C76",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "You can use historical data to help review the effectiveness of quality measures that have previously been taken and to determine appropriate measures in the future."
+        }
+      ]
+    },
+    {
+      "id": "C77",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Produce reports regarding nonconformance of products or processes, daily production quality, root cause analyses, or quality trends."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,172 @@
+# Agents
+
+Each folder here is one Office Hum role, free under the MIT licence as `@officehum/<role>`. None is
+published to npm yet: run them from a clone ([quickstart](../docs/quickstart.md)), or pack one to
+install elsewhere ([Build a role](../docs/build-a-role.md#use-a-role-in-your-own-harness)).
+
+Every role is a **portable Pi Durable agent**: an MIT package that installs into any Pi Durable 1.6.x
+harness, with or without Office Hum. Office Hum composes, coordinates and configures roles; it never
+modifies them, and a role never depends on it.
+
+A role is mostly files Pi users already know:
+
+```
+AGENTS.md            the role: who it is, what it does, how it works, house style
+APPEND_SYSTEM.md     rules appended to the end of the system prompt
+skills/<name>/       Agent Skills format: SKILL.md plus optional reference files
+officehum.json       tools (each safe or unsafe to rerun), approvals, connectors, accepts with completion evidence, skills, evals
+src/index.ts         the tools, then defineRole(...)
+evals/               scenarios with expected outcomes
+```
+
+Install one into your own Pi Durable harness (once its package and `@officehum/sdk` are installed
+from packed tarballs, as above):
+
+```ts
+import bookkeeper from "@officehum/bookkeeper";
+
+const role = bookkeeper({ quickbooks, overlays: ["./my-bookkeeper"] });
+for (const extension of role.extensions) registry.install(extension);
+const root = await harness.root(context, { agent: role.agent });
+```
+
+Customize a role without changing it with an **overlay**: a directory with your own `AGENTS.md`
+additions, `APPEND_SYSTEM.md`, skills and `settings.json` (model; skills and tools on or off).
+
+## Two roles on your own harness
+
+Inside Office Hum, roles hand work to each other with `agent_dispatch`, `agent_inbox` and
+`agent_reply`. On your own harness, the SDK's **local board** gives them the same three tools:
+tickets live in a document in your harness, and routing goes by ticket type, from each manifest's
+`accepts`. Install one local board per role, then create one conversation per role, each with that
+role's agent. A dispatched ticket is delivered into its assignee's conversation, once.
+
+```ts
+import type { ConversationId } from "@earendil-works/pi-durable";
+import { localBoardExtension } from "@officehum/sdk";
+import bookkeeper from "@officehum/bookkeeper";
+import frontdesk from "@officehum/frontdesk";
+// frontdeskManifest and bookkeeperManifest: each package's officehum.json, read as JSON.
+
+const roles = { frontdesk: frontdesk({ calendar }), bookkeeper: bookkeeper({ quickbooks }) };
+// The local board routes by each manifest's `accepts`.
+const manifests = [frontdeskManifest, bookkeeperManifest];
+const conversations = new Map<string, ConversationId>();
+
+for (const [id, role] of Object.entries(roles)) {
+  const board = localBoardExtension({
+    manifests,
+    role: id,
+    conversationOf: (roleId) => conversations.get(roleId),
+  });
+  const extensions = [...role.extensions, board];
+  for (const extension of extensions) registry.install(extension);
+  // Create each role's conversation once and keep its id: the next start reuses it.
+  const agent = { ...role.agent, extensions };
+  const conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent }, context);
+  conversations.set(id, conversation.id);
+}
+```
+
+Front Desk can now `agent_dispatch` an `invoice.create` ticket. It lands in the Bookkeeper's
+conversation, the Bookkeeper finishes it with `agent_reply`, and with `wait: true` Front Desk gets the
+result back. The tools match Office Hum's names, parameters and answers, so a role behaves the same
+either way. Office Hum adds what a local board does not have: budgets, hop limits, provenance,
+routing to people, and approvals. One conversation per role means two roles that each wait on the
+other deadlock, so wait in one direction only, or set `waitTimeoutMs`.
+
+A restart behaves as in Office Hum, with one difference. If the harness stops while Front Desk waits
+on a dispatch, the restart reports that call interrupted; the Bookkeeper's answer then comes to Front
+Desk once, as a message beginning `ANSWER <ticket id>`, and if Front Desk dispatches the same ticket
+type again before that answer is in its transcript, however it words it, it gets the same ticket back
+instead of a second one, unless it sets `separate_request: true` to say this is new work. The
+difference: a local board has no
+poller, so an answer still owed after a restart is sent by the next `agent_dispatch` or
+`agent_reply` from any role (the Bookkeeper's reply sends it as it finishes the ticket), not on its
+own.
+
+## The company every role works for
+
+`company/default/` at the root of the repository is the business the catalogue's roles work for:
+Northwind Facilities, a fictitious commercial cleaning and facilities company in Portland, Oregon.
+`company.json` holds the record a program reads (people, services, price book in integer cents,
+policies, escalation, glossary); `handbook.md`, `policies.md` and `pricing.md` are written for an agent
+to read.
+
+A published role has to be self-contained, so the facts reach each role as generated copies inside it:
+
+```
+skills/company-handbook/SKILL.md                    the handbook, and the entry point
+skills/company-handbook/references/pricing.md       every price and minimum
+skills/company-handbook/references/policies.md      the rules and who decides
+skills/company-handbook/references/facts.json       the same facts, for the role's own code
+```
+
+`npm run sync-company` writes them for every role folder here; `scripts/sync-company.ts` refuses a
+company package that disagrees with itself, and `scripts/company.test.ts` regenerates the whole
+catalogue in memory and fails when a copy has drifted. One source, many readers — the same rule as the
+JSON Schema. Do not edit a generated copy.
+
+Rules, enforced by `@officehum/sdk` (`validatePackage`, `checkAgent`, `checkFourLayers`,
+`resolveRoleFiles`):
+
+- Pi Durable, pi-ai and pi-schema are peer dependencies (`1.6.x`); no dependency on a host or on `@officehum/cli`.
+- Every tool states `replay` explicitly and matches the manifest.
+- `replay` is Pi Durable's replay policy only: `"safe"` means an interrupted call may be run again,
+  not that the tool changes nothing. A tool that changes something and is safe to re-run states
+  `"writes": true`; an unsafe tool always counts as writing.
+- Every tool that **writes** states exactly one approval decision: an approval in `approvals`, or a
+  `noApproval` note (at most 300 characters) saying why it needs none. Never both, never neither; a
+  tool that changes nothing states neither. The rule holds whichever way the role was written.
+- Every accepted ticket type declares `done` completion evidence, which the **host** runs when the
+  agent replies to a ticket, never the model (a failed check keeps the ticket open; see "Completion
+  evidence" in `docs/design/agent-package.md`): an engine check that returns findings, a declared tool that is safe to re-run and does not write, whose result reports
+  `found`, a file the result attaches, or `{ "person": true }`. All entries must pass.
+  `{ticket.id}` and `{ticket.data.<path>}` are the only interpolation. A tool entry passes only
+  arguments its tool takes (`checkAgent` refuses the others), and it should ask about this ticket's
+  work: a list that reads the same before the work as after proves nothing. Where no tool can show
+  the work, declare `{ "person": true }` alone.
+- Gated actions are blocked unless the host supplies an approver.
+- Overlays can switch tools off but never add them; overlay skills hold instructions only.
+- The four layers stay apart, checked by `checkFourLayers`: context under 1,000 words with a
+  "You may not" section and no amounts, percentages or thresholds; references only in
+  `skills/<id>/references/`; no `data/`, `work/` or `deliverables/` folder; no generic shell or file
+  tool; and completion evidence on every accepted type. Strict (every issue an error) for a role
+  under `agents/` and for generated roles; elsewhere context, knowledge and workflow issues are
+  warnings and wisdom issues stay errors.
+- The eval suite passes in a bare Pi Durable harness.
+
+See [docs/design/agent-package.md](../docs/design/agent-package.md). For a minimal working role, see
+[packages/sdk/fixtures/sample-desk](../packages/sdk/fixtures/sample-desk).
+
+## Quoted sources
+
+Each role's `role.md` cites the research behind it. `role.sources.json` records each source (`url`,
+`title`, `kind`, the date it was read) and, in `claims`, the short passages that support each claim.
+Those passages are quoted from their publishers and remain theirs: they are not covered by the MIT
+licence that covers the rest of each package. Reuse them under the source's own terms.
+
+## Catalog
+
+Every role below is built. `sales/` is the shape the rest of the catalog follows: a manifest, a system prompt, tools behind
+a fake-backed seam, skills, evals and a README a stranger can follow. The roster keeps growing toward a free role for every
+department of a company. Tools and approvals are copied from each role's `officehum.json`, and
+`scripts/catalog.test.ts` fails when this table drifts from the manifests.
+
+| Folder | Package | Job | Tools | Asks a person before |
+| --- | --- | --- | --- | --- |
+| `frontdesk` | `@officehum/frontdesk` | Manages approved contacts, messages, and UTC appointments | `check_schedule`, `list_bookings`, `list_contacts`, `create_contact`, `update_contact`, `send_message`, `reply_message`, `book_appointment`, `reschedule_appointment`, `cancel_appointment` | `confirm_contact_creation` creating a contact; `confirm_contact_update` correcting a contact; `confirm_inbound_reply` replying to an inbound sender; `first_contact` messaging a destination for the first time; `confirm_unrequested_message` (in an office) a message no member of staff asked for directly; `confirm_booking` booking an appointment; `discount_booking` a discount above the business's set rate; `confirm_reschedule` rescheduling an appointment; `confirm_cancellation` cancelling an appointment |
+| `bookkeeper` | `@officehum/bookkeeper` | The Accounting agent: invoices jobs, chases overdue invoices and answers billing questions; records supplier bills and pays them with approval | `find_customer`, `list_invoices`, `get_invoice`, `create_invoice`, `send_invoice`, `send_reminder`, `list_vendor_bills`, `record_vendor_bill`, `pay_vendor_bill`, `reconcile_summary`; from the office's data pack: `data_inspect`, `data_query`, `data_export`, `chart_render` | `large_invoice` an invoice over the business's set amount; `new_recipient` sending an invoice to an address other than the one on file; `final_notice` a final notice to a customer; `any_payment` paying a supplier bill |
+| `office-manager` | `@officehum/office-manager` | Reads a request and says what it is, where it belongs and what is missing; writes the daily digest | None | Nothing: it has no tools and acts only in words |
+| `sales` | `@officehum/sales` | Qualifies leads, quotes from the price book, follows up and keeps the pipeline | `list_leads`, `get_quote`, `search_price_book`, `create_quote`, `request_quote_approval`, `log_activity`, `update_lead_stage`, `record_quote_outcome`, `schedule_follow_up`, `pipeline_report`, `read_company` | `quote_approval` a quote the desk held because it carries a discount or its total is above the quote limit |
+| `operations` | `@officehum/operations` | Schedules and dispatches the field crews inside their weekly hours, and asks a person for overtime and contract changes | `list_jobs`, `list_crews`, `assign_crew`, `request_overtime`, `reschedule_job`, `request_contract_reschedule`, `record_callout`, `read_company` | `overtime` overtime for a crew and job; `contract_reschedule` moving a visit on a recurring contract |
+| `purchasing` | `@officehum/purchasing` | Buys supplies from approved suppliers inside the spending limit; asks a person above it or for a new supplier | `list_stock`, `list_suppliers`, `compare_suppliers`, `list_purchase_orders`, `raise_purchase_order`, `request_po_approval`, `request_new_supplier`, `record_receipt`, `read_company` | `po_over_limit` a purchase order over the spending limit; `new_supplier` adding a supplier to the approved list |
+| `inventory` | `@officehum/inventory` | Keeps the stock record by location: issues, transfers, blind counts and holds; asks a person for a large adjustment or any write-off, and never orders | `list_stock_levels`, `count_sheet`, `record_issue`, `record_transfer`, `record_count`, `request_adjustment_approval`, `hold_stock`, `request_write_off`, `reorder_report`, `accuracy_report`, `read_company` | `stock_adjustment` adjusting the stock record to a recount whose difference is worth more than the adjustment limit; `write_off` writing off held stock |
+| `marketing` | `@officehum/marketing` | Drafts posts and campaign emails from approved claims; a person approves each new claim and every publication | `read_services`, `draft_post`, `draft_campaign_email`, `request_claim_approval`, `publish`, `list_drafts`, `read_company` | `claim` using a new claim in a draft; `publish` publishing a draft |
+| `support` | `@officehum/support` | Logs client complaints as cases, books re-cleans, proposes credits a person decides, and escalates safety and refunds | `find_client`, `list_cases`, `log_case`, `book_reclean`, `propose_credit`, `offer_credit`, `withdraw_credit`, `escalate_case`, `resolve_case`, `read_company` | `any_credit` issuing a proposed credit note to a client |
+| `people-ops` | `@officehum/people-ops` | Keeps hiring and onboarding moving, records time off for a person to answer, and hands pay and discipline to a person | `list_candidates`, `update_candidate_stage`, `onboarding_checklist`, `record_time_off_request`, `request_time_off_exception`, `list_availability`, `get_leave_balance`, `refer_to_person`, `read_company` | `time_off_exception` time off with less notice than the company asks |
+| `payroll` | `@officehum/payroll` | Prepares pay runs a person approves, records benefit changes, and gives each employee only their own pay and benefits | `list_pay_periods`, `list_timesheets`, `flag_timesheet`, `request_timesheet_approval`, `prepare_pay_run`, `submit_pay_run`, `request_pay_adjustment`, `get_pay_statement`, `get_benefits_summary`, `record_enrollment_change`, `request_enrollment_exception`, `read_company` | `any_pay_run` submitting a pay run; `enrollment_exception` a benefit change outside open enrolment with no qualifying life event; `pay_adjustment` a correction to pay on an approved run |
+| `quality` | `@officehum/quality` | Scores inspections from the checklist, runs non-conformance reports to verification, and asks a person to close them | `list_inspections`, `record_inspection`, `open_nonconformance`, `list_nonconformances`, `record_containment`, `record_root_cause`, `propose_corrective_action`, `record_verification`, `request_closure`, `quality_report`, `read_company` | `close_nonconformance` closing a verified non-conformance report |
+| `finance-analyst` | `@officehum/finance-analyst` | Compares the budget with closed months of actuals, works out margins, receivables and the cash forecast in code, and drafts the management report; asks a person to release it or revise a forecast | `list_periods`, `budget_vs_actual`, `margin_by_service`, `receivables_aging`, `cash_forecast`, `record_variance_explanation`, `save_report_draft`, `request_report_release`, `request_budget_revision`, `read_company`; from the office's data pack: `data_inspect`, `data_query`, `data_export`, `chart_render` | `release_report` releasing a report draft to named people in the company; `budget_revision` revising a budget line's forecast, with the amount entered by the approver |
+| `safety` | `@officehum/safety` | Tracks training and incidents, works out reporting deadlines in code, and asks a person on exceptions and reports | `list_training_status`, `record_training_completion`, `clearance_check`, `request_training_exception`, `log_incident`, `request_recordability_decision`, `request_regulator_report`, `list_incidents`, `get_safety_data_sheet`, `schedule_toolbox_talk`, `read_company` | `training_exception` letting a person do one job without a current required course; `recordability` entering an incident on the injury and illness log as recordable; `regulator_report` approving the regulator report for an incident |
+| `it-helpdesk` | `@officehum/it-helpdesk` | Logs IT tickets with a priority set in code, resets a sender's own password, keeps the asset register, and asks a person before any account change | `list_tickets`, `log_ticket`, `escalate_ticket`, `resolve_ticket`, `list_my_access`, `send_password_reset`, `request_sign_in_method_change`, `request_access`, `request_account_setup`, `request_account_disable`, `list_assets`, `assign_asset`, `return_asset`, `report_security_concern`, `read_company` | `sign_in_method_change` changing the sender's own sign-in method; `access_grant` adding someone to an access group; `account_setup` setting up a new joiner's account; `account_disable` stopping a leaver's account |

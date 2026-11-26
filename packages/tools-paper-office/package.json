@@ -1,0 +1,57 @@
+{
+  "name": "@officehum/tools-paper-office",
+  "version": "0.0.0",
+  "description": "Portable Paper Office document pack: a task-leased Python 3.13 document worker and the DocumentService a host injects.",
+  "keywords": [
+    "officehum",
+    "pi-durable",
+    "pi-ai",
+    "pi-agent",
+    "ai-agents"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "python",
+    "requirements.lock",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officehum/officehum.git",
+    "directory": "packages/tools-paper-office"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@officehum/sdk": "0.0.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "1.6.x",
+    "@earendil-works/pi-durable": "1.6.x",
+    "@earendil-works/pi-schema": "1.6.x"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-durable": "1.6.0",
+    "@earendil-works/pi-schema": "1.6.0"
+  }
+}

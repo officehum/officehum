@@ -1,0 +1,102 @@
+{
+  "bill-wrong-total.pdf": {
+    "reading": {
+      "kind": "pdf",
+      "pages": [
+        {
+          "number": 1,
+          "text": "",
+          "hasText": false
+        }
+      ],
+      "tables": [],
+      "metadata": {
+        "pages": 1
+      },
+      "hasTextLayer": false
+    },
+    "pixels": [[1190, 1684]]
+  },
+  "scanned-bill.pdf": {
+    "reading": {
+      "kind": "pdf",
+      "pages": [
+        {
+          "number": 1,
+          "text": "",
+          "hasText": false
+        }
+      ],
+      "tables": [],
+      "metadata": {
+        "pages": 1
+      },
+      "hasTextLayer": false
+    },
+    "pixels": [[1190, 1684]]
+  },
+  "scanned-receipt.pdf": {
+    "reading": {
+      "kind": "pdf",
+      "pages": [
+        {
+          "number": 1,
+          "text": "",
+          "hasText": false
+        }
+      ],
+      "tables": [],
+      "metadata": {
+        "pages": 1
+      },
+      "hasTextLayer": false
+    },
+    "pixels": [[1190, 1684]]
+  },
+  "text-bill.pdf": {
+    "reading": {
+      "kind": "pdf",
+      "pages": [
+        {
+          "number": 1,
+          "text": "Harbourside Stationers Ltd\n21 Dock Road, Hull HU1 2AA\nInvoice no: HS-3301\nInvoice date: 2026-11-10\nDue date: 2026-12-10\nBill to: Example Trading Co., 4 Mill Lane, Leeds LS1 4AB\nDescription / Qty / Unit price / Amount\nCopier paper A4 (boxes) / 10 / 4.50 / 45.00\nToner cartridge / 1 / 120.00 / 120.00\nSubtotal: 165.00\nVAT 20%: 33.00\nTotal GBP: 198.00\nPayment terms: 30 days from the invoice date",
+          "hasText": true
+        }
+      ],
+      "tables": [],
+      "metadata": {
+        "pages": 1
+      },
+      "hasTextLayer": true
+    },
+    "pixels": [[1190, 1684]]
+  },
+  "vendor-bill.pdf": {
+    "reading": {
+      "kind": "pdf",
+      "pages": [
+        {
+          "number": 1,
+          "text": "Northwind Supplies Ltd\nInvoice NW-2041\nBill to: Example Trading Co.\nInvoice date: 2026-10-02",
+          "hasText": true
+        },
+        {
+          "number": 2,
+          "text": "Line items\nCopier paper A4, 40 boxes: 180.00\nToner cartridge, 2 units: 240.00",
+          "hasText": true
+        },
+        {
+          "number": 3,
+          "text": "Total due: 420.00 EUR\nPayment terms: 30 days from the invoice date\nBank reference: NW-2041",
+          "hasText": true
+        }
+      ],
+      "tables": [],
+      "metadata": {
+        "pages": 3
+      },
+      "hasTextLayer": true
+    },
+    "pixels": [[1190, 1684], [1190, 1684], [1190, 1684]]
+  }
+}

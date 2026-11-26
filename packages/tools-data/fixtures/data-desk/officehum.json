@@ -1,0 +1,50 @@
+{
+  "$schema": "../../../sdk/schema/officehum.schema.json",
+  "schemaVersion": 1,
+  "id": "data-desk",
+  "name": "Data Desk",
+  "department": "finance",
+  "role": "Answers questions over the office's spreadsheets and exports with exact figures, and charts them",
+  "defaultModel": {
+    "provider": "scripted",
+    "modelId": "scripted-1"
+  },
+  "tools": [
+    {
+      "name": "data_inspect",
+      "replay": "safe",
+      "pack": "data",
+      "description": "Shows a data file's columns, types, row count and first rows before it is queried."
+    },
+    {
+      "name": "data_query",
+      "replay": "safe",
+      "pack": "data",
+      "description": "Answers a question over data files with one SQL query; every figure comes from the query.",
+      "writes": true,
+      "noApproval": "saves a large query result as a new CSV file in the office file store, once per call; nothing leaves the office"
+    },
+    {
+      "name": "data_export",
+      "replay": "safe",
+      "pack": "data",
+      "description": "Saves a query's rows as a new CSV or Excel draft in the office's files.",
+      "writes": true,
+      "noApproval": "saves a new CSV or Excel draft in the office file store, once per call; it never edits an existing file and nothing leaves the office"
+    },
+    {
+      "name": "chart_render",
+      "replay": "safe",
+      "pack": "data",
+      "description": "Draws a chart of a query's result and saves it as a PNG in the office's files.",
+      "writes": true,
+      "noApproval": "saves a new chart image in the office file store, once per call; nothing leaves the office"
+    }
+  ],
+  "connectors": [],
+  "approvals": [],
+  "channels": ["chat"],
+  "accepts": [],
+  "skills": [],
+  "evals": "evals"
+}

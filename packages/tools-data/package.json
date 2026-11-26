@@ -1,0 +1,66 @@
+{
+  "name": "@officehum/tools-data",
+  "version": "0.0.0",
+  "description": "Portable data and spreadsheets pack: questions over CSV, Excel, Parquet and JSON files answered by DuckDB, exported as CSV or Excel, and charted with Vega-Lite.",
+  "keywords": [
+    "officehum",
+    "pi-durable",
+    "pi-ai",
+    "pi-agent",
+    "ai-agents"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./pack": {
+      "types": "./dist/pack.d.ts",
+      "import": "./dist/pack.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officehum/officehum.git",
+    "directory": "packages/tools-data"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "2.0.0-r.1",
+    "@officehum/sdk": "0.0.0",
+    "@officehum/tools-documents": "0.0.0",
+    "@officehum/tools-paper-office": "0.0.0",
+    "@resvg/resvg-js": "2.6.2",
+    "vega": "6.4.0",
+    "vega-lite": "6.5.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "1.6.x",
+    "@earendil-works/pi-durable": "1.6.x",
+    "@earendil-works/pi-schema": "1.6.x"
+  },
+  "devDependencies": {
+    "@earendil-works/chord": "1.6.0",
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-durable": "1.6.0",
+    "@earendil-works/pi-schema": "1.6.0"
+  }
+}

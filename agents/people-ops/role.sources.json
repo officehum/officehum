@@ -1,0 +1,791 @@
+{
+  "schema": 1,
+  "role": "people-ops",
+  "researchedOn": "2026-11-05",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/43-4161.00",
+      "title": "O*NET OnLine: Human Resources Assistants, Except Payroll and Timekeeping (43-4161.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.bls.gov/ooh/office-and-administrative-support/information-clerks.htm",
+      "title": "BLS Occupational Outlook Handbook: Information Clerks (including human resources assistants)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.bls.gov/ooh/business-and-financial/human-resources-specialists.htm",
+      "title": "BLS Occupational Outlook Handbook: Human Resources Specialists",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.onetonline.org/link/summary/13-1071.00",
+      "title": "O*NET OnLine: Human Resources Specialists (13-1071.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.onetonline.org/link/summary/11-3121.00",
+      "title": "O*NET OnLine: Human Resources Managers (11-3121.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S6",
+      "url": "https://www.dol.gov/agencies/whd/fact-sheets/28-fmla",
+      "title": "U.S. Department of Labor, Wage and Hour Division: Fact Sheet #28, The Family and Medical Leave Act",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.eeoc.gov/prohibited-employment-policiespractices",
+      "title": "U.S. EEOC: Prohibited Employment Policies/Practices",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.eeoc.gov/pre-employment-inquiries-and-medical-questions-examinations",
+      "title": "U.S. EEOC: Pre-Employment Inquiries and Medical Questions & Examinations",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S9",
+      "url": "https://www.eeoc.gov/employers/small-business/leave-policy-tips",
+      "title": "U.S. EEOC Small Business Resource Center: Leave Policy Tips",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.eeoc.gov/employers/small-business/disability-accommodations-tips",
+      "title": "U.S. EEOC Small Business Resource Center: Disability Accommodations Tips",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.eeoc.gov/employers/small-business/preventing-retaliation",
+      "title": "U.S. EEOC Small Business Resource Center: Preventing Retaliation",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.eeoc.gov/employers/small-business/tips-small-businesses",
+      "title": "U.S. EEOC Small Business Resource Center: Tips for Small Businesses",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S13",
+      "url": "https://www.eeoc.gov/employers/recordkeeping-requirements",
+      "title": "U.S. EEOC: Recordkeeping Requirements",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S14",
+      "url": "https://www.ftc.gov/business-guidance/resources/protecting-personal-information-guide-business",
+      "title": "U.S. Federal Trade Commission: Protecting Personal Information, A Guide for Business",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S15",
+      "url": "https://www.uscis.gov/i-9-central/complete-and-correct-form-i-9",
+      "title": "USCIS I-9 Central: Completing Form I-9",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S16",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/guidance/business-processes/hire-to-retire-areas",
+      "title": "Microsoft Learn: Overview of the hire to retire business process areas (Dynamics 365)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S17",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/human-resources/hr-leave-and-absence-overview",
+      "title": "Microsoft Learn: Leave and absence overview (Dynamics 365 Human Resources)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S18",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/human-resources/hr-leave-and-absence-plans",
+      "title": "Microsoft Learn: Create a leave and absence plan (Dynamics 365 Human Resources)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S19",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/human-resources/hr-employee-self-service-request-time-off",
+      "title": "Microsoft Learn: Request time off (Dynamics 365 Human Resources)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S20",
+      "url": "https://help.homerun.co/en/articles/4965971-moving-candidates-to-a-different-stage-in-the-hiring-process",
+      "title": "Homerun Help Center: Moving candidates to a different stage in the hiring process",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Process, verify, and maintain personnel related documentation, including staffing, recruitment, training, grievances, performance evaluations, classifications, and employee leaves of absence."
+        },
+        {
+          "source": "S2",
+          "passage": "They maintain personnel records on employees, including their addresses, employment history, and performance evaluations."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Human resources assistants provide administrative support to human resources managers."
+        },
+        {
+          "source": "S3",
+          "passage": "Human resources specialists recruit, screen, and interview job applicants and place newly hired workers in jobs. They also may handle compensation and benefits, training, and employee relations."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Explain company personnel policies, benefits, and procedures to employees or job applicants."
+        },
+        {
+          "source": "S3",
+          "passage": "help guide employees through human resources procedures and answer questions about an organization's policies."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Integrity. Information clerks, particularly human resources assistants, have access to confidential information. They must be trusted to adhere to the applicable confidentiality and privacy rules governing the dissemination of this information."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Arrange for advertising or posting of job vacancies and notify eligible workers of position availability."
+        },
+        {
+          "source": "S2",
+          "passage": "They may post information about job openings"
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Select applicants meeting specified job requirements and refer them to hiring personnel."
+        },
+        {
+          "source": "S4",
+          "passage": "Review employment applications and job orders to match applicants with job requirements."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Contact job applicants to inform them of the status of their applications."
+        },
+        {
+          "source": "S1",
+          "passage": "Inform job applicants of their acceptance or rejection of employment."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "It includes planning, budgeting, and managing headcount, recruiting, screening candidates, planning and managing interviews, and creating and managing offers."
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Prepare and set up for new employee orientations."
+        },
+        {
+          "source": "S4",
+          "passage": "Schedule or conduct new employee orientations."
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "It includes welcoming new employees, assigning them initial tasks, notifying other departments, coordinating with other departments, and completing forms and essential paperwork."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "All employers must complete and retain Form I-9, Employment Eligibility Verification, for every person they hire for employment after Nov. 6, 1986, in the U.S. as long as the person works for pay or other type of payment."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Prepare or maintain employment records related to events, such as hiring, termination, leaves, transfers, or promotions, using human resources management system software."
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "It includes processes to define and manage employee time off, request, review, and approve time off, and record employee absences."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Examine employee files to answer inquiries and provide information for personnel actions."
+        },
+        {
+          "source": "S1",
+          "passage": "Search employee files to obtain information for authorized persons and organizations, such as credit bureaus and finance companies."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Compile and prepare reports and documents pertaining to personnel activities."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Maintain and update human resources documents, such as organizational charts, employee handbooks or directories, or performance evaluation forms."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Arrange for in-house and external training activities."
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Conduct exit interviews and ensure that necessary employment termination paperwork is completed."
+        },
+        {
+          "source": "S14",
+          "passage": "Have a procedure in place for making sure that workers who leave your employ or transfer to another part of the company no longer have access to sensitive information."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Move candidates to different stages to track their journey, keep an overview of the job and maintain a structured workflow."
+        },
+        {
+          "source": "S20",
+          "passage": "If you decide it's time to move a candidate to another stage after reviewing the application, a phone call or an interview"
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "If you've discovered a candidate isn't a fit for your company or for the job profile, check out this article on how to disqualify candidates."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "This business process area involves onboarding new employees into the company."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "Define leave and absence plans in Dynamics 365 Human Resources for each type of leave you offer. Leave and absence plans can accrue at different frequencies, such as annually, monthly, or semimonthly."
+        },
+        {
+          "source": "S18",
+          "passage": "Accruals determine when and how often an employee is awarded time off."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "you can submit requests for time off, view your vacation and leave balances, and see the status of your leave requests."
+        },
+        {
+          "source": "S19",
+          "passage": "Enter information for Leave type, Reason code, Start date, and End date."
+        },
+        {
+          "source": "S19",
+          "passage": "To view your approved time off requests, select Approved time off. To view your pending time off requests, select Time off requests."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "A reasonable accommodation is any change in the workplace (or in the ways things are usually done) to help a person with a disability apply for a job, perform the duties of a job, or enjoy the benefits and privileges of employment."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "The FMLA provides eligible employees of covered employers with job-protected leave for qualifying family and medical reasons"
+        },
+        {
+          "source": "S6",
+          "passage": "Private-sector employers who employ 50 or more employees in 20 or more workweeks in either the current calendar year or previous calendar year,"
+        },
+        {
+          "source": "S6",
+          "passage": "Some States have their own family and medical leave laws."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "The law also requires that the employers keep all medical records and information confidential and in separate medical files."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Follow the \"principle of least privilege.\" That means each employee should have access only to those resources needed to do their particular job."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Require managers to respond promptly to leave requests. If a prompt response is not possible, consider periodically updating the employee on the status of his request."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Explain the circumstances under which leave is available, the eligibility requirements for leave, the procedures for requesting leave and the respective responsibilities of the business and the employee during and after the leave period."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "You may be required to provide medical or religious leave even if you do not have a leave policy, the employee requesting leave has not earned enough leave, or the employee has exhausted her leave"
+        },
+        {
+          "source": "S6",
+          "passage": "Employees do not have to specifically ask for FMLA leave but do need to provide enough information so the employer is aware the leave may be covered by the FMLA."
+        },
+        {
+          "source": "S10",
+          "passage": "The request does not have to be in writing, and does not have to include the terms \"reasonable accommodation,\" \"Americans with Disabilities Act,\" or \"disability.\""
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "To prevent misunderstandings, consider recommending that decisions to modify or deny leave requests be explained to the employee."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Consider recommending that a manager meet with the employee requesting leave and the employee's manager if necessary to clarify the leave request or to solicit other relevant information. For example, it may be helpful to discuss the employee's current workload, upcoming deadlines and temporary transfer of responsibilities."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Don't automatically refuse an accommodation request or have an inflexible policy that doesn't allow for exceptions. Review each request individually."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Make it office policy to independently verify any emails requesting sensitive information. When verifying, do not reply to the email and do not use links, phone numbers, or websites contained in the email."
+        },
+        {
+          "source": "S14",
+          "passage": "Train them to be suspicious of unknown callers claiming to need account numbers to process an order or asking for customer or employee contact information."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The law forbids discrimination in every aspect of employment."
+        },
+        {
+          "source": "S7",
+          "passage": "For example, a help-wanted ad that seeks \"females\" or \"recent college graduates\" may discourage men and people over 40 from applying and may violate the law."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "As a general rule, the information obtained and requested through the pre-employment process should be limited to those essential for determining if a person is qualified for the job"
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "An employer also may not ask a job applicant to answer medical questions or take a medical exam before making a job offer."
+        },
+        {
+          "source": "S7",
+          "passage": "Employers are explicitly prohibited from making pre-offer inquiries about disability."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Require that managers keep genetic information or medical information received as a result of a leave request confidential and in a separate medical file."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Limit access to personal information to employees with a \"need to know.\""
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "If you don't have a legitimate business need for sensitive personally identifying information, don't keep it. In fact, don't even collect it. If you have a legitimate business need for the information, keep it only as long as it's necessary."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "develop a written records retention policy to identify what information must be kept, how to secure it, how long to keep it, and how to dispose of it securely when you no longer need it."
+        },
+        {
+          "source": "S13",
+          "passage": "EEOC Regulations require that employers keep all personnel or employment records for one year."
+        },
+        {
+          "source": "S13",
+          "passage": "Once a charge is filed, these records must be kept until the final disposition of the charge or any lawsuit based on the charge."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Treat the employee as if he had never reported discrimination, assisted with a discrimination investigation or lawsuit or opposed discrimination."
+        },
+        {
+          "source": "S6",
+          "passage": "An employer cannot threaten, discriminate against, punish, suspend, or fire an employee because he or she requested or used FMLA leave."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Ensure that employee policies are followed and enforced consistently."
+        },
+        {
+          "source": "S7",
+          "passage": "an employer may not discriminate, for example, when granting breaks, approving leave, assigning work stations, or setting any other term or condition of employment"
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Attention to Detail - A tendency to be detail-oriented, organized, and thorough in completing work."
+        },
+        {
+          "source": "S3",
+          "passage": "Specialists must pay attention to detail when evaluating applicants' qualifications, doing background checks, maintaining records of an employee grievance, and ensuring that a workplace complies with labor standards."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Communication skills. Information clerks must be able to explain policies and procedures clearly to customers and the public."
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "They also ensure that all human resources functions comply with federal, state, and local regulations."
+        },
+        {
+          "source": "S9",
+          "passage": "These tips are based on federal employment discrimination laws. Other laws, such as workers' compensation laws and family and medical leave laws, may also apply to your business."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Human resources software - Human resource management software HRMS"
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "you can move a single candidate to another stage, or you can move multiple candidates at once."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "It also provides workflows for managing requests and an intuitive self-service page for employees to request time off."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Create a working time calendar Create a leave request workflow Configure the Absence manager role"
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Perform difficult staffing duties, including dealing with understaffing, refereeing disputes, firing employees, and administering disciplinary procedures."
+        },
+        {
+          "source": "S12",
+          "passage": "Unfortunately, it may be necessary for you to discipline or terminate an employee."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Analyze and modify compensation and benefits policies to establish competitive programs and ensure compliance with legal requirements."
+        },
+        {
+          "source": "S16",
+          "passage": "It includes processes to define compensation policies, perform compensation market research, establish pay for a new worker, process compensation plans, review and approve compensation, request a compensation change, and pay for performance."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Select qualified job applicants or refer them to managers, making hiring recommendations when appropriate."
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Provide an effective accommodation, unless doing so requires significant difficulty or expense, changing fundamental job duties, lowering production or performance standards or tolerating misconduct."
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Address employee relations issues, such as harassment allegations, work complaints, or other employee concerns."
+        },
+        {
+          "source": "S5",
+          "passage": "Serve as a link between management and employees by handling questions, interpreting and administering contracts and helping resolve work-related problems."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Confer with management to develop or implement personnel policies or procedures."
+        },
+        {
+          "source": "S5",
+          "passage": "Advise managers on organizational policy matters, such as equal employment opportunity and sexual harassment, and recommend needed changes."
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Maintain records and compile statistical reports concerning personnel-related data such as hires, transfers, performance appraisals, and absenteeism rates."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Analytics help your organization measure and monitor leave balances and usage for your leave plans."
+        }
+      ]
+    }
+  ]
+}

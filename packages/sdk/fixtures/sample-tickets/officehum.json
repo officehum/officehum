@@ -1,0 +1,65 @@
+{
+  "$schema": "../../schema/officehum.schema.json",
+  "schemaVersion": 1,
+  "id": "sample-tickets",
+  "name": "Sample Tickets",
+  "department": "operations",
+  "role": "Opens tickets in the tracker for problems clients report",
+  "defaultModel": { "provider": "anthropic", "modelId": "claude-sonnet-5-5" },
+  "runtimes": [{ "name": "node", "version": ">=22" }],
+  "mcpServers": {
+    "tickets": {
+      "transport": "stdio",
+      "command": ["node", "./server/tickets-server.mjs"],
+      "env": ["TICKETS_TOKEN"]
+    }
+  },
+  "tools": [
+    {
+      "name": "create_ticket",
+      "replay": "unsafe",
+      "description": "Open a ticket in the tracker for a problem a client reported.",
+      "mcp": { "server": "tickets", "tool": "create_ticket", "idempotencyArg": "request_id" },
+      "parameters": {
+        "title": {
+          "type": "string",
+          "description": "One line naming the problem",
+          "required": true
+        },
+        "body": { "type": "string", "description": "What the client said, in their words" },
+        "priority": {
+          "type": "string",
+          "description": "How soon it needs attention",
+          "required": true,
+          "enum": ["low", "normal", "urgent"]
+        }
+      },
+      "guidelines": ["Quote the ticket id the tracker returns."]
+    }
+  ],
+  "connectors": [],
+  "approvals": [
+    {
+      "id": "urgent_ticket",
+      "tool": "create_ticket",
+      "description": "Urgent tickets page the on-call engineer",
+      "when": [{ "arg": "priority", "op": "eq", "value": "urgent" }]
+    }
+  ],
+  "channels": ["chat"],
+  "accepts": [
+    {
+      "type": "ticket.open",
+      "description": "Open a ticket for a reported problem",
+      "done": [{ "person": true }]
+    }
+  ],
+  "skills": [],
+  "mayNot": [
+    {
+      "action": "Say a ticket was opened without the tracker's ticket id",
+      "instead": "call create_ticket and quote the id it returns"
+    }
+  ],
+  "evals": "evals"
+}

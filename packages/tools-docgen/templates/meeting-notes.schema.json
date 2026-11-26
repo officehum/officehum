@@ -1,0 +1,89 @@
+{
+  "title": "Meeting notes",
+  "description": "Notes of a meeting: title, date, attendees, optional absentees and agenda, notes by topic, decisions and actions with owners.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "date", "attendees", "notes"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "date": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "attendees": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+    },
+    "absent": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+    },
+    "agenda": {
+      "type": "array",
+      "maxItems": 30,
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+    },
+    "notes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["topic", "points"],
+        "properties": {
+          "topic": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "points": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 30,
+            "items": { "type": "string", "minLength": 1, "maxLength": 2000 }
+          }
+        }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "maxItems": 30,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    },
+    "actions": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["owner", "task"],
+        "properties": {
+          "owner": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "task": { "type": "string", "minLength": 1, "maxLength": 1000 },
+          "due": { "type": "string", "minLength": 1, "maxLength": 64 }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "title": "Weekly operations meeting",
+      "date": "24 November 2026",
+      "attendees": ["Sam Rivera", "Priya Shah", "Tom Okafor"],
+      "absent": ["Jordan Lee"],
+      "agenda": ["Deliveries", "Holiday rota"],
+      "notes": [
+        {
+          "topic": "Deliveries",
+          "points": ["Two late deliveries last week, both from one carrier."]
+        },
+        { "topic": "Holiday rota", "points": ["Cover is agreed for 26 and 27 December."] }
+      ],
+      "decisions": ["Move the Friday route to the second carrier for December."],
+      "actions": [
+        {
+          "owner": "Priya Shah",
+          "task": "Tell the carrier about the change",
+          "due": "26 November 2026"
+        }
+      ]
+    }
+  ]
+}

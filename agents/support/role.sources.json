@@ -1,0 +1,794 @@
+{
+  "schema": 1,
+  "role": "support",
+  "researchedOn": "2026-11-05",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/43-4051.00",
+      "title": "O*NET OnLine: Customer Service Representatives (43-4051.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/details/43-4051.00",
+      "title": "O*NET OnLine (details): Customer Service Representatives (43-4051.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.bls.gov/ooh/office-and-administrative-support/customer-service-representatives.htm",
+      "title": "BLS Occupational Outlook Handbook: Customer Service Representatives",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.onetonline.org/link/summary/43-1011.00",
+      "title": "O*NET OnLine: First-Line Supervisors of Office and Administrative Support Workers (43-1011.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.ombudsman.org.uk/about-us/our-principles/principles-good-complaint-handling/getting-it-right",
+      "title": "Parliamentary and Health Service Ombudsman: Principles of Good Complaint Handling, Getting it right",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S6",
+      "url": "https://www.ombudsman.org.uk/about-us/our-principles/principles-good-complaint-handling/being-customer-focused",
+      "title": "Parliamentary and Health Service Ombudsman: Principles of Good Complaint Handling, Being customer focused",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.ombudsman.org.uk/about-us/our-principles/principles-good-complaint-handling/being-open-and-accountable",
+      "title": "Parliamentary and Health Service Ombudsman: Principles of Good Complaint Handling, Being open and accountable",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.ombudsman.org.uk/about-us/our-principles/principles-good-complaint-handling/acting-fairly-and-proportionately",
+      "title": "Parliamentary and Health Service Ombudsman: Principles of Good Complaint Handling, Acting fairly and proportionately",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S9",
+      "url": "https://www.ombudsman.org.uk/about-us/our-principles/principles-good-complaint-handling/putting-things-right",
+      "title": "Parliamentary and Health Service Ombudsman: Principles of Good Complaint Handling, Putting things right",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.ombudsman.org.uk/about-us/our-principles/principles-good-complaint-handling/seeking-continuous-improvement",
+      "title": "Parliamentary and Health Service Ombudsman: Principles of Good Complaint Handling, Seeking continuous improvement",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.ombudsman.org.uk/about-us/our-principles/principles-remedy/summary",
+      "title": "Parliamentary and Health Service Ombudsman: Principles for Remedy, Summary",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.ombudsman.org.uk/about-us/our-principles/principles-remedy/getting-it-right",
+      "title": "Parliamentary and Health Service Ombudsman: Principles for Remedy, Getting it right",
+      "kind": "government",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S13",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/guidance/business-processes/case-to-resolution-areas",
+      "title": "Microsoft Learn: Overview of the case to resolution business process areas (Dynamics 365)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S14",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/customer-service/use/customer-service-hub-user-guide-resolve-cancel-reassign-a-case",
+      "title": "Microsoft Learn: Resolve, cancel, and reassign cases (Dynamics 365 Customer Service)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S15",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/guidance/resources/analytics-get-started",
+      "title": "Microsoft Learn: Get started with analytics for digital call centers (Dynamics 365)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S16",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/customer-service/administer/create-standard-sla",
+      "title": "Microsoft Learn: Create standard SLAs (Dynamics 365 Customer Service)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S17",
+      "url": "https://knowledge.hubspot.com/properties/hubspots-default-ticket-properties",
+      "title": "HubSpot Knowledge Base: HubSpot's default ticket properties",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    },
+    {
+      "id": "S18",
+      "url": "https://knowledge.hubspot.com/object-settings/set-up-and-customize-pipelines",
+      "title": "HubSpot Knowledge Base: Set up and manage object pipelines",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-05"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Interact with customers to provide basic or scripted information in response to routine inquiries about products and services. May handle and resolve general complaints."
+        },
+        {
+          "source": "S3",
+          "passage": "Customer service representatives interact with customers to handle complaints, process orders, and answer questions."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Communicating with People Outside the Organization - Communicating with people outside the organization, representing the organization to customers, the public, government, and other external sources."
+        },
+        {
+          "source": "S3",
+          "passage": "They typically provide services by phone, but some also interact with customers face to face, by email or text, via live chat, and through social media."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Representatives help companies retain customers by professionally answering questions and helping to resolve complaints."
+        },
+        {
+          "source": "S3",
+          "passage": "By doing so, representatives contribute to customer loyalty and retention."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Provide employees with guidance in handling difficult or complex problems or in resolving escalated complaints or disputes."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Listen to customers' questions and concerns and provide answers or responses"
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Confer with customers by telephone or in person to provide information about products or services, take or enter orders, cancel accounts, or obtain details of complaints."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Obtain and examine all relevant information to assess validity of complaints and to determine possible causes"
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Review customer accounts and make changes, if necessary"
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Keep records of customer interactions or transactions, recording details of inquiries, complaints, or comments, as well as actions taken."
+        },
+        {
+          "source": "S3",
+          "passage": "Record details of customer contacts and actions taken"
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Refer unresolved customer grievances to designated departments for further investigation."
+        },
+        {
+          "source": "S3",
+          "passage": "Refer customers to supervisors or more experienced employees"
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Contact customers to respond to inquiries or to notify them of claim investigation results or any planned adjustments."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Check to ensure that appropriate changes were made to resolve customers' problems."
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Resolve customers' service or billing complaints by performing activities such as exchanging merchandise, refunding money, or adjusting bills."
+        },
+        {
+          "source": "S11",
+          "passage": "Operating a proper system of accountability and delegation in providing remedies."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Recommend improvements in products, packaging, shipping, service, or billing methods and procedures to prevent future problems."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "If you don't have enough information to resolve a case, or if you think another member in your team has expertise on the subject, you can assign the case to another user or team."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Cases must include relevant information such as customer information, case description, and priority level."
+        },
+        {
+          "source": "S17",
+          "passage": "Priority: the level of attention needed on the ticket."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Ticket status: the pipeline status that contains this ticket."
+        },
+        {
+          "source": "S18",
+          "passage": "Tickets: a default Support Pipeline with four ticket statuses: New, Waiting on contact, Waiting on us, Closed."
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Resolution: the action taken to resolve the ticket."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "SLA KPIs are performance indicators that you'd like to track. For example, First Response or Resolve By."
+        },
+        {
+          "source": "S17",
+          "passage": "Time to first response SLA due date: the date the ticket must have its first response by to meet the SLA."
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Refer customers to supervisors or more experienced employees"
+        },
+        {
+          "source": "S4",
+          "passage": "Provide employees with guidance in handling difficult or complex problems or in resolving escalated complaints or disputes."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "There is a wide range of appropriate responses to a complaint that has been upheld. These include: an apology, explanation and acknowledgement of responsibility remedial action"
+        },
+        {
+          "source": "S9",
+          "passage": "financial compensation for direct or indirect financial loss, loss of opportunity, inconvenience, distress, or any combination of these."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "First-call resolution (FCR) rate: Aim to resolve customer issues during the first interaction."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "This includes creating articles, how-to guides, and other resources to help agents resolve cases quickly and accurately."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Acknowledge the complaint and tell the complainant how long they can expect to wait to receive a reply."
+        },
+        {
+          "source": "S6",
+          "passage": "keep the complainant regularly informed about progress and the reasons for any delays, and provide a point of contact throughout the course of the complaint."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Listen to and consider the complainant's views, asking them to clarify where necessary, to make sure the public body understands clearly what the complaint is about and the outcome the complainant wants."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "This business process area involves logging cases in the system when the available content and transactions aren't enough to fulfill customer or employee needs."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Investigate complaints thoroughly and fairly, basing their decisions on the available facts and evidence, and avoiding undue delay."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Ask a member of staff who was not involved in the events leading to the complaint to review the case."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "It includes activities such as reassigning cases to appropriate teams or individuals, engaging in customer conversations, tracking tasks and case information, and using knowledge base articles and similar cases to find solutions."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "If possible, returning the complainant and, where appropriate, others who have suffered similar injustice or hardship, to the position they would have been in if the maladministration or poor service had not occurred. If that is not possible, compensating the complainant and such others appropriately."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "In many cases, a prompt explanation and an apology will be a sufficient and appropriate response and will prevent the complaint escalating."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Public bodies should make it clear to complainants when they have provided their final response to a complaint."
+        },
+        {
+          "source": "S5",
+          "passage": "provide clear and accurate information about the next stage of the complaint process so the complainant is clear about what to do next if they remain dissatisfied."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Public bodies should have systems to record, analyse and report on the learning from complaints."
+        },
+        {
+          "source": "S10",
+          "passage": "tell the complainant when lessons have been learnt as a result of their complaint state any changes they have made to prevent the problem recurring."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Be open and honest when accounting for their decisions and actions. They should give clear, evidence-based explanations, and reasons for their decisions. When things have gone wrong, public bodies should explain fully and say what they will do to put matters right as quickly as possible."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Resolving problems and complaints as soon as possible is best for both complainants and public bodies."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Use language that is easy to understand"
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Public bodies should deal with complaints objectively, fairly and consistently, so that similar circumstances are handled similarly."
+        },
+        {
+          "source": "S8",
+          "passage": "ensure the response to an individual complaint is proportionate to the circumstances."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Seek to ensure, where a complaint relates to an ongoing relationship between the public body and complainant, that staff do not treat the complainant any differently during or after the complaint."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Act fairly towards staff as well as customers. This means ensuring members of staff know they have been complained about and, where appropriate, have an opportunity to respond."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "The public body should also ensure they keep any commitments to provide remedies, including ensuring they do not repeat any failures."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "It can benefit the public body as well as the complainant, by showing its willingness to: acknowledge when things have gone wrong accept responsibility learn from its maladministration or poor service put things right."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Representatives should be patient and polite, especially when interacting with dissatisfied customers."
+        },
+        {
+          "source": "S2",
+          "passage": "Self-Control - A tendency to remain calm and composed and to manage emotions effectively in response to criticism or difficult situations at work."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Dependability - A tendency to be reliable, responsible, and consistent in meeting work-related obligations."
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "respect the privacy of personal and confidential information, as the law requires."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "A minority of complainants can be unreasonably persistent or behave unacceptably in pursuing their complaints. Public bodies should have arrangements for managing unacceptable behaviour."
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Customer relationship management CRM software - Blackbaud The Raiser's Edge; Salesforce software"
+        },
+        {
+          "source": "S2",
+          "passage": "Contact center software - Multi-channel contact center software"
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Customer service representatives typically use a telephone, computer, and other office equipment."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Ticket description: full description of the ticket issue. Ticket name: short summary of the ticket."
+        },
+        {
+          "source": "S17",
+          "passage": "Source: channel where ticket was originally submitted."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "These records should include the evidence considered and the reasons for decisions."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Due soon: the first response should be completed soon in order to meet the ticket's SLA. Overdue: the first response to the ticket is overdue based on the SLA."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Business Hours: Select a customer service schedule record that defines your support organization's business hours."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Resolve customer complaints or answer customers' questions regarding policies and procedures."
+        },
+        {
+          "source": "S4",
+          "passage": "Provide employees with guidance in handling difficult or complex problems or in resolving escalated complaints or disputes."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Operating a proper system of accountability and delegation in providing remedies."
+        },
+        {
+          "source": "S5",
+          "passage": "They should be supported by clear lines of authority and decision making that are flexible enough to respond to complaints effectively and authoritatively."
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "When deciding the level of financial compensation, public bodies should consider: the nature of the complaint the impact on the complainant how long it took to resolve the complaint the trouble the complainant was put to in pursuing it."
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "Senior managers should: set the complaint handling policy, and own both the policy and the process"
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Implement corporate or departmental policies, procedures, and service standards in conjunction with management."
+        },
+        {
+          "source": "S13",
+          "passage": "It also covers establishing case routing and distribution rules, and defining service level agreements (SLAs) to ensure timely and effective resolution of customer issues."
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Measure the percentage of calls or cases that are successfully resolved without the need for further follow-up."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Customer satisfaction (CSAT) score: Implement customer satisfaction surveys or post-call feedback mechanisms to measure customer happiness with the service that is provided."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Service level agreement (SLA) compliance: Set a goal to have a specific percentage of calls answered within a specific timeframe."
+        },
+        {
+          "source": "S17",
+          "passage": "SLA completed on time: the ticket's first response occurred within the SLA time frame."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Time to close: the time between when the ticket was created and closed."
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "This should include reporting on the number of complaints received and the outcome of those complaints."
+        },
+        {
+          "source": "S10",
+          "passage": "enable public bodies to identify patterns in complaints."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "You can use this property in reporting to identify trends in support ticket topics."
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Average handle time (AHT): Set a target for the average duration of each customer interaction, including talk time and after-call work."
+        }
+      ]
+    }
+  ]
+}

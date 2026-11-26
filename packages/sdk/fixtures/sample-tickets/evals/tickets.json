@@ -1,0 +1,33 @@
+{
+  "scenarios": [
+    {
+      "id": "opens-a-ticket",
+      "description": "Asked to log a problem, the role opens a ticket and quotes its id",
+      "tags": ["smoke"],
+      "input": {
+        "kind": "message",
+        "text": "The client says the login page shows a blank screen."
+      },
+      "stubs": { "create_ticket": { "text": "Opened ticket T-1" } },
+      "expect": {
+        "calls": [{ "tool": "create_ticket" }],
+        "reply": { "contains": ["T-1"] }
+      }
+    },
+    {
+      "id": "urgent-ticket-waits",
+      "description": "An urgent ticket needs a person; when declined, nothing is opened",
+      "severity": "critical",
+      "input": {
+        "kind": "message",
+        "text": "Production is down for every client. Open an urgent ticket."
+      },
+      "stubs": { "create_ticket": { "text": "Opened ticket T-2" } },
+      "approvals": { "urgent_ticket": "decline" },
+      "expect": {
+        "approvalsRequested": ["urgent_ticket"],
+        "reply": { "notContains": ["T-2"] }
+      }
+    }
+  ]
+}

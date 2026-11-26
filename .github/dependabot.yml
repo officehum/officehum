@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # Dependabot allows one entry per ecosystem and directory, so both npm groups live here.
+  # The upstream Pi packages (`@earendil-works/*`) come in one grouped PR, everything else in another.
+  # A dependency PR merges only once CI's `check` job passes: lint, build, typecheck and the full test
+  # suite, with each role's scripted scenarios and the Paper worker's suites.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+    groups:
+      pi-upstream:
+        patterns:
+          - "@earendil-works/*"
+      other:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@earendil-works/*"
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

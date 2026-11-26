@@ -1,0 +1,145 @@
+/**
+ * Input validation for everything the pack accepts: leases, run requests, ledger records and worker
+ * answers. All of it is untrusted — a lease can come from a host workflow, a worker answer from a
+ * subprocess — so every shape is checked with exact keys and explicit types rather than trusted.
+ */
+
+import { type DocumentRefusalCode, refusal } from "./errors.js";
+
+const FILE_ID = /^file_[0-9A-HJKMNP-TV-Z]{26}$/u;
+const HASH = /^[0-9a-f]{64}$/u;
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
+  );
+}
+
+export function record(
+  value: unknown,
+  message: string,
+  code: DocumentRefusalCode = "invalid-request",
+): Record<string, unknown> {
+  if (!isRecord(value)) throw refusal(code, message);
+  return value;
+}
+
+export function exactKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  message: string,
+  code: DocumentRefusalCode = "invalid-request",
+): void {
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) throw refusal(code, message);
+  }
+}
+
+/**
+ * A template reference, `{ name, version }`, held to the FileStore's metadata rule (non-blank, at
+ * most 128 bytes, no control characters) so a run never plans an output the store would refuse.
+ */
+export function templateRef(
+  value: unknown,
+  code: DocumentRefusalCode = "invalid-request",
+): { readonly name: string; readonly version: string } {
+  const entry = record(value, "a template must be an object with a name and a version", code);
+  exactKeys(entry, ["name", "version"], "a template carries only a name and a version", code);
+  for (const key of ["name", "version"] as const) {
+    const field = entry[key];
+    if (
+      typeof field !== "string" ||
+      field.trim() === "" ||
+      /\p{Cc}/u.test(field) ||
+      Buffer.byteLength(field, "utf8") > 128
+    ) {
+      throw refusal(code, `a template ${key} must be a non-blank string of at most 128 bytes`);
+    }
+  }
+  return { name: entry.name as string, version: entry.version as string };
+}
+
+/** A bounded, printable label: a task id, policy version, operation id or library version. */
+export function assertLabel(
+  value: unknown,
+  what: string,
+  code: DocumentRefusalCode = "invalid-request",
+): asserts value is string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    /\p{Cc}/u.test(value) ||
+    Buffer.byteLength(value, "utf8") > 256
+  ) {
+    throw refusal(code, `${what} must be a non-empty string of at most 256 bytes`);
+  }
+}
+
+export function assertFileId(
+  value: unknown,
+  what = "file id",
+  code: DocumentRefusalCode = "invalid-request",
+): asserts value is string {
+  if (typeof value !== "string" || !FILE_ID.test(value)) {
+    throw refusal(code, `${what} must be a FileStore id`);
+  }
+}
+
+export function assertHash(
+  value: unknown,
+  what = "hash",
+  code: DocumentRefusalCode = "invalid-request",
+): asserts value is string {
+  if (typeof value !== "string" || !HASH.test(value)) {
+    throw refusal(code, `${what} must be a lowercase sha256 hex digest`);
+  }
+}
+
+export function assertSize(
+  value: unknown,
+  what = "size",
+  code: DocumentRefusalCode = "invalid-request",
+): asserts value is number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw refusal(code, `${what} must be a non-negative integer`);
+  }
+}
+
+/**
+ * A single path segment: the only name shape the workspace accepts for an input or an output. A
+ * lease never grants a directory, so a name that could traverse (`/`, `\`, `..`) is refused here,
+ * before it can reach a filesystem call.
+ */
+export function assertPathSegment(
+  value: unknown,
+  what: string,
+  code: DocumentRefusalCode = "traversal",
+): asserts value is string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value === "." ||
+    value === ".." ||
+    value.includes("/") ||
+    value.includes("\\") ||
+    /\p{Cc}/u.test(value) ||
+    Buffer.byteLength(value, "utf8") > 255
+  ) {
+    throw refusal(code, `${what} must be a single path segment of at most 255 bytes`);
+  }
+}
+
+export function isNotFound(error: unknown): boolean {
+  return hasCode(error, "ENOENT");
+}
+
+export function hasCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
+export function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

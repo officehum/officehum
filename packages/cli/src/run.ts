@@ -1,0 +1,430 @@
+/**
+ * The `officehum run ROLE_DIR` pieces: a terminal approver, the app-client config reader, model
+ * selection, and the interactive loop. The command itself is wired in `cli.ts`, where the session is
+ * registered so a SIGINT closes it; everything here is pure enough to test without a TTY.
+ */
+
+import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { userInfo } from "node:os";
+import { dirname, isAbsolute, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createModels } from "@earendil-works/pi-ai/models";
+import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+import type { ModelRef } from "@earendil-works/pi-durable";
+import { PAPER_MODEL_REF, paperProvider } from "@officehum/provider-paper";
+import { type RoleRun, redactKeyErrors } from "@officehum/runner";
+import {
+  type Approver,
+  COMPANY_FACTS,
+  type CompanyPerson,
+  colleague,
+  formatIssue,
+  loadCompanyFacts,
+  type SenderResolver,
+  type VerifiedSender,
+} from "@officehum/sdk";
+import { readApprovalValue } from "./cents.js";
+import type { CliDependencies, CliIo } from "./cli.js";
+import { UsageError } from "./usage-error.js";
+
+/** Who is sitting at the terminal, for the approval audit trail. */
+export function terminalUser(): string {
+  try {
+    return userInfo().username;
+  } catch {
+    return process.env.USER ?? process.env.USERNAME ?? "unknown";
+  }
+}
+
+/**
+ * The terminal approver: prints the approval's description and arguments, reads one line, and treats
+ * only an explicit `y`/`yes` as consent. Anything else — `n`, an empty line, an unrecognized word, or
+ * end of input — declines, so a guardrail never depends on the operator meaning to say no. An approval
+ * that asks for a value then asks for it; an empty answer there declines too.
+ */
+export function terminalApprover(io: CliIo, user: string = terminalUser()): Approver {
+  return async (request) => {
+    io.output(`Approval required: ${request.description}`);
+    io.output(`Tool: ${request.tool}`);
+    io.output(`Arguments: ${JSON.stringify(request.arguments)}`);
+    const answer = (await io.readApproval("Approve? [y/n] "))?.trim().toLowerCase();
+    if (answer === "y" || answer === "yes") {
+      if (request.valueRequest === undefined) return { approved: true, by: user };
+      const value = await readApprovalValue(io, { ...request, valueRequest: request.valueRequest });
+      return value === undefined
+        ? { approved: false, by: user, note: "No amount entered at the terminal" }
+        : { approved: true, by: user, value };
+    }
+    if (answer !== "n" && answer !== "no") {
+      io.error(
+        answer === undefined
+          ? "No answer at the terminal; treating it as no."
+          : `Unrecognized answer ${JSON.stringify(answer)}; treating it as no.`,
+      );
+    }
+    return { approved: false, by: user, note: "Declined at the terminal" };
+  };
+}
+
+interface RunArguments {
+  readonly roleDir: string;
+  readonly overlays: readonly string[];
+  readonly database?: string;
+  readonly dataDir?: string;
+  readonly workDir?: string;
+  readonly model?: string;
+  readonly clientFile?: string;
+  /** Who the operator at the terminal is: a person id or email on the role's company record. */
+  readonly as?: string;
+  /** Run the role on its demonstration data when no desk is bound (`--demo`). */
+  readonly demo?: boolean;
+}
+
+const RUN_USAGE =
+  "usage: officehum run ROLE_DIR [--overlay DIR]... [--db FILE] [--data DIR] [--work DIR] [--model provider/model] [--clients FILE] [--as PERSON] [--demo]";
+
+/** Parses the run command's arguments: one positional role directory, then the flags above. */
+export function parseRunArguments(args: readonly string[]): RunArguments {
+  const overlays: string[] = [];
+  let roleDir: string | undefined;
+  let database: string | undefined;
+  let dataDir: string | undefined;
+  let workDir: string | undefined;
+  let model: string | undefined;
+  let clientFile: string | undefined;
+  let as: string | undefined;
+  let demo = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    if (token === undefined) continue;
+    if (!token.startsWith("--")) {
+      if (roleDir !== undefined)
+        throw new UsageError(`Only one role directory is allowed.\n${RUN_USAGE}`);
+      roleDir = token;
+      continue;
+    }
+    // The one flag that takes no value.
+    if (token === "--demo") {
+      demo = true;
+      continue;
+    }
+    const value = args[index + 1];
+    if (value === undefined || value.startsWith("--")) {
+      throw new UsageError(`${token} requires a value.\n${RUN_USAGE}`);
+    }
+    index += 1;
+    if (token === "--overlay") overlays.push(value);
+    else if (token === "--db") database = value;
+    else if (token === "--data") dataDir = value;
+    else if (token === "--work") workDir = value;
+    else if (token === "--model") model = value;
+    else if (token === "--clients") clientFile = value;
+    else if (token === "--as") as = value;
+    else throw new UsageError(`Unknown option: ${token}\n${RUN_USAGE}`);
+  }
+  if (roleDir === undefined) throw new UsageError(`run requires a role directory.\n${RUN_USAGE}`);
+  return {
+    roleDir,
+    overlays,
+    ...(database === undefined ? {} : { database }),
+    ...(dataDir === undefined ? {} : { dataDir }),
+    ...(workDir === undefined ? {} : { workDir }),
+    ...(model === undefined ? {} : { model }),
+    ...(clientFile === undefined ? {} : { clientFile }),
+    ...(as === undefined ? {} : { as }),
+    ...(demo ? { demo } : {}),
+  };
+}
+
+/**
+ * The banner line that says what the role's desk is: the demonstration data with `--demo`, or none
+ * bound, with how to bind one. A desk passed in `--clients` is the operator's own and needs no line.
+ */
+export function deskBanner(
+  demo: boolean | undefined,
+  clients: Readonly<Record<string, unknown>>,
+): string | undefined {
+  if ("desk" in clients) return undefined;
+  return demo === true
+    ? "Desk: demonstration data (--demo)"
+    : "Desk: none bound (a role that keeps records refuses until you pass --demo or a desk in --clients)";
+}
+
+/**
+ * The verified sender for the operator at the terminal, from `--as`. The terminal is the operator's
+ * own machine, so they say who they are; it must be a person on the company record the role reads
+ * (by id or email, as `colleague` matches an internal sender), and the role is always given that
+ * person's id, from the `terminal` channel, as an internal sender.
+ */
+export function operatorSender(
+  roleDir: string,
+  as: string,
+): { readonly sender: SenderResolver; readonly person: CompanyPerson } {
+  const url = pathToFileURL(resolve(roleDir, COMPANY_FACTS));
+  let people: readonly (CompanyPerson & { email?: string })[];
+  try {
+    const facts = loadCompanyFacts<{ people?: unknown }>(url);
+    if (!Array.isArray(facts.people)) throw new Error("it lists no people");
+    people = facts.people as (CompanyPerson & { email?: string })[];
+  } catch (error) {
+    throw new UsageError(
+      `--as needs the role's company record, and ${roleDir} has no company record at ${COMPANY_FACTS} (${error instanceof Error ? error.message : String(error)}). Run \`npm run sync-company\` for a catalog role, or leave out --as to run with the sender unknown.`,
+    );
+  }
+  const claimed: VerifiedSender = { origin: "internal", channel: "terminal", contact: as.trim() };
+  const person = colleague({ people }, claimed);
+  if (person === undefined) {
+    throw new UsageError(
+      `--as ${JSON.stringify(as)} is not anyone on the company record. Pass a person id or email from ${COMPANY_FACTS}: ${people.map((who) => who.id).join(", ")}.`,
+    );
+  }
+  const verified: VerifiedSender = { origin: "internal", channel: "terminal", contact: person.id };
+  return { sender: async () => verified, person };
+}
+
+/** Splits `provider/modelId`, with the split at the first slash so a model id may contain slashes. */
+export function parseModelRef(spec: string, flag = "--model"): ModelRef {
+  const slash = spec.indexOf("/");
+  const provider = slash === -1 ? "" : spec.slice(0, slash);
+  const modelId = slash === -1 ? "" : spec.slice(slash + 1);
+  if (provider.length === 0 || modelId.length === 0) {
+    throw new UsageError(
+      `${flag} must be provider/model, e.g. paper/${PAPER_MODEL_REF.modelId} (got ${JSON.stringify(spec)}).`,
+    );
+  }
+  return { provider, modelId };
+}
+
+/**
+ * The models the run command talks to. An injected runtime (tests, scripted provider) wins; otherwise
+ * paper and openai are the selectable providers and the credential is required before any work starts.
+ */
+export function runModels(
+  ref: ModelRef,
+  dependencies: Pick<CliDependencies, "createRunModels">,
+  command = "run",
+): { models: ReturnType<typeof createModels>; model: ModelRef } {
+  const injected = dependencies.createRunModels?.(ref);
+  if (injected !== undefined) {
+    if (injected.model.provider !== ref.provider || injected.model.modelId !== ref.modelId) {
+      throw new Error(`Injected ${command} model does not match the requested provider/model.`);
+    }
+    if (injected.models.getModel(ref.provider, ref.modelId) === undefined) {
+      throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
+    }
+    return injected;
+  }
+  return { models: liveModels([ref], command), model: ref };
+}
+
+/**
+ * The model providers the CLI runs live, as it builds them, with the variable each one's key is read
+ * from. `officehum hosts` reads each one's API host from here, so the egress allowlist names the host
+ * the runtime calls.
+ */
+export const LIVE_PROVIDERS = {
+  paper: { build: paperProvider, keyName: "PAPERINSTRUMENTS_API_KEY" },
+  openai: { build: openaiProvider, keyName: "OPENAI_API_KEY" },
+} as const;
+
+/** The live provider `id` names, or undefined when the CLI runs none by that name. */
+export function liveProvider(
+  id: string,
+): (typeof LIVE_PROVIDERS)[keyof typeof LIVE_PROVIDERS] | undefined {
+  return Object.hasOwn(LIVE_PROVIDERS, id)
+    ? LIVE_PROVIDERS[id as keyof typeof LIVE_PROVIDERS]
+    : undefined;
+}
+
+/**
+ * A host's own store of model keys (the office's): pi-ai reads each request's key from it
+ * first, and a provider it can store a key for may start with no key in the environment.
+ */
+export interface StoredModelKeys {
+  readonly credentials: NonNullable<NonNullable<Parameters<typeof createModels>[0]>["credentials"]>;
+  /** Whether the store holds, or could take, the provider's key. */
+  storable(provider: string): boolean;
+}
+
+/** Registers each live provider the refs name, after checking its credential is set. */
+export function liveModels(
+  refs: readonly ModelRef[],
+  command: string,
+  keys?: StoredModelKeys,
+): ReturnType<typeof createModels> {
+  const models = createModels(keys === undefined ? {} : { credentials: keys.credentials });
+  for (const provider of new Set(refs.map((ref) => ref.provider))) {
+    const live = liveProvider(provider);
+    if (live === undefined) {
+      throw new Error(
+        `The ${command} command runs paper or openai models, not ${JSON.stringify(provider)}. Pass --model paper/${PAPER_MODEL_REF.modelId} or openai/gpt-6-sol.`,
+      );
+    }
+    const { keyName } = live;
+    if (!process.env[keyName]?.trim() && keys?.storable(provider) !== true) {
+      throw new Error(`Set ${keyName} in your shell before running against ${provider}.`);
+    }
+    // A provider's refusal can quote the key; it never reaches the stored conversation.
+    models.setProvider(redactKeyErrors(live.build()));
+  }
+  for (const ref of refs) {
+    if (models.getModel(ref.provider, ref.modelId) === undefined) {
+      throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
+    }
+  }
+  return models;
+}
+
+type ClientEntry = { readonly module: string; readonly export?: string };
+
+/**
+ * Reads the `--clients` file: client name → the module that exports its factory. Each factory is
+ * called with no arguments and reads its own configuration from the environment, so nothing in this
+ * file can hold a credential. Only `module` and `export` are allowed per entry, and that is enforced
+ * rather than trusted.
+ */
+export async function readClientConfig(file: string): Promise<Readonly<Record<string, unknown>>> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(file, "utf8"));
+  } catch (error) {
+    throw new Error(`Could not read the --clients file ${file}: ${String(error)}.`);
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      `The --clients file ${file} must hold an object of client name → { "module": … }.`,
+    );
+  }
+  const clients: Record<string, unknown> = {};
+  for (const [name, raw] of Object.entries(parsed as Record<string, unknown>)) {
+    const entry = clientEntry(name, raw, file);
+    const specifier = entry.module;
+    const url =
+      specifier.startsWith(".") || isAbsolute(specifier)
+        ? pathToFileURL(resolve(dirname(file), specifier)).href
+        : specifier;
+    let module: Record<string, unknown>;
+    try {
+      module = (await import(url)) as Record<string, unknown>;
+    } catch (error) {
+      throw new Error(`Client "${name}" could not import ${specifier}: ${String(error)}.`);
+    }
+    const exported = entry.export === undefined ? module.default : module[entry.export];
+    if (typeof exported !== "function") {
+      throw new Error(
+        `Client "${name}": ${specifier} does not export a factory${entry.export === undefined ? "" : ` named "${entry.export}"`}.`,
+      );
+    }
+    clients[name] = (exported as () => unknown)();
+  }
+  return clients;
+}
+
+function clientEntry(name: string, raw: unknown, file: string): ClientEntry {
+  if (typeof raw === "string") return { module: raw };
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Client "${name}" in ${file} must be a module path, or { "module": … }.`);
+  }
+  const record = raw as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (key !== "module" && key !== "export") {
+      throw new Error(
+        `Client "${name}" in ${file} has an unsupported field "${key}"; only "module" and "export" are allowed, so a credential can never live in this file.`,
+      );
+    }
+  }
+  if (typeof record.module !== "string" || record.module.length === 0) {
+    throw new Error(`Client "${name}" in ${file} needs a non-empty "module".`);
+  }
+  if (record.export !== undefined && typeof record.export !== "string") {
+    throw new Error(`Client "${name}" in ${file}: "export" must be a string.`);
+  }
+  return {
+    module: record.module,
+    ...(record.export === undefined ? {} : { export: record.export }),
+  };
+}
+
+/**
+ * The idempotency key for a submitted line: a hash of the session, the line and its position. The
+ * session is part of it because positions restart with every process: without it, the first line of
+ * a later session on the same database would name the first line of an earlier one and be answered
+ * with that stored result, with nothing run.
+ */
+export function requestIdFor(session: string, line: string, position: number): string {
+  return createHash("sha256").update(`${session}\u0000${position}\u0000${line}`).digest("hex");
+}
+
+/** Prints a role-run result the way `resume` and each submitted line do. */
+export function printRunResult(result: Awaited<ReturnType<RoleRun["submit"]>>, io: CliIo): void {
+  io.output(`Submission: ${result.submissionId}`);
+  io.output(`Outcome: ${result.settlement.status}`);
+  if (result.text !== undefined && result.text.length > 0) io.output(result.text);
+  if (result.settlement.status === "unanswered") {
+    io.error(`Unanswered: ${result.settlement.reason}`);
+  }
+}
+
+async function handleSlashCommand(session: RoleRun, line: string, io: CliIo): Promise<void> {
+  const name = line.slice(1);
+  if (name === "help") {
+    io.output(
+      "Type a message to talk to the role. /commands lists operator commands, /reload re-reads overlays, /quit or Ctrl-D exits.",
+    );
+    return;
+  }
+  if (name === "reload") {
+    const issues = await session.reload();
+    if (issues.length === 0) io.output("Reloaded the role's files and overlays.");
+    else for (const issue of issues) io.error(formatIssue(issue));
+    return;
+  }
+  if (name === "commands") {
+    const commands = session.role.manifest.commands ?? [];
+    if (commands.length === 0) {
+      io.output("No operator commands.");
+      return;
+    }
+    for (const command of commands) io.output(`${command.name}: ${command.description}`);
+    return;
+  }
+  const declared = (session.role.manifest.commands ?? []).some((command) => command.name === name);
+  if (!declared) {
+    io.error(`Unknown command: /${name}. /commands lists the operator commands.`);
+    return;
+  }
+  const result = await session.command(name);
+  io.output(JSON.stringify(result, null, 2));
+}
+
+/**
+ * The interactive loop: reads lines and submits each as an idempotent submission, runs `/reload`,
+ * `/commands` and the manifest's operator commands, and exits on end of input.
+ */
+export async function runInteractive(session: RoleRun, io: CliIo): Promise<number> {
+  if (io.readLine === undefined) {
+    io.error("The run command needs a terminal to read input from.");
+    return 1;
+  }
+  const sessionId = randomUUID();
+  let position = 0;
+  for (;;) {
+    const line = await io.readLine("> ");
+    if (line === undefined) return 0;
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    if (trimmed === "/quit" || trimmed === "/exit") return 0;
+    try {
+      if (trimmed.startsWith("/")) {
+        await handleSlashCommand(session, trimmed, io);
+        continue;
+      }
+      const result = await session.submit(trimmed, requestIdFor(sessionId, trimmed, position));
+      position += 1;
+      printRunResult(result, io);
+    } catch (error) {
+      io.error(error instanceof Error ? error.message : String(error));
+    }
+  }
+}

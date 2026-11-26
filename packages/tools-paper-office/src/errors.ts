@@ -1,0 +1,107 @@
+/**
+ * A typed, inspectable refusal.
+ *
+ * Every refusal the document pack emits carries one of these codes. A worker refusal is mapped into
+ * this set: a code the pack does not know becomes `worker-refused`, so a new worker code can never
+ * widen the contract silently. The message is for a person and for the model; it never contains
+ * document content, a path outside the lease, or a secret.
+ */
+
+export const DOCUMENT_REFUSAL_CODES = [
+  // Lease and request
+  "invalid-request",
+  "invalid-lease",
+  "no-lease",
+  "lease-expired",
+  // Durable operation identity
+  "operation-collision",
+  "version-conflict",
+  "not-found",
+  "store-error",
+  // Worker reachability
+  "interpreter-missing",
+  "interpreter-version",
+  "doctor-missing",
+  "doctor-failed",
+  "worker-crash",
+  "worker-refused",
+  // Resource limits
+  "timeout",
+  "resource-limit",
+  "cpu-limit",
+  "memory-limit",
+  "file-size-limit",
+  // Lease enforcement
+  "ungranted-input",
+  "unleased-path",
+  "input-integrity",
+  "source-integrity",
+  // Output shaping
+  "undeclared-output",
+  "missing-output",
+  "output-format",
+  "output-bytes",
+  "file-count",
+  "archive-unsafe",
+  "archive-invalid",
+  "entry-name",
+  "macro-payload",
+  "external-relationship",
+  "symlink",
+  "traversal",
+  "output-invalid",
+  // Word adapter: the typed refusals paper-docx raises, mapped one-for-one so a model sees why
+  "document-protected",
+  "malformed-package",
+  "unsupported-structure",
+  "boundary-violation",
+  "target-not-found",
+  "ambiguous-target",
+  // PowerPoint adapter: the typed refusals paper-pptx raises, mapped one-for-one
+  "stale-anchor",
+  "package-limit",
+  "relationship-policy",
+  // Excel: a reference the workbook cannot resolve. A spreadsheet is the one format where a stored
+  // formula can name something that is not there, so the adapter reports one it finds and refuses an
+  // operation that would add one.
+  "broken-reference",
+  // Submitted code
+  "code-error",
+  "code-syntax",
+  "network",
+  "process",
+  // Ledger and recovery
+  "ledger-integrity",
+  "incomplete-run",
+  // Review and publication: an existing file's published pointer moves only behind a person's
+  // approval bound to the exact hashes, so the ways a publication is refused are their own codes.
+  "not-approved",
+  "denied",
+  "approval-mismatch",
+  "stale-review",
+] as const;
+
+export type DocumentRefusalCode = (typeof DOCUMENT_REFUSAL_CODES)[number];
+
+const KNOWN_CODES: ReadonlySet<string> = new Set(DOCUMENT_REFUSAL_CODES);
+
+/** The code to report for a worker-supplied one: unknown worker codes collapse to `worker-refused`. */
+export function refusalCodeFromWorker(value: unknown): DocumentRefusalCode {
+  return typeof value === "string" && KNOWN_CODES.has(value)
+    ? (value as DocumentRefusalCode)
+    : "worker-refused";
+}
+
+export class DocumentError extends Error {
+  constructor(
+    readonly code: DocumentRefusalCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "DocumentError";
+  }
+}
+
+export function refusal(code: DocumentRefusalCode, message: string): DocumentError {
+  return new DocumentError(code, message);
+}

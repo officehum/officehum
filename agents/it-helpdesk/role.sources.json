@@ -1,0 +1,1021 @@
+{
+  "schema": 1,
+  "role": "it-helpdesk",
+  "researchedOn": "2026-11-22",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/15-1232.00",
+      "title": "O*NET OnLine: Computer User Support Specialists (15-1232.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/summary/15-1231.00",
+      "title": "O*NET OnLine: Computer Network Support Specialists (15-1231.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.bls.gov/ooh/computer-and-information-technology/computer-support-specialists.htm",
+      "title": "BLS Occupational Outlook Handbook: Computer Support Specialists",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S4",
+      "url": "https://nationalcareers.service.gov.uk/job-profiles/it-support-technician",
+      "title": "National Careers Service: IT support technician",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S5",
+      "url": "https://csrc.nist.gov/glossary/term/least_privilege",
+      "title": "NIST Computer Security Resource Center Glossary: least privilege",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S6",
+      "url": "https://pages.nist.gov/800-63-4/sp800-63b.html",
+      "title": "NIST SP 800-63B-4: Digital Identity Guidelines, Authentication and Authenticator Management",
+      "kind": "standard",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.cisa.gov/news-events/news/avoiding-social-engineering-and-phishing-attacks",
+      "title": "CISA: Avoiding Social Engineering and Phishing Attacks",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.cisa.gov/cyber-guidance-small-businesses",
+      "title": "CISA: Cyber Guidance for Small Businesses",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S9",
+      "url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-320a",
+      "title": "CISA Cybersecurity Advisory AA23-320A: Scattered Spider",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.ncsc.gov.uk/collection/10-steps/identity-and-access-management",
+      "title": "NCSC 10 Steps to Cyber Security: Identity and access management",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.ncsc.gov.uk/collection/10-steps/asset-management",
+      "title": "NCSC 10 Steps to Cyber Security: Asset management",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.ncsc.gov.uk/guidance/phishing",
+      "title": "NCSC: Phishing attacks, defending your organisation",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S13",
+      "url": "https://www.ncsc.gov.uk/blog-post/incidents-impacting-retailers",
+      "title": "NCSC blog: Incidents impacting retailers, recommendations from the NCSC",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S14",
+      "url": "https://www.ftc.gov/business-guidance/small-businesses/cybersecurity",
+      "title": "FTC: Cybersecurity for Small Business",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S15",
+      "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/add-users/reset-passwords",
+      "title": "Microsoft Learn: Reset passwords in Microsoft 365 for business",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S16",
+      "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/add-users/remove-former-employee",
+      "title": "Microsoft Learn: Overview, remove a former employee and secure data",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S17",
+      "url": "https://learn.microsoft.com/en-us/microsoft-365/admin/add-users/about-admin-roles",
+      "title": "Microsoft Learn: About admin roles in the Microsoft 365 admin center",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S18",
+      "url": "https://learn.microsoft.com/en-us/entra/fundamentals/concept-learn-about-groups",
+      "title": "Microsoft Learn: Learn about groups, group membership, and access (Microsoft Entra)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S19",
+      "url": "https://support.atlassian.com/jira-service-management-cloud/docs/what-are-approvals/",
+      "title": "Atlassian Support: What are approvals? (Jira Service Management Cloud)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S20",
+      "url": "https://www.atlassian.com/incident-management/itsm",
+      "title": "Atlassian: The incident management process",
+      "kind": "other",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S21",
+      "url": "https://www.atlassian.com/itsm/service-request-management",
+      "title": "Atlassian: What is service request management?",
+      "kind": "other",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S22",
+      "url": "https://www.atlassian.com/itsm/it-asset-management",
+      "title": "Atlassian: What is IT asset management (ITAM)?",
+      "kind": "other",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S23",
+      "url": "https://www.atlassian.com/itsm/service-request-management/first-call-resolution",
+      "title": "Atlassian: Why first call resolution matters",
+      "kind": "other",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S24",
+      "url": "https://www.atlassian.com/itsm/service-request-management/it-metrics-and-reporting",
+      "title": "Atlassian: IT metrics and reporting",
+      "kind": "other",
+      "fetchedOn": "2026-11-22"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Provide technical assistance to computer users. Answer questions or resolve computer problems for clients in person, via telephone, or electronically."
+        },
+        {
+          "source": "S4",
+          "passage": "IT support technicians give technical help to computer users by identifying and fixing hardware, software and network problems."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Computer user support specialists, also called help-desk technicians, usually provide technical help to non-IT computer users."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "They often work under the direction of network and computer systems administrators, who handle more complex tasks."
+        },
+        {
+          "source": "S1",
+          "passage": "Refer major hardware or software problems or defective products to vendors or technicians for service."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Posed as employees to convince IT and/or helpdesk staff to provide sensitive information, reset the employee's password, and transfer the employee's MFA to a device they control on separate devices."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "respond to customers' requests for IT help"
+        },
+        {
+          "source": "S4",
+          "passage": "record details of issues on a tracking system"
+        },
+        {
+          "source": "S3",
+          "passage": "Document customers' descriptions of their computer problems"
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Analyze customers' computer problem to diagnose it and determine the cause"
+        },
+        {
+          "source": "S1",
+          "passage": "Read technical manuals, confer with users, or conduct computer diagnostics to investigate and resolve problems or to provide technical assistance and support."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Guide customers through the recommended problem-solving steps"
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "find and fix faults, or assign tasks to the correct team"
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Set up equipment for employee use, performing or ensuring proper installation of cables, operating systems, or appropriate software."
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Install and perform minor repairs to hardware, software, or peripheral equipment, following design or installation specifications."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "set up and manage user accounts and security"
+        },
+        {
+          "source": "S2",
+          "passage": "Configure security settings or access permissions for groups or individuals."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Helpdesk Administrator Assign the Helpdesk Administrator role to users who need to do the following tasks: Reset passwords Force users to sign out Manage service requests Monitor service health"
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Maintain records of daily data communication transactions, problems and remedial actions taken, or installation activities."
+        },
+        {
+          "source": "S2",
+          "passage": "Document help desk requests and resolutions."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Create and maintain an asset inventory."
+        },
+        {
+          "source": "S11",
+          "passage": "You should record who is responsible for each asset and what it is used for."
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Inform team members and managers of major problems or of customers' recurring concerns"
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Analyze and report computer network security breaches or attempted breaches."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Develop training materials and procedures, or train users in the proper use of hardware or software."
+        },
+        {
+          "source": "S4",
+          "passage": "update online knowledge bases for staff to refer to"
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "every incident is recorded with a unique ID, routed to the right support level, resolved within its SLA, and available for later trend analysis"
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "A service request is a formal request from a user for something to be provided, as distinct from an incident, which is an unplanned disruption to a service."
+        },
+        {
+          "source": "S21",
+          "passage": "access to an application, a software license, a password reset, new hardware, or information"
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "To prioritize an incident, start by assessing its impact on the business."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "the goal is to gather and log the right information to help second and third-level (more technical) support get up to speed quickly"
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S24",
+          "passage": "SLAs are plain-language agreements between you and your customer (i.e., between the IT department and the business) that may include one or more of the other metrics mentioned here."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "A security principle that a system should restrict the access privileges of users (or processes acting on behalf of users) to the minimum necessary to accomplish assigned tasks."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Global Administrators have almost unlimited access to your organization's settings and most of its data."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Multi-factor authentication requires users to take additional steps to log on beyond just inputting a password, like: Entering a time-sensitive code that appears on an authenticator app on a user's smartphone, or entering a unique passcode sent to the user's email address."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Account recovery is when a subscriber recovers from losing control of the authenticators that are needed to authenticate at a desired AAL."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "In a social engineering attack, an attacker uses human interaction (social skills) to obtain or compromise information about an organization or its computer systems."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Phishing attacks use email or malicious websites to solicit personal information by posing as a trustworthy organization."
+        },
+        {
+          "source": "S7",
+          "passage": "Vishing is the social engineering approach that leverages voice communication."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Ensure your account management processes includes a 'joiners, movers and leavers' policy, so access can be revoked when no longer needed, or changed for movers."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "identify and log it, categorize it, prioritize it, respond to it-diagnosing, escalating, and resolving-and close it"
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "If you get a phone call or the incident is reported via email or text or carrier pigeon, it's the service desk team's job to properly log it in your service desk."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Consider both the number of people that will be impacted, as well as the potential financial, security, and compliance implications of the incident"
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "If the first-level service desk agent can resolve the incident based on their initial diagnosis and available knowledge and tools, the incident is resolved."
+        },
+        {
+          "source": "S20",
+          "passage": "the goal is to gather and log the right information to help second and third-level (more technical) support get up to speed quickly"
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "the incident owner should check with the person who reported the incident to confirm that the resolution is satisfactory and the incident can, in fact, be closed"
+        },
+        {
+          "source": "S21",
+          "passage": "After resolving the request, the agent closes the ticket and consults the customer to make sure they are satisfied."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "The IT service team assesses the request alongside pre-defined approval and qualification processes."
+        },
+        {
+          "source": "S21",
+          "passage": "If needed, they send the request for financial or business approval."
+        },
+        {
+          "source": "S21",
+          "passage": "A service desk agent works to fulfill the service request, or forwards the request to someone who can."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "review helpdesk password reset processes, including how the helpdesk authenticates staff members credentials before resetting passwords, especially those with escalated privileges"
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "It uses your alternate contact info to verify you're the right person to reset your password."
+        },
+        {
+          "source": "S6",
+          "passage": "This may be accomplished by repeating portions of the identity proofing process, using a prearranged recovery contact, or presenting one or more recovery codes"
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "An account recovery event always causes one or more notifications to be sent to the subscriber to help detect the fraudulent use of account recovery."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "We recommend that you print the account information to a PDF file, then share it with your users in a secure manner."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Requests for new system accounts may need to be approved by an IT manager."
+        },
+        {
+          "source": "S18",
+          "passage": "Using groups lets the resource owner or Microsoft Entra directory owner assign a set of access permissions to all members of the group."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Set up equipment for employee use, performing or ensuring proper installation of cables, operating systems, or appropriate software."
+        },
+        {
+          "source": "S8",
+          "passage": "There are often MFA gaps for recently onboarded staff and for people who have migrated to a new phone."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Prevent former employees from accessing your Microsoft 365 services and organization's data."
+        },
+        {
+          "source": "S16",
+          "passage": "Removes your organization's data from the former employee's phone or tablet."
+        },
+        {
+          "source": "S16",
+          "passage": "Setting up email forwarding makes sure messages get to the next person taking over the work."
+        },
+        {
+          "source": "S16",
+          "passage": "When you remove a license, you can assign it to someone else."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Ensure that data is removed and any corresponding accounts or credentials are disabled as part of the decommissioning process."
+        },
+        {
+          "source": "S14",
+          "passage": "If the data's stored on a device, use factory reset or software to erase it."
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Immediately change any passwords you might have revealed."
+        },
+        {
+          "source": "S7",
+          "passage": "If you believe you might have revealed sensitive information about your organization, report it to the appropriate people within the organization, including network administrators."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Never reuse passwords and don't share them on the phone, in texts, or by email."
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Posed as IT staff to convince employees to share their one-time password (OTP), an MFA authentication code."
+        },
+        {
+          "source": "S6",
+          "passage": "A password is revealed by a subscriber in a telephone inquiry from an attacker masquerading as a system administrator."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Never give someone your password, and don't give remote access to your computer to someone who contacts you unexpectedly."
+        },
+        {
+          "source": "S9",
+          "passage": "Posed as company IT and/or helpdesk staff to direct employees to run commercial remote access tools enabling initial access"
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "VoIP easily allows caller identity (ID) to be spoofed"
+        },
+        {
+          "source": "S7",
+          "passage": "An attacker may seem unassuming and respectable, possibly claiming to be a new employee, repair person, or researcher and even offering credentials to support that identity."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Do not provide personal information or information about your organization, including its structure or networks, unless you are certain of a person's authority to have the information."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Restrict sensitive information access to only those who need it to do their jobs."
+        },
+        {
+          "source": "S5",
+          "passage": "A security principle that a system should restrict the access privileges of users (or processes acting on behalf of users) to the minimum necessary to accomplish assigned tasks."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Remove administrator privileges from user laptops."
+        },
+        {
+          "source": "S8",
+          "passage": "A user who lacks administrator privileges cannot install software, and this type of attack won't work."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "For example, if you want someone to reset user passwords, don't assign the unlimited global administrator role."
+        },
+        {
+          "source": "S17",
+          "passage": "Instead, assign a limited administrator role, like Password Administrator or Helpdesk Administrator."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Ensure MFA is mandated using technical controls, not faith."
+        },
+        {
+          "source": "S8",
+          "passage": "You'll need to regularly look for non-compliant accounts and remediate them."
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Users who fear reprisals will not report mistakes promptly, if at all."
+        },
+        {
+          "source": "S12",
+          "passage": "Avoid creating a punishment or blame-oriented culture around phishing."
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Computer support specialists must be patient and sympathetic."
+        },
+        {
+          "source": "S1",
+          "passage": "Active Listening - Giving full attention to what other people are saying, taking time to understand the points being made, asking questions as appropriate, and not interrupting at inappropriate times."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "The name of the person reporting the incident The date and time the incident is reported A description of the incident (what is down or not working properly) A unique identification number assigned to the incident, for tracking"
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Some requests might need approval before they can move to the next status in their workflow."
+        },
+        {
+          "source": "S19",
+          "passage": "The designated approvers are notified by email that they need to approve or decline the request."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "With Microsoft Entra groups, you can grant access and permissions to a group of users instead of to each individual user."
+        },
+        {
+          "source": "S18",
+          "passage": "Security groups: Used to manage access to shared resources."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "The resource or directory owner can also grant group management rights to someone such as a department manager or a help desk administrator, which allows that person to add and remove members."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "The Helpdesk admin can only help users who aren't administrator users"
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Self-service password reset is more efficient and less work for your organization's administrators than manually resetting passwords for users."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "Understand what technology assets you have, including hardware, software, firmware, peripheral devices and removeable media."
+        },
+        {
+          "source": "S22",
+          "passage": "Managing these assets means tracking license counts, renewal dates, version updates, and compliance requirements."
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Ensure you have an identity and access management policy that covers who should have access to which systems, data or functionality, why, and under what circumstances."
+        },
+        {
+          "source": "S19",
+          "passage": "Requests for new system accounts may need to be approved by an IT manager."
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Microsoft recommends that you use roles with the fewest permissions, and that you limit the number of users who have administrative permissions."
+        },
+        {
+          "source": "S10",
+          "passage": "Review user accounts and systems for unnecessary privileges on a regular basis, and ensure privileged accesses are revoked when no longer required."
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Either another Global Administrator or a Privileged Authentication Administrator can reset a Global Administrator's password."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Or, if there's a legal requirement or important need to save the former employee's data, you want to complete this step."
+        },
+        {
+          "source": "S16",
+          "passage": "Before you delete the account, consider granting access of the former employee's OneDrive and Outlook content to another user."
+        }
+      ]
+    },
+    {
+      "id": "C67",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "A cell phone purchase over a certain value might need to be approved by a group of people that might include someone from Information Security, someone from IT, and a Finance manager."
+        },
+        {
+          "source": "S21",
+          "passage": "If needed, they send the request for financial or business approval."
+        }
+      ]
+    },
+    {
+      "id": "C68",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "an identification of which actions or processes, if any, should require more than one person to perform or authorise them"
+        }
+      ]
+    },
+    {
+      "id": "C69",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Inform team members and managers of major problems or of customers' recurring concerns"
+        },
+        {
+          "source": "S2",
+          "passage": "Analyze and report computer network security breaches or attempted breaches."
+        }
+      ]
+    },
+    {
+      "id": "C70",
+      "sources": [
+        {
+          "source": "S23",
+          "passage": "is the percentage of customer issues an IT team resolves completely on the first interaction, with no escalation, callback, or reopened ticket"
+        }
+      ]
+    },
+    {
+      "id": "C71",
+      "sources": [
+        {
+          "source": "S23",
+          "passage": "tracked alongside reopen rates and CSAT, FCR shows where self-service, knowledge, and agent training are falling short"
+        }
+      ]
+    },
+    {
+      "id": "C72",
+      "sources": [
+        {
+          "source": "S24",
+          "passage": "Mean time to resolve: This metric tracks the average elapsed time from when a ticket is opened until it is closed (and the issue is resolved)."
+        }
+      ]
+    },
+    {
+      "id": "C73",
+      "sources": [
+        {
+          "source": "S24",
+          "passage": "Mean time to respond allows IT teams to track the average response time to a newly opened ticket."
+        }
+      ]
+    },
+    {
+      "id": "C74",
+      "sources": [
+        {
+          "source": "S24",
+          "passage": "IT teams can keep track of the percentage of SLAs that are being met."
+        }
+      ]
+    },
+    {
+      "id": "C75",
+      "sources": [
+        {
+          "source": "S24",
+          "passage": "When your first-level support team is incentivized to close tickets quickly, they may do so without satisfactorily solving the customer's issue."
+        }
+      ]
+    },
+    {
+      "id": "C76",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "as well as measuring how many people clicked on a phishing email, focus on how many people reported it"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/testing/pack-role.ts",
+    "src/testing/recording-role.ts",
+    "src/testing/value-desk.ts",
+    "src/evals/prompt-cache.ts"
+  ]
+}

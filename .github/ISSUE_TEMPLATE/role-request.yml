@@ -1,0 +1,49 @@
+name: Role request
+description: Propose a new role (one job in a business) for the catalog.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A role is a portable Pi Durable agent: instructions, tools, the actions it must ask a person about, and evals.
+        Read docs/build-a-role.md and the catalog in agents/README.md first, and check the role is not already there.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: The job this role does, and for whom in the business.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why a business needs it, and which existing roles it works with or hands work to.
+  - type: textarea
+    id: tools
+    attributes:
+      label: Tools
+      description: The actions the role takes, and the systems they read or change (one per line). Say which are read-only.
+    validations:
+      required: true
+  - type: textarea
+    id: approvals
+    attributes:
+      label: Asks a person before
+      description: The actions a person must approve, and any limits (amounts, counts) that should be manifest data rather than prompt text.
+    validations:
+      required: true
+  - type: textarea
+    id: may-not
+    attributes:
+      label: Must never do
+      description: What the role may not do at all.
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests and evals
+      description: The scenarios that would show the role does its job and keeps its guardrails.
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What this role does not cover.

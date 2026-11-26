@@ -1,0 +1,972 @@
+{
+  "schema": 1,
+  "role": "inventory",
+  "researchedOn": "2026-11-22",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/53-7065.00",
+      "title": "O*NET OnLine: Stockers and Order Fillers (53-7065.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/summary/43-5071.00",
+      "title": "O*NET OnLine: Shipping, Receiving, and Inventory Clerks (43-5071.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.onetonline.org/link/summary/43-5061.00",
+      "title": "O*NET OnLine: Production, Planning, and Expediting Clerks (43-5061.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S4",
+      "url": "https://www.bls.gov/ooh/office-and-administrative-support/material-recording-clerks.htm",
+      "title": "BLS Occupational Outlook Handbook: Material Recording Clerks",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S5",
+      "url": "https://nationalcareers.service.gov.uk/job-profiles/stock-control-assistant",
+      "title": "National Careers Service: Stock control assistant",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S6",
+      "url": "https://nationalcareers.service.gov.uk/job-profiles/warehouse-worker",
+      "title": "National Careers Service: Warehouse worker",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.gao.gov/assets/660/651157.txt",
+      "title": "U.S. GAO Executive Guide: Best Practices in Achieving Consistent, Accurate Physical Counts of Inventory and Related Property (GAO-02-447G)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.acquisition.gov/far/52.245-1",
+      "title": "Federal Acquisition Regulation 52.245-1: Government Property",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S9",
+      "url": "https://www.ecfr.gov/api/renderer/v1/content/enhanced/current/title-29?part=1910&section=1910.176",
+      "title": "OSHA standard 29 CFR 1910.176: Handling materials, general (eCFR)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.ecfr.gov/api/renderer/v1/content/enhanced/current/title-29?part=1910&section=1910.1200",
+      "title": "OSHA standard 29 CFR 1910.1200: Hazard communication (eCFR)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.hse.gov.uk/fireandexplosion/storageflammliquids.htm",
+      "title": "HSE: Storage of flammable liquids in process areas, workrooms, laboratories and similar working areas",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.hse.gov.uk/coshh/basics/datasheets.htm",
+      "title": "HSE: Chemical safety data sheets (COSHH basics)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S13",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/inventory-how-count-adjust-reclassify",
+      "title": "Microsoft Learn: Count, adjust, and reclassify inventory using journals (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S14",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/inventory-how-transfer-between-locations",
+      "title": "Microsoft Learn: Transfer inventory between locations (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S15",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/warehouse-how-receive-items",
+      "title": "Microsoft Learn: Receive items with warehouse receipts (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S16",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/design-details-handling-reordering-policies",
+      "title": "Microsoft Learn: Design details, handling reordering policies (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S17",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/warehouse-picking-by-fefo",
+      "title": "Microsoft Learn: Picking by FEFO (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S18",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/business-central/inventory-how-block-items",
+      "title": "Microsoft Learn: Block items (Dynamics 365 Business Central)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S19",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/supply-chain/warehousing/cycle-counting",
+      "title": "Microsoft Learn: Cycle counting (Dynamics 365 Supply Chain Management)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S20",
+      "url": "https://learn.microsoft.com/en-us/dynamics365/supply-chain/inventory/inventory-journals",
+      "title": "Microsoft Learn: Inventory journals (Dynamics 365 Supply Chain Management)",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S21",
+      "url": "https://www.zoho.com/us/inventory/help/items/inventory-adjustments.html",
+      "title": "Zoho Inventory help: Inventory adjustments",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Receive, store, and issue merchandise, materials, equipment, and other items from stockroom, warehouse, or storage yard to fill shelves, racks, tables, or customers' orders."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Material recording clerks track product information in order to keep businesses and supply chains on schedule. They ensure proper scheduling, recordkeeping, and inventory control."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "A physical count, when properly executed, verifies the existence of physical assets and the completeness and accuracy of records."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Requisition merchandise from supplier, based on available space, merchandise on hand, customer demand, or advertised specials."
+        },
+        {
+          "source": "S3",
+          "passage": "Requisition and maintain inventories of materials or supplies necessary to meet production demands."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "You could become a stock supervisor or shift manager. In these jobs, you would lead a team, forecast stock levels and work closely with suppliers."
+        },
+        {
+          "source": "S6",
+          "passage": "With experience, you could become a team leader, shift supervisor or warehouse manager."
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Receive and count stock items, and record data manually or on computer."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Examine shipment contents and compare with records, such as manifests, invoices, or orders, to verify accuracy."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "inspect paperwork and check for damaged or missing items"
+        },
+        {
+          "source": "S5",
+          "passage": "receive deliveries and check labelling and paperwork is correct"
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Record shipment data, such as weight, charges, space availability, damages, or discrepancies, for reporting, accounting, or recordkeeping purposes."
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Confer or correspond with establishment representatives to rectify problems, such as damages, shortages, or nonconformance to specifications."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Store items in an orderly and accessible manner in warehouses, tool rooms, supply rooms, or other areas."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Determine proper storage methods, identification, and stock location, based on turnover, environmental factors, and physical capabilities of facilities."
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Issue or distribute materials, products, parts, and supplies to customers or coworkers, based on information from incoming requisitions."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Keep records of items shipped, received, or transferred to another location"
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "update stock information on computer systems"
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Take inventory or examine merchandise to identify items to be reordered or replenished."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "carry out regular inventory checks and stock audits"
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Check inventory records for accuracy"
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "replace out of date items on shelves and racks"
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Examine and inspect stock items for wear or defects, reporting any damage to supervisors."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Dispose of damaged or defective items, or return them to vendors."
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "check stock levels and make sure items are stored safely"
+        },
+        {
+          "source": "S1",
+          "passage": "Clean and maintain supplies, tools, equipment, and storage areas to ensure compliance with safety regulations."
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Compile reports on various changes in production or inventory"
+        },
+        {
+          "source": "S3",
+          "passage": "Compile information, such as production rates and progress, materials inventories, materials used, or customer information, so that status reports can be completed."
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "A perpetual inventory system maintains current item balances by recording receipts and shipments."
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "cycle counting, in which a portion of the inventory is counted either daily, weekly, or monthly until the entire inventory has been counted over a period of time"
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "In the wall to wall approach the entire inventory is counted at a point in time, usually as of the end of an annual or interim period."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "A blind count refers to the performance of a physical inventory count without the knowledge of, or access to, the on-hand quantity balance in the inventory records."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Research is the process of investigating a discrepancy, often referred to as a variance, between the physical count and the on-hand balance."
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Tolerance is a range within which an actual value or quantity can disagree with the inventory record and still be considered accurate for the purposes of calculating inventory record accuracy."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Cutoff is the process of (1) controlling the movement of items between locations, such as in shipping, receiving, production, and rewarehousing and (2) coordinating the timing and verifying the movement of items with the related quantity changes in the inventory system."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "A quantity adjustment is made when the recorded stock does not match the actual available stock in your warehouse for reasons outside the normal business such as theft, damaged goods, data entry error, write-off, donation etc."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "A reorder point represents demand during lead time. When inventory is projected to pass below the level defined by the reorder point, it's time to order more."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "It measures the gap between the current projected inventory level and the specified maximum inventory to determine the quantity to order."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "You can ship an outbound transfer from one location and receive an inbound transfer at the destination."
+        },
+        {
+          "source": "S14",
+          "passage": "After you post the shipment, the items are unavailable while they're in transit."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "First-Expired-First-Out (FEFO) is a sorting method that ensures that items with the earliest expiration dates are picked first."
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "They describe the hazards the chemical presents, and give information on handling, storage and emergency measures in case of accident."
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Inventory record accuracy rates measure the degree of agreement between the balance in the inventory records and the physical count."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "If you use bins, you can either accept the default bin or specify the bin to put the items in."
+        },
+        {
+          "source": "S15",
+          "passage": "Then, enter the quantities of the items you received and post the receipt."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "The Contractor shall take all actions necessary to adjust for overages, shortages, damage and/or other discrepancies discovered upon receipt"
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "Quantity received (or fabricated), issued, and balance-on-hand."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "When you post a transfer journal, two inventory transactions are created for each journal line: An inventory issue at the \"from\" location. An inventory receipt at the \"to\" location."
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "If the physical count reveals differences caused by items posted with incorrect locations, don't enter the differences in the physical inventory journal. Instead, use a reclassification journal or a transfer order to redirect the items to the correct locations."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Management should exert the highest degree of control (frequent counts) on the most important items, and the least control on less important items."
+        },
+        {
+          "source": "S13",
+          "passage": "To count some items more often than others, perhaps because of their value, use cycle counts."
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Physical location preparation typically includes (1) organizing work areas and storage locations, (2) identifying and segregating items, (3) ensuring that all inventory items have labels or identification, (4) verifying that items are in the correct location, (5) precounting slow moving items, and (6) identifying excess/obsolete inventories."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "These controls include (1) counting during a slow period of operations when there is little movement, (2) preventing any movement of the inventory items to be counted on the day the items are selected for counting, and (3) using system-generated transaction histories to trace the movement of items and reconcile the count."
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Counters are provided the part number, description, location, and other information necessary to perform the count but not the item quantity information."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The inventory record on-hand balances are typically not adjusted until recounts and research are complete."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Counts performed past the first count can be based on any of the following: a difference between the count and record on-hand balance (variance), judgment of supervisors or management, variances exceeding established tolerances, and until two counts agree."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The extent of research may include reviewing (1) transaction histories, (2) shipping and receiving records, and (3) production usage records."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "We found that the majority of the leading-edge locations performed and completed research either the same day as the original count or by the end of the following day."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Grouping and tracking the nature or type of errors into assigned codes is an effective tool for analyzing causes of variances and implementing corrective actions to reduce future errors."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "We found that all of the leading-edge locations routinely referred adjustments to management for approval. As the dollar amount of the adjustment increased, the approval level within the company increased."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "Select a reason for making this adjustment."
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "After a cycle count, any items that have differences in the counted value have a work status of Pending review on the All work page."
+        },
+        {
+          "source": "S19",
+          "passage": "The counted value is rejected if you don't approve the difference."
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Management may also determine that the impact of certain variances is insignificant by establishing a low dollar or quantity tolerance and allowing adjustment to the on-hand balance in the inventory system without requiring research."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "For example, blocking for use in all transactions is useful when an item has a known defect."
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Some decide what to do about a defective product, such as to scrap it or send it back to the factory to be repaired."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "All leading-edge locations performing wall to wall counts shut down their warehouse operations during the physical count."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "There should be a system to ensure that all inventory items are considered for count, including items on the receiving dock, in the warehouse, in the shipping area, in tractor-trailers, and at outside locations"
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Employers shall ensure that labels on incoming containers of hazardous chemicals are not removed or defaced;"
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "The employer shall maintain in the workplace copies of the required safety data sheets for each hazardous chemical, and shall ensure that they are readily accessible during each work shift to employees when they are in their work area(s)."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "When not in use, containers of flammable liquids needed for current work activities should be kept closed and stored in suitable cabinets or bins of fire-resisting construction and which are designed to retain spills"
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "The flammable liquids should be stored separately from other dangerous substances that may enhance the risk of fire or compromise the integrity of the container or cabinet/bin; for example energetic substances, oxidizers and corrosive materials."
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The key areas of segregation are (1) physical custody of assets, (2) processing and recording of transactions, and (3) approval of transactions."
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Such mitigating control procedures include blind counts (meaning that the counter does not know how many items are supposed to be there before or during the count process), increased supervision, and applying dual control by having activities performed by two or more people."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Controls must exist to provide reasonable assurance that all transactions affecting the inventory balances are properly executed and recorded in the inventory system."
+        },
+        {
+          "source": "S8",
+          "passage": "Property records shall enable a complete, current, auditable record of all transactions"
+        }
+      ]
+    },
+    {
+      "id": "C67",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "In order to reduce the potential for future errors in the inventory records, it is important to identify and correct the causes of variances."
+        }
+      ]
+    },
+    {
+      "id": "C68",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Personnel performing the count were held accountable for performing an accurate physical count of the inventory items, but not the accuracy of the count agreeing to the inventory records."
+        }
+      ]
+    },
+    {
+      "id": "C69",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Storage of material shall not create a hazard. Bags, containers, bundles, etc., stored in tiers shall be stacked, blocked, interlocked and limited in height so that they are stable and secure against sliding or collapse."
+        }
+      ]
+    },
+    {
+      "id": "C70",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Aisles and passageways shall be kept clear and in good repair, with no obstruction across or in aisles that could create a hazard."
+        },
+        {
+          "source": "S9",
+          "passage": "Storage areas shall be kept free from accumulation of materials that constitute hazards from tripping, fire, explosion, or pest harborage."
+        }
+      ]
+    },
+    {
+      "id": "C71",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "Material recording clerks use computers or hand-held devices to keep track of inventory."
+        },
+        {
+          "source": "S4",
+          "passage": "Clerks may scan barcodes with handheld devices or use radio frequency identification (RFID) scanners to keep track of inventory."
+        }
+      ]
+    },
+    {
+      "id": "C72",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Inventory management software - Inventory management systems; Inventory tracking software; Ordering software"
+        },
+        {
+          "source": "S1",
+          "passage": "Warehouse management system WMS"
+        }
+      ]
+    },
+    {
+      "id": "C73",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "The counted value isn't within the deviation limits specified in the Maximum percentage limit or Maximum quantity limit fields on the Work users page."
+        }
+      ]
+    },
+    {
+      "id": "C74",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "When you post an inventory adjustment journal, you post an inventory receipt or issue, change the inventory values, and create ledger transactions."
+        }
+      ]
+    },
+    {
+      "id": "C75",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "The planning system suggests a forward-scheduled supply order at the point when the inventory passes below the reorder point."
+        }
+      ]
+    },
+    {
+      "id": "C76",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The approval levels progressed from the lead or supervisor of the researcher up to the location or plant manager."
+        },
+        {
+          "source": "S7",
+          "passage": "Set approval levels for adjustments that move up the chain of management as the dollar value increases or the nature of the item requires a higher level of approval."
+        }
+      ]
+    },
+    {
+      "id": "C77",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Management determines which variances to research and the extent of research necessary to identify the causes of the variances."
+        }
+      ]
+    },
+    {
+      "id": "C78",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "some locations regularly reviewed adjustments and trends on items susceptible to fraud or theft in case referral to security or law enforcement was necessary"
+        }
+      ]
+    },
+    {
+      "id": "C79",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Determining which approach or combination of approaches is the most appropriate for an organization is a key management decision."
+        },
+        {
+          "source": "S7",
+          "passage": "management must decide which inventory items to count and how frequently those items should be counted"
+        }
+      ]
+    },
+    {
+      "id": "C80",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Recommend disposal of excess, defective, or obsolete stock."
+        }
+      ]
+    },
+    {
+      "id": "C81",
+      "sources": [
+        {
+          "source": "S8",
+          "passage": "The Contractor shall have a process to enable the prompt recognition, investigation, disclosure and reporting of loss of Government property"
+        }
+      ]
+    },
+    {
+      "id": "C82",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Number of accurate items or records; divided by: Number of items or records counted; times 100%; equals: record accuracy rate."
+        }
+      ]
+    },
+    {
+      "id": "C83",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Set inventory record accuracy goals at 95 percent or better"
+        }
+      ]
+    },
+    {
+      "id": "C84",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "Calculating an inventory record accuracy rate, summarizing the number and dollar value of adjustments, errors, or items counted, and tracking and analyzing error code frequencies are three ways to measure results."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,201 @@
+/**
+ * The Sales / Account Manager's entry point: the factory a host calls to get the role.
+ *
+ * ```ts
+ * import sales from "@officehum/sales";
+ *
+ * const role = sales({ desk: myCrm, approve, overlays: ["./my-sales"] });
+ * const demo = sales({ demo: true }); // the demonstration pipeline, for a first run or an eval
+ * for (const extension of role.extensions) registry.install(extension);
+ * const root = await harness.root(context, { agent: role.agent });
+ * ```
+ *
+ * The package brings its own prompt, skills, tools, the company's facts and a demonstration pipeline;
+ * the host brings the desk that holds its real leads and, optionally, the person who decides gated
+ * actions. Nothing here needs Office Hum, so the same bundle runs in a bare Pi Durable harness.
+ *
+ * With `demo: true` and no desk the role runs on `fakeSalesDesk`: five leads in memory, the company's
+ * own price book, and nothing written anywhere. That is what `officehum run --demo` and the evals run
+ * on. With neither, the role still starts, and every tool that reads or writes the desk refuses and
+ * says how to bind one: a host that forgets its CRM gets no made-up leads.
+ */
+
+import { fileURLToPath } from "node:url";
+import {
+  type Approver,
+  companyData,
+  type DefinedRole,
+  declaredFacts,
+  defineRole,
+} from "@officehum/sdk";
+import manifest from "../officehum.json" with { type: "json" };
+import { type CompanyFacts, loadCompanyFacts } from "./company.js";
+import { DEMO_NOW, fakeSalesDesk, type SalesDesk } from "./desk.js";
+import { salesTools } from "./tools.js";
+
+export {
+  type Address,
+  COMPANY_FACTS_URL,
+  type CompanyFacts,
+  type DiscountLadderStep,
+  type DiscountPolicy,
+  type EscalationRule,
+  escalationRule,
+  type Field,
+  type GlossaryEntry,
+  type Hours,
+  type Insurance,
+  loadCompanyFacts,
+  money,
+  type Person,
+  type Policies,
+  type PriceBookItem,
+  type Profile,
+  person,
+  priceBookItem,
+  priceText,
+  type Quoting,
+  type RefundPolicy,
+  type Service,
+  searchPriceBook,
+  searchWords,
+  type Tone,
+} from "./company.js";
+export { demoLeads } from "./demo.js";
+export {
+  ACTIVITY_KINDS,
+  type Activity,
+  type ActivityDraft,
+  type ActivityKind,
+  DEMO_NOW,
+  type FakeSalesDeskOptions,
+  type FollowUp,
+  type FollowUpDraft,
+  fakeSalesDesk,
+  LEAD_STAGES,
+  type Lead,
+  type LeadFilter,
+  type LeadStage,
+  type PipelineQuoteSummary,
+  type PipelineReport,
+  type PipelineStageSummary,
+  QUOTE_OUTCOMES,
+  QUOTE_STATUSES,
+  type Quote,
+  type QuoteApprovalReason,
+  type QuoteDraft,
+  type QuoteLine,
+  type QuoteLineDraft,
+  type QuoteOutcome,
+  type QuoteOutcomeDraft,
+  type QuoteOutcomeRecord,
+  type QuoteStatus,
+  quoteFacts,
+  type RecurringCount,
+  type SalesDesk,
+  SalesDeskError,
+  type SalesDeskRefusal,
+  type ScheduledFollowUp,
+  type StageChange,
+  type StageMove,
+} from "./desk.js";
+export {
+  type CompanySection,
+  type SalesToolDependencies,
+  type SalesToolset,
+  salesTools,
+} from "./tools.js";
+
+export interface SalesOptions {
+  /**
+   * The host's system of record: a CRM in production, `fakeSalesDesk` in a test. Omitted, the
+   * demonstration pipeline when `demo` is set; otherwise none, and every desk tool refuses.
+   */
+  readonly desk?: SalesDesk;
+  /**
+   * Run on the demonstration pipeline this package ships with when no `desk` is given. Set by the
+   * host (`officehum run --demo`, the eval runner), never by a client or a user's config.
+   */
+  readonly demo?: boolean;
+  /**
+   * The company to quote for. Omitted, the generated facts in this package — the default company, as
+   * `npm run sync-company` wrote them. A host with its own company passes its own, and nothing in
+   * `company/default/` is involved.
+   */
+  readonly company?: CompanyFacts;
+  /** Overlay directories, lowest first: the business's AGENTS.md, skills, settings and limits. */
+  readonly overlays?: readonly string[];
+  /**
+   * Decides every gated action. Omitted: a quote with a discount or over the limit stays saved
+   * awaiting approval, and its approval is refused.
+   */
+  readonly approve?: Approver;
+  /**
+   * The clock the demonstration desk dates against: today for a quote, an outcome and a follow-up.
+   * Omitted: the demonstration date (`DEMO_NOW`), so the demo pipeline's dates stay coherent. A host's
+   * own desk keeps its own clock and ignores this.
+   */
+  readonly now?: () => Date;
+}
+
+export default function sales(options: SalesOptions = {}): DefinedRole {
+  const company = options.company ?? loadCompanyFacts();
+  // The demonstration desk prices from the same book, and counts a month's visits with the same
+  // weeks, as this role reads, so a first run and a real one quote the same numbers. It is built only
+  // when the host asks for it: with no desk the tools refuse rather than invent a pipeline.
+  const desk =
+    options.desk ??
+    (options.demo === true
+      ? fakeSalesDesk({
+          priceBook: companyData(company, "priceBook"),
+          weeksPerMonth: companyData(company, "quoting").weeksPerMonth,
+          now: options.now ?? (() => new Date(DEMO_NOW)),
+          // "Today" on a quote, an outcome and a follow-up is the company's own day, not UTC's.
+          timeZone: company.hours.timezone,
+        })
+      : undefined);
+  // The quote limit is read from the role's own resolved limits at every call, so an overlay's value
+  // is what a quote is judged against and a reload needs no rebuild. Before the role exists no limit
+  // resolves, and the desk then holds every quote for a person rather than guessing one.
+  let role: DefinedRole | undefined;
+  const limits = () => role?.current().limits ?? {};
+  const tools = salesTools({ desk, company, limits });
+  role = defineRole({
+    packageDir: fileURLToPath(new URL("..", import.meta.url)),
+    manifest,
+    tools: [
+      tools.listLeads,
+      tools.getQuote,
+      tools.searchPriceBook,
+      tools.logActivity,
+      // Not skill-scoped: a client's "we accepted", a closed deal or a pipeline review reaches these
+      // whether or not a skill was loaded first.
+      tools.updateLeadStage,
+      tools.recordQuoteOutcome,
+      tools.scheduleFollowUp,
+      tools.pipelineReport,
+      tools.readCompany,
+    ],
+    // The quote belongs to the quoting skill, which is where its checklist lives. `officehum.json`
+    // declares it the same way, and `checkAgent` holds the two together.
+    skillTools: {
+      "quoting-from-the-price-book": [tools.createQuote, tools.requestQuoteApproval],
+    },
+    // The desk decides whether a quote needs a person, on the total it worked out itself, minimums
+    // included; `officehum.json` declares `quote_approval` with no `when`, so every call of
+    // request_quote_approval is gated. The model names only the quote: the gate reads its facts from
+    // the desk, shows them to the person and hands them to the tool on a yes, so the desk approves
+    // only the quote the person saw.
+    // The facts' fields are stated, so `checkAgent` sees the cents total the manifest's `amount`
+    // reads, and the reader refuses facts that drift from the statement.
+    approvalFacts: {
+      quote_approval: declaredFacts(
+        ["id", "leadId", "lines", "discountPercent", "totalCents"],
+        tools.quoteApprovalFacts,
+      ),
+    },
+    ...(options.overlays === undefined ? {} : { overlays: options.overlays }),
+    ...(options.approve === undefined ? {} : { approve: options.approve }),
+  });
+  return role;
+}

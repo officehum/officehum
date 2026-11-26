@@ -1,0 +1,91 @@
+/**
+ * The tool-result shape guard.
+ *
+ * Pi Durable 1.2.0 renamed `ToolExecutionResult.content` to `output`. A tool that still returns
+ * `content` keeps compiling: TypeScript's weak-type check for the result does not fire when the
+ * result also sets a known field such as `details` or `isError`. At runtime Pi Durable ignores the
+ * unknown field, so the model silently receives an empty result.
+ *
+ * `defineRole` wraps every tool it returns with `guardToolResult`, so the SDK owns the check rather
+ * than the host or a role's own tests, and a third-party role gets it without knowing it exists.
+ */
+
+import type { JsonObject, ToolRegistration } from "@earendil-works/pi-durable";
+import { CompanyDataMissing } from "./company-data.js";
+
+/**
+ * Throws when a tool's result carries `content`. A Pi Durable 1.6.x result never has that field, so
+ * any result that does is a leftover from the 1.2.0 rename, whatever else it sets. The message names
+ * the tool and says how to fix it.
+ */
+export function guardToolResultShape(tool: string, result: unknown): void {
+  if (result === null || typeof result !== "object") return;
+  if (!Object.hasOwn(result, "content")) return;
+  throw new Error(
+    `The ${tool} tool returned a result with "content". Pi Durable 1.2.0 renamed that field to ` +
+      `"output", and the model sees an empty result when a tool returns content. Return "output" ` +
+      `instead, e.g. { output: [{ type: "text", text: "…" }] }.`,
+  );
+}
+
+/**
+ * Returns a copy of `tool` whose `execute` runs the shape guard on its result. Only `content` trips
+ * it: a result that omits `output` and uses `api.output()`, or one that sets `isError` or `details`,
+ * passes untouched. A tool that needs role data the company does not have (`CompanyDataMissing`,
+ * `./company-data.ts`) is answered with `companyDataRefusal`; every other error goes on unchanged.
+ */
+export function guardToolResult(tool: ToolRegistration): ToolRegistration {
+  const execute = tool.execute;
+  return {
+    ...tool,
+    execute: async (args, api, context) => {
+      let result: Awaited<ReturnType<typeof execute>>;
+      try {
+        result = await execute(args, api, context);
+      } catch (error) {
+        if (error instanceof CompanyDataMissing) return companyDataRefusal(error);
+        throw error;
+      }
+      guardToolResultShape(tool.name, result);
+      return result;
+    },
+  };
+}
+
+/**
+ * The one refusal a tool gives for role data the company does not have: the plain words of
+ * `missingCompanyDataText`, flagged as an error, with the section in its details.
+ */
+export function companyDataRefusal(error: CompanyDataMissing) {
+  return refusal<JsonObject>(error.message, {
+    code: "company_data_missing",
+    section: error.section,
+  });
+}
+
+/** A plain text tool result, in the `output` shape Pi Durable 1.6.x reads. */
+export function textResult(text: string): { output: [{ type: "text"; text: string }] } {
+  return { output: [{ type: "text", text }] };
+}
+
+/** A text result flagged as an error, with structured details for the host and the evals. */
+export function refusal<D extends Record<string, unknown>>(text: string, details: D) {
+  return { ...textResult(text), isError: true as const, details };
+}
+
+/**
+ * A desk's refusal: the desk's code goes last, so call context in `extra` can never overwrite it.
+ * The details are typed loosely on purpose: a refusal's details and a receipt's share one tool, so
+ * neither may narrow what the other reports.
+ */
+export function deskRefusal(text: string, code: string, extra: Record<string, unknown> = {}) {
+  return refusal<JsonObject>(text, { ...extra, code } as JsonObject);
+}
+
+/** The durable call identity, so a retried call is answered with what it already did. */
+export function requestId(
+  kind: string,
+  api: { conversationId: unknown; taskId: unknown; callId: string },
+): string {
+  return `${kind}:${String(api.conversationId)}:${String(api.taskId)}:${api.callId}`;
+}

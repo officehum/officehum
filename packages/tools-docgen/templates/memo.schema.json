@@ -1,0 +1,32 @@
+{
+  "title": "Memo",
+  "description": "An internal memo: to, from, optional cc, date, subject and body paragraphs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["to", "from", "date", "subject", "body"],
+  "properties": {
+    "to": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "from": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "cc": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "date": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "subject": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "body": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 60,
+      "items": { "type": "string", "minLength": 1, "maxLength": 4000 }
+    }
+  },
+  "examples": [
+    {
+      "to": "All staff",
+      "from": "Sam Rivera, Office Manager",
+      "date": "24 November 2026",
+      "subject": "Office closed on 26 December",
+      "body": [
+        "The office will be closed on 26 December. Orders placed that day ship on 27 December.",
+        "Please update your out-of-office message before you leave."
+      ]
+    }
+  ]
+}

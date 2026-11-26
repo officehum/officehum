@@ -1,0 +1,55 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`agentCard > builds the Sample Desk card, matching a snapshot 1`] = `
+{
+  "accepts": [
+    {
+      "description": "Book an appointment for a customer",
+      "type": "booking.request",
+    },
+  ],
+  "capabilities": [
+    {
+      "description": "Move an existing appointment to a new time. Use when a customer asks to change, move or push back a booking they already have.",
+      "kind": "skill",
+      "name": "rescheduling",
+    },
+    {
+      "description": "List the free appointment slots on a date.",
+      "effect": "reads",
+      "kind": "tool",
+      "name": "check_schedule",
+    },
+    {
+      "approvals": [
+        "Bookings that start at 18:00 or later",
+      ],
+      "description": "Book an appointment the calendar shows as free.",
+      "effect": "changes",
+      "kind": "tool",
+      "name": "book_appointment",
+    },
+  ],
+  "department": "front-office",
+  "dispatches": [
+    {
+      "type": "invoice.create",
+      "when": "a customer asks to be billed for completed work",
+    },
+  ],
+  "id": "sample-desk",
+  "mayNot": [
+    {
+      "action": "Book a slot the calendar does not show as free",
+      "instead": "offer only the slots check_schedule returns",
+    },
+    {
+      "action": "Answer a pricing or billing question",
+      "instead": "hand it off as invoice.create to the bookkeeper",
+    },
+  ],
+  "name": "Sample Desk",
+  "role": "Checks the calendar and books appointments",
+  "status": "active",
+}
+`;

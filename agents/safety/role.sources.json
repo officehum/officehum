@@ -1,0 +1,1041 @@
+{
+  "schema": 1,
+  "role": "safety",
+  "researchedOn": "2026-11-22",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://www.onetonline.org/link/summary/19-5012.00",
+      "title": "O*NET OnLine: Occupational Health and Safety Technicians (19-5012.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S2",
+      "url": "https://www.onetonline.org/link/summary/19-5011.00",
+      "title": "O*NET OnLine: Occupational Health and Safety Specialists (19-5011.00)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S3",
+      "url": "https://www.bls.gov/ooh/healthcare/occupational-health-and-safety-specialists-and-technicians.htm",
+      "title": "BLS Occupational Outlook Handbook: Occupational Health and Safety Specialists and Technicians",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S4",
+      "url": "https://nationalcareers.service.gov.uk/job-profiles/health-and-safety-adviser",
+      "title": "UK National Careers Service: Health and safety adviser",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S5",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-01-01/title-29.xml?part=1904&section=1904.7",
+      "title": "eCFR: 29 CFR 1904.7, General recording criteria (OSHA recordkeeping)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S6",
+      "url": "https://www.hse.gov.uk/riddor/key-definitions.htm",
+      "title": "UK Health and Safety Executive: RIDDOR explained",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S7",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-01-01/title-29.xml?part=1904&section=1904.29",
+      "title": "eCFR: 29 CFR 1904.29, Forms (OSHA recordkeeping)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S8",
+      "url": "https://www.hse.gov.uk/riddor/when-do-i-report.htm",
+      "title": "UK Health and Safety Executive: When do I need to report an incident? (RIDDOR)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S9",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-01-01/title-29.xml?part=1904&section=1904.39",
+      "title": "eCFR: 29 CFR 1904.39, Reporting fatalities, hospitalizations, amputations, and losses of an eye to OSHA",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S10",
+      "url": "https://www.hse.gov.uk/simple-health-safety/reporting-accidents-ill-health.htm",
+      "title": "UK Health and Safety Executive: Report accidents and illness",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S11",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-01-01/title-29.xml?part=1904&section=1904.35",
+      "title": "eCFR: 29 CFR 1904.35, Employee involvement (OSHA recordkeeping)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S12",
+      "url": "https://www.hse.gov.uk/simple-health-safety/training/decide.htm",
+      "title": "UK Health and Safety Executive: Decide what training and information you need",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S13",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-01-01/title-29.xml?part=1904&section=1904.32",
+      "title": "eCFR: 29 CFR 1904.32, Annual summary (OSHA recordkeeping)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S14",
+      "url": "https://www.hse.gov.uk/simple-health-safety/risk/steps-needed-to-manage-risk.htm",
+      "title": "UK Health and Safety Executive: Steps needed to manage risk",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S15",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-01-01/title-29.xml?part=1910&section=1910.1200",
+      "title": "eCFR: 29 CFR 1910.1200, Hazard communication",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S16",
+      "url": "https://www.hse.gov.uk/managing/introduction/how-to-manage.htm",
+      "title": "UK Health and Safety Executive: How to manage health and safety",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S17",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-01-01/title-29.xml?part=1910&section=1910.1030",
+      "title": "eCFR: 29 CFR 1910.1030, Bloodborne pathogens",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S18",
+      "url": "https://www.hse.gov.uk/simple-health-safety/gettinghelp/index.htm",
+      "title": "UK Health and Safety Executive: Appoint a competent person",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S19",
+      "url": "https://www.ecfr.gov/api/versioner/v1/full/2026-01-01/title-29.xml?part=1926&section=1926.32",
+      "title": "eCFR: 29 CFR 1926.32, Definitions (construction safety and health)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S20",
+      "url": "https://www.cdc.gov/niosh/hierarchy-of-controls/about/index.html",
+      "title": "CDC NIOSH: Hierarchy of Controls",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S21",
+      "url": "https://www.cdc.gov/niosh/construction/toolbox-talks/index.html",
+      "title": "CDC NIOSH: Construction Toolbox Talks",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S22",
+      "url": "https://www.hse.gov.uk/coshh/basics/datasheets.htm",
+      "title": "UK Health and Safety Executive: Chemical safety data sheets (COSHH basics)",
+      "kind": "government",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S23",
+      "url": "https://help.mitti.com/003826",
+      "title": "Mitti (by SafetyCulture) Help Center: What are credentials in Mitti?",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S24",
+      "url": "https://help.mitti.com/007285",
+      "title": "Mitti (by SafetyCulture) Help Center: Track training progress in Analytics",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S25",
+      "url": "https://help.mitti.com/004318",
+      "title": "Mitti (by SafetyCulture) Help Center: What are issues?",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    },
+    {
+      "id": "S26",
+      "url": "https://help.mitti.com/005371",
+      "title": "Mitti (by SafetyCulture) Help Center: What is OSHA reporting?",
+      "kind": "vendor-docs",
+      "fetchedOn": "2026-11-22"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Collect data on work environments for analysis by occupational health and safety specialists. Implement and conduct evaluation of programs designed to limit chemical, physical, biological, and ergonomic risks to workers."
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Technicians work with specialists to implement and evaluate programs aimed at mitigating risks to workers, property, the environment, and the public."
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Occupational health and safety technicians assist specialists by collecting data on work environments and implementing the worksite improvements that specialists plan."
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Documenting/Recording Information - Entering, transcribing, recording, storing, or maintaining information in written or electronic/magnetic form."
+        }
+      ]
+    },
+    {
+      "id": "C5",
+      "sources": [
+        {
+          "source": "S18",
+          "passage": "As an employer, you must appoint a competent person or people to help you meet your health and safety legal duties."
+        },
+        {
+          "source": "S18",
+          "passage": "But remember, as the employer, managing health and safety will still be your legal duty."
+        }
+      ]
+    },
+    {
+      "id": "C6",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Keeping training records will help you decide if refresher training is needed."
+        }
+      ]
+    },
+    {
+      "id": "C7",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Examine credentials, licenses, or permits to ensure compliance with licensing requirements."
+        }
+      ]
+    },
+    {
+      "id": "C8",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Provide new-employee health and safety orientations and develop materials for these presentations."
+        }
+      ]
+    },
+    {
+      "id": "C9",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Staff will need extra training if you get new equipment or your working practices change."
+        },
+        {
+          "source": "S12",
+          "passage": "people changing jobs or taking on extra responsibilities"
+        }
+      ]
+    },
+    {
+      "id": "C10",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Conduct safety training or education programs and demonstrate the use of safety equipment."
+        }
+      ]
+    },
+    {
+      "id": "C11",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "You must establish a reasonable procedure for employees to report work-related injuries and illnesses promptly and accurately."
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "As part of your monitoring, you should investigate incidents. These include accidents, near misses and dangerous occurrences."
+        },
+        {
+          "source": "S4",
+          "passage": "investigate and record accidents in the workplace"
+        }
+      ]
+    },
+    {
+      "id": "C13",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "You must enter each recordable injury or illness on the OSHA 300 Log and 301 Incident Report within seven (7) calendar days of receiving information that a recordable injury or illness has occurred."
+        }
+      ]
+    },
+    {
+      "id": "C14",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Inspect or evaluate workplace environments, equipment, or practices to ensure compliance with safety standards and government regulations."
+        },
+        {
+          "source": "S4",
+          "passage": "make regular inspections and report issues to managers"
+        }
+      ]
+    },
+    {
+      "id": "C15",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Verify availability or monitor use of safety equipment, such as hearing protection or respirators."
+        }
+      ]
+    },
+    {
+      "id": "C16",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "The employer shall maintain in the workplace copies of the required safety data sheets for each hazardous chemical, and shall ensure that they are readily accessible during each work shift to employees when they are in their work area(s)."
+        }
+      ]
+    },
+    {
+      "id": "C17",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "A list of the hazardous chemicals known to be present using a product identifier that is referenced on the appropriate safety data sheet"
+        },
+        {
+          "source": "S2",
+          "passage": "Coordinate \"right-to-know\" programs regarding hazardous chemicals or other substances."
+        }
+      ]
+    },
+    {
+      "id": "C18",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "These free Toolbox Talks serve as guides to lead focused discussions with workers on hazards they may face on the job. These are meant for safety trainers, supervisors, managers, and business owners."
+        }
+      ]
+    },
+    {
+      "id": "C19",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "who needs to carry out the action when the action is needed by"
+        }
+      ]
+    },
+    {
+      "id": "C20",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Analyze incident data to identify trends in injuries, illnesses, accidents, or other hazards."
+        }
+      ]
+    },
+    {
+      "id": "C21",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Prepare written reports of their findings"
+        }
+      ]
+    },
+    {
+      "id": "C22",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "Review the OSHA 300 Log to verify that the entries are complete and accurate, and correct any deficiencies identified"
+        },
+        {
+          "source": "S13",
+          "passage": "Create an annual summary of injuries and illnesses recorded on the OSHA 300 Log"
+        }
+      ]
+    },
+    {
+      "id": "C23",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "hazards (things that could cause them harm) risks (the chances of that harm occurring)"
+        }
+      ]
+    },
+    {
+      "id": "C24",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "certain dangerous occurrences (incidents with the potential to cause harm)"
+        },
+        {
+          "source": "S16",
+          "passage": "investigating accidents or near misses to find out what went wrong and why"
+        }
+      ]
+    },
+    {
+      "id": "C25",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "You must consider an injury or illness to meet the general recording criteria, and therefore to be recordable, if it results in any of the following: death, days away from work, restricted work or transfer to another job, medical treatment beyond first aid, or loss of consciousness."
+        }
+      ]
+    },
+    {
+      "id": "C26",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "The OSHA 300 form is called the Log of Work-Related Injuries and Illnesses, the 300-A is the Summary of Work-Related Injuries and Illnesses, and the OSHA 301 form is called the Injury and Illness Incident Report."
+        }
+      ]
+    },
+    {
+      "id": "C27",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "Within eight (8) hours after the death of any employee as a result of a work-related incident, you must report the fatality to the Occupational Safety and Health Administration (OSHA), U.S. Department of Labor."
+        },
+        {
+          "source": "S9",
+          "passage": "Within twenty-four (24) hours after the in-patient hospitalization of one or more employees or an employee's amputation or an employee's loss of an eye, as a result of a work-related incident, you must report the in-patient hospitalization, amputation, or loss of an eye to OSHA."
+        }
+      ]
+    },
+    {
+      "id": "C28",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "The purpose of RIDDOR is to inform the relevant enforcing authority that a work-related accident or incident has happened."
+        },
+        {
+          "source": "S8",
+          "passage": "the responsible person must notify the enforcing authority without delay"
+        }
+      ]
+    },
+    {
+      "id": "C29",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "if you have a \"privacy concern case,\" you may not enter the employee's name on the OSHA 300 Log. Instead, enter \"privacy case\" in the space normally used for the employee's name."
+        }
+      ]
+    },
+    {
+      "id": "C30",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "They describe the hazards the chemical presents, and give information on handling, storage and emergency measures in case of accident."
+        },
+        {
+          "source": "S15",
+          "passage": "Safety data sheet (SDS) means written or printed material concerning a hazardous chemical that is prepared in accordance with paragraph (g) of this section."
+        }
+      ]
+    },
+    {
+      "id": "C31",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Bloodborne Pathogens means pathogenic microorganisms that are present in human blood and can cause disease in humans."
+        },
+        {
+          "source": "S17",
+          "passage": "Occupational Exposure means reasonably anticipated skin, eye, mucous membrane, or parenteral contact with blood or other potentially infectious materials that may result from the performance of an employee's duties."
+        }
+      ]
+    },
+    {
+      "id": "C32",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Exposure Incident means a specific eye, mouth, other mucous membrane, non-intact skin, or parenteral contact with blood or other potentially infectious materials that results from the performance of an employee's duties."
+        }
+      ]
+    },
+    {
+      "id": "C33",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "According to the concept of Universal Precautions, all human blood and certain human body fluids are treated as if known to be infectious for HIV, HBV, and other bloodborne pathogens."
+        }
+      ]
+    },
+    {
+      "id": "C34",
+      "sources": [
+        {
+          "source": "S19",
+          "passage": "Competent person means one who is capable of identifying existing and predictable hazards in the surroundings or working conditions which are unsanitary, hazardous, or dangerous to employees, and who has authorization to take prompt corrective measures to eliminate them."
+        },
+        {
+          "source": "S18",
+          "passage": "They should have the skills, knowledge and experience to be able to recognise hazards in your business and help you put sensible controls in place to protect workers and others from harm."
+        }
+      ]
+    },
+    {
+      "id": "C35",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "The preferred order of action based on general effectiveness is: Elimination Substitution Engineering controls Administrative controls Personal protective equipment (PPE)"
+        }
+      ]
+    },
+    {
+      "id": "C36",
+      "sources": [
+        {
+          "source": "S23",
+          "passage": "Credentials are the workforce qualifications your team needs to track and renew. These include certifications and external licenses, such as driver's licenses, first aid certificates, and high-risk work licenses."
+        }
+      ]
+    },
+    {
+      "id": "C37",
+      "sources": [
+        {
+          "source": "S24",
+          "passage": "The course hasn't been completed yet and it's due in less than 14 days."
+        },
+        {
+          "source": "S24",
+          "passage": "The course hasn't been completed yet and is past its due date."
+        }
+      ]
+    },
+    {
+      "id": "C38",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Employers shall provide employees with effective information and training on hazardous chemicals in their work area at the time of their initial assignment, and whenever a new chemical hazard the employees have not previously been trained about is introduced into their work area."
+        }
+      ]
+    },
+    {
+      "id": "C39",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "(A) At the time of initial assignment to tasks where occupational exposure may take place; (B) At least annually thereafter."
+        },
+        {
+          "source": "S17",
+          "passage": "Annual training for all employees shall be provided within one year of their previous training."
+        }
+      ]
+    },
+    {
+      "id": "C40",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "(A) The dates of the training sessions; (B) The contents or a summary of the training sessions; (C) The names and qualifications of persons conducting the training; and (D) The names and job titles of all persons attending the training sessions."
+        },
+        {
+          "source": "S17",
+          "passage": "Training records shall be maintained for 3 years from the date on which the training occurred."
+        }
+      ]
+    },
+    {
+      "id": "C41",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "you must make the report to OSHA within the following time period after the fatality, in-patient hospitalization, amputation, or loss of an eye is reported to you or to any of your agent(s)"
+        }
+      ]
+    },
+    {
+      "id": "C42",
+      "sources": [
+        {
+          "source": "S9",
+          "passage": "(i) The establishment name; (ii) The location of the work-related incident; (iii) The time of the work-related incident;"
+        },
+        {
+          "source": "S9",
+          "passage": "(vii) Your contact person and his or her phone number; and (viii) A brief description of the work-related incident."
+        }
+      ]
+    },
+    {
+      "id": "C43",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "Following a report of an exposure incident, the employer shall make immediately available to the exposed employee a confidential medical evaluation and follow-up"
+        }
+      ]
+    },
+    {
+      "id": "C44",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Also consider a review if your workers have spotted any problems or there have been any accidents or near misses."
+        }
+      ]
+    },
+    {
+      "id": "C45",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Investigate incidents to determine the cause and possible prevention"
+        },
+        {
+          "source": "S16",
+          "passage": "identify why your control measures failed and what improvements you need to make"
+        }
+      ]
+    },
+    {
+      "id": "C46",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "you must give the requester a copy of the relevant OSHA 300 Log(s) by the end of the next business day."
+        }
+      ]
+    },
+    {
+      "id": "C47",
+      "sources": [
+        {
+          "source": "S22",
+          "passage": "A safety data sheet is not a risk assessment. You should use the information it contains to help make your own assessment."
+        }
+      ]
+    },
+    {
+      "id": "C48",
+      "sources": [
+        {
+          "source": "S21",
+          "passage": "They can also supplement or reinforce other safety and health training."
+        }
+      ]
+    },
+    {
+      "id": "C49",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "A company executive must certify that he or she has examined the OSHA 300 Log and that he or she reasonably believes, based on his or her knowledge of the process by which the information was recorded, that the annual summary is correct and complete."
+        }
+      ]
+    },
+    {
+      "id": "C50",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "You must post the summary no later than February 1 of the year following the year covered by the records and keep the posting in place until April 30."
+        }
+      ]
+    },
+    {
+      "id": "C51",
+      "sources": [
+        {
+          "source": "S11",
+          "passage": "A procedure is not reasonable if it would deter or discourage a reasonable employee from accurately reporting a workplace injury or illness"
+        },
+        {
+          "source": "S11",
+          "passage": "You must not discharge or in any manner discriminate against any employee for reporting a work-related injury or illness."
+        }
+      ]
+    },
+    {
+      "id": "C52",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "(A) Kept confidential; and (B) Not disclosed or reported without the employee's express written consent to any person within or outside the workplace except as required by this section or as may be required by law."
+        }
+      ]
+    },
+    {
+      "id": "C53",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Make sure you protect people's personal details by storing records confidentially in a secure place."
+        }
+      ]
+    },
+    {
+      "id": "C54",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "you must remove or hide the employees' names and other personally identifying information"
+        }
+      ]
+    },
+    {
+      "id": "C55",
+      "sources": [
+        {
+          "source": "S7",
+          "passage": "You must enter enough information to identify the cause of the incident and the general severity of the injury or illness, but you do not need to include details of an intimate or private nature."
+        }
+      ]
+    },
+    {
+      "id": "C56",
+      "sources": [
+        {
+          "source": "S20",
+          "passage": "Elimination, substitution, and engineering controls are more effective because they control exposures without significant human interaction."
+        }
+      ]
+    },
+    {
+      "id": "C57",
+      "sources": [
+        {
+          "source": "S14",
+          "passage": "Do not rely purely on paperwork as your main priority should be to control the risks in practice."
+        }
+      ]
+    },
+    {
+      "id": "C58",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "At every stage of the process, consult with your workers."
+        }
+      ]
+    },
+    {
+      "id": "C59",
+      "sources": [
+        {
+          "source": "S12",
+          "passage": "Health and safety training should take place during working hours and must be free for employees."
+        },
+        {
+          "source": "S17",
+          "passage": "Material appropriate in content and vocabulary to educational level, literacy, and language of employees shall be used."
+        }
+      ]
+    },
+    {
+      "id": "C60",
+      "sources": [
+        {
+          "source": "S16",
+          "passage": "Health and safety management is an ongoing process, not a one-off task."
+        }
+      ]
+    },
+    {
+      "id": "C61",
+      "sources": [
+        {
+          "source": "S3",
+          "passage": "Occupational health and safety specialists and technicians must be meticulous when checking work environments."
+        }
+      ]
+    },
+    {
+      "id": "C62",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "If you have more than 10 employees, you must keep an accident book under social security law."
+        },
+        {
+          "source": "S14",
+          "passage": "If you employ 5 or more people, you must record your significant findings"
+        }
+      ]
+    },
+    {
+      "id": "C63",
+      "sources": [
+        {
+          "source": "S10",
+          "passage": "Keeping records of incidents helps you to identify patterns of accidents and injuries, so you can better assess and manage risk in your workplace."
+        }
+      ]
+    },
+    {
+      "id": "C64",
+      "sources": [
+        {
+          "source": "S23",
+          "passage": "Each credential captures an issue date, expiration date, approval status, and version history."
+        },
+        {
+          "source": "S23",
+          "passage": "users receive reminders at 90 days, at 30 days, and on the expiration date."
+        }
+      ]
+    },
+    {
+      "id": "C65",
+      "sources": [
+        {
+          "source": "S24",
+          "passage": "You can see at a glance who is completing their courses and who still needs to catch up."
+        }
+      ]
+    },
+    {
+      "id": "C66",
+      "sources": [
+        {
+          "source": "S25",
+          "passage": "The Issues feature in Mitti lets you capture and track problems in your organization that don't look right and need to be resolved, such as near-misses, broken equipment, or safety hazards."
+        }
+      ]
+    },
+    {
+      "id": "C67",
+      "sources": [
+        {
+          "source": "S25",
+          "passage": "Customize your organization's issue email notifications to share sensitive information exclusively with authorized users or groups."
+        },
+        {
+          "source": "S25",
+          "passage": "you can set up Critical Alerts for each issue category ensuring that individuals receive notifications of severe incidents promptly"
+        }
+      ]
+    },
+    {
+      "id": "C68",
+      "sources": [
+        {
+          "source": "S26",
+          "passage": "Easily generate and download completed OSHA Forms 300A, 300, and 301 as CSV and PDF files for your organization's establishments."
+        },
+        {
+          "source": "S7",
+          "passage": "Yes, if the computer can produce equivalent forms when they are needed"
+        }
+      ]
+    },
+    {
+      "id": "C69",
+      "sources": [
+        {
+          "source": "S15",
+          "passage": "Electronic access and other alternatives to maintaining paper copies of the safety data sheets are permitted as long as no barriers to immediate employee access in each workplace are created by such options."
+        }
+      ]
+    },
+    {
+      "id": "C70",
+      "sources": [
+        {
+          "source": "S23",
+          "passage": "When users upload their credentials, an admin can approve or reject each submission before it counts as valid."
+        }
+      ]
+    },
+    {
+      "id": "C71",
+      "sources": [
+        {
+          "source": "S5",
+          "passage": "You must also consider a case to meet the general recording criteria if it involves a significant injury or illness diagnosed by a physician or other licensed health care professional"
+        },
+        {
+          "source": "S1",
+          "passage": "Evaluating Information to Determine Compliance with Standards - Using relevant information and individual judgment to determine whether events or processes comply with laws, regulations, or standards."
+        }
+      ]
+    },
+    {
+      "id": "C72",
+      "sources": [
+        {
+          "source": "S6",
+          "passage": "Reports should only be submitted by the 'responsible person' with duties under RIDDOR"
+        }
+      ]
+    },
+    {
+      "id": "C73",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Order suspension of activities that pose threats to workers' health or safety."
+        }
+      ]
+    },
+    {
+      "id": "C74",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Evaluate situations or make determinations when a worker has refused to work on the grounds that danger or potential harm exists."
+        }
+      ]
+    },
+    {
+      "id": "C75",
+      "sources": [
+        {
+          "source": "S17",
+          "passage": "The employer shall train each employee with occupational exposure in accordance with the requirements of this section."
+        },
+        {
+          "source": "S23",
+          "passage": "This means only users with verified qualifications can take on tasks or roles that require those qualifications."
+        }
+      ]
+    },
+    {
+      "id": "C76",
+      "sources": [
+        {
+          "source": "S2",
+          "passage": "Recommend measures to help protect workers from potentially hazardous work methods, processes, or materials."
+        }
+      ]
+    },
+    {
+      "id": "C77",
+      "sources": [
+        {
+          "source": "S1",
+          "passage": "Conduct worker studies to determine whether specific instances of disease or illness are job-related."
+        }
+      ]
+    },
+    {
+      "id": "C78",
+      "sources": [
+        {
+          "source": "S4",
+          "passage": "develop safety policies and procedures for your organisation"
+        },
+        {
+          "source": "S16",
+          "passage": "who will be responsible for health and safety tasks, and what their duties will be - you must appoint a competent person or people to help you do this"
+        }
+      ]
+    },
+    {
+      "id": "C79",
+      "sources": [
+        {
+          "source": "S26",
+          "passage": "Total Recordable Incident Rate (TRIR): Measures recordable incidents per 100 employees in a year."
+        },
+        {
+          "source": "S26",
+          "passage": "Days Away, Restricted, or Transferred (DART): Measures injuries or illnesses that result in days away from work, restricted duties, or job transfers per 100 employees in a year."
+        }
+      ]
+    },
+    {
+      "id": "C80",
+      "sources": [
+        {
+          "source": "S13",
+          "passage": "annual average number of employees covered by the OSHA 300 Log, and the total hours worked by all employees covered by the OSHA 300 Log"
+        }
+      ]
+    },
+    {
+      "id": "C81",
+      "sources": [
+        {
+          "source": "S24",
+          "passage": "Mandatory courses completed and Mandatory courses assigned"
+        },
+        {
+          "source": "S23",
+          "passage": "who has credentials pending approval"
+        }
+      ]
+    },
+    {
+      "id": "C82",
+      "sources": [
+        {
+          "source": "S25",
+          "passage": "the number of issues by status and category per site"
+        }
+      ]
+    }
+  ]
+}

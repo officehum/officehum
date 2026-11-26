@@ -1,0 +1,32 @@
+From: Northwind Accounts <accounts@northwind.example>
+To: Example Trading Co. <ap@example-trading.example>
+Subject: Fwd: Invoice NW-2042
+Date: Mon, 02 Nov 2026 09:15:00 +0000
+Message-ID: <nw-2042@northwind.example>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+--outer
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<html><body><p>Hello,</p><p>Please find <b>invoice NW-2042</b> attached.</p><ul><li>Total due: 95.00 EUR</li><li>Due: 2026-11-30</li></ul><p>Regards,<br>Northwind Accounts</p></body></html>
+--outer
+Content-Type: application/pdf; name="NW-2042.pdf"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="NW-2042.pdf"
+
+JVBERi0xLjQKJeLjz9MKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4K
+ZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFs0IDAgUl0gL0NvdW50IDEgPj4K
+ZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAv
+SGVsdmV0aWNhIC9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nID4+CmVuZG9iago0IDAgb2JqCjw8
+IC9UeXBlIC9QYWdlIC9QYXJlbnQgMiAwIFIgL01lZGlhQm94IFswIDAgNTk1IDg0Ml0gL1Jlc291
+cmNlcyA8PCAvRm9udCA8PCAvRjEgMyAwIFIgPj4gID4+IC9Db250ZW50cyA1IDAgUiA+PgplbmRv
+YmoKNSAwIG9iago8PCAvTGVuZ3RoIDExNSA+PgpzdHJlYW0KQlQKL0YxIDEyIFRmCjcyIDc3MCBU
+ZAoxNiBUTAooTm9ydGh3aW5kIFN1cHBsaWVzIEx0ZCkgVGogVCoKKEludm9pY2UgTlctMjA0Mikg
+VGogVCoKKFRvdGFsIGR1ZTogOTUuMDAgRVVSKSBUaiBUKgpFVAplbmRzdHJlYW0KZW5kb2JqCnhy
+ZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxNSAwMDAwMCBuIAowMDAwMDAwMDY0
+IDAwMDAwIG4gCjAwMDAwMDAxMjEgMDAwMDAgbiAKMDAwMDAwMDIxOCAwMDAwMCBuIAowMDAwMDAw
+MzQ1IDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgNiAvUm9vdCAxIDAgUiA+PgpzdGFydHhyZWYK
+NTExCiUlRU9GCg==
+--outer--
