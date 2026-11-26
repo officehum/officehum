@@ -74,6 +74,18 @@ const yes =
 
 const DECISION = "officehum.approval.call-1.any_credit";
 
+/**
+ * What the model reads in a transcript: every message's content and every tool it is offered, with
+ * the bookkeeping beside them (timestamps, ids, usage, timings) left out. A figure is searched for
+ * here, never in raw JSON, where a timestamp's digits could contain it by chance.
+ */
+function modelText(messages: unknown): string {
+  const bookkeeping = new Set(["timestamp", "id", "toolCallId", "usage", "durationMs"]);
+  return JSON.stringify(messages, (key, value: unknown) =>
+    bookkeeping.has(key) ? undefined : value,
+  );
+}
+
 describe("an approval that asks for a value", () => {
   it("asks with the label and the pinned fixed bounds, and hands the tool the value a person entered", async () => {
     const approve = vi.fn<Approver>(yes(2_500));
@@ -372,6 +384,22 @@ describe("on a Pi Durable harness with a local approver", () => {
     );
   });
 
+  it("searches what the model reads for a figure, not the timestamps and ids beside it", () => {
+    const transcript = [
+      { role: "user", content: "Correct E-7's pay.", timestamp: 1_795_653_017_434 },
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "tool:1795653017425:x", arguments: { cents: 174_300 } }],
+        usage: { input: 1743 },
+      },
+      { role: "toolResult", toolCallId: "tool:1795653017425:x", content: "Limit 1743." },
+    ];
+    const text = modelText(transcript);
+    expect(text).not.toContain("1795653017");
+    expect(text).toContain("174300");
+    expect(text).toContain("Limit 1743.");
+  });
+
   it("tells the model neither the fact bounds nor the entered value after an invalid answer", async () => {
     // Payroll's case: the bounds are minus and plus one employee's gross, read from the records.
     for (const answer of [yes(), yes(999_999), yes(12.5), yes(-999_999)]) {
@@ -379,7 +407,7 @@ describe("on a Pi Durable harness with a local approver", () => {
       const role = valueDesk({ approve: answer, gross: new Map([["E-7", 174_300]]), writes });
       const requests: string[] = [];
       const model = scripted((messages) => {
-        requests.push(JSON.stringify(messages));
+        requests.push(modelText(messages));
         return callOnce("adjust_pay", { employee: "E-7" })(messages);
       });
       const harness = await Harness.open(
@@ -397,7 +425,7 @@ describe("on a Pi Durable harness with a local approver", () => {
       expect(writes).toEqual([]);
       // The request after the refusal carries the block; nothing the model receives names a figure.
       expect(requests).toHaveLength(2);
-      const seen = [...requests, JSON.stringify((await root.context(BACKGROUND_CONTEXT)).messages)];
+      const seen = [...requests, modelText((await root.context(BACKGROUND_CONTEXT)).messages)];
       for (const text of seen) {
         for (const figure of ["174300", "1743", "999999", "12.5"]) {
           expect(text).not.toContain(figure);

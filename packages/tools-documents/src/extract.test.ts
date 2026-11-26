@@ -6,7 +6,7 @@
 
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import type { JsonObject } from "@earendil-works/pi-durable";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type Extraction, extractDocument, MODEL_TIMEOUT_MS, modelTimeout } from "./extract.js";
 import { DEFAULT_READING_LIMITS } from "./reading.js";
 import { cited, extractionModel, fixture } from "./test-helpers.js";
@@ -454,15 +454,26 @@ describe("a text-layer bill and a text-only model", () => {
 });
 
 describe("time limits", () => {
+  // The clock is controlled, so the machine's speed cannot decide the result: it stands still while
+  // the file is read (however long that takes in real time), and moves past the reading limit only
+  // once the model call has started. A reading limit still armed then would fire and fail the run.
   it("the reading limit covers reading only: a model slower than it still answers", async () => {
-    const model = extractionModel(TEXT_BILL, { input: ["text"], delayMs: 600 });
-    const result = await extractDocument(
-      { bytes: fixture("text-bill.pdf"), mimeType: PDF },
-      "vendor_bill",
-      model,
-      { limits: { ...DEFAULT_READING_LIMITS, timeoutMs: 300 } },
-    );
-    expect(result.status).toBe("checked");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const model = extractionModel(TEXT_BILL, { input: ["text"], delayMs: 600 });
+      const run = extractDocument(
+        { bytes: fixture("text-bill.pdf"), mimeType: PDF },
+        "vendor_bill",
+        model,
+        { limits: { ...DEFAULT_READING_LIMITS, timeoutMs: 300 } },
+      );
+      // Reading is over once the model is asked; until then no fake time passes.
+      while (model.requests.length === 0) await new Promise((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(600);
+      expect((await run).status).toBe("checked");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("the model call has its own limit, which names the model call", async () => {

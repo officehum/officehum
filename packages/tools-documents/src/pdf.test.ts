@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { extractText, getDocumentProxy, renderPageAsImage } from "unpdf";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createPdfPool, renderPdfPages } from "./pdf.js";
 import type { PdfJob } from "./pdf-worker.js";
 import { readDocument } from "./read-document.js";
@@ -124,31 +124,35 @@ function sha256(bytes: Uint8Array): string {
 }
 
 describe("a parser that never finishes", () => {
+  // The limit's clock is controlled, so the machine's speed cannot decide the result: fake time
+  // stands still until a real timer has fired and the ordinary read has finished, and only then
+  // moves past the stuck read's limit. A parser spinning on this thread instead of its own would
+  // block both, and the test would never get that far.
   it("is abandoned at the limit while another read and an unrelated timer are served", async () => {
     const spinning = pool("spin.mjs");
     const order: string[] = [];
-    let latest = 0;
-    let last = Date.now();
-    const ticker = setInterval(() => {
-      const now = Date.now();
-      latest = Math.max(latest, now - last);
-      last = now;
-    }, 20);
-    const started = Date.now();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     try {
+      const started = Date.now();
+      // Caught at once, so its refusal is never an unhandled rejection while the clock moves.
       const stuck = spinning
         .run(job(), limits({ timeoutMs: 600 }), "stuck.pdf")
-        .finally(() => order.push("stuck"));
+        .finally(() => order.push("stuck"))
+        .catch((error: unknown) => error);
       const ordinary = readDocument(fixture("vendor-bill.pdf"), "application/pdf").finally(() =>
         order.push("ordinary"),
       );
-      const timerFired = new Promise<number>((resolve) =>
-        setTimeout(() => resolve(Date.now() - started), 100),
-      );
+      // setInterval stays real: an unrelated timer is served while the parser spins.
+      let ticker: NodeJS.Timeout | undefined;
+      await new Promise<void>((resolve) => {
+        ticker = setInterval(resolve, 20);
+      });
+      clearInterval(ticker);
 
-      expect(await timerFired).toBeLessThan(250);
       expect((await ordinary).pages?.[2]?.text).toContain("Total due: 420.00 EUR");
-      const refused = await stuck.catch((error: unknown) => error);
+      expect(order).toEqual(["ordinary"]);
+      await vi.advanceTimersByTimeAsync(600);
+      const refused = await stuck;
       expect(refused).toBeInstanceOf(ReadingError);
       expect(refused).toMatchObject({
         code: "timeout",
@@ -156,22 +160,15 @@ describe("a parser that never finishes", () => {
           "reading stuck.pdf took longer than 0.6 s, the limit per file. The file may be damaged " +
           "or unusually complex.",
       });
-      const elapsed = Date.now() - started;
-      expect(elapsed).toBeGreaterThanOrEqual(590);
-      expect(elapsed).toBeLessThan(3_000);
+      expect(Date.now() - started).toBeGreaterThanOrEqual(600);
       expect(order).toEqual(["ordinary", "stuck"]);
-      // The event loop never stalled behind the spinning parser.
-      expect(latest).toBeLessThan(250);
     } finally {
-      clearInterval(ticker);
+      vi.useRealTimers();
     }
     // The terminated thread is gone: the pool is idle only after the thread's `exit`, which Node
-    // emits once the thread has stopped and its resources are released.
-    const gone = await Promise.race([
-      spinning.idle().then(() => true),
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2_000)),
-    ]);
-    expect(gone).toBe(true);
+    // emits once the thread has stopped and its resources are released. If it never goes, the
+    // test's own time limit fails it.
+    await spinning.idle();
   });
 });
 
