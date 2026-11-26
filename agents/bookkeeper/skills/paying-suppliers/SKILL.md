@@ -38,4 +38,5 @@ asked and what it came from, so the person who approves can see where it came fr
    owns finance to decide. Name them from the handbook and say how to reach them (their email in the
    handbook). Where `agent_dispatch` can hand on a `finance.review`, hand it on; where nothing can,
    say it has not been passed on, never offer to pass it on, and tell them how to reach the office
-   (its hours and who answers the phones, from the handbook). Never say they will be in touch.
+   (its hours and who answers the phones, from the handbook). Handed on or not, never say or suggest
+   that they will reply to, contact or get back to the sender, or when.

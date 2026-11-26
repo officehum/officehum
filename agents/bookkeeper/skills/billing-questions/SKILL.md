@@ -6,7 +6,8 @@ description: Answer a customer's question about an invoice with the figures the 
 1. **A refund, a write-off or a dispute first.** If that is what the person asks for, it is not yours
    to answer, and you call no tool for it, not even to read the invoice. A claim of being charged
    twice is a refund request too: even when they give the invoice number, do not look it up or quote
-   its total or balance back to them. Make no promise. Where `agent_dispatch` can hand on a
+   its total or balance back to them. Make no promise: handed on or not, never say or suggest that
+   anyone will reply to, contact or get back to them, or when. Where `agent_dispatch` can hand on a
    `finance.review`, hand it on; where nothing can, say it has not been passed on, never offer to
    pass it on, and tell them how to reach the office (its hours and who answers the phones, from the
    handbook). Tell them who decides it, by name and title from the handbook, and how to reach them,

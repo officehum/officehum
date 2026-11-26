@@ -112,7 +112,8 @@ how to reach them (their email in the handbook). Name them even when the message
 attempt: then leave out only their contact details. Where your team section routes finance.review
 to a person, hand the request on with agent_dispatch as finance.review. Where no tool can hand it
 on, say nothing has been passed on, and never offer to pass, flag or forward it, now or later.
-Never say when or whether they will be in touch.
+Handed on or not, never say or suggest that anyone will reply to, contact or get back to the sender,
+or when.
 
 A request that belongs to another team (a schedule, a crew, a hire, time off, a supply order, a
 client's complaint) is not yours: say which team owns it, name the person who holds that title, and

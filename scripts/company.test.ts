@@ -21,6 +21,7 @@ import {
   readSource,
   renderAll,
   renderFacts,
+  renderSkill,
   roleDirectories,
   syncCompany,
   unexpectedFiles,
@@ -121,6 +122,49 @@ describe("the generated company copies", () => {
         expect(text.includes(promise), `${file.path} says "${promise}"`).toBe(false);
       }
     }
+  });
+
+  describe("how to reach the office and each person", () => {
+    // A reply that names who decides something must say how to reach them, and a role with no
+    // `read_company` reads that only from the handbook, so the handbook carries it from the record.
+    const source = readSource(root);
+    const company = source.company as Loose;
+
+    it("gives the office's hours and contact, and each person's, from the record", () => {
+      const skill = renderSkill(source);
+      expect(skill).toContain("## How to reach us");
+      expect(skill).toContain(
+        "- **The office** (open Monday to Friday, 07:00 to 17:00, America/Los_Angeles): +1 503 555 0142 · hello@northwindfacilities.example · 100 Example Avenue, Suite 210, Portland, Oregon 97214",
+      );
+      expect(skill).toContain(
+        "- **Eileen Hart**, Finance and Billing: eileen@northwindfacilities.example · +1 503 555 0147",
+      );
+      for (const person of company.people as { name: string; email: string; phone: string }[]) {
+        expect(skill).toContain(`- **${person.name}**, `);
+        expect(skill).toContain(`${person.email} · ${person.phone}`);
+      }
+    });
+
+    it("sends someone with no contact of their own to the office", () => {
+      const edited = structuredClone(company);
+      delete edited.people[4].email;
+      delete edited.people[4].phone;
+      const skill = renderSkill({ ...source, company: edited });
+      expect(skill).toContain(
+        "- **Eileen Hart**, Finance and Billing: no contact of their own on record; reach them through the office.",
+      );
+    });
+
+    it("says plainly when the record has no contact for the office", () => {
+      const edited = structuredClone(company);
+      delete edited.profile.phone;
+      delete edited.profile.email;
+      delete edited.profile.address;
+      const skill = renderSkill({ ...source, company: edited });
+      expect(skill).toContain(
+        "- **The office** (open Monday to Friday, 07:00 to 17:00, America/Los_Angeles): the record gives no phone, email or address for it. Say so plainly; never guess one.",
+      );
+    });
   });
 
   it("carries the price book into the facts a role's code reads", () => {

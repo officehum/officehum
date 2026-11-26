@@ -172,6 +172,22 @@ Recurring contract, visit, scope of work, walkthrough, site binder, re-clean, cr
 day porter, crew lead, consumables, COI, MSA. The glossary in the company record has each one; use the
 client's word when they have one, and ours when they do not.
 
+## How to reach us
+
+From the company record. A reply that names who decides something says how to reach them from
+here.
+
+- **The office** (open Monday to Friday, 07:00 to 17:00, America/Los_Angeles): +1 503 555 0142 · hello@northwindfacilities.example · 100 Example Avenue, Suite 210, Portland, Oregon 97214
+- **Dana Whitfield**, Managing Director: dana@northwindfacilities.example · +1 503 555 0143
+- **Marcus Oyelaran**, Sales Manager: marcus@northwindfacilities.example · +1 503 555 0144
+- **Priya Raman**, Operations Manager: priya@northwindfacilities.example · +1 503 555 0145
+- **Tom Becker**, Client Services Lead: tom@northwindfacilities.example · +1 503 555 0146
+- **Eileen Hart**, Finance and Billing: eileen@northwindfacilities.example · +1 503 555 0147
+- **Sam Oduya**, Maintenance Supervisor: sam@northwindfacilities.example · +1 503 555 0148
+- **Rosa Martinez**, Purchasing and Supplies: rosa@northwindfacilities.example · +1 503 555 0149
+- **Jules Okafor**, People Ops: jules@northwindfacilities.example · +1 503 555 0150
+- **Noah Kim**, Client Coordinator: noah@northwindfacilities.example · +1 503 555 0151
+
 ## Where the rest is
 
 Two documents sit beside this one and load only when they are needed. Ask `read_skill` for

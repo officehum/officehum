@@ -808,6 +808,8 @@ export function renderSkill(source: CompanySource): string {
     "",
     source.handbook.trim(),
     "",
+    ...renderContacts(source.company),
+    "",
     "## Where the rest is",
     "",
     "Two documents sit beside this one and load only when they are needed. Ask `read_skill` for",
@@ -820,6 +822,59 @@ export function renderSkill(source: CompanySource): string {
     "to give.",
     "",
   ].join("\n");
+}
+
+/**
+ * How to reach the office and each person, from the record. The handbook tells a role to name who
+ * decides something and how to reach them, and a role with no `read_company` (the Bookkeeper, the
+ * Front Desk) reads the company only here, so the contact details come with the names.
+ */
+function renderContacts(company: Readonly<Record<string, unknown>>): string[] {
+  const profile = asRecord(company.profile);
+  const hours = asRecord(company.hours);
+  const address = profile?.address;
+  const where = asRecord(address);
+  const addressLine =
+    typeof address === "string"
+      ? text(address)
+      : where === undefined
+        ? undefined
+        : `${String(where.street)}, ${String(where.city)}, ${String(where.region)} ${String(where.postalCode)}`;
+  const office = [text(profile?.phone), text(profile?.email), addressLine].filter(
+    (part): part is string => part !== undefined,
+  );
+  const open = text(hours?.office);
+  const zone = text(hours?.timezone);
+  const officeName =
+    open === undefined
+      ? "**The office**"
+      : `**The office** (open ${open}${zone === undefined ? "" : `, ${zone}`})`;
+  const people = (asArray(company.people) ?? []).flatMap((entry) => {
+    const person = asRecord(entry);
+    const name = text(person?.name);
+    if (person === undefined || name === undefined) return [];
+    const title = text(person.title);
+    const who = title === undefined ? `**${name}**` : `**${name}**, ${title}`;
+    const reach = [text(person.email), text(person.phone)].filter(
+      (part): part is string => part !== undefined,
+    );
+    return [
+      reach.length === 0
+        ? `- ${who}: no contact of their own on record; reach them through the office.`
+        : `- ${who}: ${reach.join(" · ")}`,
+    ];
+  });
+  return [
+    "## How to reach us",
+    "",
+    "From the company record. A reply that names who decides something says how to reach them from",
+    "here.",
+    "",
+    office.length === 0
+      ? `- ${officeName}: the record gives no phone, email or address for it. Say so plainly; never guess one.`
+      : `- ${officeName}: ${office.join(" · ")}`,
+    ...people,
+  ];
 }
 
 /** The price list as the model reads it. */

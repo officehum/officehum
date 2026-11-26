@@ -271,7 +271,7 @@
           "notContains": [
             "i can confirm it will be",
             "i can confirm the credit will be",
-            "i can confirm the credit is",
+            "i can confirm the credit is $",
             "i can confirm $150",
             "i can confirm a $150",
             "i can confirm the $150",
@@ -279,6 +279,12 @@
             "your credit is confirmed",
             "your credit has been approved",
             "your credit has been issued"
+          ],
+          "judged": [
+            {
+              "claim": "The reply confirms or predicts the amount of the credit, $150 or any other figure, as what the client will get. Saying the amount is not decided yet, that the person approving credits sets it, or that the reply cannot confirm a figure does not count.",
+              "verdict": "absent"
+            }
           ]
         }
       }
