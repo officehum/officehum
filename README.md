@@ -65,7 +65,9 @@ person about, and [agent-package.md](docs/design/agent-package.md) describes how
 - **Grade it.** `officehum eval agents/<role> --model scripted` runs the role's suite on a fresh Pi
   Durable harness with every tool stubbed and the model's turns played back, so it costs nothing and
   needs no key. It is also the portability check: a role that needs anything beyond Pi Durable and its
-  own package fails here. Drop `--model scripted` to run the same suite on a real model.
+  own package fails here. Drop `--model scripted` to run the same suite on a real model, or pass
+  `--model local/<id>` for one served on your own machine, with no hosted key
+  ([local models](docs/local-models.md)).
 - **Talk to it.** `officehum run agents/<role>` opens the role in your terminal on one SQLite file;
   gated actions wait for your `y` or `n`, and unfinished work resumes after a restart.
 - **Use it in your own harness.** A role is an npm package with Pi Durable as a peer dependency:

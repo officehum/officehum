@@ -26,6 +26,7 @@ import {
 } from "@officehum/sdk";
 import { readApprovalValue } from "./cents.js";
 import type { CliDependencies, CliIo } from "./cli.js";
+import { LOCAL_PROVIDER, localProvider } from "./local-model.js";
 import { UsageError } from "./usage-error.js";
 
 /** Who is sitting at the terminal, for the approval audit trail. */
@@ -214,6 +215,18 @@ export function runModels(
       throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
     }
     return injected;
+  }
+  // The one-role commands also run a model on the operator's own machine; an office's runtime,
+  // which calls `liveModels` itself, does not (its egress profiles name hosted providers only).
+  if (ref.provider === LOCAL_PROVIDER) {
+    const models = createModels();
+    models.setProvider(redactKeyErrors(localProvider([ref.modelId])));
+    return { models, model: ref };
+  }
+  if (liveProvider(ref.provider) === undefined) {
+    throw new Error(
+      `The ${command} command runs paper, openai or local models, not ${JSON.stringify(ref.provider)}. Pass --model paper/${PAPER_MODEL_REF.modelId}, openai/gpt-6-sol, or local/<the model your server serves> (docs/local-models.md).`,
+    );
   }
   return { models: liveModels([ref], command), model: ref };
 }

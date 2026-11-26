@@ -21,7 +21,12 @@ shown; a typo or an amount out of bounds is asked again, and an empty answer dec
 
 `officehum` is `@officehum/cli`, as the top of this page describes. A live model key must be in the
 environment
-(`PAPERINSTRUMENTS_API_KEY` for Paper, `OPENAI_API_KEY` for OpenAI).
+(`PAPERINSTRUMENTS_API_KEY` for Paper, `OPENAI_API_KEY` for OpenAI). `--model local/<id>` runs a model
+on your own machine behind an OpenAI-compatible endpoint instead, and needs no hosted key:
+`OFFICEHUM_LOCAL_BASE_URL` names the endpoint (for example `http://localhost:8080/v1`),
+`OFFICEHUM_LOCAL_API_KEY` is sent only if your server was started with a key, and
+`OFFICEHUM_LOCAL_CONTEXT_WINDOW` is the context the server was started with (default 32768). See
+[Local models](local-models.md).
 
 The Front Desk ships no calendar of its own, so give it one through `--clients` (the file format is
 described below); without it the role starts, and every calendar tool fails when it is called. Save

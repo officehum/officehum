@@ -310,7 +310,7 @@ describe("officehum run", () => {
     const terminal = scripted([undefined]);
     const code = await runCli(["run", sampleDesk, "--model", "wat/thing"], terminal.io);
     expect(code).toBe(1);
-    expect(terminal.errors.join("\n")).toContain("runs paper or openai models");
+    expect(terminal.errors.join("\n")).toContain("runs paper, openai or local models");
   });
 
   it("rejects a --clients file that would carry a credential", async () => {

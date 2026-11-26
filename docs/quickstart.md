@@ -79,7 +79,8 @@ role.md OK
 
 The roles default to Paper's `ultramarine-1-flash`, which reads `PAPERINSTRUMENTS_API_KEY` from the
 environment. Set it in your shell from wherever you keep secrets; never put it in a file in the
-repository. To use OpenAI instead, set `OPENAI_API_KEY` and pass `--model openai/<model id>`.
+repository. To use OpenAI instead, set `OPENAI_API_KEY` and pass `--model openai/<model id>`. To use a
+model on your own machine, with no key, see [Local models](local-models.md).
 
 ```sh
 npx officehum run agents/sales --demo
@@ -107,3 +108,4 @@ npx officehum run agents/sales --demo --as dana-whitfield
 - [Build a role](build-a-role.md): the package layout, overlays, evals and the Role Factory.
 - [Architecture](architecture.md): the packages, what survives a restart, and the guardrails.
 - [Reference](reference.md): every command and flag.
+- [Local models](local-models.md): run and grade a role on a model served on your own machine.
