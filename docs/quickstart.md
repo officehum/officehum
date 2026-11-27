@@ -79,8 +79,8 @@ role.md OK
 
 The roles default to Paper's `ultramarine-1-flash`, which reads `PAPERINSTRUMENTS_API_KEY` from the
 environment. Set it in your shell from wherever you keep secrets; never put it in a file in the
-repository. To use OpenAI instead, set `OPENAI_API_KEY` and pass `--model openai/<model id>`. To use a
-model on your own machine, with no key, see [Local models](local-models.md).
+repository. To run on another provider, see [Use any model provider](#4-use-any-model-provider)
+below. To use a model on your own machine, with no key, see [Local models](local-models.md).
 
 ```sh
 npx officehum run agents/sales --demo
@@ -101,6 +101,48 @@ To say who you are, pass a person from the role's company record with `--as`:
 ```sh
 npx officehum run agents/sales --demo --as dana-whitfield
 ```
+
+## 4. Use any model provider
+
+`--model <provider>/<model id>` runs a role on any provider the model library, pi-ai, has built in:
+Anthropic, Google, OpenAI, OpenRouter, Amazon Bedrock, Azure, Mistral, Groq, xAI, DeepSeek, Together,
+Fireworks and more. It works with `officehum run`, `officehum eval` (and its `--judge`) and
+`officehum judge-check`. Each provider reads its key from the environment variable pi-ai names for
+it; set it in your shell, never in a file.
+
+On Google's Gemini, with `GEMINI_API_KEY` set in your shell:
+
+```sh
+npx officehum run agents/sales --demo --model google/gemini-3.5-flash
+```
+
+Through OpenRouter, with `OPENROUTER_API_KEY` set in your shell. The model id is everything after the
+first slash, so OpenRouter's own `vendor/model` ids work as they are:
+
+```sh
+npx officehum run agents/sales --demo --model openrouter/anthropic/claude-sonnet-5.5
+```
+
+Anthropic is the same with `ANTHROPIC_API_KEY` and, for example, `--model anthropic/claude-sonnet-5-5`;
+OpenAI with `OPENAI_API_KEY` and `--model openai/gpt-6-sol`.
+
+The command checks the choice before any role code runs, and never falls back to another provider:
+
+- With the key missing it names the variable, for example
+  `Set GEMINI_API_KEY in your shell before running against google.` A provider pi-ai reads from
+  several variables (Anthropic, Amazon Bedrock's AWS credentials) is refused with the list it looked
+  for. A provider that only signs in through a browser (OAuth) is refused, since the command line
+  does not sign in.
+- An unknown provider is refused with the list of every provider you can name: `paper`, `local` and
+  pi-ai's built-in providers.
+- An unknown model id is refused with how many models pi-ai's catalogue holds for that provider and
+  the first 20 of their ids.
+
+We have tested the roles on Paper's Ultramarine 1 Flash (the default) and on the local models listed
+in [Local models](local-models.md#models-we-have-tested). Every other provider and model runs through
+the same code but is untested: run a role's evals on it (`npx officehum eval agents/<role> --model
+<provider>/<model id> --trials 1`) before you rely on it. A saved conversation keeps the model it
+started with, so use a fresh `--db` when you switch.
 
 ## Next
 

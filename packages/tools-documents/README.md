@@ -160,7 +160,7 @@ refused as `model-timeout`, which names the model call; a slow read is `timeout`
 
 ### A live run
 
-`scripts/live-extract.mjs` runs extraction against the owner's model, Paper's Ultramarine 1 Flash
+`scripts/live-extract.mjs` runs extraction against the default model, Paper's Ultramarine 1 Flash
 (`@officehum/provider-paper`, `PAPER_MODEL_REF`). It calls the real API, so it is not a test. It reads
 the key from `PAPERINSTRUMENTS_API_KEY` in your environment (export it from your password manager;
 never type it on the command line):

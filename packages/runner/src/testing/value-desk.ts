@@ -15,7 +15,7 @@ import { valueDeskManifest } from "../../../sdk/src/fixtures/approver-values.js"
  * 1 to 50000 cents. One ticket type, so office mode has a ticket to bind.
  */
 export async function valueDeskPackage(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "rasf-3604b-value-desk-"));
+  const dir = await mkdtemp(join(tmpdir(), "officehum-value-desk-"));
   const fixture = pathToFileURL(
     fileURLToPath(new URL("../../../sdk/src/fixtures/approver-values.ts", import.meta.url)),
   ).href;

@@ -166,8 +166,8 @@ A weaker model can word a reply badly. It cannot approve its own action.
 
 ## Models we have tested
 
-Add a row only for a model you ran the suites on yourself. These runs are bare mode, one trial per
-scenario, with judged replies graded by `--judge paper/ultramarine-1-flash`. One trial is a thin
+Add a row only for a model you ran the suites on yourself. These runs are plain `officehum eval` (each role
+on its own, on a fresh harness), one trial per scenario, with judged replies graded by `--judge paper/ultramarine-1-flash`. One trial is a thin
 sample: read the numbers as a rough guide, not a guarantee.
 
 | Model | How it was served | Quantisation | Scenarios passed | Critical misses | Date |

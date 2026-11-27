@@ -63,8 +63,6 @@ reported to the community leaders responsible for enforcement through GitHub's
 reporting tools: use "Report content" on the comment, issue or pull request, or
 report the account from its profile page.
 
-**Contact address: the maintainers will add a contact address here.**
-
 All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the

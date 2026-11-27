@@ -310,7 +310,7 @@ describe("officehum run", () => {
     const terminal = scripted([undefined]);
     const code = await runCli(["run", sampleDesk, "--model", "wat/thing"], terminal.io);
     expect(code).toBe(1);
-    expect(terminal.errors.join("\n")).toContain("runs paper, openai or local models");
+    expect(terminal.errors.join("\n")).toContain('The run command has no model provider "wat".');
   });
 
   it("rejects a --clients file that would carry a credential", async () => {
@@ -457,6 +457,9 @@ describe("officehum run --demo", () => {
     const run = await runSales(["--demo"]);
     expect({ code: run.code, errors: run.errors }).toEqual({ code: 0, errors: "" });
     expect(run.output).toContain("Desk: demonstration data (--demo)");
+    // The banner names the run's state file, not an office.
+    expect(run.output).toMatch(/^State: .+\.sqlite$/mu);
+    expect(run.output).not.toContain("Office: ");
   });
 
   it("says no desk is bound, and how to bind one, without --demo or a desk client", async () => {

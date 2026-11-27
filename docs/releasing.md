@@ -1,10 +1,11 @@
 # Releasing the `@officehum/*` packages
 
 Each `@officehum/*` package has its own version (independent versioning with
-[changesets](https://github.com/changesets/changesets)). Maintainers cut releases: they publish to npm
-from CI, never from a laptop, every release carries npm's signed provenance (a public record tying the
-tarball to the commit and the workflow run that built it), and nothing publishes until the pre-publish
-check passes. No package is on npm yet.
+[changesets](https://github.com/changesets/changesets)). Maintainers will cut releases: the intent is that
+they publish to npm from CI, never from a laptop, every release carries npm's signed provenance (a
+public record tying the tarball to the commit and the workflow run that built it), and nothing
+publishes until the pre-publish check passes. The release workflow is not added yet (CI runs only
+`ci.yml`, the check), and nothing is published to npm yet.
 
 As a contributor you add a changeset with your change; you never bump a version or publish.
 
@@ -37,8 +38,8 @@ uses the package; it becomes the changelog entry. Commit the file with the chang
 Changesets merge to `main` with the changes they describe. When maintainers cut a release, `changeset
 version` turns the pending changesets into version bumps, moves the pins in dependents and writes each
 package's `CHANGELOG.md`, in a "Version packages" pull request where every version and changelog is
-read before anything goes public. Once that pull request merges, CI publishes the new versions in
-dependency order and tags each release (`@officehum/sdk@0.1.0`).
+read before anything goes public. Once that pull request merges, a release workflow (not added yet)
+is to publish the new versions in dependency order and tag each release (`@officehum/sdk@0.1.0`).
 
 ## The pre-publish check
 

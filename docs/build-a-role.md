@@ -186,8 +186,8 @@ be acknowledged in bulk ([the acknowledgement mechanism](design/overlay-rules.md
 a gated action with no approver is refused; conditions fail safe; an approval binds the exact call a
 person saw; replay declarations; no added tools or code; connector grants; who may approve; the
 audit and provenance records; and, for now, every approval on a tool that reaches people outside the
-business, and any limit such an approval compares with, cannot be loosened past its default. That
-last floor waits on an owner decision.
+business, and any limit such an approval compares with, cannot be loosened past its default. Whether
+that last floor can be lowered is not decided yet.
 
 ## Evals
 

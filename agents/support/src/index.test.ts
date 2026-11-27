@@ -544,7 +544,7 @@ describe("a credit across a restart", () => {
     );
 
   it("issues the credit once, at the approved amount, when the office stops between the decision and the write", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "rasf-3604s-support-restart-"));
+    const directory = mkdtempSync(join(tmpdir(), "officehum-support-restart-"));
     temps.push(directory);
     const file = join(directory, "harness.sqlite");
     const desk = fakeSupportDesk();
@@ -573,7 +573,7 @@ describe("a credit across a restart", () => {
       held = resolve;
     });
     const hold = defineExtension({
-      name: "rasf-3604s-hold",
+      name: "officehum-support-hold",
       hooks: [
         hook(ToolTask, {
           beforeTool: async (_call, _api, context) => {

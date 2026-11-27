@@ -492,7 +492,7 @@ describe("a budget revision across a restart", () => {
     );
 
   it("opens the forecast version once, at the approved amount, when the office stops between the decision and the write", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "rasf-3604b-finance-restart-"));
+    const directory = mkdtempSync(join(tmpdir(), "officehum-finance-restart-"));
     temps.push(directory);
     const file = join(directory, "harness.sqlite");
     const desk = fakeFinanceDesk();
@@ -508,7 +508,7 @@ describe("a budget revision across a restart", () => {
       held = resolve;
     });
     const hold = defineExtension({
-      name: "rasf-3604b-hold",
+      name: "officehum-finance-hold",
       hooks: [
         hook(ToolTask, {
           beforeTool: async (_call, _api, context) => {

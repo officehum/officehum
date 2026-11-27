@@ -1,6 +1,6 @@
 /**
- * The one-agent command line: what it lists, and `verify-role`. The office's commands, run through
- * the same dispatcher, are tested with the office's command line.
+ * The one-agent command line: what it lists, and `verify-role`. A host's own commands, run through
+ * the same dispatcher, are tested with that host.
  */
 
 import { copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";

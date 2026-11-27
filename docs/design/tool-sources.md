@@ -258,7 +258,6 @@ Confirmed: `McpClient` (`connect`, `listTools`, `callTool`, `close`, `connection
 `createInMemoryTransportPair` from `@earendil-works/pi-mcp/testing`. A tool failure comes back as
 `isError: true` in the result, not as a thrown error.
 
-**Not run:** the spike was also meant to run against a public stdio server. The building session was
-not permitted to start a third-party server, so that mode (`--stdio CMD ARG...`) is in the script
-for a person to run and has not been exercised. The stdio transport itself is therefore confirmed
+**Not run:** the spike was also meant to run against a public stdio server. That mode (`--stdio CMD ARG...`) has not been
+exercised against a third-party server; it is in the script for a person to run. The stdio transport itself is therefore confirmed
 from its type declarations and README only.

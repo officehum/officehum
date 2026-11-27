@@ -60,7 +60,7 @@ export async function runJudgeCheckCommand(
     return 1;
   }
   const ref = judgeSpec === undefined ? PAPER_MODEL_REF : parseModelRef(judgeSpec, "--judge");
-  const judge = modelJudge(runModels(ref, dependencies, "judge-check"));
+  const judge = modelJudge(await runModels(ref, dependencies, "judge-check"));
 
   const result = await checkJudge(checked.value, judge);
   io.output(`Judge: ${result.model} (prompt ${result.promptVersion})`);

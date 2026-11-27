@@ -5,9 +5,9 @@
  * counts the calls the model intended, including ones an approval gate would block, so a green
  * scripted suite says the wiring holds, and only a live run says how the role acts.
  *
- * The model is a live provider (`paper`, `openai`) or `scripted`, which reads a script file so CI can
- * run a suite with no key. A script file is JSON mapping each scenario id to the turns the scripted
- * model plays back, in order:
+ * The model is a live one (`paper`, `local` or any pi-ai built-in provider, see `runModels`) or
+ * `scripted`, which reads a script file so CI can run a suite with no key. A script file is JSON
+ * mapping each scenario id to the turns the scripted model plays back, in order:
  *
  * ```json
  * {
@@ -59,7 +59,7 @@
  * that does not load is refused, naming the problem, before any trial runs. Without the flag the run
  * is unchanged.
  *
- * `--pack ID` (repeatable) gives the role a tool pack its office would supply, today only
+ * `--pack ID` (repeatable) gives the role a tool pack a host would supply, today only
  * `data`: the tools its manifest declares with `"pack": "data"` are offered, stubbed like every
  * declared tool, so the pack's engine never loads. A suite that declares `"packs": ["data"]` runs
  * only with it; without the flag the role has no pack and such a suite is skipped, and the report
@@ -190,7 +190,7 @@ const EVAL_USAGE =
   "usage: officehum eval ROLE_DIR [--model provider/model] [--tag TAG] [--scenario ID]... " +
   "[--trials N] [--normal-trials N] [--retries N] [--max-output-tokens N] [--script FILE] " +
   "[--suite FILE] [--report FILE] [--judge provider/model] [--overlay DIR]... [--pack data]...\n" +
-  "--pack gives the role a tool pack its office would supply (data), its tools stubbed; a suite that " +
+  "--pack gives the role a tool pack a host would supply (data), its tools stubbed; a suite that " +
   "declares the pack runs only with it\n" +
   "--overlay evaluates the role under a business's overlay directories (lowest first); the run says so " +
   "and names each guardrail they lower\n" +
@@ -270,7 +270,7 @@ function parseEvalArguments(
       const pack = OFFICE_PACKS.find((known) => known === value);
       if (pack === undefined) {
         throw new UsageError(
-          `--pack must name a tool pack an office supplies: ${OFFICE_PACKS.join(", ")} (got ${JSON.stringify(value)}).`,
+          `--pack must name a tool pack a host supplies: ${OFFICE_PACKS.join(", ")} (got ${JSON.stringify(value)}).`,
         );
       }
       if (!packs.includes(pack)) packs.push(pack);
@@ -457,7 +457,7 @@ export async function runEvalCommand(
   let live: EvalModel | undefined;
   let model: (scenario: Scenario, trial: number, context: TrialContext) => EvalModel;
   if (script === undefined) {
-    const runtime = runModels(ref, dependencies, "eval");
+    const runtime = await runModels(ref, dependencies, "eval");
     live = runtime;
     model = () => runtime;
   } else {
@@ -467,7 +467,7 @@ export async function runEvalCommand(
   const judge =
     parsed.judge === undefined
       ? live
-      : runModels(parseModelRef(parsed.judge, "--judge"), dependencies, "eval");
+      : await runModels(parseModelRef(parsed.judge, "--judge"), dependencies, "eval");
 
   // As an installed office: the role is given the company file's company, and reads its
   // handbook from an office layer written for the run, below any --overlay.

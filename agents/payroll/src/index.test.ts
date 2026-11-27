@@ -610,7 +610,7 @@ describe("a pay adjustment across a restart", () => {
     );
 
   it("records the correction once, at the approved amount, when the office stops between the decision and the write", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "rasf-3604p-payroll-restart-"));
+    const directory = mkdtempSync(join(tmpdir(), "officehum-payroll-restart-"));
     onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
     const file = join(directory, "harness.sqlite");
     const books = desk();
@@ -635,7 +635,7 @@ describe("a pay adjustment across a restart", () => {
       held = resolve;
     });
     const hold = defineExtension({
-      name: "rasf-3604p-hold",
+      name: "officehum-payroll-hold",
       hooks: [
         hook(ToolTask, {
           beforeTool: async (_call, _api, context) => {

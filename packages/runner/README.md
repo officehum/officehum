@@ -21,8 +21,7 @@ needs on top of it:
   needs no provider and no key.
 
 It depends only on `@officehum/sdk` and the exact Pi Durable and pi-ai releases it is tested
-against. The office (workboard, relay, runtime) builds on it; a role package never depends on it at
-runtime, though its tests may.
+against. A host builds on it; a role package never depends on it at runtime, though its tests may.
 
 ## Install
 

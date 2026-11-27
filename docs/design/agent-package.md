@@ -5,7 +5,7 @@ Status: accepted (2026-10-07) · Applies to every package under `agents/`
 ## Decision
 
 Every Office Hum role (Front Desk, Bookkeeper, Office Manager, and every department role after them)
-is a **portable Pi Durable agent**: a free, MIT-licensed package, on npm and GitHub, that anyone can
+is a **portable Pi Durable agent**: a free, MIT-licensed package, on GitHub, to be published on npm, that anyone can
 install into **any** Pi Durable 1.6.x harness, with or without Office Hum. Roles are part of Office
 Hum's free offering.
 
@@ -51,7 +51,7 @@ Enforced by `validatePackage()` and `checkAgent()` in `@officehum/sdk`, and by e
 5. **Guardrails live in code, not prompt text.** Approval gates, budgets and provenance are hooks.
    No edit to `AGENTS.md`, `APPEND_SYSTEM.md` or a skill can switch them off.
 6. **Proven by a portability test.** A role's evals pass in a bare Pi Durable harness, and again with
-   the office extension layered on.
+   a host's extensions layered on.
 
 Only *running* agents goes through the harness adapter in `@officehum/runner` (harness, storage,
 `submit` with `requestId`, resume). *Building* them does not.
@@ -486,8 +486,8 @@ Rules:
   `outside` (it sends or publishes to people outside the business) stays on**, as does one on the
   channel's send tools (`send_message`, `reply_message`), and a limit such an approval compares with
   may be tightened but not loosened past its default: sending to customers without a person reading
-  it first is not available yet. That floor is the controller's default, waiting on the owner's
-  decision.
+  it first is not available yet. Whether that floor can be lowered is not decided
+  yet.
 - **A limit lives in one place.** Every amount a business sets is a named limit in a role's
   `officehum.json`, changed here. The company record holds none, and its handbook names a limit
   without a figure (the company check refuses an amount it does not record), so what a role says

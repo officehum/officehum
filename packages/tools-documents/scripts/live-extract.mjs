@@ -1,5 +1,5 @@
 /**
- * One live extraction run against the owner's model: Paper's Ultramarine 1 Flash through
+ * One live extraction run against the default model: Paper's Ultramarine 1 Flash through
  * `@officehum/provider-paper`. Not a test; it calls the real API and costs money.
  *
  * With PAPERINSTRUMENTS_API_KEY exported in the environment (never typed on the command line):

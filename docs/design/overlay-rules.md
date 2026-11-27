@@ -5,15 +5,14 @@ what no overlay can lower. How a host records and acknowledges a lowering is the
 
 ## Why
 
-The vision spec (2026-11-03,
-product principles 2, 3 and 4) says approvals, limits and spend caps are **strong defaults, not a
-floor**: a customer may lower or remove any of them, and lowering one is "an explicit, recorded
-choice, made in configuration by the customer, never by a prompt or an incoming message", with the
-board recording what each agent did under which configuration. The overlay rules in
+Office Hum treats approvals, limits and spend caps as **strong defaults, not a floor**: a customer
+may lower or remove any of them, and lowering one is an explicit, recorded choice, made in
+configuration by the customer, never by a prompt or an incoming message, with a record of what each
+agent did under which configuration. The overlay rules in
 [agent-package.md](agent-package.md#overlays-configuring-a-role-without-changing-it) say the opposite
 ("overlays can switch tools off, never add them"; a limit's approval cannot be switched off). The
-configuration epic's comment ("a customer must not be able to silently weaken a guarantee") agrees
-with the vision once **silently** is the operative word. This document makes the two agree:
+two agree once the rule is that a customer must not be able to **silently** weaken a guarantee. This
+document makes them agree:
 
 - an overlay **may** lower any guardrail the role ships, including switching an approval off;
 - a lowering is applied only with an **acknowledgement naming that guardrail**, given by an
@@ -28,7 +27,7 @@ What is true today, read from the code (and not quite what the docs say):
   overlay cannot touch an approval directly.
 - An overlay limit is **not** tighten-only: `resolveRoleFiles` accepts any number and only refuses
   `null`. Raising `large_invoice` from 2,500 to 5,000,000 is accepted today with no warning and no
-  record beyond the version's author. That is the silent lowering this issue closes.
+  record beyond the version's author. That is the silent lowering these rules close.
 - The approval gate takes `manifest.approvals` once (`defineRole` → `approvalGate({ approvals:
   manifest.approvals, get limits() … })`), so only limits are live.
 
@@ -65,7 +64,7 @@ acknowledgement:
 | **Approval** (`approvals[]` in `officehum.json`) | Switching it off. An approval on a tool declared `outside` is a hard floor for now (section 2). | New `settings.json` field `approvals`, an edit list like `tools`: `"-pay_bill_over_limit"` off, `"+…"` back on. An approval in the defaults' effective set that is absent from the candidate's. | `approval.<id>` | "Stop asking a person before: {description}. {Agent} will do this on its own." |
 | **Approval threshold** | Raising a limit an approval compares with `gt`/`gte`, or lowering one it compares with `lt`/`lte`. | Overlays cannot edit an approval's `when` (see below), so a threshold moves only through a named limit. The limit's direction comes from the conditions that reference it (`gt`/`gte` → a **ceiling**, raising loosens; `lt`/`lte` → a **floor**, lowering loosens; a limit compared both ways → any change loosens; `validateManifest` already allows a limit only with those four ops). A limit referenced only by code conditions takes its direction from a new optional manifest field `limits.<name>.guard` (below); without one, any change counts as loosening. | `limit.<name>` | 'Raise "{description}" from {current} to {new}; the role ships with {default}.' ("Lower" when the number goes down.) For a limit of unknown direction it adds: "Office Hum cannot tell which way is safer for this limit, so it treats any change as lowering a guardrail." |
 | **Limit removed** | Not possible. | `null` stays refused, with a new message: "to stop asking, switch the approval off". Removing a limit would leave an approval with nothing to compare (it fails safe and asks every time), so the explicit, named way to stop asking is switching the approval off. | — | — |
-| **Approval condition narrowed** | Not possible by overlay. | `when` stays package data. A literal threshold the business needs to change is a role defect: the role should declare a limit. The free roles already do for money; strict mode could later require it (not in this issue). | — | — |
+| **Approval condition narrowed** | Not possible by overlay. | `when` stays package data. A literal threshold the business needs to change is a role defect: the role should declare a limit. The free roles already do for money; strict mode could later require it (not decided yet). | — | — |
 | **Tool switched on** that the role ships off | A **writing** tool (`replay: "unsafe"` or `writes: true`) becoming available that is not available in the defaults. | Available tools = declared tools whose skill (if any) is enabled, minus `disabledTools`. Today a tool ships off only by belonging to a skill with `enabledByDefault: false` (no free role has one yet, but the rule is general). A safe (read-only) tool switched on is not a guardrail change. Switching a tool off, or back on to its default, is not a lowering. | `tool.<name>` | "Switch on {tool}, which {Agent} ships switched off. It changes things, and {its approval "{x}" still applies \| no approval covers it}." |
 | **Tool the role does not declare** | — | Still refused: overlays never add a tool. See below. | — | — |
 | **Skills** (switch on or off, replace, add) | Not a guardrail. | Skills are instructions and references only; an overlay skill cannot carry code. Switching on a skill that carries writing tools is caught by the tool row above. | — | — |
@@ -94,12 +93,12 @@ every code-only limit in `agents/*/officehum.json`. It is manifest data the mode
 
 1. **A tool is code.** An overlay holds only instructions and data (skills are instructions-only,
    "no shell or file-writing tools in roles"). A tool an overlay "adds" would need code from
-   somewhere, which is the vetted-package path (`tool-sources.md`, the configurator's "catalog of
-   vetted packages and connectors").
+   somewhere, which is the vetted-package path (`tool-sources.md`: a vetted role or tool pack
+   release).
 2. **Replay and approval are declared with the tool.** Every tool states `replay` in code and
    manifest, and every writing tool states an approval decision (`checkAgent`). An overlay-added
    tool would carry none of that review.
-3. **Principle 2 is already met.** "Capabilities are off until the customer turns them on" is
+3. **Capabilities are already off until the customer turns them on.** That is
    satisfied by switching on a declared tool, a connector grant (`set_grants`), or installing a
    tool pack. None needs overlay-added tools.
 
@@ -120,9 +119,9 @@ false`) refuses any attempt.
 | Overlays never add a tool, never add code, no shell or file tools. | `resolveRoleFiles`, `readSkill({ instructionsOnly })`, `checkFourLayers`. | AGENTS.md hard rules. This is also why money movement exists only where a vetted role ships a tool for it: an overlay cannot create one. |
 | What an agent may reach in an app. | The host's own grants. | An overlay cannot widen what an agent may reach in an app. |
 | Who may approve. | The host's approver. | This is who the guardrail asks, not the guardrail. |
-| Provenance, the approvals audit, overlay history and the lowered-guardrail record itself. | The host's records. | Principle 4 depends on them. "You can see why" cannot be a setting. |
+| Provenance, the approvals audit, overlay history and the lowered-guardrail record itself. | The host's records. | Seeing why an agent acted depends on them, so they cannot be a setting. |
 | The acknowledgement mechanism. | The host (section 3). | It is the thing that makes a lowering explicit. |
-| **An approval on a tool that reaches people outside the business**, any limit such an approval compares with, and any limit marked `outside` (loosening it lets an outside tool act without a person, as purchasing's order limit does). None may be loosened past its default. A role declares such a tool with `outside: true` in `officehum.json` (it sends or publishes: email, SMS, posts, purchase orders to a supplier, reports to a regulator). The SDK's `SEND_TOOLS` (`send_message`, `reply_message`) count as outside whether declared or not, and the catalog test holds every catalog role to declaring them, so the floor and the channel check never disagree. | `resolveRoleFiles` refuses the overlay, whatever is acknowledged: "sending to customers without a person reading it first is not available yet". | **Controller's default, waiting on the owner's decision (question 5).** Principle 2 names "replies on Discord", so this is expected to become an ordinary acknowledged lowering once the owner decides. Until then it stays code. |
+| **An approval on a tool that reaches people outside the business**, any limit such an approval compares with, and any limit marked `outside` (loosening it lets an outside tool act without a person, as purchasing's order limit does). None may be loosened past its default. A role declares such a tool with `outside: true` in `officehum.json` (it sends or publishes: email, SMS, posts, purchase orders to a supplier, reports to a regulator). The SDK's `SEND_TOOLS` (`send_message`, `reply_message`) count as outside whether declared or not, and the catalog test holds every catalog role to declaring them, so the floor and the channel check never disagree. | `resolveRoleFiles` refuses the overlay, whatever is acknowledged: "sending to customers without a person reading it first is not available yet". | **A conservative default; whether it can be lowered is not decided yet.** It may become an ordinary acknowledged lowering later. Until then it stays code. |
 | Outside content is framed as data. | `outside-output.ts`, MCP and CLI framing. | It protects the model's inputs. It is not a guardrail on an action. |
 | Model catalog; no silent provider fallback; secrets never reach engines. | `list_models`, `reserved-env.ts`, engine env. | AGENTS.md hard rules ("Models", "Secrets"). |
 | Practice mode and per-ticket budgets. | The host. | Not overlay settings (section 1). Unchanged. |

@@ -99,8 +99,8 @@ const USAGE = `Usage:
   officehum --version`;
 
 /**
- * `officehum run ROLE_DIR`: load one role package, open an office on its SQLite file, resume anything
- * a previous run left unfinished, and chat with the role until end of input.
+ * `officehum run ROLE_DIR`: load one role package, open a Pi Durable harness on its SQLite file,
+ * resume anything a previous run left unfinished, and chat with the role until end of input.
  */
 async function runRun(
   args: readonly string[],
@@ -110,7 +110,7 @@ async function runRun(
   const parsed = parseRunArguments(args);
   // A named model is resolved first, so a missing credential fails before any role code runs.
   const requested = parsed.model === undefined ? undefined : parseModelRef(parsed.model);
-  const early = requested === undefined ? undefined : runModels(requested, dependencies);
+  const early = requested === undefined ? undefined : await runModels(requested, dependencies);
   const clients = parsed.clientFile === undefined ? {} : await readClientConfig(parsed.clientFile);
   // With no --as the role gets no resolver, so every sender is unknown, as for a stranger.
   const operator = parsed.as === undefined ? undefined : operatorSender(parsed.roleDir, parsed.as);
@@ -128,7 +128,7 @@ async function runRun(
     provider: role.manifest.defaultModel.provider,
     modelId: role.manifest.defaultModel.modelId,
   };
-  const runtime = early ?? runModels(ref, dependencies);
+  const runtime = early ?? (await runModels(ref, dependencies));
   const database = parsed.database ?? join(".officehum", `${role.manifest.id}.sqlite`);
   const session = await openRoleRun({
     role,
@@ -142,7 +142,7 @@ async function runRun(
     // What the overlay files lower: your own files, so nothing to acknowledge, but said.
     for (const line of loweredLines(role.manifest.name, runLowered(role))) io.output(line);
     io.output(`Model: ${runtime.model.provider}/${runtime.model.modelId}`);
-    io.output(`Office: ${database}`);
+    io.output(`State: ${database}`);
     io.output(`Approval: this terminal (y/n), as ${terminalUser()}`);
     io.output(
       operator === undefined
@@ -222,8 +222,9 @@ function requireReviewOption(value: string | undefined, name: string): string {
 /**
  * The person's review of an exact proposed file version, and the publication that follows it.
  *
- * This is a *different* gate from `--approval`: that one decides whether a gated tool call may run,
- * and says nothing about which bytes would become the published version. This one shows the exact
+ * This is a *different* gate from a role's approval gate (the y/n `run` asks at the terminal): that
+ * one decides whether a gated tool call may run, and says nothing about which bytes would become the
+ * published version. This one shows the exact
  * artifact identity and the format-native evidence, records a person's decision bound to those
  * hashes, and only then lets the FileStore compare-and-swap the published pointer — refusing, with
  * the pointer left where it was, whenever the review is missing, denied, mismatched or superseded.

@@ -22,7 +22,12 @@ is an npm package that holds four things:
 - an **eval suite** that grades it.
 
 Its **guardrails** (the approvals, limits and refusals) are code and manifest data, not prompt text.
-Any figure it states comes from a tool, never from the model's arithmetic.
+
+What an agent knows about a business comes from files a person can read: its instructions, its
+skills and the company handbook under `skills/company-handbook/`. Change a file and the agent works
+from the new version. Figures are worked out by tools and handed to the model. Each agent is
+instructed to state only what those files and its tools give it; that part is an instruction, so the
+eval suite tests it.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/agent-anatomy-dark.svg">
@@ -124,12 +129,30 @@ accepts anything still cannot get round them.
 [agent-package.md](docs/design/agent-package.md) describes how they work, and the
 [catalogue](agents/README.md#catalog) lists each role's approvals.
 
-## Run it on your own model
+## Run it on any model
 
-The roles default to Paper's hosted `ultramarine-1-flash`, which reads `PAPERINSTRUMENTS_API_KEY`;
-`--model openai/<model id>` uses OpenAI. To keep everything on your machine, serve a model behind an
-OpenAI-compatible endpoint (llama.cpp's `llama-server`, vLLM or Ollama) and pass `--model local/<id>`.
-That needs no hosted key:
+Nothing in a role ties it to one AI company. `--model <provider>/<model id>` picks the model, and the
+command line accepts every provider built into [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai),
+the model library under Pi Durable: Anthropic, Google, OpenAI, Amazon Bedrock, Azure, Mistral,
+OpenRouter and about forty in all. Set that provider's own key and run:
+
+```sh
+export GEMINI_API_KEY=...        # or ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, ...
+npx officehum eval agents/bookkeeper --model google/<model id> --report bookkeeper.json
+```
+
+A missing key, an unknown provider or an unknown model id is refused with a message that says what
+to set or lists the choices. The command line never falls back to a different provider.
+
+With no `--model`, a role uses Paper's hosted `ultramarine-1-flash`, which reads
+`PAPERINSTRUMENTS_API_KEY`. That is the model the roles were developed and graded on. **Other models
+are untested unless the table below lists them**, so grade a role on your model with `officehum eval`
+before you rely on it ([quickstart](docs/quickstart.md#4-use-any-model-provider)).
+
+### On your own machine
+
+To keep everything on your machine, serve a model behind an OpenAI-compatible endpoint (llama.cpp's
+`llama-server`, vLLM or Ollama) and pass `--model local/<id>`. That needs no hosted key:
 
 ```sh
 export OFFICEHUM_LOCAL_BASE_URL=http://localhost:8080/v1
@@ -154,8 +177,8 @@ settings and how to read a result.
 - **Change one without editing it.** An overlay is a directory with your own `AGENTS.md` additions,
   `APPEND_SYSTEM.md`, skills and `settings.json`. It can switch tools off, but never adds one
   ([overlays](docs/build-a-role.md#overlays-changing-a-role-without-editing-it)).
-- **Generate one.** The [Role Factory](packages/role-factory/README.md) interviews a person, writes
-  one reviewable spec (`ROLE_SPEC.md`), and generates the role package from it.
+- **Generate one.** The [Role Factory](#the-role-factory) interviews a person, writes one reviewable
+  spec (`ROLE_SPEC.md`), and generates the role package from it.
 - **Write one by hand.** [Build a role](docs/build-a-role.md) covers the package, the manifest, evals
   and the checks.
 - **Use one in your own harness.** A role is an npm package with Pi Durable as a peer dependency:
@@ -164,6 +187,60 @@ settings and how to read a result.
 
 The office that runs these agents together, with a shared work board, approvals and budgets, is a
 separate hosted product at [officehum.com](https://officehum.com).
+
+## The Role Factory
+
+Fifteen roles will not cover every business. The Role Factory
+([`@officehum/role-factory`](packages/role-factory/README.md), MIT like everything here) turns a
+description of a job into a complete role package.
+
+```mermaid
+flowchart LR
+  A["Interview<br/>officehum-role interview"] --> B["ROLE_SPEC.md<br/>one document a person reviews"]
+  B --> C["Generate<br/>officehum-role generate"]
+  C --> D["Role package<br/>instructions, skills, manifest, evals"]
+  D --> E["Compile, then grade<br/>officehum eval"]
+```
+
+```sh
+npx officehum-role interview my-role.md             # asks the questions, writes the spec
+npx officehum-role generate my-role.md agents/my-role
+```
+
+**1. The interview.** A fixed list of questions asked in a terminal (no model is involved):
+
+| It asks about | What that becomes |
+| --- | --- |
+| What the role is for, who it reports to, who asks it for work | The instructions the model reads (`AGENTS.md`) |
+| What it may do alone, what waits for a person, what it never does | Approvals, limits and refusals in the manifest |
+| Its tools, and where each one comes from | The manifest's tool list |
+| The work that arrives, and what counts as finished | The kinds of ticket it accepts and their evidence |
+| The procedures it follows | Skills (`skills/<id>/SKILL.md`) |
+| Three to five real situations | Eval scenarios |
+
+**2. The spec.** The answers become one Markdown file, `ROLE_SPEC.md`, which states the whole role in
+one place. Nothing is written until the answers make a role the generator accepts, and a problem is
+traced back to the question that caused it. [role-spec.md](docs/design/role-spec.md) defines every
+field.
+
+**3. The generator.** It writes the package: `officehum.json`, `AGENTS.md`, `APPEND_SYSTEM.md`, the
+skills, a README, a test, and the evals. Beyond your own scenarios it writes the critical ones itself:
+
+- for every approval, a scenario where the approval is declined and the action must not run;
+- for every tool that writes, a scenario where a hidden instruction asks for it and it must not be
+  called;
+- for every "may not" rule, a scenario where a person asks for exactly that.
+
+The same spec always produces the same files, so you change the spec and regenerate rather than
+editing the package.
+
+**What it does not do.** It does not write a new tool's code. A tool can come from the role's own
+program, an MCP server or a command-line program, and those are wired from the spec. A tool with no
+source yet is generated as a typed not-implemented stub. The package is TypeScript source: compile
+it the way the catalogue roles are compiled before `officehum run` or `officehum eval` loads it
+([Build a role](docs/build-a-role.md#the-role-factory)). Two kinds of "may not" rule are claims the
+parser cannot prove; the generated evals are where they are tested
+([details](docs/design/role-spec.md#what-the-parser-cannot-prove)).
 
 ## Packages
 

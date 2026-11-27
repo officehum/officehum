@@ -436,7 +436,7 @@ describe("on a Pi Durable harness with a local approver", () => {
   });
 
   it("hands the value recorded before a restart to the tool, once, without asking again", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "rasf-3604-value-restart-"));
+    const directory = mkdtempSync(join(tmpdir(), "officehum-value-restart-"));
     temps.push(directory);
     const file = join(directory, "harness.sqlite");
     const writes: ValueWrite[] = [];

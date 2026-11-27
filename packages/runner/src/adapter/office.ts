@@ -48,11 +48,11 @@ import { type OfficeEvent, submissionEvents, viewEvents } from "./watch.js";
 type Op = Parameters<typeof viewEvents>[2][number];
 
 /**
- * Where one office keeps its durable state.
+ * Where one host keeps its durable state.
  *
- * `memory` is for tests. `sqlite` is one file per office, the shape the issue specifies. `jsonl` is a
- * directory holding Pi Durable's JSONL store, which is what solo mode writes today; it is here so the
- * solo, inbound and reply paths can move onto this adapter without changing their on-disk format.
+ * `memory` is for tests. `sqlite` is one file per host. `jsonl` is a directory holding Pi Durable's
+ * JSONL store, so a host that already writes that format can move onto this adapter without changing
+ * its on-disk format.
  */
 export type OfficeStorage = "memory" | { readonly sqlite: string } | { readonly jsonl: string };
 

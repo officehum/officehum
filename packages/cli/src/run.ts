@@ -9,7 +9,9 @@ import { readFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createModels } from "@earendil-works/pi-ai/models";
+import { type AuthContext, defaultProviderAuthContext } from "@earendil-works/pi-ai";
+import { createModels, type Provider } from "@earendil-works/pi-ai/models";
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import type { ModelRef } from "@earendil-works/pi-durable";
 import { PAPER_MODEL_REF, paperProvider } from "@officehum/provider-paper";
@@ -198,43 +200,121 @@ export function parseModelRef(spec: string, flag = "--model"): ModelRef {
 }
 
 /**
- * The models the run command talks to. An injected runtime (tests, scripted provider) wins; otherwise
- * paper and openai are the selectable providers and the credential is required before any work starts.
+ * The runtime a test or host injected for `ref` (`createRunModels`), checked against the ref, or
+ * undefined when nothing was injected for it.
  */
-export function runModels(
+export function injectedRunModels(
   ref: ModelRef,
   dependencies: Pick<CliDependencies, "createRunModels">,
   command = "run",
-): { models: ReturnType<typeof createModels>; model: ModelRef } {
+): { models: ReturnType<typeof createModels>; model: ModelRef } | undefined {
   const injected = dependencies.createRunModels?.(ref);
-  if (injected !== undefined) {
-    if (injected.model.provider !== ref.provider || injected.model.modelId !== ref.modelId) {
-      throw new Error(`Injected ${command} model does not match the requested provider/model.`);
-    }
-    if (injected.models.getModel(ref.provider, ref.modelId) === undefined) {
-      throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
-    }
-    return injected;
+  if (injected === undefined) return undefined;
+  if (injected.model.provider !== ref.provider || injected.model.modelId !== ref.modelId) {
+    throw new Error(`Injected ${command} model does not match the requested provider/model.`);
   }
-  // The one-role commands also run a model on the operator's own machine; an office's runtime,
-  // which calls `liveModels` itself, does not (its egress profiles name hosted providers only).
-  if (ref.provider === LOCAL_PROVIDER) {
-    const models = createModels();
-    models.setProvider(redactKeyErrors(localProvider([ref.modelId])));
-    return { models, model: ref };
+  if (injected.models.getModel(ref.provider, ref.modelId) === undefined) {
+    throw new Error(`Unknown ${ref.provider} model: ${ref.modelId}`);
   }
-  if (liveProvider(ref.provider) === undefined) {
-    throw new Error(
-      `The ${command} command runs paper, openai or local models, not ${JSON.stringify(ref.provider)}. Pass --model paper/${PAPER_MODEL_REF.modelId}, openai/gpt-6-sol, or local/<the model your server serves> (docs/local-models.md).`,
-    );
-  }
-  return { models: liveModels([ref], command), model: ref };
+  return injected;
 }
 
 /**
- * The model providers the CLI runs live, as it builds them, with the variable each one's key is read
- * from. `officehum hosts` reads each one's API host from here, so the egress allowlist names the host
- * the runtime calls.
+ * The models a one-role command (`run`, `eval`, `judge-check`) talks to. An injected runtime (tests,
+ * scripted provider) wins; otherwise `ref` names paper, local, or any provider pi-ai has built in,
+ * and the model must exist and its credential be set before any work starts.
+ */
+export async function runModels(
+  ref: ModelRef,
+  dependencies: Pick<CliDependencies, "createRunModels">,
+  command = "run",
+): Promise<{ models: ReturnType<typeof createModels>; model: ModelRef }> {
+  const injected = injectedRunModels(ref, dependencies, command);
+  if (injected !== undefined) return injected;
+  const provider = runProvider(ref, command);
+  const ids = provider.getModels().map((model) => model.id);
+  if (!ids.includes(ref.modelId)) {
+    throw new Error(
+      ids.length === 0
+        ? `Unknown ${ref.provider} model: ${ref.modelId}. pi-ai's ${ref.provider} provider has no built-in model list (it fetches one over the network), so the command line cannot check or run it.`
+        : `Unknown ${ref.provider} model: ${ref.modelId}. pi-ai's ${ref.provider} models (${ids.length}): ${listedIds(ids)}.`,
+    );
+  }
+  await requireCredential(provider);
+  const models = createModels();
+  // A provider's refusal can quote the key; it never reaches the stored conversation.
+  models.setProvider(redactKeyErrors(provider));
+  return { models, model: ref };
+}
+
+/** How many model ids an unknown-model error lists; some catalogues hold hundreds. */
+const LISTED_MODEL_IDS = 20;
+
+function listedIds(ids: readonly string[]): string {
+  const shown = ids.slice(0, LISTED_MODEL_IDS).join(", ");
+  return ids.length > LISTED_MODEL_IDS
+    ? `${shown}, … and ${ids.length - LISTED_MODEL_IDS} more`
+    : shown;
+}
+
+/**
+ * The provider a one-role command runs `ref` on: paper (Office Hum's own provider), local (a
+ * server on the operator's machine), or any provider pi-ai has built in. A host that runs several
+ * roles at once uses `liveModels` instead, which runs only `LIVE_PROVIDERS`.
+ */
+function runProvider(ref: ModelRef, command: string): Provider {
+  if (ref.provider === PAPER_MODEL_REF.provider) return paperProvider();
+  if (ref.provider === LOCAL_PROVIDER) return localProvider([ref.modelId]);
+  const builtins = builtinProviders();
+  const builtin = builtins.find((provider) => provider.id === ref.provider);
+  if (builtin === undefined) {
+    const names = [PAPER_MODEL_REF.provider, LOCAL_PROVIDER, ...builtins.map(({ id }) => id)];
+    throw new Error(
+      `The ${command} command has no model provider ${JSON.stringify(ref.provider)}. Pass --model provider/model with one of: ${names.join(", ")} (docs/quickstart.md).`,
+    );
+  }
+  return builtin;
+}
+
+/**
+ * Fails, naming what to set, unless the provider's own pi-ai auth finds a credential in the
+ * environment. The variables named are the ones the provider read while looking, so the message
+ * follows pi-ai's table rather than a copy of it. Nothing is sent anywhere.
+ */
+async function requireCredential(provider: Provider): Promise<void> {
+  const auth = provider.auth.apiKey;
+  if (auth === undefined) {
+    throw new Error(
+      `The ${provider.id} provider signs in with OAuth only, which the command line does not do. Pick a provider that takes an API key from the environment.`,
+    );
+  }
+  const read: string[] = [];
+  const ambient = defaultProviderAuthContext();
+  const ctx: AuthContext = {
+    // A blank value counts as unset, as the key checks always have.
+    env: async (name) => {
+      read.push(name);
+      return process.env[name]?.trim() || undefined;
+    },
+    fileExists: (path) => ambient.fileExists(path),
+  };
+  const found = await (auth.check ?? auth.resolve)({ ctx, signal: new AbortController().signal });
+  if (found !== undefined) return;
+  const [only] = read;
+  if (only !== undefined && read.length === 1) {
+    throw new Error(`Set ${only} in your shell before running against ${provider.id}.`);
+  }
+  throw new Error(
+    read.length === 0
+      ? `pi-ai found no ${provider.id} credential, and reads none from the environment, so the command line cannot run it.`
+      : `pi-ai found no ${provider.id} credential in your environment. It looked for ${read.join(", ")}. Set the one your account uses in your shell before running against ${provider.id}.`,
+  );
+}
+
+/**
+ * The model providers `liveModels` runs for a host, as it builds them, with the variable each one's
+ * key is read from. The one-role commands run more (`runModels`); a host can read each provider's
+ * API host from here.
  */
 export const LIVE_PROVIDERS = {
   paper: { build: paperProvider, keyName: "PAPERINSTRUMENTS_API_KEY" },
@@ -251,7 +331,7 @@ export function liveProvider(
 }
 
 /**
- * A host's own store of model keys (the office's): pi-ai reads each request's key from it
+ * A host's own store of model keys: pi-ai reads each request's key from it
  * first, and a provider it can store a key for may start with no key in the environment.
  */
 export interface StoredModelKeys {
@@ -260,7 +340,7 @@ export interface StoredModelKeys {
   storable(provider: string): boolean;
 }
 
-/** Registers each live provider the refs name, after checking its credential is set. */
+/** Registers each `LIVE_PROVIDERS` provider the refs name, after checking its credential is set. */
 export function liveModels(
   refs: readonly ModelRef[],
   command: string,

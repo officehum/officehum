@@ -908,7 +908,7 @@ describe("review dates", () => {
 
 describe("a crash during memory_save", () => {
   it("writes exactly one record after a restart replays the call", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "rasf-3223-memory-"));
+    const directory = mkdtempSync(join(tmpdir(), "officehum-memory-"));
     temps.push(directory);
     const file = join(directory, "harness.sqlite");
     let reached!: () => void;
@@ -966,7 +966,7 @@ describe("a crash during memory_save", () => {
   });
 
   it("refuses again after a restart replays an outside save that would replace a confirmed record", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "rasf-3226-memory-"));
+    const directory = mkdtempSync(join(tmpdir(), "officehum-memory-"));
     temps.push(directory);
     const file = join(directory, "harness.sqlite");
     let reached!: () => void;
@@ -1034,7 +1034,7 @@ describe("a crash during memory_save", () => {
   });
 
   it("refuses a person's protected save again after a restart replays it, with the same review key", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "rasf-3704-memory-"));
+    const directory = mkdtempSync(join(tmpdir(), "officehum-memory-"));
     temps.push(directory);
     const file = join(directory, "harness.sqlite");
     let reached!: () => void;
@@ -1088,7 +1088,7 @@ describe("a crash during memory_save", () => {
   });
 
   it("keeps the pending replacement after a restart replays a proposed save, and swaps on approval then", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "rasf-3226-pending-"));
+    const directory = mkdtempSync(join(tmpdir(), "officehum-pending-"));
     temps.push(directory);
     const file = join(directory, "harness.sqlite");
     let reached!: () => void;

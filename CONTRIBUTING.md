@@ -79,7 +79,7 @@ meet:
 - A role package never depends on `@officehum/runner` or `@officehum/cli` (the runner may be a
   devDependency for its tests), and its evals pass in a bare Pi Durable harness.
 - Every tool states `replay: "safe"` or `"unsafe"`, in code and in `officehum.json`, and they match.
-- Guardrails (approvals, budgets, limits) are code or manifest data, never only prompt text.
+- Guardrails (approvals, limits) are code or manifest data, never only prompt text.
 - Roles get no shell or file-writing tools.
 - Figures come from code, engines or connected systems, never from the model's arithmetic.
 - No secret goes into a file, a test, a log or a commit.

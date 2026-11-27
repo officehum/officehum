@@ -7,7 +7,8 @@ here? Start with the [quickstart](quickstart.md); for how the pieces fit, read
 Nothing is published to npm yet, so `officehum` below is this repository's CLI, built from a clone:
 after `npm ci` and `npm run build`, either run `node packages/cli/dist/index.js`, or run
 `npm rebuild @officehum/cli` once so that `npx officehum` works from the repository root (a fresh
-`npm ci` cannot link the command before the build has written it).
+`npm ci` cannot link the command before the build has written it). `officehum --version` prints its
+version and the Pi Durable release it runs on; with no arguments it prints every command and flag.
 
 ## Run one role package
 
@@ -20,8 +21,12 @@ approval that asks for a value then asks for the amount, in dollars and cents wi
 shown; a typo or an amount out of bounds is asked again, and an empty answer declines.
 
 `officehum` is `@officehum/cli`, as the top of this page describes. A live model key must be in the
-environment
-(`PAPERINSTRUMENTS_API_KEY` for Paper, `OPENAI_API_KEY` for OpenAI). `--model local/<id>` runs a model
+environment (`PAPERINSTRUMENTS_API_KEY` for Paper). `--model <provider>/<id>` also runs any provider
+pi-ai has built in (`anthropic`, `google`, `openai`, `openrouter`, …), each reading the key variable
+pi-ai names for it, such as `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY` or
+`OPENROUTER_API_KEY`; see [Use any model provider](quickstart.md#4-use-any-model-provider). A missing
+key, an unknown provider and an unknown model id are each refused before any role code runs, naming
+what to fix. `--model local/<id>` runs a model
 on your own machine behind an OpenAI-compatible endpoint instead, and needs no hosted key:
 `OFFICEHUM_LOCAL_BASE_URL` names the endpoint (for example `http://localhost:8080/v1`),
 `OFFICEHUM_LOCAL_API_KEY` is sent only if your server was started with a key, and
@@ -149,6 +154,7 @@ Flags:
 | `--suite FILE` | Run this one suite file against the role instead of the role's own `evals/`, checked against its manifest; how the memory evals in `packages/memory/evals/` run (`officehum eval agents/bookkeeper --suite packages/memory/evals/bookkeeper.json`) |
 | `--report FILE` | Write the SDK's full report as JSON, with every trial's tool calls and arguments, approvals and reply; a failing trial also prints one line with its calls and the first 200 characters of its reply |
 | `--judge provider/model` | The model that grades judged reply assertions (`expect.reply.judged`); default is the live `--model` the trials run on. A scripted run has no judge unless this names one, so it reports each judged assertion as not graded |
+| `--overlay DIR` | Evaluate the role under a business's overlay directory, lowest first; repeatable. The run says it is under overlays and names each guardrail they lower, and an overlay that does not load is refused before any trial runs |
 
 A live run ends with one line of model usage, the judge's calls included: input tokens (how many of
 them were read from the provider's prompt cache), output tokens (how many were reasoning) and the
@@ -192,6 +198,44 @@ A script file is JSON mapping each scenario id to the turns the scripted model p
 Every selected scenario must have an entry, or the command refuses before any trial runs. A script
 that must branch on what a tool returned cannot be written as JSON; use `piDurableRunner` from
 `@officehum/runner` in a test for that.
+
+## Verify a role's research
+
+`officehum verify-role ROLE_DIR [--online]` checks a role's `role.md` against its
+`role.sources.json`: the claim markers (`[C1]`) and the sources (`[S1]`) in `role.md` must match the
+claims and sources `role.sources.json` records. Offline it is the same check CI runs; `--online` also fetches every
+source and looks for each claim's passage, so it needs the network. It warns, without failing, on a
+tool in `officehum.json` that sounds like it sends something but does not declare `outside`, and
+names the tools the role takes from a tool pack. It prints `role.md OK` and exits `0` when nothing
+but warnings was found, and `1` otherwise.
+
+```sh
+officehum verify-role agents/sales
+```
+
+A package the Role Factory generates (`officehum-role generate`) has neither `role.md` nor
+`role.sources.json`, so `verify-role` reports both files as not found; it is for the catalogue's
+researched roles.
+
+## Review a document before it is published
+
+`officehum review` records a person's decision on one proposed version of a document and then
+publishes exactly that version. A review is bound to the file, its source version and the proposed
+version by their hashes, so an approval can never publish different bytes. Every subcommand takes
+`--state DIR`, the document state directory (default `./.officehum/documents`, with the files under
+`files/` and the reviews under `reviews/`).
+
+| Command | What it does |
+| --- | --- |
+| `officehum review list` | One line per review in the state directory |
+| `officehum review show --review REVIEW_ID` | The review's file, versions, hashes and evidence |
+| `officehum review decide --review REVIEW_ID --verdict approve\|deny --by NAME [--approval ID]` | Records the decision; the approval id defaults to `cli:<REVIEW_ID>` |
+| `officehum review publish --review REVIEW_ID --operation-id OID [--approval ID]` | Publishes the approved version, refusing with the published version left where it was if the review is missing, denied, mismatched or superseded |
+
+Nothing in this command line opens a review: `officehum run` and `officehum eval` never publish. A
+review exists only when a host that embeds `@officehum/tools-paper-office` opens one with its
+`publicationGate` in the same state directory; on a fresh clone `officehum review list` prints
+`No reviews.`
 
 ## Paper Office document workspace
 

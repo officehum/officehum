@@ -87,7 +87,9 @@ officehum run agents/frontdesk \
 ```
 
 `officehum run` needs a live model key in the process environment (`PAPERINSTRUMENTS_API_KEY` for
-Paper, `OPENAI_API_KEY` for OpenAI); it runs only those two providers. Omit `--model` to use the
+Paper). `--model <provider>/<id>` also runs any provider the model library pi-ai has built in, with
+the key variable pi-ai names for it, or `local/<id>` for a model on your own machine; see
+[Use any model provider](../../docs/quickstart.md#4-use-any-model-provider). Omit `--model` to use the
 manifest's default (`paper/ultramarine-1-flash`). At the prompt, gated actions print their
 description and arguments and wait for `y`/`n`; `/help`, `/commands` and `/reload` are available too.
 An embedding host that builds the role itself (rather than the CLI) passes `messenger`,

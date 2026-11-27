@@ -225,6 +225,6 @@ describe("officehum run --model local/<id>", () => {
   it("names local among the providers it can run", async () => {
     const run = terminal([undefined]);
     expect(await runCli(["run", sampleDesk, "--model", "wat/thing"], run.io)).toBe(1);
-    expect(run.errors.join("\n")).toContain("runs paper, openai or local models");
+    expect(run.errors.join("\n")).toContain("with one of: paper, local, ");
   });
 });

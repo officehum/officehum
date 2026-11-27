@@ -13,9 +13,10 @@ npm run build
 node packages/cli/dist/index.js --version
 ```
 
-In this repository the `officehum` command (`npx officehum`) is the office's command line, which
-runs these commands and the office's; until the office leaves this repository, this package does
-not link an `officehum` command of its own.
+This package's `officehum` command is linked by `npm rebuild @officehum/cli`, after the build:
+`npm ci` cannot link it before the build has written it, so without this step `npx officehum`
+answers `could not determine executable to run`. You can always run
+`node packages/cli/dist/index.js` instead.
 
 ## Example
 
@@ -26,8 +27,10 @@ node packages/cli/dist/index.js verify-role agents/sales                # check 
 ```
 
 With no arguments it prints every command and flag. The model a live command runs reads its key from
-the environment (`PAPERINSTRUMENTS_API_KEY` for the default Paper model, `OPENAI_API_KEY` for
-OpenAI).
+the environment (`PAPERINSTRUMENTS_API_KEY` for the default Paper model). `--model <provider>/<id>`
+runs any provider pi-ai has built in, with the key variable pi-ai names for it (`ANTHROPIC_API_KEY`,
+`GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, …), or `local/<id>` for a model on your own
+machine. See [Use any model provider](../../docs/quickstart.md#4-use-any-model-provider).
 
 ## As a library
 

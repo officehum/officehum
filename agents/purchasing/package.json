@@ -33,7 +33,8 @@
     "role.md",
     "role.sources.json",
     "skills",
-    "evals"
+    "evals",
+    "evals.smoke.json"
   ],
   "publishConfig": {
     "access": "public",

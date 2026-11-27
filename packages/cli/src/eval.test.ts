@@ -526,11 +526,19 @@ describe("officehum eval", () => {
       expect(capture.errors.join("\n")).toContain("has no eval scenarios");
     });
 
+    it("refuses a host's own eval flags when no host adds them", async () => {
+      for (const flags of [["--mode", "bare"], ["--memory"], ["--company", "company.json"]]) {
+        const refused = io();
+        expect(await runCli(["eval", stockroom, ...flags], refused.io)).toBe(2);
+        expect(refused.errors.join("\n")).toContain(`Unknown option: ${flags[0]}`);
+      }
+    });
+
     it("refuses a pack it does not know, and one the role declares no tool from", async () => {
       const unknown = io();
       expect(await runCli(["eval", stockroom, "--pack", "charts"], unknown.io)).toBe(2);
       expect(unknown.errors.join("\n")).toContain(
-        '--pack must name a tool pack an office supplies: data (got "charts")',
+        '--pack must name a tool pack a host supplies: data (got "charts")',
       );
       const undeclared = io();
       expect(
