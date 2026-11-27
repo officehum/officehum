@@ -59,7 +59,17 @@ function linkTargets(line: string): string[] {
   }
   const reference = /^\s*\[[^\]]+\]:\s+<?(\S+?)>?(?:\s|$)/u.exec(prose)?.[1];
   if (reference !== undefined) targets.push(reference);
+  targets.push(...imageSources(prose));
   return targets;
+}
+
+/** The files an HTML image on one line shows: `<img src>` and each `<source srcset>`'s first URL. */
+function imageSources(line: string): string[] {
+  const sources: string[] = [];
+  for (const match of line.matchAll(/<(?:img|source)\b[^>]*?\s(?:src|srcset)="([^"\s]+)/gu)) {
+    if (match[1] !== undefined) sources.push(match[1]);
+  }
+  return sources;
 }
 
 /** GitHub's anchor for a heading: lower case, punctuation dropped, spaces to hyphens. */
@@ -130,6 +140,17 @@ describe("documentation links", () => {
     expect(broken).toEqual([]);
   });
 
+  it("reads the images an HTML picture shows as links", () => {
+    expect(
+      linkTargets(
+        '<source media="(prefers-color-scheme: dark)" srcset="docs/assets/a-dark.svg 2x">',
+      ),
+    ).toEqual(["docs/assets/a-dark.svg"]);
+    expect(linkTargets('<img alt="A diagram" src="docs/assets/a-light.svg" width="560">')).toEqual([
+      "docs/assets/a-light.svg",
+    ]);
+  });
+
   it("slugs headings as GitHub does", () => {
     expect(slug("`officehum.json`")).toBe("officehumjson");
     expect(slug("Engines: a role's deterministic core")).toBe("engines-a-roles-deterministic-core");
@@ -137,6 +158,43 @@ describe("documentation links", () => {
       "2-what-no-overlay-can-lower-hard-floors-that-stay-code",
     );
     expect(slug("Triggers (cron and events)")).toBe("triggers-cron-and-events");
+  });
+});
+
+describe("the README's diagrams (docs/assets)", () => {
+  const directory = join(root, "docs", "assets");
+  const files = existsSync(directory)
+    ? readdirSync(directory).filter((name) => name.endsWith(".svg"))
+    : [];
+
+  it("are small, self-contained SVGs with a title and a description", () => {
+    // GitHub and npm show these as images: nothing is fetched, nothing runs, and a screen reader
+    // has the title and description.
+    const problems = files.flatMap((name) => {
+      const text = readFileSync(join(directory, name), "utf8");
+      return [
+        text.length > 16_384 ? `${name} is ${text.length} bytes; keep a diagram under 16 KB` : "",
+        /<title[\s>]/u.test(text) ? "" : `${name} has no <title>`,
+        /<desc[\s>]/u.test(text) ? "" : `${name} has no <desc>`,
+        /<(?:script|style|image|foreignObject)[\s>]/u.test(text)
+          ? `${name} holds a script, style, raster image or foreign object`
+          : "",
+        /(?:href|src)="(?:https?:)?\/\//u.test(text) ? `${name} loads something from outside` : "",
+      ].filter((problem) => problem !== "");
+    });
+    expect(problems).toEqual([]);
+  });
+
+  it("come in light and dark pairs", () => {
+    const unpaired = files.filter((name) => {
+      const pair = name.endsWith("-light.svg")
+        ? name.replace(/-light\.svg$/u, "-dark.svg")
+        : name.endsWith("-dark.svg")
+          ? name.replace(/-dark\.svg$/u, "-light.svg")
+          : undefined;
+      return pair === undefined || !files.includes(pair);
+    });
+    expect(unpaired).toEqual([]);
   });
 });
 
