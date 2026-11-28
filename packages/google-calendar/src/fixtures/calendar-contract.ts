@@ -1,9 +1,8 @@
 /**
  * The behaviour every `CalendarClient` owes the Front Desk, as one suite each implementation runs:
  * the fake (`fake.test.ts`), the REST client against the recorded upstream (`client.test.ts`), and
- * the connector gateway's client over the same recording (`@officehum/connectors`). What is about one
- * implementation alone (the REST request shape, its recovery of a lost response) stays in that
- * implementation's own tests.
+ * the connector gateway's client over the same recording. What is about one implementation alone
+ * (the REST request shape, its recovery of a lost response) stays in that implementation's own tests.
  *
  * Test-only: the package's build excludes it, and other packages' tests import it by path.
  */

@@ -84,7 +84,7 @@ describe("parseRoleSpec", () => {
     expect($schema).toBe("../../../../packages/sdk/schema/officehum.schema.json");
     expect(manifest.evals).toBe(EVALS_DIR);
     // Nothing of one business's reaches the package: the limit is the role's default, not its value.
-    expect(manifest.limits?.long_note?.default).toBe(1200);
+    expect(manifest.limits?.long_keep?.default).toBe(365);
     expect(Object.keys(manifest)).not.toContain("business");
     expect(JSON.stringify(manifest)).not.toContain("Example Co");
   });
@@ -99,8 +99,8 @@ describe("parseRoleSpec", () => {
           "  channels:\n    - email\n    - { channel: sms, direction: inbound, replyBy: email }\n",
         )
         .replace(
-          "    - id: long_note\n      tool: add_note\n",
-          "    - id: long_note\n      tool: add_note\n      amount: { arg: length }\n",
+          "    - id: long_keep\n      tool: add_note\n",
+          "    - id: long_keep\n      tool: add_note\n      amount: { arg: keep_days }\n",
         ),
     );
     const manifest = manifestFromRoleSpec(spec);
@@ -108,7 +108,7 @@ describe("parseRoleSpec", () => {
       "email",
       { channel: "sms", direction: "inbound", replyBy: "email" },
     ]);
-    expect(manifest.approvals[0]?.amount).toEqual({ arg: "length" });
+    expect(manifest.approvals[0]?.amount).toEqual({ arg: "keep_days" });
     expect(validateManifest(manifest).issues.map(formatIssue)).toEqual([]);
   });
 
@@ -116,8 +116,8 @@ describe("parseRoleSpec", () => {
     const result = parseRoleSpec(
       fixtureSpec
         .replace(
-          "    long_note:\n      description: The length",
-          "    Long-Note:\n      description: The length",
+          "    long_keep:\n      description: The number",
+          "    Long-Keep:\n      description: The number",
         )
         .replace(
           "  channels: [email, chat]\n",
@@ -125,10 +125,10 @@ describe("parseRoleSpec", () => {
         ),
     );
     expectReported(result, [
-      'ROLE_SPEC.md › role.limits.Long-Note: must be named in snake_case, like "large_invoice"',
+      'ROLE_SPEC.md › role.limits.Long-Keep: must be named in snake_case, like "large_invoice"',
       'ROLE_SPEC.md › role.channels[1]: channel "email" is declared more than once',
     ]);
-    expect(issueAt(result, "role.limits.Long-Note")?.layer).toBe("wisdom");
+    expect(issueAt(result, "role.limits.Long-Keep")?.layer).toBe("wisdom");
   });
 
   it("carries each prohibition into the manifest, so a generated role keeps it on its card", () => {
@@ -139,8 +139,8 @@ describe("parseRoleSpec", () => {
     // checks the prohibition, not something a host reads — and the entries are the spec's, in order.
     expect(manifest.mayNot).toEqual([
       {
-        action: "Add a note longer than the business's limit without asking",
-        instead: "Ask the person who wants the note to approve it",
+        action: "Keep a note longer than the business's limit without asking",
+        instead: "Add it as a request that waits for a person's approval",
       },
       {
         action: "Archive a note another agent is still working on",
@@ -166,7 +166,7 @@ describe("parseRoleSpec", () => {
     const suite = validateSuite({ scenarios: spec.evals }, manifest, ROLE_SPEC_FILE);
     expect(suite.ok ? suite.value.scenarios.map((scenario) => scenario.id) : []).toEqual([
       "adds-a-short-note",
-      "long-note-waits-for-a-person",
+      "long-keep-waits-for-a-person",
     ]);
   });
 
@@ -259,7 +259,7 @@ describe("parseRoleSpec", () => {
     const result = parseRoleSpec(
       fixtureSpec.replace(
         "  channels: [email, chat]\n",
-        "  channels: [email, chat]\n  settings: { limits: { long_note: 900 } }\n",
+        "  channels: [email, chat]\n  settings: { limits: { long_keep: 180 } }\n",
       ),
     );
     expectReported(result, [
@@ -364,7 +364,7 @@ describe("parseRoleSpec", () => {
     // declares one of each beside an approval that resolves. The generated evals test them.
     const spec = parsed(fixtureSpec);
     expect(spec.wisdom.authority.may_not.map((entry) => entry.enforced_by)).toEqual([
-      "approval:long_note",
+      "approval:long_keep",
       "person_only",
       "no_tool",
     ]);

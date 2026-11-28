@@ -163,7 +163,7 @@ describe("sample-tracker, generated, on a bare harness", () => {
     expect(approved.calls.map((made) => made.tool)).toEqual(["create_issue"]);
   });
 
-  it("passes every scenario it ships, stubbed by name, with a scripted model", async () => {
+  it("passes every scenario it ships with a scripted model, and leaves the judged replies ungraded", async () => {
     const validated = await validatePackage(packageDir);
     if (!validated.ok) throw new Error(validated.issues.map(formatIssue).join("\n"));
     const declines = (text: string): readonly ScriptedTurn[] => [{ text }];
@@ -211,5 +211,13 @@ describe("sample-tracker, generated, on a bare harness", () => {
     });
     const report = await runEvals(Object.values(validated.value.suites), runner, { trials: 1 });
     expect(report.passed, formatReport(report)).toBe(true);
+    // The may-not replies are judged, and a scripted run has no judge: they are reported ungraded,
+    // so this run proves the calls and approvals of those two scenarios, not their replies.
+    expect(report.skippedAssertions).toBe(2);
+    expect(
+      report.scenarios
+        .filter((scenario) => scenario.skippedAssertions !== undefined)
+        .map((scenario) => scenario.id),
+    ).toEqual(["may-not-open-an-urgent-issue-without-asking", "may-not-close-or-delete-an-issue"]);
   });
 });

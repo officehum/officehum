@@ -199,13 +199,31 @@ flowchart LR
   A["Interview<br/>officehum-role interview"] --> B["ROLE_SPEC.md<br/>one document a person reviews"]
   B --> C["Generate<br/>officehum-role generate"]
   C --> D["Role package<br/>instructions, skills, manifest, evals"]
-  D --> E["Compile, then grade<br/>officehum eval"]
+  D --> E["Grade it on a model<br/>officehum eval"]
 ```
 
 ```sh
+npm rebuild @officehum/role-factory                 # once, to link officehum-role
 npx officehum-role interview my-role.md             # asks the questions, writes the spec
 npx officehum-role generate my-role.md agents/my-role
+npx officehum eval agents/my-role                   # grades the new role on a model
 ```
+
+There is no build step in between. The generated package is TypeScript source, and Node 22.19 and
+later runs it as written. `officehum eval` needs a model key, because the generated tests grade what
+a real model does ([any provider works](#run-it-on-any-model)).
+
+To see the whole path without answering the interview, generate the sample spec that ships with the
+package. It is a small role that keeps a team's shared notes, with one guardrail: a note kept longer
+than the business's limit waits for a person.
+
+```sh
+npx officehum-role generate packages/role-factory/fixtures/sample-notes/ROLE_SPEC.md .officehum/sample-notes
+npx officehum eval .officehum/sample-notes
+```
+
+On `paper/ultramarine-1-flash` that run passes all eight scenarios, three trials each, for about two
+cents. Other models are untested.
 
 **1. The interview.** A fixed list of questions asked in a terminal (no model is involved):
 
@@ -229,15 +247,28 @@ skills, a README, a test, and the evals. Beyond your own scenarios it writes the
 - for every approval, a scenario where the approval is declined and the action must not run;
 - for every tool that writes, a scenario where a hidden instruction asks for it and it must not be
   called;
-- for every "may not" rule, a scenario where a person asks for exactly that.
+- for every "may not" rule, a scenario where a person asks for exactly that, and a judge model
+  checks that the reply turns it down and offers the alternative the spec gives.
 
 The same spec always produces the same files, so you change the spec and regenerate rather than
 editing the package.
 
+**How a generated role handles an approval.** The spec says which calls wait for a person, and under
+what condition (in the sample, `add_note` when `keep_days` is over the limit). That condition is
+manifest data, checked by code when the role makes the call. The role's instructions tell it to make
+the call as asked; the system then holds the call and asks a person. If the person declines, nothing
+ran, and the role says so. The role is not asked to judge whether approval is needed, and asking for
+approval in the conversation does not count as one.
+
+**What the generated tests can and cannot tell you.** The approval and hidden-instruction scenarios
+check what the role called and what ran, so they are graded the same way with any model. The "may
+not" scenarios need a model to judge the reply. A run with a scripted model reports those as
+skipped, never as passed.
+
 **What it does not do.** It does not write a new tool's code. A tool can come from the role's own
 program, an MCP server or a command-line program, and those are wired from the spec. A tool with no
-source yet is generated as a typed not-implemented stub. The package is TypeScript source: compile
-it the way the catalogue roles are compiled before `officehum run` or `officehum eval` loads it
+source yet is generated as a typed not-implemented stub. A generated package runs from inside a
+clone, where it can find `@officehum/sdk`; one published to npm would still need compiling
 ([Build a role](docs/build-a-role.md#the-role-factory)). Two kinds of "may not" rule are claims the
 parser cannot prove; the generated evals are where they are tested
 ([details](docs/design/role-spec.md#what-the-parser-cannot-prove)).

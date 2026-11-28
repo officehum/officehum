@@ -153,6 +153,20 @@ describe("verify-role", () => {
     expect(online.output).toEqual(["role.md OK (online)"]);
   });
 
+  it("says a generated package has no research record to check, and exits 1", async () => {
+    // What the Role Factory writes: a package.json flagged generated, and no role.md or sources.
+    const directory = state();
+    writeFileSync(
+      join(directory, "package.json"),
+      JSON.stringify({ name: "@officehum/sample-notes", officehum: { generated: true } }),
+    );
+    const capture = io();
+    expect(await runCli(["verify-role", directory], capture.io)).toBe(1);
+    expect(capture.output).toEqual([
+      "role.md: not found: this package was generated from a ROLE_SPEC.md and has no research record (role.md, role.sources.json), so there is nothing for verify-role to check; the spec is the document to review",
+    ]);
+  });
+
   it("exits 1 with the offline issues for a broken role.md", async () => {
     const directory = state();
     copyFileSync(join(validRole, "role.sources.json"), join(directory, "role.sources.json"));

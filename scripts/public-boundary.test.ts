@@ -1,10 +1,11 @@
 /**
- * The public boundary, as a test: this repository holds the free agents and what they
- * need, and none of the office. It fails on a private path present, a workspace depending on a private
- * package, or a source file importing one (`./public-boundary.ts`).
+ * The public boundary, as a test: this repository holds the free agents and what they need, and
+ * nothing else. It fails on a top-level entry the public tree does not hold, a dependency on or an
+ * import of an `@officehum/*` package that is not a workspace here, or a relative import that leaves
+ * the public tree (`./public-boundary.ts`).
  *
- * The private repository is a superset of this one and keeps the office beside these files, so there
- * the test checks each export instead (its exporter lives in `scripts/public-export/`, which only the
+ * The private repository is a superset of this one and keeps more beside these files, so there the
+ * test checks each export instead (its exporter lives in `scripts/public-export/`, which only the
  * private repository has); here it checks the tree itself.
  */
 
@@ -39,30 +40,52 @@ describe("the public boundary", () => {
     expect(boundaryProblems(ROOT)).toEqual([]);
   });
 
-  it("finds a private path, a private dependency and a private import, and nothing else", () => {
+  it("finds a stray top-level entry, a package outside the workspaces, and nothing else", () => {
     const root = tree({
-      "apps/studio/index.html": "<html></html>",
+      "package.json": JSON.stringify({ workspaces: ["packages/*"] }),
+      "private-area/index.html": "<html></html>",
       "packages/x/package.json": JSON.stringify({
         name: "@officehum/x",
-        dependencies: { "@officehum/office": "0.0.0", "@officehum/office-manager": "0.0.0" },
+        dependencies: { "@officehum/not-here": "0.0.0", "@officehum/x-helper": "0.0.0" },
       }),
+      "packages/x-helper/package.json": JSON.stringify({ name: "@officehum/x-helper" }),
       "packages/x/src/a.ts": [
-        'import { openOffice } from "@officehum/gateway/server";',
-        'import { loadRole } from "../../runner/src/roles/load-role.js";',
-        'export { x } from "../../office/src/x.js";',
-        // Split, so this file's own text holds no import of a private package.
-        `const studio = await im${"port"}("@officehum/studio");`,
-        '// import { y } from "@officehum/office"; is prose',
-        'const text = `from "@officehum/office"`;',
+        'import { open } from "@officehum/elsewhere/server";',
+        'import { helper } from "@officehum/x-helper/sub";',
+        'import { load } from "../../x-helper/src/load.js";',
+        'export { y } from "../../../private-area/y.js";',
+        'import { z } from "../../../../outside/z.js";',
+        // Split, so this file's own text holds no import of a package outside the tree.
+        `const later = await im${"port"}("@officehum/later");`,
+        '// import { y } from "@officehum/not-here"; is prose',
+        'const text = `from "@officehum/not-here"`;',
       ].join("\n"),
     });
     expect(boundaryProblems(root)).toEqual([
-      "apps: a private path is in the public tree",
-      "packages/x/package.json: dependencies names @officehum/office",
-      "packages/x/src/a.ts: imports ../../office/src/x.js, a private path",
-      "packages/x/src/a.ts: imports @officehum/gateway/server",
-      "packages/x/src/a.ts: imports @officehum/studio",
+      "packages/x/package.json: dependencies names @officehum/not-here, which is not a workspace here",
+      "packages/x/src/a.ts: imports ../../../../outside/z.js, outside the public tree",
+      "packages/x/src/a.ts: imports ../../../private-area/y.js, outside the public tree",
+      "packages/x/src/a.ts: imports @officehum/elsewhere/server, which is not a workspace here",
+      "packages/x/src/a.ts: imports @officehum/later, which is not a workspace here",
+      "private-area: not a top-level entry the public tree holds",
     ]);
+  });
+
+  it("passes a new workspace with no list to edit", () => {
+    const files = {
+      "package.json": JSON.stringify({ workspaces: ["packages/*", "agents/*"] }),
+      "agents/x/package.json": JSON.stringify({
+        name: "@officehum/x",
+        dependencies: { "@officehum/brand-new": "0.0.0" },
+      }),
+      "agents/x/src/a.ts": 'import { y } from "@officehum/brand-new";',
+    };
+    expect(boundaryProblems(tree(files))).toHaveLength(2);
+    const root = tree({
+      ...files,
+      "packages/brand-new/package.json": JSON.stringify({ name: "@officehum/brand-new" }),
+    });
+    expect(boundaryProblems(root)).toEqual([]);
   });
 
   it("reads static, side-effect and dynamic imports from the start of a statement", () => {

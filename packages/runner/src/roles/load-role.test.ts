@@ -108,12 +108,12 @@ describe("loadRole", () => {
 
   it("explains an entry point it cannot import", async () => {
     // A copy outside the repo: the fixture's relative SDK import no longer resolves, which is the
-    // shape of a TypeScript source package the run command cannot load.
+    // shape of a TypeScript source package that cannot resolve its dependencies from where it sits.
     const dir = await mkdtemp(join(tmpdir(), "officehum-role-"));
     temps.push(dir);
     await cp(sampleDesk, dir, { recursive: true });
     await expect(loadRole(dir, { clients: { calendar } })).rejects.toThrow(
-      /Could not import @officehum\/sample-desk's entry point[\s\S]*compiled JavaScript/,
+      /Could not import @officehum\/sample-desk's entry point[\s\S]*resolve its dependencies/,
     );
   });
 

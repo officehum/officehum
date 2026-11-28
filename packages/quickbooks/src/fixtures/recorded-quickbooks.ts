@@ -5,7 +5,7 @@
  * network, no credential, no sandbox.
  *
  * Test-only: the package's build excludes it. The REST client's tests run against it directly, and
- * the connector gateway's tests (`@officehum/connectors`) import it by path and reach it through the
+ * the connector gateway's tests import it by path and reach it through the
  * gateway and a credential layer.
  */
 

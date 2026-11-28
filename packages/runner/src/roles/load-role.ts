@@ -168,9 +168,11 @@ function declaredEntry(manifest: PackageManifest): string | undefined {
 }
 
 /**
- * Imports the resolved entry, adding context a bare Node `ERR_MODULE_NOT_FOUND` lacks. A published
- * role package ships compiled JavaScript; a package whose entry is TypeScript source (an SDK fixture,
- * or a checkout that has not been built) fails here with the reason spelled out.
+ * Imports the resolved entry, adding context a bare Node error lacks. Node 22.19+ strips TypeScript
+ * types itself, so an entry that is TypeScript source (a package `officehum-role generate` wrote
+ * inside a clone) loads directly when it uses only erasable syntax and sits outside `node_modules`.
+ * Under `node_modules` Node refuses to strip types, so an installed package must ship compiled
+ * JavaScript.
  */
 async function loadEntry(entry: string, name: string): Promise<unknown> {
   try {
@@ -178,7 +180,9 @@ async function loadEntry(entry: string, name: string): Promise<unknown> {
   } catch (error) {
     throw new Error(
       `Could not import ${name}'s entry point ${entry}: ${error instanceof Error ? error.message : String(error)}. ` +
-        "A published role package ships compiled JavaScript; if this is a TypeScript source package, build it first.",
+        "Check that the package can resolve its dependencies (such as @officehum/sdk) from where it sits, " +
+        "for example by generating it inside a clone of this repository. A TypeScript source entry loads " +
+        "directly only outside node_modules; a package installed under node_modules must ship compiled JavaScript.",
       { cause: error },
     );
   }

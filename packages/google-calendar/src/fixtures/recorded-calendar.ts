@@ -6,7 +6,7 @@
  * the client's recovery. No network, no credential.
  *
  * Test-only: the package's build excludes it. The REST client's tests run against it directly, and
- * the connector gateway's tests (`@officehum/connectors`) import it by path.
+ * the connector gateway's tests import it by path.
  */
 
 export type Json = Record<string, unknown>;

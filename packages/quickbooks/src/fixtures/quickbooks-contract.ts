@@ -1,9 +1,9 @@
 /**
  * The behaviour every `QuickBooks` owes the Bookkeeper's tools, as one suite each implementation
  * runs: the fake (`fake.test.ts`), the REST client against the recorded upstream (`client.test.ts`),
- * and the connector gateway's client over the same recording (`@officehum/connectors`). What is about
- * one implementation alone (the REST request shape, the fake's refusal of a reused request id) stays
- * in that implementation's own tests.
+ * and the connector gateway's client over the same recording. What is about one implementation alone
+ * (the REST request shape, the fake's refusal of a reused request id) stays in that implementation's
+ * own tests.
  *
  * Test-only: the package's build excludes it, and other packages' tests import it by path.
  */

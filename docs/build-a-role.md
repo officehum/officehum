@@ -266,10 +266,15 @@ wrote 11 files to .officehum/sample-notes
 ```
 
 `generate` writes the manifest, the prompt files, the skills, a critical scenario for every approval
-(the call is made, the approval asked and declined, and nothing runs), and a test. Change the spec
+(the call is made, the approval asked and declined, and nothing runs), one for every prohibition
+(no tool performs it, and a judge model checks that the reply declines and offers the spec's
+alternative; a scripted run reports that check ungraded), and a test. Change the spec
 and regenerate rather than editing the package. A generated package is TypeScript source
-(`"main": "./src/index.ts"`): compile it the way the catalog roles do (a `tsconfig.json` and a
-`build` script, as in `agents/office-manager`) before `officehum run` or a host loads it.
+(`"main": "./src/index.ts"`) and needs no build step: generate it inside a clone of this repository,
+as above, and `officehum eval .officehum/sample-notes` or `officehum run` loads it directly, because
+Node 22.19 and later runs the TypeScript source itself. Node does not do that for a package installed
+under `node_modules`, so one published to npm would still need compiling, the way the catalog roles
+are (a `tsconfig.json` and a `build` script, as in `agents/office-manager`).
 
 ## Use a role in your own harness
 

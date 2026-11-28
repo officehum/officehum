@@ -110,7 +110,9 @@ peer range that excludes the version Office Hum runs (`validatePackage` plus an 
 a missing runtime program (`checkRuntimes`). The factory's bundle is then checked against the manifest
 (`checkAgent`) before anything runs.
 
-Role packages are portable, so a package ships compiled JavaScript. The SDK's fixture roles under
+Role packages are portable, so a published package ships compiled JavaScript. A package the Role
+Factory generated inside a clone is the exception: Node 22.19 and later loads its TypeScript source
+directly ([Build a role](build-a-role.md#the-role-factory)). The SDK's fixture roles under
 `packages/sdk/fixtures/` are TypeScript sources used by tests; they load under the test runner, not the
 built CLI. Run them from a test, or build the SDK package you want to run from the terminal.
 
@@ -214,8 +216,9 @@ officehum verify-role agents/sales
 ```
 
 A package the Role Factory generates (`officehum-role generate`) has neither `role.md` nor
-`role.sources.json`, so `verify-role` reports both files as not found; it is for the catalogue's
-researched roles.
+`role.sources.json`, so `verify-role` says it was generated from a `ROLE_SPEC.md` with no research
+record to check, and that the spec is the document to review. It exits `1`, as it does whenever
+nothing was verified; the command is for the catalogue's researched roles.
 
 ## Review a document before it is published
 

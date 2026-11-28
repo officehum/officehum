@@ -60,6 +60,21 @@ async function declaredTools(roleDir: string): Promise<ToolDeclaration[]> {
   );
 }
 
+/**
+ * Whether the Role Factory wrote this package (`"officehum": { "generated": true }` in its
+ * `package.json`): such a package comes from a `ROLE_SPEC.md`, not from researched `role.md`.
+ */
+async function isGenerated(roleDir: string): Promise<boolean> {
+  try {
+    const pkg = JSON.parse(await readFile(join(roleDir, "package.json"), "utf8")) as {
+      officehum?: { generated?: unknown };
+    } | null;
+    return pkg?.officehum?.generated === true;
+  } catch {
+    return false;
+  }
+}
+
 /** One line per tool pack the role declares tools from, naming them. */
 async function packLines(roleDir: string): Promise<string[]> {
   const byPack = new Map<string, string[]>();
@@ -95,20 +110,30 @@ export async function runVerifyRoleCommand(
   const issues: Issue[] = [];
   let markdown: string | undefined;
   let sources: RoleSources | undefined;
+  const generated = await isGenerated(roleDir);
   try {
     markdown = await readFile(join(roleDir, ROLE_MD_FILE), "utf8");
   } catch {
-    issues.push({ source: ROLE_MD_FILE, path: "", message: "file not found" });
-  }
-  try {
-    sources = JSON.parse(await readFile(join(roleDir, ROLE_SOURCES_FILE), "utf8")) as RoleSources;
-  } catch (error) {
     issues.push({
-      source: ROLE_SOURCES_FILE,
+      source: ROLE_MD_FILE,
       path: "",
-      message:
-        error instanceof SyntaxError ? `is not valid JSON: ${error.message}` : "file not found",
+      message: generated
+        ? `not found: this package was generated from a ROLE_SPEC.md and has no research record (${ROLE_MD_FILE}, ${ROLE_SOURCES_FILE}), so there is nothing for verify-role to check; the spec is the document to review`
+        : "file not found",
     });
+  }
+  // A generated package has no sources file either, and the issue above already says so.
+  if (markdown !== undefined || !generated) {
+    try {
+      sources = JSON.parse(await readFile(join(roleDir, ROLE_SOURCES_FILE), "utf8")) as RoleSources;
+    } catch (error) {
+      issues.push({
+        source: ROLE_SOURCES_FILE,
+        path: "",
+        message:
+          error instanceof SyntaxError ? `is not valid JSON: ${error.message}` : "file not found",
+      });
+    }
   }
   if (markdown !== undefined && sources !== undefined) {
     issues.push(...checkRoleMd(markdown, sources));

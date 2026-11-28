@@ -19,8 +19,9 @@ npx officehum-role generate my-role.md agents/my-role [--overlay DIR]
 ```
 
 `generate` writes the manifest, `AGENTS.md`, `APPEND_SYSTEM.md`, skills, evals (including one
-critical scenario per approval) and a test, as TypeScript source. Change the spec and regenerate
-rather than editing the package. The fixtures under [`fixtures/`](fixtures/README.md) are complete
+critical scenario per approval) and a test, as TypeScript source. Generated inside a clone, it needs
+no build step: `officehum eval` and `officehum run` load the source directly on Node 22.19 and later.
+Change the spec and regenerate rather than editing the package. The fixtures under [`fixtures/`](fixtures/README.md) are complete
 specs; `sample-notes/ROLE_SPEC.md` is the one [role-spec.md](../../docs/design/role-spec.md) quotes.
 
 ## Docs
